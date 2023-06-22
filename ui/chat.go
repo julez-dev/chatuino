@@ -1,15 +1,25 @@
 package ui
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/twitch"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/rs/zerolog"
+)
+
+var (
+	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render("\u2588")
+	indicatorWidth, _ = lipgloss.Size(indicator)
 )
 
 type chatEntry struct {
 	Position position
-	Lines    []string
+	Message  twitch.IRCer
 }
 
 type position struct {
@@ -17,20 +27,21 @@ type position struct {
 	CursorEnd   int
 }
 
-func (p position) isInRange(i int) bool {
-	return i >= p.CursorStart && i <= p.CursorEnd
-}
-
-type ChatWindow struct {
+type chatWindow struct {
 	logger zerolog.Logger
 
-	cursor int // overall message cursor, a single message can span multiple lines
+	cursor int // Overall message cursor, a single message can span multiple lines
 	start  int
 	end    int
 
-	entries            []*chatEntry
-	totalNumberOfLines int
+	// Entries keep track which actual original message is behind a single row.
+	// A single message can span multiple line so this is needed to resolve a message based on a line
+	entries []*chatEntry
 
+	// Every single row, multiple rows may be part of a single message
+	lines []string
+
+	// Position of the wrapped viewport
 	yPosition int
 	width     int
 	height    int
@@ -38,11 +49,11 @@ type ChatWindow struct {
 	viewport viewport.Model
 }
 
-func (c *ChatWindow) Init() tea.Cmd {
+func (c *chatWindow) Init() tea.Cmd {
 	return nil
 }
 
-func (c *ChatWindow) Update(msg tea.Msg) (*ChatWindow, tea.Cmd) {
+func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -51,11 +62,9 @@ func (c *ChatWindow) Update(msg tea.Msg) (*ChatWindow, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		c.logger.Info().Msg("key event")
-
 		switch msg.String() {
 		case "u":
-			c.MoveUp()
+			c.MoveUp(1)
 		case "d":
 			c.MoveDown(1)
 		}
@@ -63,9 +72,7 @@ func (c *ChatWindow) Update(msg tea.Msg) (*ChatWindow, tea.Cmd) {
 		c.viewport.Height = msg.Height
 		c.viewport.Width = msg.Width
 		c.viewport.YPosition = msg.YPosition
-
 	case recvTwitchMessage:
-
 		lastCursorEnd := -1
 
 		if len(c.entries) > 0 {
@@ -73,42 +80,53 @@ func (c *ChatWindow) Update(msg tea.Msg) (*ChatWindow, tea.Cmd) {
 			lastCursorEnd = newest.Position.CursorEnd
 		}
 
-		lines := []string{msg.message}
-		position := position{
-			CursorStart: lastCursorEnd + 1,
-			CursorEnd:   lastCursorEnd + 1 + len(lines) - 1,
-		}
+		lines := messageToText(msg.message, c.width-indicatorWidth)
 
 		entry := &chatEntry{
-			Position: position,
-			Lines:    lines,
+			Position: position{
+				CursorStart: lastCursorEnd + 1,
+				CursorEnd:   lastCursorEnd + len(lines),
+			},
+			Message: msg.message,
 		}
 
-		c.totalNumberOfLines += len(lines)
+		wasLatestLine := c.isLatestEntry()
 
+		c.lines = append(c.lines, lines...)
 		c.entries = append(c.entries, entry)
-		// c.logger.Info().Any("entries", c.entries).Send()
+		c.logger.Info().Bool("last-line", wasLatestLine).Send()
+		if wasLatestLine {
+			c.MoveDown(1)
+		} else {
+			c.UpdateViewport()
+		}
 
-		c.UpdateViewport()
 	}
 
 	return c, tea.Batch(cmds...)
 }
 
-func (c *ChatWindow) UpdateViewport() {
+func (c *chatWindow) findEntryForCursor() (int, *chatEntry) {
+	for i, entry := range c.entries {
+		if c.cursor >= entry.Position.CursorStart && c.cursor <= entry.Position.CursorEnd {
+			return i, entry
+		}
+	}
+
+	return 0, nil
+}
+
+func (c *chatWindow) UpdateViewport() {
+	renderedRows := make([]string, 0, len(c.lines))
+
 	if c.cursor >= 0 {
 		c.start = clamp(c.cursor-c.viewport.Height, 0, c.cursor)
 	} else {
 		c.start = 0
 	}
-
-	c.end = clamp(c.cursor+c.viewport.Height, c.cursor, c.totalNumberOfLines)
-
-	flattened := c.flattenMessages()
-
-	renderedRows := []string{}
+	c.end = clamp(c.cursor+c.viewport.Height, c.cursor, len(c.lines))
 	for i := c.start; i < c.end; i++ {
-		renderedRows = append(renderedRows, flattened[i])
+		renderedRows = append(renderedRows, c.lines[i])
 	}
 
 	c.viewport.SetContent(
@@ -116,26 +134,45 @@ func (c *ChatWindow) UpdateViewport() {
 	)
 }
 
-func (c *ChatWindow) MoveUp() {
-	c.cursor = clamp(c.cursor-1, 0, len(c.entries)-1)
+func (c *chatWindow) isLatestEntry() bool {
+	if len(c.entries)-1 < 0 {
+		return true
+	}
+
+	index, _ := c.findEntryForCursor()
+	return index == len(c.entries)-1
+}
+
+// Move up n number of messages
+func (c *chatWindow) MoveUp(n int) {
+	c.removeMarkCurrentMessage()
+	cIndex, _ := c.findEntryForCursor()
+	nIndex := clamp(cIndex-n, 0, len(c.entries)-1)
+	c.cursor = c.entries[nIndex].Position.CursorStart
+
 	switch {
 	case c.start == 0:
 		c.viewport.SetYOffset(clamp(c.viewport.YOffset, 0, c.cursor))
 	case c.start < c.viewport.Height:
-		c.viewport.SetYOffset(clamp(c.viewport.YOffset+1, 0, c.cursor))
+		c.viewport.SetYOffset(clamp(c.viewport.YOffset+n, 0, c.cursor))
 	case c.viewport.YOffset >= 1:
-		c.viewport.YOffset = clamp(c.viewport.YOffset+1, 1, c.viewport.Height)
+		c.viewport.YOffset = clamp(c.viewport.YOffset+n, 1, c.viewport.Height)
 	}
-
+	c.markCurrentMessage()
 	c.UpdateViewport()
 }
 
-func (c *ChatWindow) MoveDown(n int) {
-	c.cursor = clamp(c.cursor+n, 0, len(c.entries)-1)
+// Move down n number of messages
+func (c *chatWindow) MoveDown(n int) {
+	c.removeMarkCurrentMessage()
+	cIndex, _ := c.findEntryForCursor()
+	nIndex := clamp(cIndex+n, 0, len(c.entries)-1) // the index of the n message after current message
+	c.cursor = c.entries[nIndex].Position.CursorEnd
+	c.markCurrentMessage()
 	c.UpdateViewport()
 
 	switch {
-	case c.end == len(c.entries):
+	case c.end == len(c.lines):
 		c.viewport.SetYOffset(clamp(c.viewport.YOffset-n, 1, c.viewport.Height))
 	case c.cursor > (c.end-c.start)/2:
 		c.viewport.SetYOffset(clamp(c.viewport.YOffset-n, 1, c.cursor))
@@ -145,46 +182,55 @@ func (c *ChatWindow) MoveDown(n int) {
 	}
 }
 
-func (c *ChatWindow) flattenMessages() []string {
-	messages := make([]string, 0, len(c.entries))
-	for _, e := range c.entries {
-		messages = append(messages, e.Lines...)
-	}
-	return messages
-}
-
-func (c *ChatWindow) View() string {
+func (c *chatWindow) View() string {
 	return c.viewport.View()
 }
 
-func (c *ChatWindow) getSelectedEntry() *chatEntry {
-	for _, e := range c.entries {
-		if e.Position.isInRange(c.cursor) {
-			return e
-		}
-	}
+func (c *chatWindow) removeMarkCurrentMessage() {
+	_, entry := c.findEntryForCursor()
 
-	return nil
+	lines := c.lines[entry.Position.CursorStart : entry.Position.CursorEnd+1]
+
+	for i, s := range lines {
+		s = strings.TrimSuffix(s, indicator)
+		lines[i] = strings.TrimRight(s, " ")
+	}
 }
 
-// func chunks(s string, chunkSize int) []string {
-// 	if len(s) == 0 {
-// 		return nil
-// 	}
-// 	if chunkSize >= len(s) {
-// 		return []string{s}
-// 	}
-// 	var chunks []string = make([]string, 0, (len(s)-1)/chunkSize+1)
-// 	currentLen := 0
-// 	currentStart := 0
-// 	for i := range s {
-// 		if currentLen == chunkSize {
-// 			chunks = append(chunks, s[currentStart:i])
-// 			currentLen = 0
-// 			currentStart = i
-// 		}
-// 		currentLen++
-// 	}
-// 	chunks = append(chunks, s[currentStart:])
-// 	return chunks
-// }
+func (c *chatWindow) markCurrentMessage() {
+	_, entry := c.findEntryForCursor()
+
+	lines := c.lines[entry.Position.CursorStart : entry.Position.CursorEnd+1]
+
+	for i, s := range lines {
+		strWidth, _ := lipgloss.Size(s)
+		spacerLen := c.width - strWidth - indicatorWidth
+		s = s + strings.Repeat(" ", spacerLen) + indicator
+		lines[i] = s
+	}
+}
+
+func messageToText(msg twitch.IRCer, maxWidth int) []string {
+	switch msg := msg.(type) {
+	case *twitch.PrivateMessage:
+		lines := []string{}
+
+		dateUserStr := fmt.Sprintf("%s %s: ", msg.SentAt.Local().Format("15:04:05"), msg.From)
+		widthDateUserStr, _ := lipgloss.Size(dateUserStr)
+
+		textLimit := maxWidth - widthDateUserStr
+		splits := strings.Split(wordwrap.String(msg.Message, textLimit), "\n")
+
+		lines = append(lines, dateUserStr+splits[0])
+
+		if len(splits) > 1 {
+			for _, line := range splits[1:] {
+				lines = append(lines, strings.Repeat(" ", widthDateUserStr)+line)
+			}
+		}
+
+		return lines
+	}
+
+	return []string{}
+}

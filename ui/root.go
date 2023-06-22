@@ -14,13 +14,12 @@ type resizeChatContainerMessage struct {
 }
 
 func computeChatContainerSize(m Model) tea.Cmd {
-	containerHeight := m.Height - lipgloss.Height(m.renderTabHeader())
-	yPosition := m.Height + 2
+	containerHeight := m.height - lipgloss.Height(m.renderTabHeader())
+	yPosition := m.height + 2
 
 	return func() tea.Msg {
-		m.Logger.Info()
 		return resizeChatContainerMessage{
-			Width:     m.Width,
+			Width:     m.width,
 			Height:    containerHeight,
 			YPosition: yPosition,
 		}
@@ -29,16 +28,16 @@ func computeChatContainerSize(m Model) tea.Cmd {
 
 type Model struct {
 	ctx            context.Context
-	Width, Height  int
-	Logger         zerolog.Logger
-	Tabs           []*Tab
+	width, height  int
+	logger         zerolog.Logger
+	tabs           []*tab
 	activeTabIndex int
 }
 
 func New(ctx context.Context, logger zerolog.Logger) *Model {
 	return &Model{
 		ctx:    ctx,
-		Logger: logger,
+		logger: logger,
 	}
 }
 
@@ -54,17 +53,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.Logger.Info().Int("height", msg.Height).Msg("window height")
-		m.Height = msg.Height
-		m.Width = msg.Width
+		m.height = msg.Height
+		m.width = msg.Width
 		cmds = append(cmds, computeChatContainerSize(m))
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "k":
-			c := NewTab(m.ctx, m.Logger, "noway4u_sir", m.Width, m.Height)
-			m.Tabs = append(m.Tabs, c)
+			c := newTab(m.ctx, m.logger, "noway4u_sir", m.width, m.height)
+			m.tabs = append(m.tabs, c)
 			cmds = append(cmds, computeChatContainerSize(m))
 			cmds = append(cmds, c.Init())
 
@@ -75,8 +73,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	for i, tab := range m.Tabs {
-		m.Tabs[i], cmd = tab.Update(msg)
+	for i, tab := range m.tabs {
+		m.tabs[i], cmd = tab.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -97,8 +95,8 @@ func (m Model) View() string {
 }
 
 func (m Model) renderTabHeader() string {
-	tabParts := make([]string, 0, len(m.Tabs))
-	for index, tab := range m.Tabs {
+	tabParts := make([]string, 0, len(m.tabs))
+	for index, tab := range m.tabs {
 		style := lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#FAFAFA")).
@@ -109,19 +107,19 @@ func (m Model) renderTabHeader() string {
 			style = style.Background(lipgloss.Color("#FF0000"))
 		}
 
-		tabParts = append(tabParts, style.Render(tab.Channel))
+		tabParts = append(tabParts, style.Render(tab.channel))
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Center, tabParts...)
 }
 
-func (m *Model) getActiveTab() (*Tab, bool) {
-	if len(m.Tabs) > m.activeTabIndex {
-		if m.Tabs[m.activeTabIndex] == nil {
+func (m *Model) getActiveTab() (*tab, bool) {
+	if len(m.tabs) > m.activeTabIndex {
+		if m.tabs[m.activeTabIndex] == nil {
 			return nil, false
 		}
 
-		return m.Tabs[m.activeTabIndex], true
+		return m.tabs[m.activeTabIndex], true
 	}
 
 	return nil, false
@@ -130,11 +128,9 @@ func (m *Model) getActiveTab() (*Tab, bool) {
 func (m *Model) nextTab() {
 	newIndex := m.activeTabIndex + 1
 
-	if newIndex > len(m.Tabs)-1 {
+	if newIndex > len(m.tabs)-1 {
 		newIndex = 0
 	}
-
-	m.Logger.Info().Int("new-index", newIndex).Send()
 
 	m.activeTabIndex = newIndex
 }
@@ -143,9 +139,8 @@ func (m *Model) prevTab() {
 	newIndex := m.activeTabIndex - 1
 
 	if newIndex < 0 {
-		newIndex = len(m.Tabs) - 1
+		newIndex = len(m.tabs) - 1
 	}
-	m.Logger.Info().Int("new-index", newIndex).Send()
 
 	m.activeTabIndex = newIndex
 }

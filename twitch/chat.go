@@ -109,7 +109,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 		fmt.Sprintf("PASS %s", oauth),
 		fmt.Sprintf("NICK %s", user),
 		"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands",
-		JoinMessage{Channel: "xqc"}.IRC(),
+		JoinMessage{Channel: "julezdev"}.IRC(),
 	}
 
 	for _, m := range initMessages {

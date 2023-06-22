@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/twitch"
@@ -15,16 +14,16 @@ type setChatInstanceMessage struct {
 }
 
 type recvTwitchMessage struct {
-	message string
+	message twitch.IRCer
 }
 
-type Tab struct {
+type tab struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	Channel    string
-	Logger     zerolog.Logger
-	chatWindow *ChatWindow
+	channel    string
+	logger     zerolog.Logger
+	chatWindow *chatWindow
 
 	ready        bool
 	chat         *twitch.Chat
@@ -32,14 +31,14 @@ type Tab struct {
 	messageLog   []string
 }
 
-func NewTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int) *Tab {
+func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int) *tab {
 	ctx, cancel := context.WithCancel(ctx)
-	return &Tab{
+	return &tab{
 		ctx:     ctx,
 		cancel:  cancel,
-		Logger:  logger,
-		Channel: channel,
-		chatWindow: &ChatWindow{
+		logger:  logger,
+		channel: channel,
+		chatWindow: &chatWindow{
 			logger: logger,
 			width:  width,
 			height: height,
@@ -47,7 +46,7 @@ func NewTab(ctx context.Context, logger zerolog.Logger, channel string, width, h
 	}
 }
 
-func (t *Tab) Init() tea.Cmd {
+func (t *tab) Init() tea.Cmd {
 	return func() tea.Msg {
 		in := make(chan twitch.IRCer)
 
@@ -60,7 +59,7 @@ func (t *Tab) Init() tea.Cmd {
 
 		out, err := chat.Connect(t.ctx, in, twitch.AnonymousUser, twitch.AnonymousOAuth)
 		if err != nil {
-			t.Logger.Err(err).Send()
+			t.logger.Err(err).Send()
 			return nil
 		}
 
@@ -71,7 +70,7 @@ func (t *Tab) Init() tea.Cmd {
 	}
 }
 
-func (t *Tab) Update(msg tea.Msg) (*Tab, tea.Cmd) {
+func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -84,14 +83,6 @@ func (t *Tab) Update(msg tea.Msg) (*Tab, tea.Cmd) {
 		t.ready = true
 		cmds = append(cmds, waitMessage(*t))
 	case recvTwitchMessage:
-		// 	// t.messageLog = append(t.messageLog, msg.message)
-
-		// 	// wasAtBottomBefore := t.chatWindow.AtBottom()
-		// 	// t.chatWindow.SetContent(strings.Join(t.messageLog, "\n"))
-
-		// 	// if wasAtBottomBefore {
-		// 	// 	t.chatWindow.GotoBottom()
-		// }
 		cmds = append(cmds, waitMessage(*t))
 	}
 
@@ -101,28 +92,19 @@ func (t *Tab) Update(msg tea.Msg) (*Tab, tea.Cmd) {
 	return t, tea.Batch(cmds...)
 }
 
-func (t *Tab) View() string {
+func (t *tab) View() string {
 	return t.chatWindow.View()
 }
 
-func waitMessage(t Tab) tea.Cmd {
+func waitMessage(t tab) tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case msg := <-t.messagesRecv:
 			return recvTwitchMessage{
-				message: messageToText(msg),
+				message: msg,
 			}
 		case <-t.ctx.Done():
 			return nil
 		}
 	}
-}
-
-func messageToText(msg twitch.IRCer) string {
-	switch msg := msg.(type) {
-	case *twitch.PrivateMessage:
-		return fmt.Sprintf("%s %s: %s", msg.SentAt.Local().Format("15:04:05"), msg.From, msg.Message)
-	}
-
-	return ""
 }
