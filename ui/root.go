@@ -6,38 +6,49 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/common-nighthawk/go-figure"
+	"github.com/fatih/color"
 	"github.com/rs/zerolog"
 )
 
 type resizeChatContainerMessage struct {
-	Width, Height, YPosition int
+	Width, Height int
 }
 
 func computeChatContainerSize(m Model) tea.Cmd {
-	containerHeight := m.height - lipgloss.Height(m.renderTabHeader())
-	yPosition := m.height + 2
+	containerHeight := m.height - lipgloss.Height(m.renderTabHeader()) - 3 // minus border
 
 	return func() tea.Msg {
 		return resizeChatContainerMessage{
-			Width:     m.width,
-			Height:    containerHeight,
-			YPosition: yPosition,
+			Width:  m.width,
+			Height: containerHeight,
 		}
 	}
 }
 
+type activeScreen int
+
+const (
+	mainScreen activeScreen = iota
+	inputScreen
+)
+
 type Model struct {
+	screenType     activeScreen
 	ctx            context.Context
 	width, height  int
 	logger         zerolog.Logger
 	tabs           []*tab
 	activeTabIndex int
+
+	inputScreen *channelInputScreen
 }
 
 func New(ctx context.Context, logger zerolog.Logger) *Model {
 	return &Model{
-		ctx:    ctx,
-		logger: logger,
+		screenType: mainScreen,
+		ctx:        ctx,
+		logger:     logger,
 	}
 }
 
@@ -56,21 +67,57 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.width = msg.Width
 		cmds = append(cmds, computeChatContainerSize(m))
+	case joinChannelCmd:
+		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height)
+		m.tabs = append(m.tabs, c)
+		cmds = append(cmds, computeChatContainerSize(m))
+		cmds = append(cmds, c.Init())
+
+		m.tabs[m.activeTabIndex].Blur()
+		m.activeTabIndex = len(m.tabs) - 1
+		m.tabs[m.activeTabIndex].Focus()
+		m.screenType = mainScreen
+		m.inputScreen.Blur()
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
-		case "k":
-			c := newTab(m.ctx, m.logger, "noway4u_sir", m.width, m.height)
-			m.tabs = append(m.tabs, c)
-			cmds = append(cmds, computeChatContainerSize(m))
-			cmds = append(cmds, c.Init())
+		case "f1":
+			m.logger.Info().Int("screen", int(m.screenType)).Send()
+			switch m.screenType {
+			case mainScreen:
+				if len(m.tabs) > 0 {
+					m.tabs[m.activeTabIndex].Blur()
+				}
 
+				m.screenType = inputScreen
+				inputScreen := newChannelInputScreen(m.width, m.height)
+				inputScreen.Focus()
+				m.inputScreen = inputScreen
+			case inputScreen:
+				if len(m.tabs) > 0 {
+					m.tabs[m.activeTabIndex].Focus()
+				}
+				m.screenType = mainScreen
+			}
 		case "tab":
-			m.nextTab()
+			if m.screenType == mainScreen {
+				m.tabs[m.activeTabIndex].Blur()
+				m.nextTab()
+				m.tabs[m.activeTabIndex].Focus()
+			}
 		case "shift+tab":
-			m.prevTab()
+			if m.screenType == mainScreen {
+				m.tabs[m.activeTabIndex].Blur()
+				m.prevTab()
+				m.tabs[m.activeTabIndex].Focus()
+			}
 		}
+	}
+
+	if m.screenType == inputScreen {
+		m.inputScreen, cmd = m.inputScreen.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	for i, tab := range m.tabs {
@@ -84,11 +131,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	b := strings.Builder{}
 
-	b.WriteString(m.renderTabHeader())
+	if m.screenType == mainScreen {
+		b.WriteString(m.renderTabHeader())
 
-	if activeTab, ok := m.getActiveTab(); ok {
-		b.WriteString("\n")
-		b.WriteString(activeTab.View())
+		if activeTab, ok := m.getActiveTab(); ok {
+			b.WriteString("\n")
+			b.WriteString(activeTab.View())
+		}
+
+		if len(m.tabs) == 0 {
+			style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Width(m.width).Height(m.height)
+			name := color.New(color.FgHiMagenta).Sprint("ChaTUIno")
+			help := "Use " + color.New(color.FgHiMagenta).Sprint("F1") + " to create a new tab and join a channel"
+			logo := style.Render(figure.NewFigure("CHATUINO", "isometric1", true).String() + "\n" + "Welcome to " + name + "!\n" + help)
+			b.WriteString(logo)
+		}
+	}
+
+	if m.screenType == inputScreen {
+		b.WriteString(m.inputScreen.View())
 	}
 
 	return b.String()
@@ -99,12 +160,11 @@ func (m Model) renderTabHeader() string {
 	for index, tab := range m.tabs {
 		style := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Border(lipgloss.RoundedBorder(), true).
-			BorderForeground(lipgloss.Color("#FF0000"))
+			Border(lipgloss.HiddenBorder()).
+			BorderForeground(lipgloss.Color("135"))
 
 		if index == m.activeTabIndex {
-			style = style.Background(lipgloss.Color("#FF0000"))
+			style = style.Background(lipgloss.Color("135"))
 		}
 
 		tabParts = append(tabParts, style.Render(tab.channel))

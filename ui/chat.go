@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render("\u2588")
+	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render("\u2588")
 	indicatorWidth, _ = lipgloss.Size(indicator)
 )
 
@@ -28,7 +28,9 @@ type position struct {
 }
 
 type chatWindow struct {
-	logger zerolog.Logger
+	parentTab *tab
+	logger    zerolog.Logger
+	focused   bool // if window should consume keyboard messages
 
 	cursor int // Overall message cursor, a single message can span multiple lines
 	start  int
@@ -61,46 +63,53 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	_ = cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "u":
-			c.MoveUp(1)
-		case "d":
-			c.MoveDown(1)
-		}
 	case resizeChatContainerMessage:
+		c.height = msg.Height
+		c.width = msg.Width
 		c.viewport.Height = msg.Height
 		c.viewport.Width = msg.Width
-		c.viewport.YPosition = msg.YPosition
 	case recvTwitchMessage:
-		lastCursorEnd := -1
+		if msg.target == c.parentTab.id {
 
-		if len(c.entries) > 0 {
-			newest := c.entries[len(c.entries)-1]
-			lastCursorEnd = newest.Position.CursorEnd
+			lastCursorEnd := -1
+
+			if len(c.entries) > 0 {
+				newest := c.entries[len(c.entries)-1]
+				lastCursorEnd = newest.Position.CursorEnd
+			}
+
+			lines := messageToText(msg.message, c.width-indicatorWidth)
+
+			entry := &chatEntry{
+				Position: position{
+					CursorStart: lastCursorEnd + 1,
+					CursorEnd:   lastCursorEnd + len(lines),
+				},
+				Message: msg.message,
+			}
+
+			wasLatestLine := c.isLatestEntry()
+
+			c.lines = append(c.lines, lines...)
+			c.entries = append(c.entries, entry)
+			if wasLatestLine {
+				c.MoveDown(1)
+			} else {
+				c.UpdateViewport()
+			}
 		}
+	}
 
-		lines := messageToText(msg.message, c.width-indicatorWidth)
-
-		entry := &chatEntry{
-			Position: position{
-				CursorStart: lastCursorEnd + 1,
-				CursorEnd:   lastCursorEnd + len(lines),
-			},
-			Message: msg.message,
+	if c.focused {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "u":
+				c.MoveUp(1)
+			case "d":
+				c.MoveDown(1)
+			}
 		}
-
-		wasLatestLine := c.isLatestEntry()
-
-		c.lines = append(c.lines, lines...)
-		c.entries = append(c.entries, entry)
-		c.logger.Info().Bool("last-line", wasLatestLine).Send()
-		if wasLatestLine {
-			c.MoveDown(1)
-		} else {
-			c.UpdateViewport()
-		}
-
 	}
 
 	return c, tea.Batch(cmds...)
@@ -141,6 +150,14 @@ func (c *chatWindow) isLatestEntry() bool {
 
 	index, _ := c.findEntryForCursor()
 	return index == len(c.entries)-1
+}
+
+func (c *chatWindow) Focus() {
+	c.focused = true
+}
+
+func (c *chatWindow) Blur() {
+	c.focused = false
 }
 
 // Move up n number of messages
@@ -218,7 +235,7 @@ func messageToText(msg twitch.IRCer, maxWidth int) []string {
 		dateUserStr := fmt.Sprintf("%s %s: ", msg.SentAt.Local().Format("15:04:05"), msg.From)
 		widthDateUserStr, _ := lipgloss.Size(dateUserStr)
 
-		textLimit := maxWidth - widthDateUserStr
+		textLimit := maxWidth - widthDateUserStr - indicatorWidth
 		splits := strings.Split(wordwrap.String(msg.Message, textLimit), "\n")
 
 		lines = append(lines, dateUserStr+splits[0])

@@ -33,6 +33,18 @@ func main() {
 		fmt.Printf("Error while running application: %v", err)
 		os.Exit(1)
 	}
+
+	// in := make(chan twitch.IRCer)
+	// out, err := twitch.NewChat().Connect(ctx, in, twitch.AnonymousUser, twitch.AnonymousOAuth)
+	// if err != nil {
+	// 	log.Fatalln(err)
+	// }
+
+	// in <- twitch.JoinMessage{Channel: "forsen"}
+
+	// for m := range out {
+	// 	spew.Dump(m)
+	// }
 }
 
 func setupLogFile() (*os.File, error) {

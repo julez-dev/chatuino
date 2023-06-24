@@ -45,6 +45,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	wg.Go(func() error {
 		defer ws.Close()
 		<-ctx.Done()
+		log.Println("done channel closed")
 		return ctx.Err()
 	})
 
@@ -55,6 +56,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 		for {
 			_, message, err := ws.ReadMessage()
 			if err != nil {
+				log.Println("error ws.ReadMessage", err)
 				return err
 			}
 
@@ -70,7 +72,9 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 			// automatically respond with pong
 			if _, ok := parsed.(PingMessage); ok {
 				pong := PongMessage{}
+				log.Println("got ping, sending pong", err)
 				if err := ws.WriteMessage(websocket.TextMessage, []byte(pong.IRC())); err != nil {
+					log.Println("write pong error", err)
 					return err
 				}
 			}
@@ -82,6 +86,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	wg.Go(func() error {
 		for msg := range messages {
 			if err := ws.WriteMessage(websocket.TextMessage, []byte(msg.IRC())); err != nil {
+				log.Println("write message error", err)
 				return err
 			}
 		}
@@ -109,7 +114,6 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 		fmt.Sprintf("PASS %s", oauth),
 		fmt.Sprintf("NICK %s", user),
 		"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands",
-		JoinMessage{Channel: "julezdev"}.IRC(),
 	}
 
 	for _, m := range initMessages {
