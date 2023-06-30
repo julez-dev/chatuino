@@ -70,7 +70,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		c.viewport.Width = msg.Width
 	case recvTwitchMessage:
 		if msg.target == c.parentTab.id {
-
 			lastCursorEnd := -1
 
 			if len(c.entries) > 0 {

@@ -8,7 +8,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/common-nighthawk/go-figure"
 	"github.com/fatih/color"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"golang.org/x/exp/slices"
 )
 
 type resizeChatContainerMessage struct {
@@ -73,20 +75,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, computeChatContainerSize(m))
 		cmds = append(cmds, c.Init())
 
-		m.tabs[m.activeTabIndex].Blur()
-		m.activeTabIndex = len(m.tabs) - 1
+		// Blur active tab, if exists
+		if _, ok := m.getActiveTab(); ok {
+			m.tabs[m.activeTabIndex].Blur()
+		}
+
+		m.activeTabIndex = len(m.tabs) - 1 // set active index to newest tab
 		m.tabs[m.activeTabIndex].Focus()
 		m.screenType = mainScreen
 		m.inputScreen.Blur()
+	case removeTabMessage:
+		m.removeTab(msg.id)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "f1":
-			m.logger.Info().Int("screen", int(m.screenType)).Send()
 			switch m.screenType {
 			case mainScreen:
-				if len(m.tabs) > 0 {
+				if len(m.tabs) > m.activeTabIndex {
 					m.tabs[m.activeTabIndex].Blur()
 				}
 
@@ -102,15 +109,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab":
 			if m.screenType == mainScreen {
-				m.tabs[m.activeTabIndex].Blur()
 				m.nextTab()
-				m.tabs[m.activeTabIndex].Focus()
 			}
 		case "shift+tab":
 			if m.screenType == mainScreen {
-				m.tabs[m.activeTabIndex].Blur()
 				m.prevTab()
-				m.tabs[m.activeTabIndex].Focus()
 			}
 		}
 	}
@@ -155,6 +158,27 @@ func (m Model) View() string {
 	return b.String()
 }
 
+func (m *Model) removeTab(id uuid.UUID) {
+	for i, t := range m.tabs {
+		m.logger.Info().Any("have", t.id).Any("search", id).Send()
+
+		if t.id != id {
+			continue
+		}
+
+		m.tabs[i] = nil
+		m.tabs = slices.Delete(m.tabs, i, i+1)
+		m.tabs = slices.Clip(m.tabs)
+
+		if i == m.activeTabIndex {
+			m.prevTab()
+		}
+
+		return
+	}
+
+}
+
 func (m Model) renderTabHeader() string {
 	tabParts := make([]string, 0, len(m.tabs))
 	for index, tab := range m.tabs {
@@ -175,10 +199,6 @@ func (m Model) renderTabHeader() string {
 
 func (m *Model) getActiveTab() (*tab, bool) {
 	if len(m.tabs) > m.activeTabIndex {
-		if m.tabs[m.activeTabIndex] == nil {
-			return nil, false
-		}
-
 		return m.tabs[m.activeTabIndex], true
 	}
 
@@ -186,6 +206,10 @@ func (m *Model) getActiveTab() (*tab, bool) {
 }
 
 func (m *Model) nextTab() {
+	if len(m.tabs) > m.activeTabIndex {
+		m.tabs[m.activeTabIndex].Blur()
+	}
+
 	newIndex := m.activeTabIndex + 1
 
 	if newIndex > len(m.tabs)-1 {
@@ -193,14 +217,30 @@ func (m *Model) nextTab() {
 	}
 
 	m.activeTabIndex = newIndex
+
+	if len(m.tabs) > m.activeTabIndex {
+		m.tabs[m.activeTabIndex].Focus()
+	}
 }
 
 func (m *Model) prevTab() {
+	if len(m.tabs) > m.activeTabIndex {
+		m.tabs[m.activeTabIndex].Blur()
+	}
+
 	newIndex := m.activeTabIndex - 1
 
 	if newIndex < 0 {
 		newIndex = len(m.tabs) - 1
+
+		if newIndex < 0 {
+			newIndex = 0
+		}
 	}
 
 	m.activeTabIndex = newIndex
+
+	if len(m.tabs) > m.activeTabIndex {
+		m.tabs[m.activeTabIndex].Focus()
+	}
 }

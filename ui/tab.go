@@ -22,6 +22,10 @@ type recvTwitchMessage struct {
 	message twitch.IRCer
 }
 
+type removeTabMessage struct {
+	id uuid.UUID
+}
+
 type tabState int
 
 const (
@@ -139,6 +143,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				t.state = inChatWindow
 				t.chatWindow.Focus()
 				t.messageInput.Blur()
+			case "q":
+				if t.state == inChatWindow {
+					t.cancel()
+					cmds = append(cmds, func() tea.Msg {
+						return removeTabMessage{
+							id: t.id,
+						}
+					})
+				}
 			}
 		}
 	}
