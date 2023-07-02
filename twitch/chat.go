@@ -45,18 +45,17 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	wg.Go(func() error {
 		defer ws.Close()
 		<-ctx.Done()
-		log.Println("done channel closed")
 		return ctx.Err()
 	})
 
 	wg.Go(func() error {
 		ws.SetReadLimit(maxMessageSize)
 		ws.SetReadDeadline(time.Time{}) // disable read timeouts
+		ws.SetWriteDeadline(time.Time{})
 
 		for {
 			_, message, err := ws.ReadMessage()
 			if err != nil {
-				log.Println("error ws.ReadMessage", err)
 				return err
 			}
 
@@ -71,10 +70,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 
 			// automatically respond with pong
 			if _, ok := parsed.(PingMessage); ok {
-				pong := PongMessage{}
-				log.Println("got ping, sending pong", err)
-				if err := ws.WriteMessage(websocket.TextMessage, []byte(pong.IRC())); err != nil {
-					log.Println("write pong error", err)
+				if err := ws.WriteMessage(websocket.TextMessage, []byte("PONG tmi.twitch.tv\r\n")); err != nil {
 					return err
 				}
 			}
@@ -86,7 +82,6 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	wg.Go(func() error {
 		for msg := range messages {
 			if err := ws.WriteMessage(websocket.TextMessage, []byte(msg.IRC())); err != nil {
-				log.Println("write message error", err)
 				return err
 			}
 		}

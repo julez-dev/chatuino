@@ -9,9 +9,14 @@ import (
 	"github.com/common-nighthawk/go-figure"
 	"github.com/fatih/color"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/emote"
 	"github.com/rs/zerolog"
 	"golang.org/x/exp/slices"
 )
+
+type emoteStore interface {
+	GetByText(channel, text string) (emote.Emote, bool)
+}
 
 type resizeChatContainerMessage struct {
 	Width, Height int
@@ -44,13 +49,16 @@ type Model struct {
 	activeTabIndex int
 
 	inputScreen *channelInputScreen
+
+	emoteStore emoteStore
 }
 
-func New(ctx context.Context, logger zerolog.Logger) *Model {
+func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore) *Model {
 	return &Model{
 		screenType: mainScreen,
 		ctx:        ctx,
 		logger:     logger,
+		emoteStore: emoteStore,
 	}
 }
 
@@ -70,7 +78,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		cmds = append(cmds, computeChatContainerSize(m))
 	case joinChannelCmd:
-		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height)
+		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height, m.emoteStore)
 		m.tabs = append(m.tabs, c)
 		cmds = append(cmds, computeChatContainerSize(m))
 		cmds = append(cmds, c.Init())
@@ -176,7 +184,6 @@ func (m *Model) removeTab(id uuid.UUID) {
 
 		return
 	}
-
 }
 
 func (m Model) renderTabHeader() string {

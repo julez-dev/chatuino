@@ -1,56 +1,97 @@
 package emote
 
 import (
-	"fmt"
-	"image"
-	"io"
-	"strings"
-
 	_ "image/gif"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/lucasb-eyer/go-colorful"
 	_ "golang.org/x/image/webp"
 )
 
-func Decode(r io.Reader) (image.Image, error) {
-	img, format, err := image.Decode(r)
+type Platform int
 
-	if err != nil {
-		return nil, err
+func (p Platform) String() string {
+	switch p {
+	case 1:
+		return "Twitch"
+	case 2:
+		return "SevenTV"
 	}
 
-	fmt.Println(format)
-
-	return img, nil
+	return "Unknown"
 }
 
-func ImageToString(img image.Image) (string, error) {
-	var (
-		bounds = img.Bounds()
-		width  = bounds.Max.X
-		height = bounds.Max.Y
-		out    = strings.Builder{}
-	)
+const (
+	Unknown Platform = iota
+	Twitch
+	SevenTV
+)
 
-	for y := 0; y < height; y += 2 {
-		for x := 0; x < width; x++ {
-			imgColor, hasColor := colorful.MakeColor(img.At(x, y))
+// func Decode(r io.Reader) (image.Image, error) {
+// 	img, format, err := image.Decode(r)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-			if hasColor {
-				style := lipgloss.NewStyle().
-					Foreground(lipgloss.Color(imgColor.Hex())).
-					Background(lipgloss.Color(imgColor.Hex()))
-				out.WriteString(style.Render("\u2585"))
+// 	fmt.Println(format)
 
-			} else {
-				out.WriteString("")
-			}
+// 	return img, nil
+// }
 
+// func ImageToString(img image.Image) (string, error) {
+// 	var (
+// 		bounds = img.Bounds()
+// 		width  = bounds.Max.X
+// 		height = bounds.Max.Y
+// 		out    = strings.Builder{}
+// 	)
+
+// 	for y := 0; y < height; y += 2 {
+// 		for x := 0; x < width; x++ {
+// 			imgColor, hasColor := colorful.MakeColor(img.At(x, y))
+
+// 			if hasColor {
+// 				style := lipgloss.NewStyle().
+// 					Foreground(lipgloss.Color(imgColor.Hex())).
+// 					Background(lipgloss.Color(imgColor.Hex()))
+// 				out.WriteString(style.Render("\u2585"))
+
+// 			} else {
+// 				out.WriteString("")
+// 			}
+
+// 		}
+
+// 		out.WriteString("\n")
+// 	}
+
+// 	return out.String(), nil
+// }
+
+// func ImageToString(img image.Image) (string, error) {
+// 	out := strings.Builder{}
+
+// 	err := kittyimg.Fprint(&out, img)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	return out.String(), nil
+// }
+
+type EmoteSet []Emote
+
+func (set EmoteSet) GetByText(text string) (Emote, bool) {
+	for _, e := range set {
+		if e.Text == text {
+			return e, true
 		}
-
-		out.WriteString("\n")
 	}
 
-	return out.String(), nil
+	return Emote{}, false
+}
+
+type Emote struct {
+	ID       string
+	Text     string
+	Platform Platform
+	URL      string
 }

@@ -6,10 +6,11 @@ import (
 )
 
 type PrivateMessage struct {
-	From    string
-	In      string
-	Message string
-	SentAt  time.Time
+	From      string
+	In        string
+	Message   string
+	UserColor string
+	SentAt    time.Time
 }
 
 func (p *PrivateMessage) IRC() string {

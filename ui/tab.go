@@ -50,9 +50,11 @@ type tab struct {
 	state        tabState
 	chatWindow   *chatWindow
 	messageInput textinput.Model
+
+	emoteStore emoteStore
 }
 
-func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int) *tab {
+func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int, emoteStore emoteStore) *tab {
 	ctx, cancel := context.WithCancel(ctx)
 
 	input := textinput.New()
@@ -65,6 +67,7 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, h
 		logger:       logger,
 		channel:      channel,
 		messageInput: input,
+		emoteStore:   emoteStore,
 	}
 
 	tab.chatWindow = &chatWindow{

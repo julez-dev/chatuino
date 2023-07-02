@@ -1,67 +1,53 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/dolmen-go/kittyimg"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/seventv"
+	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/ui"
+	"github.com/rs/zerolog"
 )
 
 const logFileName = "log.txt"
 
 func main() {
-	// ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	// defer cancel()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	// f, err := setupLogFile()
-	// if err != nil {
-	// 	fmt.Printf("Error while opening log file: %v", err)
-	// 	os.Exit(1)
-	// }
-	// defer f.Close()
+	ttvAPI := twitch.NewAPI(nil, os.Getenv("TWITCH_OAUTH"), os.Getenv("TWITCH_CLIENT_ID"))
+	stvAPI := seventv.NewAPI(nil)
 
-	// logger := zerolog.New(f).With().
-	// 	Timestamp().Logger()
+	store := emote.NewStore(ttvAPI, stvAPI)
 
-	// p := tea.NewProgram(ui.New(ctx, logger), tea.WithContext(ctx), tea.WithAltScreen())
-	// if _, err := p.Run(); err != nil {
-	// 	fmt.Printf("Error while running application: %v", err)
-	// 	os.Exit(1)
-	// }
+	go func() {
+		if err := store.RefreshGlobal(ctx); err != nil {
+			fmt.Printf("Error while refreshing: %v", err)
+			os.Exit(1)
+		}
+	}()
 
-	f, err := os.Open("./testdata/pepeLaugh.webp")
-
+	f, err := setupLogFile()
 	if err != nil {
-		fmt.Println(err)
-		return
+		fmt.Printf("Error while opening log file: %v", err)
+		os.Exit(1)
 	}
+	defer f.Close()
 
-	img, err := emote.Decode(f)
+	logger := zerolog.New(f).With().
+		Timestamp().Logger()
 
-	if err != nil {
-		fmt.Println(err)
-		return
+	p := tea.NewProgram(ui.New(ctx, logger, store), tea.WithContext(ctx), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error while running application: %v", err)
+		os.Exit(1)
 	}
-
-	fmt.Print("test ")
-	err = kittyimg.Fprint(os.Stdout, img)
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	fmt.Print("a message")
-
-	// str, err := emote.ImageToString(img)
-
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-
-	// fmt.Println(str)
 }
 
 func setupLogFile() (*os.File, error) {

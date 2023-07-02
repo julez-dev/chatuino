@@ -7,13 +7,14 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/rs/zerolog"
 )
 
 var (
-	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render("\u2588")
+	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render(" ")
 	indicatorWidth, _ = lipgloss.Size(indicator)
 )
 
@@ -44,9 +45,8 @@ type chatWindow struct {
 	lines []string
 
 	// Position of the wrapped viewport
-	yPosition int
-	width     int
-	height    int
+	width  int
+	height int
 
 	viewport viewport.Model
 }
@@ -77,24 +77,28 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				lastCursorEnd = newest.Position.CursorEnd
 			}
 
-			lines := messageToText(msg.message, c.width-indicatorWidth)
+			lines := c.messageToText(msg.message)
 
-			entry := &chatEntry{
-				Position: position{
-					CursorStart: lastCursorEnd + 1,
-					CursorEnd:   lastCursorEnd + len(lines),
-				},
-				Message: msg.message,
-			}
+			if len(lines) > 0 {
+				entry := &chatEntry{
+					Position: position{
+						CursorStart: lastCursorEnd + 1,
+						CursorEnd:   lastCursorEnd + len(lines),
+					},
+					Message: msg.message,
+				}
 
-			wasLatestLine := c.isLatestEntry()
+				wasLatestLine := c.isLatestEntry()
 
-			c.lines = append(c.lines, lines...)
-			c.entries = append(c.entries, entry)
-			if wasLatestLine {
-				c.MoveDown(1)
+				c.lines = append(c.lines, lines...)
+				c.entries = append(c.entries, entry)
+				if wasLatestLine {
+					c.MoveDown(1)
+				} else {
+					c.UpdateViewport()
+				}
 			} else {
-				c.UpdateViewport()
+				c.logger.Info().Msg("got zero line message, ignoring")
 			}
 		}
 	}
@@ -226,16 +230,19 @@ func (c *chatWindow) markCurrentMessage() {
 	}
 }
 
-func messageToText(msg twitch.IRCer, maxWidth int) []string {
+func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	switch msg := msg.(type) {
 	case *twitch.PrivateMessage:
+		message := c.colorMessageEmotes(msg.Message)
 		lines := []string{}
 
-		dateUserStr := fmt.Sprintf("%s %s: ", msg.SentAt.Local().Format("15:04:05"), msg.From)
+		userColor := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.UserColor))
+
+		dateUserStr := fmt.Sprintf("%s %s: ", msg.SentAt.Local().Format("15:04:05"), userColor.Render(msg.From)) // start of the message (sent date + user name)
 		widthDateUserStr, _ := lipgloss.Size(dateUserStr)
 
-		textLimit := maxWidth - widthDateUserStr - indicatorWidth
-		splits := strings.Split(wordwrap.String(msg.Message, textLimit), "\n")
+		textLimit := c.width - widthDateUserStr - indicatorWidth
+		splits := strings.Split(wordwrap.String(message, textLimit), "\n")
 
 		lines = append(lines, dateUserStr+splits[0])
 
@@ -249,4 +256,29 @@ func messageToText(msg twitch.IRCer, maxWidth int) []string {
 	}
 
 	return []string{}
+}
+
+func (c *chatWindow) colorMessageEmotes(message string) string {
+	var (
+		stvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
+		ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	)
+
+	splits := strings.Split(message, " ")
+	for i, split := range splits {
+		if e, ok := c.parentTab.emoteStore.GetByText(c.parentTab.channel, split); ok {
+			switch e.Platform {
+			case emote.Twitch:
+				splits[i] = ttvStyle.Render(split)
+			case emote.SevenTV:
+				splits[i] = stvStyle.Render(split)
+			}
+
+			continue
+		}
+
+		splits[i] = split
+	}
+
+	return strings.Join(splits, " ")
 }
