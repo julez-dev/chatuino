@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
@@ -24,14 +25,16 @@ func main() {
 	ttvAPI := twitch.NewAPI(nil, os.Getenv("TWITCH_OAUTH"), os.Getenv("TWITCH_CLIENT_ID"))
 	stvAPI := seventv.NewAPI(nil)
 
-	store := emote.NewStore(ttvAPI, stvAPI)
+	resp, err := ttvAPI.GetChannelEmotes(ctx, "22484632")
 
-	go func() {
-		if err := store.RefreshGlobal(ctx); err != nil {
-			fmt.Printf("Error while refreshing: %v", err)
-			os.Exit(1)
-		}
-	}()
+	if err != nil {
+		fmt.Printf("Error while opening log file: %v", err)
+		os.Exit(1)
+	}
+
+	spew.Dump(resp)
+
+	store := emote.NewStore(ttvAPI, stvAPI)
 
 	f, err := setupLogFile()
 	if err != nil {
@@ -44,10 +47,22 @@ func main() {
 		Timestamp().Logger()
 
 	p := tea.NewProgram(ui.New(ctx, logger, store), tea.WithContext(ctx), tea.WithAltScreen())
+
+	// Refresh global emotes in the background to reduce start up time, quit tea event loop if error occurred
+	go func() {
+		if err := store.RefreshGlobal(ctx); err != nil {
+			p.Quit()
+			p.Wait()
+			fmt.Printf("Error while fetching global emotes: %v", err)
+			os.Exit(1)
+		}
+	}()
+
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error while running application: %v", err)
 		os.Exit(1)
 	}
+
 }
 
 func setupLogFile() (*os.File, error) {

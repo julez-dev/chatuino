@@ -38,6 +38,16 @@ func (a API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 	return resp, nil
 }
 
+func (a API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteResponse, error) {
+	// /chat/emotes?broadcaster_id=141981764
+	resp, err := doAuthenticatedRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
+	if err != nil {
+		return EmoteResponse{}, err
+	}
+
+	return resp, nil
+}
+
 func doAuthenticatedRequest[T any](ctx context.Context, api API, method, url string, body io.Reader) (T, error) {
 	var data T
 
