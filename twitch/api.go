@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 const baseURL = "https://api.twitch.tv/helix"
@@ -27,6 +28,26 @@ func NewAPI(client *http.Client, userAccessToken, clientID string) *API {
 		userAccessToken: userAccessToken,
 		clientID:        clientID,
 	}
+}
+
+func (a API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {
+	values := url.Values{}
+	for _, login := range logins {
+		values.Add("login", login)
+	}
+
+	for _, id := range ids {
+		values.Add("id", id)
+	}
+
+	url := fmt.Sprintf("/users?%s", values.Encode())
+	resp, err := doAuthenticatedRequest[UserResponse](ctx, a, http.MethodGet, url, nil)
+
+	if err != nil {
+		return UserResponse{}, err
+	}
+
+	return resp, nil
 }
 
 func (a API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {

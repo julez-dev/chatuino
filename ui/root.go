@@ -10,12 +10,18 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 	"golang.org/x/exp/slices"
 )
 
 type emoteStore interface {
 	GetByText(channel, text string) (emote.Emote, bool)
+	RefreshLocal(ctx context.Context, channelID string) error
+}
+
+type twitchAPI interface {
+	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
 }
 
 type resizeChatContainerMessage struct {
@@ -51,14 +57,16 @@ type Model struct {
 	inputScreen *channelInputScreen
 
 	emoteStore emoteStore
+	ttvAPI     twitchAPI
 }
 
-func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore) *Model {
+func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore, ttvAPI twitchAPI) *Model {
 	return &Model{
 		screenType: mainScreen,
 		ctx:        ctx,
 		logger:     logger,
 		emoteStore: emoteStore,
+		ttvAPI:     ttvAPI,
 	}
 }
 
@@ -78,7 +86,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		cmds = append(cmds, computeChatContainerSize(m))
 	case joinChannelCmd:
-		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height, m.emoteStore)
+		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height, m.emoteStore, m.ttvAPI)
 		m.tabs = append(m.tabs, c)
 		cmds = append(cmds, computeChatContainerSize(m))
 		cmds = append(cmds, c.Init())

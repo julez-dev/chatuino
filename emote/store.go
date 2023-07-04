@@ -14,6 +14,7 @@ import (
 
 type TwitchEmoteFetcher interface {
 	GetGlobalEmotes(context.Context) (twitch.EmoteResponse, error)
+	GetChannelEmotes(ctx context.Context, broadcaster string) (twitch.EmoteResponse, error)
 }
 
 type SevenTVEmoteFetcher interface {
@@ -32,12 +33,13 @@ type Store struct {
 func NewStore(twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher) Store {
 	return Store{
 		m:             &sync.RWMutex{},
+		channel:       map[string]EmoteSet{},
 		twitchEmotes:  twitchEmotes,
 		sevenTVEmotes: sevenTVEmotes,
 	}
 }
 
-func (s Store) GetByText(channel, text string) (Emote, bool) {
+func (s Store) GetByText(channelID, text string) (Emote, bool) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -45,7 +47,7 @@ func (s Store) GetByText(channel, text string) (Emote, bool) {
 		return emote, true
 	}
 
-	channelSet, ok := s.channel[channel]
+	channelSet, ok := s.channel[channelID]
 
 	if !ok {
 		return Emote{}, false
@@ -56,6 +58,30 @@ func (s Store) GetByText(channel, text string) (Emote, bool) {
 	}
 
 	return Emote{}, false
+}
+
+func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	delete(s.channel, channelID)
+
+	resp, err := s.twitchEmotes.GetChannelEmotes(ctx, channelID)
+	if err != nil {
+		return err
+	}
+
+	s.channel[channelID] = make(EmoteSet, 0, len(resp.Data))
+
+	for _, ttvEmote := range resp.Data {
+		s.global = append(s.global, Emote{
+			ID:       ttvEmote.ID,
+			Text:     ttvEmote.Name,
+			Platform: Twitch,
+			URL:      ttvEmote.Images.URL1X,
+		})
+	}
+
+	return nil
 }
 
 func (s *Store) RefreshGlobal(ctx context.Context) error {

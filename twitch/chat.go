@@ -48,11 +48,11 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 		return ctx.Err()
 	})
 
-	wg.Go(func() error {
-		ws.SetReadLimit(maxMessageSize)
-		ws.SetReadDeadline(time.Time{}) // disable read timeouts
-		ws.SetWriteDeadline(time.Time{})
+	ws.SetReadLimit(maxMessageSize)
+	ws.SetReadDeadline(time.Time{}) // disable read timeouts
+	ws.SetWriteDeadline(time.Time{})
 
+	wg.Go(func() error {
 		for {
 			_, message, err := ws.ReadMessage()
 			if err != nil {
@@ -80,6 +80,19 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	})
 
 	wg.Go(func() error {
+		initMessages := []string{
+			fmt.Sprintf("PASS %s", oauth),
+			fmt.Sprintf("NICK %s", user),
+			"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands",
+		}
+
+		for _, m := range initMessages {
+			if err := ws.WriteMessage(websocket.TextMessage, []byte(m)); err != nil {
+				cancel()
+				return err
+			}
+		}
+
 		for msg := range messages {
 			if err := ws.WriteMessage(websocket.TextMessage, []byte(msg.IRC())); err != nil {
 				return err
@@ -103,19 +116,6 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	if oauth == "" || user == "" {
 		oauth = AnonymousOAuth
 		user = AnonymousUser
-	}
-
-	initMessages := []string{
-		fmt.Sprintf("PASS %s", oauth),
-		fmt.Sprintf("NICK %s", user),
-		"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands",
-	}
-
-	for _, m := range initMessages {
-		if err := ws.WriteMessage(websocket.TextMessage, []byte(m)); err != nil {
-			cancel()
-			return nil, err
-		}
 	}
 
 	return out, nil

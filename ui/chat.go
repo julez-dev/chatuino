@@ -266,7 +266,7 @@ func (c *chatWindow) colorMessageEmotes(message string) string {
 
 	splits := strings.Split(message, " ")
 	for i, split := range splits {
-		if e, ok := c.parentTab.emoteStore.GetByText(c.parentTab.channel, split); ok {
+		if e, ok := c.parentTab.emoteStore.GetByText(c.parentTab.channelID, split); ok {
 			switch e.Platform {
 			case emote.Twitch:
 				splits[i] = ttvStyle.Render(split)

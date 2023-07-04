@@ -1,6 +1,9 @@
 package twitch
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // error response
 type (
@@ -35,5 +38,25 @@ type (
 		URL1X string `json:"url_1x"`
 		URL2X string `json:"url_2x"`
 		URL4X string `json:"url_4x"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#get-users
+type (
+	UserResponse struct {
+		Data []UserData `json:"data"`
+	}
+	UserData struct {
+		ID              string    `json:"id"`
+		Login           string    `json:"login"`
+		DisplayName     string    `json:"display_name"`
+		Type            string    `json:"type"`
+		BroadcasterType string    `json:"broadcaster_type"`
+		Description     string    `json:"description"`
+		ProfileImageURL string    `json:"profile_image_url"`
+		OfflineImageURL string    `json:"offline_image_url"`
+		ViewCount       int       `json:"view_count"`
+		Email           string    `json:"email"`
+		CreatedAt       time.Time `json:"created_at"`
 	}
 )

@@ -17,6 +17,11 @@ type setChatInstanceMessage struct {
 	messagesRecv <-chan twitch.IRCer
 }
 
+type setChannelIDMessage struct {
+	target    uuid.UUID
+	channelID string
+}
+
 type recvTwitchMessage struct {
 	target  uuid.UUID
 	message twitch.IRCer
@@ -39,8 +44,10 @@ type tab struct {
 	cancel  context.CancelFunc
 	focused bool
 
-	channel string
-	logger  zerolog.Logger
+	channel   string
+	channelID string
+
+	logger zerolog.Logger
 
 	ready        bool
 	chat         *twitch.Chat
@@ -52,9 +59,10 @@ type tab struct {
 	messageInput textinput.Model
 
 	emoteStore emoteStore
+	ttvAPI     twitchAPI
 }
 
-func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int, emoteStore emoteStore) *tab {
+func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int, emoteStore emoteStore, ttvAPI twitchAPI) *tab {
 	ctx, cancel := context.WithCancel(ctx)
 
 	input := textinput.New()
@@ -68,6 +76,7 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, h
 		channel:      channel,
 		messageInput: input,
 		emoteStore:   emoteStore,
+		ttvAPI:       ttvAPI,
 	}
 
 	tab.chatWindow = &chatWindow{
@@ -81,7 +90,9 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, h
 }
 
 func (t *tab) Init() tea.Cmd {
-	return func() tea.Msg {
+	cmds := make([]tea.Cmd, 0, 2)
+
+	cmds = append(cmds, func() tea.Msg {
 		in := make(chan twitch.IRCer)
 
 		go func() {
@@ -106,7 +117,28 @@ func (t *tab) Init() tea.Cmd {
 			chat:         chat,
 			messagesRecv: out,
 		}
-	}
+	})
+
+	cmds = append(cmds, func() tea.Msg {
+		userData, err := t.ttvAPI.GetUsers(t.ctx, []string{t.channel}, nil)
+		if err != nil {
+			t.logger.Err(err).Send()
+			return nil
+		}
+
+		// refresh emote set for joined channel
+		if err := t.emoteStore.RefreshLocal(t.ctx, userData.Data[0].ID); err != nil {
+			t.logger.Err(err).Send()
+			return nil
+		}
+
+		return setChannelIDMessage{
+			target:    t.id,
+			channelID: userData.Data[0].ID,
+		}
+	})
+
+	return tea.Batch(cmds...)
 }
 
 func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
@@ -126,6 +158,10 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	case recvTwitchMessage:
 		if msg.target == t.id {
 			cmds = append(cmds, waitMessage(*t))
+		}
+	case setChannelIDMessage:
+		if msg.target == t.id {
+			t.channelID = msg.channelID
 		}
 	}
 
