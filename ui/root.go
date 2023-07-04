@@ -24,15 +24,15 @@ type twitchAPI interface {
 	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
 }
 
-type resizeChatContainerMessage struct {
+type resizeTabContainerMessage struct {
 	Width, Height int
 }
 
-func computeChatContainerSize(m Model) tea.Cmd {
-	containerHeight := m.height - lipgloss.Height(m.renderTabHeader()) - 3 // minus border
+func computeTabContainerSize(m Model) tea.Cmd {
+	containerHeight := m.height - lipgloss.Height(m.renderTabHeader())
 
 	return func() tea.Msg {
-		return resizeChatContainerMessage{
+		return resizeTabContainerMessage{
 			Width:  m.width,
 			Height: containerHeight,
 		}
@@ -84,11 +84,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
-		cmds = append(cmds, computeChatContainerSize(m))
+		cmds = append(cmds, computeTabContainerSize(m))
 	case joinChannelCmd:
 		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height, m.emoteStore, m.ttvAPI)
 		m.tabs = append(m.tabs, c)
-		cmds = append(cmds, computeChatContainerSize(m))
+		cmds = append(cmds, computeTabContainerSize(m))
 		cmds = append(cmds, c.Init())
 
 		// Blur active tab, if exists

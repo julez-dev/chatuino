@@ -44,10 +44,6 @@ type chatWindow struct {
 	// Every single row, multiple rows may be part of a single message
 	lines []string
 
-	// Position of the wrapped viewport
-	width  int
-	height int
-
 	viewport viewport.Model
 }
 
@@ -63,11 +59,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	_ = cmd
 
 	switch msg := msg.(type) {
-	case resizeChatContainerMessage:
-		c.height = msg.Height
-		c.width = msg.Width
-		c.viewport.Height = msg.Height
-		c.viewport.Width = msg.Width
 	case recvTwitchMessage:
 		if msg.target == c.parentTab.id {
 			lastCursorEnd := -1
@@ -107,10 +98,12 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
-			case "u":
+			case "k":
 				c.MoveUp(1)
-			case "d":
+			case "j":
 				c.MoveDown(1)
+			case "b":
+				c.MoveToBottom()
 			}
 		}
 	}
@@ -182,6 +175,15 @@ func (c *chatWindow) MoveUp(n int) {
 	c.UpdateViewport()
 }
 
+func (c *chatWindow) MoveToBottom() {
+	if len(c.entries) < 1 {
+		return
+	}
+
+	cIndex, _ := c.findEntryForCursor()
+	c.MoveDown((len(c.entries) - cIndex))
+}
+
 // Move down n number of messages
 func (c *chatWindow) MoveDown(n int) {
 	c.removeMarkCurrentMessage()
@@ -224,7 +226,7 @@ func (c *chatWindow) markCurrentMessage() {
 
 	for i, s := range lines {
 		strWidth, _ := lipgloss.Size(s)
-		spacerLen := c.width - strWidth - indicatorWidth
+		spacerLen := c.viewport.Width - strWidth - indicatorWidth
 		s = s + strings.Repeat(" ", spacerLen) + indicator
 		lines[i] = s
 	}
@@ -241,7 +243,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		dateUserStr := fmt.Sprintf("%s %s: ", msg.SentAt.Local().Format("15:04:05"), userColor.Render(msg.From)) // start of the message (sent date + user name)
 		widthDateUserStr, _ := lipgloss.Size(dateUserStr)
 
-		textLimit := c.width - widthDateUserStr - indicatorWidth
+		textLimit := c.viewport.Width - widthDateUserStr - indicatorWidth
 		splits := strings.Split(wordwrap.String(message, textLimit), "\n")
 
 		lines = append(lines, dateUserStr+splits[0])

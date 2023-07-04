@@ -82,8 +82,6 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, h
 	tab.chatWindow = &chatWindow{
 		parentTab: tab,
 		logger:    logger,
-		width:     width,
-		height:    height,
 	}
 
 	return tab
@@ -148,6 +146,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case resizeTabContainerMessage:
+		t.chatWindow.viewport.Height = msg.Height - 4 // Space for input box
+		t.chatWindow.viewport.Width = msg.Width
 	case setChatInstanceMessage:
 		if msg.target == t.id {
 			t.chat = msg.chat
@@ -202,9 +203,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 }
 
 func (t *tab) View() string {
-	t.messageInput.Width = t.chatWindow.width - 5
+	t.messageInput.Width = t.chatWindow.viewport.Width - 5
 	inputView := lipgloss.NewStyle().
-		Width(t.chatWindow.width - 2). // width of the chat window minus the border
+		Width(t.chatWindow.viewport.Width - 2). // width of the chat window minus the border
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("135")).
 		Render(t.messageInput.View())

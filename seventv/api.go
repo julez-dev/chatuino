@@ -24,6 +24,16 @@ func NewAPI(client *http.Client) *API {
 	}
 }
 
+// https://7tv.io/v3/users/twitch/71092938
+func (a API) GetChannelEmotes(ctx context.Context, channelID string) (ChannelEmoteResponse, error) {
+	resp, err := doRequest[ChannelEmoteResponse](ctx, a, http.MethodGet, "/users/twitch/"+channelID, nil)
+	if err != nil {
+		return ChannelEmoteResponse{}, err
+	}
+
+	return resp, nil
+}
+
 func (a API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 	resp, err := doRequest[EmoteResponse](ctx, a, http.MethodGet, "/emote-sets/global", nil)
 	if err != nil {
@@ -37,6 +47,7 @@ func doRequest[T any](ctx context.Context, api API, method, url string, body io.
 	var data T
 
 	url = fmt.Sprintf("%s%s", baseURL, url)
+
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return data, err

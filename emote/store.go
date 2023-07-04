@@ -19,6 +19,7 @@ type TwitchEmoteFetcher interface {
 
 type SevenTVEmoteFetcher interface {
 	GetGlobalEmotes(context.Context) (seventv.EmoteResponse, error)
+	GetChannelEmotes(ctx context.Context, broadcaster string) (seventv.ChannelEmoteResponse, error)
 }
 
 type Store struct {
@@ -65,19 +66,60 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 	defer s.m.Unlock()
 	delete(s.channel, channelID)
 
-	resp, err := s.twitchEmotes.GetChannelEmotes(ctx, channelID)
-	if err != nil {
+	var (
+		ttvResp twitch.EmoteResponse
+		stvResp seventv.ChannelEmoteResponse
+	)
+
+	group, ctx := errgroup.WithContext(ctx)
+
+	group.Go(func() error {
+		resp, err := s.twitchEmotes.GetChannelEmotes(ctx, channelID)
+		if err != nil {
+			return err
+		}
+
+		ttvResp = resp
+
+		return nil
+	})
+
+	group.Go(func() error {
+		resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
+		if err != nil {
+			return err
+		}
+
+		stvResp = resp
+
+		return nil
+	})
+
+	if err := group.Wait(); err != nil {
 		return err
 	}
 
-	s.channel[channelID] = make(EmoteSet, 0, len(resp.Data))
+	s.channel[channelID] = make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes))
 
-	for _, ttvEmote := range resp.Data {
+	for _, ttvEmote := range ttvResp.Data {
 		s.global = append(s.global, Emote{
 			ID:       ttvEmote.ID,
 			Text:     ttvEmote.Name,
 			Platform: Twitch,
 			URL:      ttvEmote.Images.URL1X,
+		})
+	}
+
+	for _, stvEmote := range stvResp.EmoteSet.Emotes {
+		url := fmt.Sprintf("%s/%s", stvEmote.Data.Host.URL, stvEmote.Data.Host.Files[0].Name)
+		url, _ = strings.CutPrefix(url, "//")
+		url = "https://" + url
+
+		s.global = append(s.global, Emote{
+			ID:       stvEmote.ID,
+			Text:     stvEmote.Name,
+			Platform: SevenTV,
+			URL:      url,
 		})
 	}
 

@@ -14,10 +14,18 @@ func (a APIError) Error() string {
 }
 
 type (
-	EmoteResponse struct {
-		Emotes []Emotes `json:"emotes"`
+	ChannelEmoteResponse struct {
+		EmoteSet struct {
+			Emotes []Emote `json:"emotes"`
+		} `json:"emote_set"`
 	}
-	Emotes struct {
+)
+
+type (
+	EmoteResponse struct {
+		Emotes []Emote `json:"emotes"`
+	}
+	Emote struct {
 		ID   string    `json:"id"`
 		Name string    `json:"name"`
 		Data EmoteData `json:"data"`
