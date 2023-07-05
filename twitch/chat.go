@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -109,7 +109,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 
 		err := wg.Wait()
 		if err != nil {
-			log.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 		}
 	}()
 

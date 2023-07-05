@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,6 +28,12 @@ type recvTwitchMessage struct {
 	message twitch.IRCer
 }
 
+type setChannelInfoMessage struct {
+	target uuid.UUID
+	viewer int
+	title  string
+}
+
 type removeTabMessage struct {
 	id uuid.UUID
 }
@@ -46,10 +53,11 @@ type tab struct {
 
 	channel   string
 	channelID string
+	title     string
+	viewer    int
 
 	logger zerolog.Logger
 
-	ready        bool
 	chat         *twitch.Chat
 	messagesRecv <-chan twitch.IRCer
 	messageLog   []string
@@ -62,7 +70,7 @@ type tab struct {
 	ttvAPI     twitchAPI
 }
 
-func newTab(ctx context.Context, logger zerolog.Logger, channel string, width, height int, emoteStore emoteStore, ttvAPI twitchAPI) *tab {
+func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteStore emoteStore, ttvAPI twitchAPI) *tab {
 	ctx, cancel := context.WithCancel(ctx)
 
 	input := textinput.New()
@@ -146,6 +154,20 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case setChannelIDMessage:
+		if msg.target == t.id {
+			t.channelID = msg.channelID
+			cmds = append(cmds, func() tea.Msg {
+				return fetchStreamData(*t)
+			})
+		}
+	case setChannelInfoMessage:
+		if msg.target == t.id {
+			t.title = msg.title
+			t.viewer = msg.viewer
+			t.logger.Info().Str("title", msg.title).Int("viewer", msg.viewer).Send()
+			cmds = append(cmds, doTick(*t))
+		}
 	case resizeTabContainerMessage:
 		t.chatWindow.viewport.Height = msg.Height - 4 // Space for input box
 		t.chatWindow.viewport.Width = msg.Width
@@ -153,16 +175,11 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		if msg.target == t.id {
 			t.chat = msg.chat
 			t.messagesRecv = msg.messagesRecv
-			t.ready = true
 			cmds = append(cmds, waitMessage(*t))
 		}
 	case recvTwitchMessage:
 		if msg.target == t.id {
 			cmds = append(cmds, waitMessage(*t))
-		}
-	case setChannelIDMessage:
-		if msg.target == t.id {
-			t.channelID = msg.channelID
 		}
 	}
 
@@ -242,4 +259,31 @@ func waitMessage(t tab) tea.Cmd {
 			return nil
 		}
 	}
+}
+
+func fetchStreamData(t tab) tea.Msg {
+	resp, err := t.ttvAPI.GetStreamInfo(t.ctx, []string{
+		t.channelID,
+	})
+
+	if err != nil {
+		t.logger.Err(err).Msg("failed to get channel info")
+		return nil
+	}
+
+	if len(resp.Data) < 1 {
+		return nil
+	}
+
+	return setChannelInfoMessage{
+		target: t.id,
+		title:  resp.Data[0].Title,
+		viewer: resp.Data[0].ViewerCount,
+	}
+}
+
+func doTick(t tab) tea.Cmd {
+	return tea.Tick(time.Second*45, func(_ time.Time) tea.Msg {
+		return fetchStreamData(t)
+	})
 }

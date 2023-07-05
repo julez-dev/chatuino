@@ -50,6 +50,24 @@ func (a API) GetUsers(ctx context.Context, logins []string, ids []string) (UserR
 	return resp, nil
 }
 
+func (a API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStreamsResponse, error) {
+	values := url.Values{}
+	for _, id := range broadcastID {
+		values.Add("user_id", id)
+	}
+
+	values.Add("type", "all")
+
+	url := fmt.Sprintf("/streams?%s", values.Encode())
+
+	resp, err := doAuthenticatedRequest[GetStreamsResponse](ctx, a, http.MethodGet, url, nil)
+	if err != nil {
+		return GetStreamsResponse{}, err
+	}
+
+	return resp, nil
+}
+
 func (a API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 	resp, err := doAuthenticatedRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes/global", nil)
 	if err != nil {

@@ -22,6 +22,7 @@ type emoteStore interface {
 
 type twitchAPI interface {
 	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
+	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
 }
 
 type resizeTabContainerMessage struct {
@@ -86,7 +87,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		cmds = append(cmds, computeTabContainerSize(m))
 	case joinChannelCmd:
-		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.width, m.height, m.emoteStore, m.ttvAPI)
+		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.emoteStore, m.ttvAPI)
 		m.tabs = append(m.tabs, c)
 		cmds = append(cmds, computeTabContainerSize(m))
 		cmds = append(cmds, c.Init())

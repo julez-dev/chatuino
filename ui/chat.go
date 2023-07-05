@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -227,6 +228,18 @@ func (c *chatWindow) markCurrentMessage() {
 	for i, s := range lines {
 		strWidth, _ := lipgloss.Size(s)
 		spacerLen := c.viewport.Width - strWidth - indicatorWidth
+
+		if spacerLen < 0 {
+			c.logger.Warn().
+				Int("spacer-len", spacerLen).
+				Int("viewport-width", c.viewport.Width).
+				Int("str-width", strWidth).
+				Int("indicator-width", indicatorWidth).
+				Str("line", s).Msg("prevented negative count panic")
+			spacerLen = 0
+			panic("got negative spacerLen")
+		}
+
 		s = s + strings.Repeat(" ", spacerLen) + indicator
 		lines[i] = s
 	}
@@ -235,7 +248,16 @@ func (c *chatWindow) markCurrentMessage() {
 func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	switch msg := msg.(type) {
 	case *twitch.PrivateMessage:
-		message := c.colorMessageEmotes(msg.Message)
+		// filter non printable characters
+		message := strings.Map(func(r rune) rune {
+			if unicode.IsPrint(r) {
+				return r
+			}
+
+			return -1
+		}, msg.Message)
+
+		message = c.colorMessageEmotes(message)
 		lines := []string{}
 
 		userColor := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.UserColor))
