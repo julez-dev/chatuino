@@ -8,6 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/muesli/reflow/wordwrap"
+	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
 )
 
@@ -93,8 +95,8 @@ func (c *channelInfo) View() string {
 	}
 
 	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).Width(c.width)
-
-	return style.Render(fmt.Sprintf("%s - %s (%d)", c.game, c.title, c.viewer))
+	info := wrap.String(wordwrap.String(fmt.Sprintf("%s - %s (%d)", c.game, c.title, c.viewer), c.width-5), c.width-5)
+	return style.Render(info)
 }
 
 func fetchStreamData(c *channelInfo) tea.Msg {

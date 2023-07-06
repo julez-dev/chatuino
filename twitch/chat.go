@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -28,16 +27,17 @@ func NewChat() *Chat {
 	return &Chat{}
 }
 
-func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth string) (<-chan IRCer, error) {
+func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth string) (<-chan IRCer, <-chan error, error) {
 	ctxWS, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
 	ws, _, err := websocket.DefaultDialer.DialContext(ctxWS, "wss://irc-ws.chat.twitch.tv:443", nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	out := make(chan IRCer)
+	outErr := make(chan error)
 	wg, ctx := errgroup.WithContext(ctx)
 
 	ctx, cancel = context.WithCancel(ctx)
@@ -93,23 +93,31 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 			}
 		}
 
-		for msg := range messages {
-			if err := ws.WriteMessage(websocket.TextMessage, []byte(msg.IRC())); err != nil {
-				return err
+		for {
+			select {
+			case msg, ok := <-messages:
+				if !ok {
+					return nil
+				}
+
+				if err := ws.WriteMessage(websocket.TextMessage, []byte(msg.IRC())); err != nil {
+					return err
+				}
+			case <-ctx.Done():
+				return nil
 			}
 		}
-
-		return nil
 	})
 
 	go func() {
 		defer ws.Close()
 		defer close(out)
+		defer close(outErr)
 		defer cancel()
 
 		err := wg.Wait()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			outErr <- err
 		}
 	}()
 
@@ -118,5 +126,5 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 		user = AnonymousUser
 	}
 
-	return out, nil
+	return out, outErr, nil
 }

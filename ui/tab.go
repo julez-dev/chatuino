@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,10 +12,16 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type setErrorMessage struct {
+	target uuid.UUID
+	err    error
+}
+
 type setChatInstanceMessage struct {
 	target       uuid.UUID
 	chat         *twitch.Chat
 	messagesRecv <-chan twitch.IRCer
+	errRecv      <-chan error
 }
 
 type setChannelIDMessage struct {
@@ -43,6 +50,9 @@ type tab struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	focused bool
+	err     error
+
+	width, height int
 
 	channel   string
 	channelID string
@@ -103,7 +113,7 @@ func (t *tab) Init() tea.Cmd {
 
 		chat := twitch.NewChat()
 
-		out, err := chat.Connect(t.ctx, in, twitch.AnonymousUser, twitch.AnonymousOAuth)
+		out, errChan, err := chat.Connect(t.ctx, in, twitch.AnonymousUser, twitch.AnonymousOAuth)
 		if err != nil {
 			t.logger.Err(err).Send()
 			return nil
@@ -114,6 +124,7 @@ func (t *tab) Init() tea.Cmd {
 		}
 
 		return setChatInstanceMessage{
+			errRecv:      errChan,
 			target:       t.id,
 			chat:         chat,
 			messagesRecv: out,
@@ -152,18 +163,40 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case resizeTabContainerMessage:
-		t.chatWindow.viewport.Height = msg.Height - 4 // Space for input box
+		t.chatWindow.viewport.Height = msg.Height
 		t.chatWindow.viewport.Width = msg.Width
 		t.channelInfo.width = msg.Width
+
+		t.width = msg.Width
+		t.height = msg.Height
 	case setChatInstanceMessage:
 		if msg.target == t.id {
 			t.chat = msg.chat
 			t.messagesRecv = msg.messagesRecv
 			cmds = append(cmds, waitMessage(*t))
+
+			cmds = append(cmds, func() tea.Msg {
+				select {
+				case err := <-msg.errRecv:
+					return setErrorMessage{
+						target: t.id,
+						err:    err,
+					}
+				case <-t.ctx.Done():
+					return setErrorMessage{
+						target: t.id,
+						err:    t.ctx.Err(),
+					}
+				}
+			})
 		}
 	case recvTwitchMessage:
 		if msg.target == t.id {
 			cmds = append(cmds, waitMessage(*t))
+		}
+	case setErrorMessage:
+		if msg.target == t.id {
+			t.err = msg.err
 		}
 	}
 
@@ -197,8 +230,19 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 	}
 
+	t.messageInput.Width = t.chatWindow.viewport.Width - 5
+
 	t.channelInfo, cmd = t.channelInfo.Update(msg)
 	cmds = append(cmds, cmd)
+
+	// calculate chatWindow height with channel info height
+	infoHeight := 0
+	info := t.channelInfo.View()
+	if info != "" {
+		infoHeight = lipgloss.Height(info)
+	}
+
+	t.chatWindow.viewport.Height = t.height - 3 - infoHeight
 
 	t.chatWindow, cmd = t.chatWindow.Update(msg)
 	cmds = append(cmds, cmd)
@@ -207,7 +251,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 }
 
 func (t *tab) View() string {
-	t.messageInput.Width = t.chatWindow.viewport.Width - 5
+	if t.err != nil {
+		style := lipgloss.NewStyle().
+			Width(t.width).
+			Height(t.height).
+			Align(lipgloss.Center)
+
+		return style.Render(fmt.Sprintf("Got error while fetching messages: %s", t.err))
+	}
+
 	inputView := lipgloss.NewStyle().
 		Width(t.chatWindow.viewport.Width - 2). // width of the chat window minus the border
 		Border(lipgloss.NormalBorder()).
@@ -250,7 +302,11 @@ func (t *tab) Blur() {
 func waitMessage(t tab) tea.Cmd {
 	return func() tea.Msg {
 		select {
-		case msg := <-t.messagesRecv:
+		case msg, ok := <-t.messagesRecv:
+			if !ok {
+				return nil
+			}
+
 			return recvTwitchMessage{
 				target:  t.id,
 				message: msg,
