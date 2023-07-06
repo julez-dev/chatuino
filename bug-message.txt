@@ -1,0 +1,4 @@
+UltraMad@badge-info=;badges=premium/1;client-nonce=76490ad2cb6bce0c1ce3278b098fb793;color=#D2691E;display-
+                          name=Dimpalz;emotes=;first-msg=0;flags=;id=473d8e30-930f-4ab3-98fd-35b4f5465f77;mod=0;returning-chatter=0;room-
+                          id=50985620;subscriber=0;tmi-sent-ts=1688655080320;turbo=0;user-id=138417785;user-type=
+                          :dimpalz!dimpalz@dimpalz.tmi.twitch.tv PRIVMSG #papaplatte :Saj

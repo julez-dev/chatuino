@@ -11,6 +11,7 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
 )
 
@@ -266,7 +267,10 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		widthDateUserStr, _ := lipgloss.Size(dateUserStr)
 
 		textLimit := c.viewport.Width - widthDateUserStr - indicatorWidth
-		splits := strings.Split(wordwrap.String(message, textLimit), "\n")
+
+		// wrap text to textLimit, if soft wrapping fails (for example in links) force break
+		wrappedText := wrap.String(wordwrap.String(message, textLimit), textLimit)
+		splits := strings.Split(wrappedText, "\n")
 
 		lines = append(lines, dateUserStr+splits[0])
 
