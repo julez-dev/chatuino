@@ -9,23 +9,20 @@ import (
 )
 
 var accountCMD = &cli.Command{
-	Name: "account",
-	Subcommands: []*cli.Command{
-		{
-			Name: "list",
-			Action: func(ctx *cli.Context) error {
-				p := tea.NewProgram(
-					accountui.NewList(),
-					tea.WithContext(ctx.Context),
-					tea.WithAltScreen(),
-				)
+	Name:        "account",
+	Description: "Chatuino account management",
+	Usage:       "Manage accounts used by Chatuino",
+	Action: func(ctx *cli.Context) error {
+		p := tea.NewProgram(
+			accountui.NewList(),
+			tea.WithContext(ctx.Context),
+			tea.WithAltScreen(),
+		)
 
-				if _, err := p.Run(); err != nil {
-					return fmt.Errorf("error while running TUI: %w", err)
-				}
+		if _, err := p.Run(); err != nil {
+			return fmt.Errorf("error while running TUI: %w", err)
+		}
 
-				return nil
-			},
-		},
+		return nil
 	},
 }
