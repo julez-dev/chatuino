@@ -29,15 +29,16 @@ type setAccountMessage struct {
 }
 
 type createModel struct {
-	state     createState
-	textinput textinput.Model
-	spinner   spinner.Model
+	state         createState
+	textinput     textinput.Model
+	spinner       spinner.Model
+	width, height int
 
 	err     error
 	account save.Account
 }
 
-func newCreateModel() createModel {
+func newCreateModel(width, height int) createModel {
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()
@@ -50,6 +51,8 @@ func newCreateModel() createModel {
 	return createModel{
 		textinput: ti,
 		spinner:   s,
+		width:     width,
+		height:    height,
 	}
 }
 
@@ -94,24 +97,32 @@ func (c createModel) Update(msg tea.Msg) (createModel, tea.Cmd) {
 }
 
 func (c createModel) View() string {
+	view := ""
 	switch c.state {
 	case input:
-		return fmt.Sprintf(
+		view = fmt.Sprintf(
 			"Please enter the Access Token + Refresh Token combination.\n\n%s",
 			c.textinput.View(),
 		) + "\n"
 	case loading:
-		return c.spinner.View() + " Loading user information"
+		view = c.spinner.View() + " Loading user information"
 	case finished:
 		if c.err != nil {
-			return "Got error while creating account " + c.err.Error()
+			view = "Got error while creating account " + c.err.Error()
+			break
 		}
 
-		return "Successfully got account data for " + c.account.DisplayName
+		view = "Successfully got account data for " + c.account.DisplayName
 	}
 
-	return ""
-
+	return lipgloss.NewStyle().
+		AlignHorizontal(lipgloss.Center).
+		AlignVertical(lipgloss.Center).
+		Width(c.width - 2).
+		Height(c.height - 2).
+		Border(lipgloss.ThickBorder()).
+		BorderForeground(lipgloss.Color("135")).
+		Render(view)
 }
 
 func (c createModel) handleSent(input string) tea.Cmd {

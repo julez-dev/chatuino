@@ -49,14 +49,14 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 type List struct {
-	key         keyMap
-	accountList save.AccountList
-	table       table.Model
-	create      createModel
-	tableHelp   help.Model
-	state       state
-
-	err error
+	key           keyMap
+	accountList   save.AccountList
+	table         table.Model
+	create        createModel
+	tableHelp     help.Model
+	state         state
+	width, height int
+	err           error
 }
 
 func NewList() List {
@@ -81,7 +81,7 @@ func NewList() List {
 		Bold(false)
 	s.Selected = s.Selected.
 		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
+		Background(lipgloss.Color("135")).
 		Bold(false)
 	t.SetStyles(s)
 
@@ -95,11 +95,11 @@ func NewList() List {
 			),
 			Remove: key.NewBinding(
 				key.WithKeys("r"),
-				key.WithHelp("r", "remove a account"),
+				key.WithHelp("r", "remove selected account"),
 			),
 			MarkLeader: key.NewBinding(
 				key.WithKeys("m"),
-				key.WithHelp("m", "mark account as main"),
+				key.WithHelp("m", "mark selected account as main"),
 			),
 			Help: key.NewBinding(
 				key.WithKeys("?"),
@@ -142,6 +142,10 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		l.tableHelp.Width = msg.Width
+		l.width = msg.Width
+		l.height = msg.Height
+		l.create.width = msg.Width
+		l.create.height = msg.Height
 		l.table.SetWidth(msg.Width)
 	case setAccountMessage:
 		l.err = msg.err
@@ -167,7 +171,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, l.key.Create):
 			if l.state == inTable {
 				l.state = inCreate
-				l.create = newCreateModel()
+				l.create = newCreateModel(l.width, l.height)
 			} else {
 				l.state = inTable
 			}
@@ -207,7 +211,14 @@ func (l List) View() string {
 
 		display = display + l.table.View() + "\n" + l.tableHelp.View(l.key)
 
-		return display
+		return lipgloss.NewStyle().
+			AlignHorizontal(lipgloss.Center).
+			AlignVertical(lipgloss.Center).
+			Width(l.width - 2).
+			Height(l.height - 2).
+			Border(lipgloss.ThickBorder()).
+			BorderForeground(lipgloss.Color("135")).
+			Render(display)
 	} else {
 		return l.create.View()
 	}
