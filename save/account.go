@@ -8,6 +8,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -47,10 +50,53 @@ func (a *AccountList) Save() error {
 	return nil
 }
 
+func (a *AccountList) MarkAsMain(id string) {
+	for i, acc := range a.Accounts {
+		if acc.ID == id {
+			a.Accounts[i].IsMain = true
+		} else {
+			a.Accounts[i].IsMain = false
+		}
+	}
+}
+
+func (a *AccountList) Remove(id string) {
+	i := slices.IndexFunc(a.Accounts, func(a Account) bool { return a.ID == id })
+
+	if i != -1 {
+		// If account was main account, select a new main account if available
+		if a.Accounts[i].IsMain {
+			indexNewMain := slices.IndexFunc(a.Accounts, func(a Account) bool { return a.ID != id })
+
+			if indexNewMain != -1 {
+				a.Accounts[indexNewMain].IsMain = true
+			}
+		}
+
+		a.Accounts = slices.Delete(a.Accounts, i, i+1)
+	}
+}
+
+func (a *AccountList) Upsert(account Account) {
+	for i, acc := range a.Accounts {
+		if acc.ID == account.ID {
+			a.Accounts[i].DisplayName = account.DisplayName
+			a.Accounts[i].AccessToken = account.AccessToken
+			a.Accounts[i].RefreshToken = account.RefreshToken
+			return
+		}
+	}
+
+	a.Accounts = append(a.Accounts, account)
+}
+
 type Account struct {
-	DisplayName  string `json:"display_name"`
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	ID           string    `json:"id"`
+	IsMain       bool      `json:"is_main"`
+	DisplayName  string    `json:"display_name"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 func openCreateConfigFile(file string) (*os.File, error) {
