@@ -5,22 +5,39 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/save"
 )
+
+type accountProvider interface {
+	GetAll() []save.Account
+}
 
 type joinChannelCmd struct {
 	channel string
 }
 
+type listItem struct {
+	title string
+}
+
+func (i listItem) Title() string       { return i.title }
+func (i listItem) Description() string { return "" }
+func (i listItem) FilterValue() string { return i.title }
+
 type channelInputScreen struct {
 	focused       bool
 	width, height int
 	input         textinput.Model
+	list          list.Model
+
+	accounts []save.Account
 }
 
-func newChannelInputScreen(width, height int) *channelInputScreen {
+func newChannelInputScreen(width, height int, accountProvider accountProvider) *channelInputScreen {
 	input := textinput.New()
 	input.Placeholder = "Channel"
 	input.CharLimit = 25
@@ -34,10 +51,25 @@ func newChannelInputScreen(width, height int) *channelInputScreen {
 		return nil
 	}
 
+	accounts := accountProvider.GetAll()
+	listItems := make([]list.Item, 0, len(accounts))
+
+	for _, a := range accounts {
+		listItems = append(listItems, listItem{title: a.DisplayName})
+	}
+	list := list.New(listItems, list.NewDefaultDelegate(), width, 10)
+
+	list.SetShowHelp(false)
+	list.SetShowPagination(false)
+	list.SetShowTitle(false)
+	list.SetStatusBarItemName("account", "accounts")
+
 	return &channelInputScreen{
-		width:  width,
-		height: height,
-		input:  input,
+		width:    width,
+		height:   height,
+		input:    input,
+		accounts: accounts,
+		list:     list,
 	}
 }
 
@@ -74,6 +106,9 @@ func (c *channelInputScreen) Update(msg tea.Msg) (*channelInputScreen, tea.Cmd) 
 	c.input, cmd = c.input.Update(msg)
 	cmds = append(cmds, cmd)
 
+	c.list, cmd = c.list.Update(msg)
+	cmds = append(cmds, cmd)
+
 	return c, tea.Batch(cmds...)
 }
 
@@ -89,8 +124,13 @@ func (c *channelInputScreen) View() string {
 		BorderForeground(lipgloss.Color("135"))
 
 	label := lipgloss.NewStyle().MarginBottom(2).Foreground(lipgloss.Color("135")).Render("Enter a channel to join")
+	labelIdentity := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render("Choose a identity")
 
-	b.WriteString(screenStyle.Render(lipgloss.JoinVertical(lipgloss.Left, label, c.input.View())))
+	b.WriteString(
+		screenStyle.Render(
+			lipgloss.JoinVertical(lipgloss.Left, label, c.input.View(), labelIdentity, c.list.View()),
+		),
+	)
 
 	return b.String()
 }

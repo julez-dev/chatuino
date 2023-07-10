@@ -59,13 +59,15 @@ func main() {
 				}
 			}()
 
-			ttvAPI := twitch.NewAPI(nil, os.Getenv("TWITCH_OAUTH"), os.Getenv("TWITCH_CLIENT_ID"))
+			mainAccount, _ := list.GetMainAccount()
+
+			ttvAPI := twitch.NewAPI(nil, mainAccount.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
 			stvAPI := seventv.NewAPI(nil)
 
 			store := emote.NewStore(ttvAPI, stvAPI)
 
 			p := tea.NewProgram(
-				chatui.New(c.Context, logger, &store, ttvAPI),
+				chatui.New(c.Context, logger, &store, ttvAPI, list),
 				tea.WithContext(c.Context),
 				tea.WithAltScreen(),
 			)

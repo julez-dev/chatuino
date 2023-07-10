@@ -57,17 +57,19 @@ type Model struct {
 
 	inputScreen *channelInputScreen
 
-	emoteStore emoteStore
-	ttvAPI     twitchAPI
+	emoteStore      emoteStore
+	ttvAPI          twitchAPI
+	accountProvider accountProvider
 }
 
-func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore, ttvAPI twitchAPI) *Model {
+func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore, ttvAPI twitchAPI, accountProvider accountProvider) *Model {
 	return &Model{
-		screenType: mainScreen,
-		ctx:        ctx,
-		logger:     logger,
-		emoteStore: emoteStore,
-		ttvAPI:     ttvAPI,
+		screenType:      mainScreen,
+		ctx:             ctx,
+		logger:          logger,
+		emoteStore:      emoteStore,
+		ttvAPI:          ttvAPI,
+		accountProvider: accountProvider,
 	}
 }
 
@@ -115,7 +117,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				m.screenType = inputScreen
-				inputScreen := newChannelInputScreen(m.width, m.height)
+				inputScreen := newChannelInputScreen(m.width, m.height, m.accountProvider)
 				inputScreen.Focus()
 				m.inputScreen = inputScreen
 			case inputScreen:

@@ -90,6 +90,21 @@ func (a *AccountList) Upsert(account Account) {
 	a.Accounts = append(a.Accounts, account)
 }
 
+func (a AccountList) GetAll() []Account {
+	accounts := make([]Account, 0, len(a.Accounts))
+	accounts = append(accounts, a.Accounts...)
+
+	return accounts
+}
+
+func (a *AccountList) GetMainAccount() (Account, bool) {
+	if i := slices.IndexFunc(a.Accounts, func(a Account) bool { return a.IsMain }); i != -1 {
+		return a.Accounts[i], true
+	}
+
+	return Account{}, false
+}
+
 type Account struct {
 	ID           string    `json:"id"`
 	IsMain       bool      `json:"is_main"`
