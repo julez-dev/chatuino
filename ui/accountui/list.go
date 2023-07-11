@@ -158,7 +158,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		l.accountList = msg.accountList
 		rows := make([]table.Row, 0, len(msg.accountList.Accounts))
 
-		for _, acc := range msg.accountList.Accounts {
+		for _, acc := range msg.accountList.GetAll() {
 			rows = append(rows, table.Row{
 				acc.ID, fmt.Sprintf("%v", acc.IsMain), acc.DisplayName, acc.CreatedAt.Local().Format("02.01.2006 15:04"),
 			})

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/julez-dev/chatuino/twitch"
 	"golang.org/x/exp/slices"
 )
 
@@ -18,11 +19,20 @@ const (
 	accountFileName   = "accounts.json"
 )
 
+var anonymousAccount = Account{
+	ID:          "anonymous-account",
+	IsMain:      false,
+	IsAnonymous: true,
+	DisplayName: twitch.AnonymousUser,
+	AccessToken: twitch.AnonymousOAuth,
+	CreatedAt:   time.Now(),
+}
+
 type AccountList struct {
 	Accounts []Account `json:"accounts"`
 }
 
-func (a *AccountList) Save() error {
+func (a AccountList) Save() error {
 	f, err := openCreateConfigFile(accountFileName)
 
 	if err != nil {
@@ -30,6 +40,8 @@ func (a *AccountList) Save() error {
 	}
 
 	defer f.Close()
+
+	a.Accounts = a.GetAll()
 
 	data, err := json.Marshal(a)
 	if err != nil {
@@ -91,6 +103,18 @@ func (a *AccountList) Upsert(account Account) {
 }
 
 func (a AccountList) GetAll() []Account {
+	accounts := []Account{}
+
+	for _, acc := range a.Accounts {
+		if !acc.IsAnonymous {
+			accounts = append(accounts, acc)
+		}
+	}
+
+	return accounts
+}
+
+func (a AccountList) GetAllWithAnonymous() []Account {
 	accounts := make([]Account, 0, len(a.Accounts))
 	accounts = append(accounts, a.Accounts...)
 
@@ -108,6 +132,7 @@ func (a *AccountList) GetMainAccount() (Account, bool) {
 type Account struct {
 	ID           string    `json:"id"`
 	IsMain       bool      `json:"is_main"`
+	IsAnonymous  bool      `json:"-"`
 	DisplayName  string    `json:"display_name"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
@@ -171,6 +196,8 @@ func AccountListFromDisk() (AccountList, error) {
 		}
 		return AccountList{}, err
 	}
+
+	list.Accounts = append(list.Accounts, anonymousAccount)
 
 	return list, nil
 }

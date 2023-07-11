@@ -12,12 +12,20 @@ import (
 	"github.com/julez-dev/chatuino/save"
 )
 
+type currentTabInput int
+
+const (
+	channelInput currentTabInput = iota
+	accountSelect
+)
+
 type accountProvider interface {
-	GetAll() []save.Account
+	GetAllWithAnonymous() []save.Account
 }
 
 type joinChannelCmd struct {
 	channel string
+	account save.Account
 }
 
 type listItem struct {
@@ -33,6 +41,7 @@ type channelInputScreen struct {
 	width, height int
 	input         textinput.Model
 	list          list.Model
+	selectedInput currentTabInput
 
 	accounts []save.Account
 }
@@ -50,18 +59,31 @@ func newChannelInputScreen(width, height int, accountProvider accountProvider) *
 		}
 		return nil
 	}
+	input.Prompt = " "
 
-	accounts := accountProvider.GetAll()
+	accounts := accountProvider.GetAllWithAnonymous()
 	listItems := make([]list.Item, 0, len(accounts))
+	var mainAccountIndex int
 
-	for _, a := range accounts {
-		listItems = append(listItems, listItem{title: a.DisplayName})
+	for i, a := range accounts {
+		name := a.DisplayName
+		if a.IsAnonymous {
+			name = "Anonymous"
+		}
+
+		listItems = append(listItems, listItem{title: name})
+		if a.IsMain {
+			mainAccountIndex = i
+		}
 	}
-	list := list.New(listItems, list.NewDefaultDelegate(), width, 10)
 
+	list := list.New(listItems, list.NewDefaultDelegate(), width, height-20)
+
+	list.Select(mainAccountIndex)
 	list.SetShowHelp(false)
 	list.SetShowPagination(false)
 	list.SetShowTitle(false)
+	list.DisableQuitKeybindings()
 	list.SetStatusBarItemName("account", "accounts")
 
 	return &channelInputScreen{
@@ -93,21 +115,30 @@ func (c *channelInputScreen) Update(msg tea.Msg) (*channelInputScreen, tea.Cmd) 
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
+			case "tab":
+				if c.selectedInput == channelInput {
+					c.selectedInput = accountSelect
+				} else {
+					c.selectedInput = channelInput
+				}
 			case "enter":
 				return c, func() tea.Msg {
 					return joinChannelCmd{
 						channel: c.input.Value(),
+						account: c.accounts[c.list.Cursor()],
 					}
 				}
 			}
 		}
 	}
 
-	c.input, cmd = c.input.Update(msg)
-	cmds = append(cmds, cmd)
-
-	c.list, cmd = c.list.Update(msg)
-	cmds = append(cmds, cmd)
+	if c.selectedInput == channelInput {
+		c.input, cmd = c.input.Update(msg)
+		cmds = append(cmds, cmd)
+	} else {
+		c.list, cmd = c.list.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	return c, tea.Batch(cmds...)
 }
@@ -119,12 +150,24 @@ func (c *channelInputScreen) View() string {
 		Width(c.width - 2).
 		Height(c.height - 2).
 		AlignHorizontal(lipgloss.Center).
-		AlignVertical(lipgloss.Center).
 		Border(lipgloss.ThickBorder()).
 		BorderForeground(lipgloss.Color("135"))
 
-	label := lipgloss.NewStyle().MarginBottom(2).Foreground(lipgloss.Color("135")).Render("Enter a channel to join")
-	labelIdentity := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render("Choose a identity")
+	labelStyle := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render
+	labelIdentityStyle := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render
+
+	var (
+		label         string
+		labelIdentity string
+	)
+
+	if c.selectedInput == channelInput {
+		label = labelStyle("> Enter a channel to join")
+		labelIdentity = labelIdentityStyle("Choose a identity")
+	} else {
+		label = labelStyle("Enter a channel to join")
+		labelIdentity = labelIdentityStyle("> Choose a identity")
+	}
 
 	b.WriteString(
 		screenStyle.Render(

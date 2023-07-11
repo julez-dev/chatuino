@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -28,6 +29,10 @@ func NewChat() *Chat {
 }
 
 func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth string) (<-chan IRCer, <-chan error, error) {
+	if !strings.HasPrefix(oauth, "oauth:") {
+		oauth = "oauth:" + oauth
+	}
+
 	ctxWS, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 

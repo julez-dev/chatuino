@@ -3,11 +3,13 @@ package chatui
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 )
@@ -71,14 +73,16 @@ type tab struct {
 
 	emoteStore emoteStore
 	ttvAPI     twitchAPI
+	account    save.Account
 }
 
-func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteStore emoteStore, ttvAPI twitchAPI) *tab {
+func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteStore emoteStore, account save.Account) *tab {
 	ctx, cancel := context.WithCancel(ctx)
 
 	input := textinput.New()
 	input.PromptStyle = input.PromptStyle.Foreground(lipgloss.Color("135"))
 
+	ttvAPI := twitch.NewAPI(nil, account.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
 	tab := &tab{
 		id:           uuid.New(),
 		ctx:          ctx,
@@ -88,6 +92,7 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteSto
 		messageInput: input,
 		emoteStore:   emoteStore,
 		ttvAPI:       ttvAPI,
+		account:      account,
 	}
 
 	tab.channelInfo = newChannelInfo(ctx, logger, ttvAPI, channel)
@@ -113,7 +118,7 @@ func (t *tab) Init() tea.Cmd {
 
 		chat := twitch.NewChat()
 
-		out, errChan, err := chat.Connect(t.ctx, in, twitch.AnonymousUser, twitch.AnonymousOAuth)
+		out, errChan, err := chat.Connect(t.ctx, in, t.account.DisplayName, t.account.AccessToken)
 		if err != nil {
 			t.logger.Err(err).Send()
 			return nil

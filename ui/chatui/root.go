@@ -89,7 +89,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		cmds = append(cmds, computeTabContainerSize(m))
 	case joinChannelCmd:
-		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.emoteStore, m.ttvAPI)
+		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.emoteStore, msg.account)
 		m.tabs = append(m.tabs, c)
 		cmds = append(cmds, computeTabContainerSize(m))
 		cmds = append(cmds, c.Init())
