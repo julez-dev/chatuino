@@ -109,6 +109,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "esc":
+			if m.screenType == inputScreen {
+				if len(m.tabs) > m.activeTabIndex {
+					m.tabs[m.activeTabIndex].Focus()
+				}
+				m.screenType = mainScreen
+			}
 		case "f1":
 			switch m.screenType {
 			case mainScreen:
@@ -121,7 +128,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				inputScreen.Focus()
 				m.inputScreen = inputScreen
 			case inputScreen:
-				if len(m.tabs) > 0 {
+				if len(m.tabs) > m.activeTabIndex {
 					m.tabs[m.activeTabIndex].Focus()
 				}
 				m.screenType = mainScreen

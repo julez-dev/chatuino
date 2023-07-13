@@ -63,36 +63,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
 	case recvTwitchMessage:
 		if msg.target == c.parentTab.id {
-			lastCursorEnd := -1
-
-			if len(c.entries) > 0 {
-				newest := c.entries[len(c.entries)-1]
-				lastCursorEnd = newest.Position.CursorEnd
-			}
-
-			lines := c.messageToText(msg.message)
-
-			if len(lines) > 0 {
-				entry := &chatEntry{
-					Position: position{
-						CursorStart: lastCursorEnd + 1,
-						CursorEnd:   lastCursorEnd + len(lines),
-					},
-					Message: msg.message,
-				}
-
-				wasLatestLine := c.isLatestEntry()
-
-				c.lines = append(c.lines, lines...)
-				c.entries = append(c.entries, entry)
-				if wasLatestLine {
-					c.MoveDown(1)
-				} else {
-					c.UpdateViewport()
-				}
-			} else {
-				c.logger.Info().Msg("got zero line message, ignoring")
-			}
+			c.handleRecvTwitchMessage(msg.message)
 		}
 	}
 
@@ -111,6 +82,39 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	}
 
 	return c, tea.Batch(cmds...)
+}
+
+func (c *chatWindow) handleRecvTwitchMessage(msg twitch.IRCer) {
+	lastCursorEnd := -1
+
+	if len(c.entries) > 0 {
+		newest := c.entries[len(c.entries)-1]
+		lastCursorEnd = newest.Position.CursorEnd
+	}
+
+	lines := c.messageToText(msg)
+
+	if len(lines) > 0 {
+		entry := &chatEntry{
+			Position: position{
+				CursorStart: lastCursorEnd + 1,
+				CursorEnd:   lastCursorEnd + len(lines),
+			},
+			Message: msg,
+		}
+
+		wasLatestLine := c.isLatestEntry()
+
+		c.lines = append(c.lines, lines...)
+		c.entries = append(c.entries, entry)
+		if wasLatestLine {
+			c.MoveDown(1)
+		} else {
+			c.UpdateViewport()
+		}
+	} else {
+		c.logger.Info().Msg("got zero line message, ignoring")
+	}
 }
 
 func (c *chatWindow) findEntryForCursor() (int, *chatEntry) {
@@ -292,7 +296,7 @@ func (c *chatWindow) colorMessageEmotes(message string) string {
 		ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
 	)
 
-	splits := strings.Split(message, " ")
+	splits := strings.Fields(message)
 	for i, split := range splits {
 		if e, ok := c.parentTab.emoteStore.GetByText(c.parentTab.channelID, split); ok {
 			switch e.Platform {

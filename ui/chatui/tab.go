@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,6 +23,7 @@ type setErrorMessage struct {
 type setChatInstanceMessage struct {
 	target       uuid.UUID
 	chat         *twitch.Chat
+	messagesOut  chan<- twitch.IRCer
 	messagesRecv <-chan twitch.IRCer
 	errRecv      <-chan error
 }
@@ -62,6 +64,7 @@ type tab struct {
 	logger zerolog.Logger
 
 	chat         *twitch.Chat
+	messagesOut  chan<- twitch.IRCer
 	messagesRecv <-chan twitch.IRCer
 	messageLog   []string
 
@@ -129,6 +132,7 @@ func (t *tab) Init() tea.Cmd {
 		}
 
 		return setChatInstanceMessage{
+			messagesOut:  in,
 			errRecv:      errChan,
 			target:       t.id,
 			chat:         chat,
@@ -178,6 +182,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		if msg.target == t.id {
 			t.chat = msg.chat
 			t.messagesRecv = msg.messagesRecv
+			t.messagesOut = msg.messagesOut
 			cmds = append(cmds, waitMessage(*t))
 
 			cmds = append(cmds, func() tea.Msg {
@@ -206,7 +211,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	}
 
 	if t.focused {
-		if t.state == inChatWindow {
+		if t.state == insertMode {
 			t.messageInput, cmd = t.messageInput.Update(msg)
 			cmds = append(cmds, cmd)
 		}
@@ -215,13 +220,25 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "i":
-				t.state = inChatWindow
+				t.state = insertMode
 				t.messageInput.Focus()
 				t.chatWindow.Blur()
 			case "esc":
 				t.state = inChatWindow
 				t.chatWindow.Focus()
 				t.messageInput.Blur()
+			case "enter":
+				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
+					msg := &twitch.PrivateMessage{
+						In:      t.channel,
+						Message: t.messageInput.Value(),
+						From:    t.account.DisplayName,
+						SentAt:  time.Now(),
+					}
+					t.messagesOut <- msg
+					t.chatWindow.handleRecvTwitchMessage(msg)
+					t.messageInput.SetValue("")
+				}
 			case "q":
 				if t.state == inChatWindow {
 					t.cancel()
