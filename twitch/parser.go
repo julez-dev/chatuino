@@ -136,11 +136,14 @@ func parseIRC(message string) (IRCer, error) {
 	switch c.Command {
 	case "PRIVMSG":
 		p := PrivateMessage{
-			From:      string(c.tags["display-name"]),
-			In:        strings.TrimPrefix(c.Params[0], "#"),
-			Message:   c.Params[1],
-			UserColor: string(c.tags["color"]),
-			SentAt:    parseTimestamp(string(c.tags["tmi-sent-ts"])),
+			ID:             string(c.tags["id"]),
+			ParentThreadID: string(c.tags["reply-thread-parent-msg-id"]),
+			ParentMsgID:    string(c.tags["reply-parent-msg-id"]),
+			From:           string(c.tags["display-name"]),
+			In:             strings.TrimPrefix(c.Params[0], "#"),
+			Message:        c.Params[1],
+			UserColor:      string(c.tags["color"]),
+			SentAt:         parseTimestamp(string(c.tags["tmi-sent-ts"])),
 		}
 
 		return &p, nil

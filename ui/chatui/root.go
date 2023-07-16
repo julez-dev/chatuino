@@ -237,7 +237,7 @@ func (m *Model) nextTab() {
 
 	newIndex := m.activeTabIndex + 1
 
-	if newIndex > len(m.tabs)-1 {
+	if newIndex >= len(m.tabs) {
 		newIndex = 0
 	}
 

@@ -42,7 +42,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	}
 
 	out := make(chan IRCer)
-	outErr := make(chan error)
+	outErr := make(chan error, 1)
 	wg, ctx := errgroup.WithContext(ctx)
 
 	ctx, cancel = context.WithCancel(ctx)

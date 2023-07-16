@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
@@ -44,6 +45,49 @@ func main() {
 		Commands: []*cli.Command{
 			versionCMD,
 			accountCMD,
+			{
+				Name: "irc",
+				Action: func(ctx *cli.Context) error {
+					auto := autocomplete.NewCompleter(emote.EmoteSet{
+						emote.Emote{
+							Text: "LUL",
+						},
+						emote.Emote{
+							Text: "KEKW",
+						},
+					})
+
+					fmt.Println(auto.Next())
+					fmt.Println(auto.Current())
+
+					auto.AddToSearch("LU")
+
+					fmt.Println(auto.Next())
+					fmt.Println(auto.Current())
+
+					return nil
+					// chat := twitch.NewChat()
+					// in := make(chan twitch.IRCer)
+
+					// go func() {
+					// 	<-ctx.Done()
+					// 	fmt.Println("done")
+					// }()
+
+					// msgs, _, err := chat.Connect(ctx.Context, in, "julezdev", os.Getenv("TWITCH_OAUTH"))
+					// if err != nil {
+					// 	return err
+					// }
+
+					// in <- twitch.JoinMessage{Channel: "julezdev"}
+
+					// for msg := range msgs {
+					// 	_ = msg
+					// }
+
+					// return nil
+				},
+			},
 		},
 		Action: func(c *cli.Context) error {
 			list, err := save.AccountListFromDisk()
