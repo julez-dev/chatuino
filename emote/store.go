@@ -40,6 +40,19 @@ func NewStore(twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher
 	}
 }
 
+func (s Store) GetAllForUser(id string) EmoteSet {
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	userEmotes := s.channel[id]
+	data := make(EmoteSet, 0, len(s.global)+len(userEmotes))
+
+	data = append(data, userEmotes...)
+	data = append(data, s.global...)
+
+	return data
+}
+
 func (s Store) GetByText(channelID, text string) (Emote, bool) {
 	s.m.RLock()
 	defer s.m.RUnlock()

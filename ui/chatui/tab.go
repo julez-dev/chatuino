@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
@@ -19,6 +20,11 @@ import (
 type setErrorMessage struct {
 	target uuid.UUID
 	err    error
+}
+
+type setEmoteSet struct {
+	target uuid.UUID
+	emotes emote.EmoteSet
 }
 
 type setChatInstanceMessage struct {
@@ -155,10 +161,11 @@ func (t *tab) Init() tea.Cmd {
 			return nil
 		}
 
-		return setChannelIDMessage{
-			target:    t.id,
-			channelID: userData.Data[0].ID,
-		}
+		return nil
+		// return setChannelIDMessage{
+		// 	target:    t.id,
+		// 	channelID: userData.Data[0].ID,
+		// }
 	})
 
 	cmds = append(cmds, t.channelInfo.Init())

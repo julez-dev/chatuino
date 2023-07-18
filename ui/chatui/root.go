@@ -18,6 +18,7 @@ import (
 type emoteStore interface {
 	GetByText(channel, text string) (emote.Emote, bool)
 	RefreshLocal(ctx context.Context, channelID string) error
+	GetAllForUser(id string) emote.EmoteSet
 }
 
 type twitchAPI interface {
@@ -236,7 +237,6 @@ func (m *Model) getActiveTab() (*tab, bool) {
 
 func (m *Model) nextTab() {
 	if len(m.tabs) > m.activeTabIndex {
-
 		m.tabs[m.activeTabIndex].Blur()
 	}
 

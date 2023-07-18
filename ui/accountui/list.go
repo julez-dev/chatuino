@@ -202,7 +202,6 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (l List) View() string {
-
 	if l.state == inTable {
 		display := ""
 		if l.err != nil {

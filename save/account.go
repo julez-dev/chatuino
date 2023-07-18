@@ -34,7 +34,6 @@ type AccountList struct {
 
 func (a AccountList) Save() error {
 	f, err := openCreateConfigFile(accountFileName)
-
 	if err != nil {
 		return err
 	}
@@ -147,9 +146,9 @@ func openCreateConfigFile(file string) (*os.File, error) {
 
 	// ensure dir config dir exists
 	configDirChatuino := filepath.Join(configDir, chatuinoConfigDir)
-	err = os.Mkdir(configDir, os.ModePerm)
-
+	err = os.Mkdir(configDirChatuino, 0o755)
 	var alreadyExistsError bool
+
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			alreadyExistsError = true
@@ -174,7 +173,6 @@ func openCreateConfigFile(file string) (*os.File, error) {
 
 func AccountListFromDisk() (AccountList, error) {
 	f, err := openCreateConfigFile(accountFileName)
-
 	if err != nil {
 		return AccountList{}, err
 	}
@@ -186,7 +184,7 @@ func AccountListFromDisk() (AccountList, error) {
 		return AccountList{}, err
 	}
 
-	var list = AccountList{}
+	list := AccountList{}
 	err = json.Unmarshal(data, &list)
 
 	if err != nil {
