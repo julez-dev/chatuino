@@ -61,6 +61,16 @@ func (c *Completer) AddToSearch(s string) {
 	c.index = -1
 }
 
+func (c *Completer) SetSearch(s string) {
+	c.search = strings.ToLower(s)
+	c.refreshEmotes()
+	c.index = -1
+}
+
+func (c Completer) HasSearch() bool {
+	return c.search != ""
+}
+
 func (c *Completer) Reset() {
 	c.index = -1
 	c.search = ""
@@ -85,5 +95,4 @@ func (c *Completer) refreshEmotes() {
 			c.foundEmotes = append(c.foundEmotes, e)
 		}
 	}
-
 }

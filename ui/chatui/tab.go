@@ -161,11 +161,10 @@ func (t *tab) Init() tea.Cmd {
 			return nil
 		}
 
-		return nil
-		// return setChannelIDMessage{
-		// 	target:    t.id,
-		// 	channelID: userData.Data[0].ID,
-		// }
+		return setEmoteSet{
+			target: t.id,
+			emotes: t.emoteStore.GetAllForUser(userData.Data[0].ID),
+		}
 	})
 
 	cmds = append(cmds, t.channelInfo.Init())
@@ -180,6 +179,12 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case setEmoteSet:
+		if msg.target == t.id {
+			comp := autocomplete.NewCompleter(msg.emotes)
+			t.eAutocomplete = &comp
+		}
+
 	case resizeTabContainerMessage:
 		t.chatWindow.viewport.Height = msg.Height
 		t.chatWindow.viewport.Width = msg.Width
@@ -228,6 +233,22 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
+			case "tab":
+				if t.state == insertMode {
+					inputValue := t.messageInput.Value()
+					if !t.eAutocomplete.HasSearch() {
+						t.eAutocomplete.SetSearch(selectWordAtIndex(inputValue, t.messageInput.Position()))
+					}
+					t.eAutocomplete.Next()
+
+					wordStartIndex, wordEndIndex := indexWordAtIndex(inputValue, t.messageInput.Position())
+
+					newInput := inputValue[:wordStartIndex] + t.eAutocomplete.Current().Text + inputValue[wordEndIndex:]
+					t.messageInput.SetValue(newInput)
+
+					t.logger.Info().Str("word", t.eAutocomplete.Current().Text).Str("new", newInput).Send()
+				}
+
 			case "i":
 				t.state = insertMode
 				t.messageInput.Focus()

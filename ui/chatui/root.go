@@ -237,6 +237,10 @@ func (m *Model) getActiveTab() (*tab, bool) {
 
 func (m *Model) nextTab() {
 	if len(m.tabs) > m.activeTabIndex {
+		if m.tabs[m.activeTabIndex].state == insertMode {
+			return
+		}
+
 		m.tabs[m.activeTabIndex].Blur()
 	}
 
