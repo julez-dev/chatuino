@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
@@ -66,7 +67,6 @@ type tab struct {
 	chat         *twitch.Chat
 	messagesOut  chan<- twitch.IRCer
 	messagesRecv <-chan twitch.IRCer
-	messageLog   []string
 
 	state tabState
 
@@ -74,9 +74,10 @@ type tab struct {
 	chatWindow   *chatWindow
 	messageInput textinput.Model
 
-	emoteStore emoteStore
-	ttvAPI     twitchAPI
-	account    save.Account
+	eAutocomplete *autocomplete.Completer
+	emoteStore    emoteStore
+	ttvAPI        twitchAPI
+	account       save.Account
 }
 
 func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteStore emoteStore, account save.Account) *tab {
@@ -87,15 +88,16 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteSto
 
 	ttvAPI := twitch.NewAPI(nil, account.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
 	tab := &tab{
-		id:           uuid.New(),
-		ctx:          ctx,
-		cancel:       cancel,
-		logger:       logger,
-		channel:      channel,
-		messageInput: input,
-		emoteStore:   emoteStore,
-		ttvAPI:       ttvAPI,
-		account:      account,
+		id:            uuid.New(),
+		ctx:           ctx,
+		cancel:        cancel,
+		logger:        logger,
+		channel:       channel,
+		messageInput:  input,
+		emoteStore:    emoteStore,
+		ttvAPI:        ttvAPI,
+		eAutocomplete: &autocomplete.Completer{},
+		account:       account,
 	}
 
 	tab.channelInfo = newChannelInfo(ctx, logger, ttvAPI, channel)

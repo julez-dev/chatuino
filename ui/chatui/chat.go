@@ -124,7 +124,7 @@ func (c *chatWindow) findEntryForCursor() (int, *chatEntry) {
 		}
 	}
 
-	return 0, nil
+	return -1, nil
 }
 
 func (c *chatWindow) UpdateViewport() {
@@ -164,8 +164,12 @@ func (c *chatWindow) Blur() {
 
 // Move up n number of messages
 func (c *chatWindow) MoveUp(n int) {
-	c.removeMarkCurrentMessage()
 	cIndex, _ := c.findEntryForCursor()
+	if cIndex == -1 {
+		return
+	}
+
+	c.removeMarkCurrentMessage()
 	nIndex := clamp(cIndex-n, 0, len(c.entries)-1)
 	c.cursor = c.entries[nIndex].Position.CursorStart
 
@@ -192,8 +196,13 @@ func (c *chatWindow) MoveToBottom() {
 
 // Move down n number of messages
 func (c *chatWindow) MoveDown(n int) {
-	c.removeMarkCurrentMessage()
 	cIndex, _ := c.findEntryForCursor()
+
+	if cIndex == -1 {
+		return
+	}
+
+	c.removeMarkCurrentMessage()
 	nIndex := clamp(cIndex+n, 0, len(c.entries)-1) // the index of the n message after current message
 	c.cursor = c.entries[nIndex].Position.CursorEnd
 	c.markCurrentMessage()

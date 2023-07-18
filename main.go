@@ -9,7 +9,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
@@ -48,22 +47,6 @@ func main() {
 			{
 				Name: "irc",
 				Action: func(ctx *cli.Context) error {
-					auto := autocomplete.NewCompleter(emote.EmoteSet{
-						emote.Emote{
-							Text: "LUL",
-						},
-						emote.Emote{
-							Text: "KEKW",
-						},
-					})
-
-					fmt.Println(auto.Next())
-					fmt.Println(auto.Current())
-
-					auto.AddToSearch("LU")
-
-					fmt.Println(auto.Next())
-					fmt.Println(auto.Current())
 
 					return nil
 					// chat := twitch.NewChat()

@@ -117,6 +117,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screenType = mainScreen
 			}
 		case "f1":
+			if len(m.tabs) > m.activeTabIndex && m.tabs[m.activeTabIndex].state == insertMode {
+				return m, tea.Batch(cmds...)
+			}
+
 			switch m.screenType {
 			case mainScreen:
 				if len(m.tabs) > m.activeTabIndex {
@@ -232,6 +236,7 @@ func (m *Model) getActiveTab() (*tab, bool) {
 
 func (m *Model) nextTab() {
 	if len(m.tabs) > m.activeTabIndex {
+
 		m.tabs[m.activeTabIndex].Blur()
 	}
 
@@ -250,6 +255,10 @@ func (m *Model) nextTab() {
 
 func (m *Model) prevTab() {
 	if len(m.tabs) > m.activeTabIndex {
+		if m.tabs[m.activeTabIndex].state == insertMode {
+			return
+		}
+
 		m.tabs[m.activeTabIndex].Blur()
 	}
 

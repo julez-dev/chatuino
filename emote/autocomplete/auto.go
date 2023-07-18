@@ -24,6 +24,21 @@ func NewCompleter(emoteSet emote.EmoteSet) Completer {
 	return c
 }
 
+func (c *Completer) Prev() bool {
+	if len(c.foundEmotes) < 1 {
+		c.index = -1
+		return false
+	}
+
+	if c.index-1 < 0 {
+		c.index = len(c.foundEmotes) - 1
+		return true
+	}
+
+	c.index--
+	return true
+}
+
 func (c *Completer) Next() bool {
 	if len(c.foundEmotes) < 1 {
 		c.index = -1
@@ -43,11 +58,13 @@ func (c *Completer) Next() bool {
 func (c *Completer) AddToSearch(s string) {
 	c.search += strings.ToLower(s)
 	c.refreshEmotes()
-	c.Reset()
+	c.index = -1
 }
 
 func (c *Completer) Reset() {
 	c.index = -1
+	c.search = ""
+	c.refreshEmotes()
 }
 
 func (c Completer) Current() emote.Emote {
