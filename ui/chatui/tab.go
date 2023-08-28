@@ -228,6 +228,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		if t.state == insertMode {
 			t.messageInput, cmd = t.messageInput.Update(msg)
 			cmds = append(cmds, cmd)
+
+			if pos := t.messageInput.Position(); pos > 0 && t.eAutocomplete.HasSearch() {
+				currChar := t.messageInput.Value()[pos-1]
+				if currChar == ' ' {
+					t.logger.Info().Msg("reset eAutocomplete")
+					t.eAutocomplete.Reset()
+				}
+			}
+
 		}
 
 		switch msg := msg.(type) {
@@ -235,17 +244,22 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			switch msg.String() {
 			case "tab":
 				if t.state == insertMode {
-					inputValue := t.messageInput.Value()
+					input := t.messageInput.Value()
+					currWord := selectWordAtIndex(input, t.messageInput.Position())
+					t.logger.Info().Str("word", currWord).Msg("current word")
+
 					if !t.eAutocomplete.HasSearch() {
-						t.eAutocomplete.SetSearch(selectWordAtIndex(inputValue, t.messageInput.Position()))
+						t.logger.Info().Str("term", currWord).Msg("setting search")
+						t.eAutocomplete.SetSearch(currWord)
 					}
+
 					t.eAutocomplete.Next()
 
-					wordStartIndex, wordEndIndex := indexWordAtIndex(inputValue, t.messageInput.Position())
+					wordStartIndex, wordEndIndex := indexWordAtIndex(input, t.messageInput.Position())
 
-					newInput := inputValue[:wordStartIndex] + t.eAutocomplete.Current().Text + inputValue[wordEndIndex:]
+					newInput := input[:wordStartIndex] + t.eAutocomplete.Current().Text + input[wordEndIndex:]
 					t.messageInput.SetValue(newInput)
-
+					t.messageInput.SetCursor(wordStartIndex + len(t.eAutocomplete.Current().Text))
 					t.logger.Info().Str("word", t.eAutocomplete.Current().Text).Str("new", newInput).Send()
 				}
 
