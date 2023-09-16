@@ -84,7 +84,6 @@ func (m Model) Init() tea.Cmd {
 	return func() tea.Msg {
 		state, err := save.AppStateFromDisk()
 		if err != nil {
-			panic(err)
 			return nil
 		}
 
