@@ -94,12 +94,12 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 }
 
 func (c *chatWindow) redrawMessages() {
-	_, currentEntry := c.findEntryForCursor()
+	_, preRedrawEntry := c.findEntryForCursor()
 
 	c.cursor = 0
 	c.start = 0
 	c.end = 0
-	c.lines = nil
+	c.lines = make([]string, 0, len(c.entries)) // the number of lines will always be at least the number of entries
 	c.viewport.SetContent("")
 
 	var prevEntry *chatEntry
@@ -120,7 +120,9 @@ func (c *chatWindow) redrawMessages() {
 			c.entries[i] = e
 		}
 
-		if e == currentEntry {
+		// If the cursor is not set to an entry (no entries found) or if the entry was set the cursor before the redraw
+		// -> set the cursor to the current entry
+		if preRedrawEntry == nil || e == preRedrawEntry {
 			c.cursor = e.Position.CursorStart
 		}
 
@@ -280,13 +282,13 @@ func (c *chatWindow) View() string {
 }
 
 func (c *chatWindow) removeMarkCurrentMessage() {
-	_, entry := c.findEntryForCursor()
+	if _, entry := c.findEntryForCursor(); entry != nil {
+		lines := c.lines[entry.Position.CursorStart : entry.Position.CursorEnd+1]
 
-	lines := c.lines[entry.Position.CursorStart : entry.Position.CursorEnd+1]
-
-	for i, s := range lines {
-		s = strings.TrimSuffix(s, indicator)
-		lines[i] = strings.TrimRight(s, " ")
+		for i, s := range lines {
+			s = strings.TrimSuffix(s, indicator)
+			lines[i] = strings.TrimRight(s, " ")
+		}
 	}
 }
 
