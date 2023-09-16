@@ -61,6 +61,10 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	_ = cmd
 
 	switch msg := msg.(type) {
+	case resizeTabContainerMessage:
+		if len(c.entries) > 0 {
+			c.redrawMessages()
+		}
 	case recvTwitchMessage:
 		if msg.target == c.parentTab.id {
 			c.handleRecvTwitchMessage(msg.message)
@@ -82,6 +86,45 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	}
 
 	return c, tea.Batch(cmds...)
+}
+
+func (c *chatWindow) redrawMessages() {
+	_, currentEntry := c.findEntryForCursor()
+
+	c.cursor = 0
+	c.start = 0
+	c.end = 0
+	c.lines = nil
+	c.viewport.SetContent("")
+
+	var prevEntry *chatEntry
+
+	for i, e := range c.entries {
+		lastCursorEnd := -1
+
+		if prevEntry != nil {
+			lastCursorEnd = prevEntry.Position.CursorEnd
+		}
+
+		lines := c.messageToText(e.Message)
+
+		if len(lines) > 0 {
+			e.Position.CursorStart = lastCursorEnd + 1
+			e.Position.CursorEnd = lastCursorEnd + len(lines)
+			c.lines = append(c.lines, lines...)
+			c.entries[i] = e
+		}
+
+		if e == currentEntry {
+			c.cursor = e.Position.CursorStart
+		}
+
+		prevEntry = e
+		c.logger.Info().Int("cursor", c.cursor).Int("cursor-start", e.Position.CursorStart).Int("cursor-end", e.Position.CursorEnd).Send()
+	}
+
+	c.markCurrentMessage()
+	c.UpdateViewport()
 }
 
 func (c *chatWindow) handleRecvTwitchMessage(msg twitch.IRCer) {
