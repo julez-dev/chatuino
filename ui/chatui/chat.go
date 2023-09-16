@@ -15,6 +15,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	cleanupAfterMessage float64 = 250.0
+	cleanupThreshold            = int(cleanupAfterMessage * 1.2)
+)
+
 var (
 	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render(" ")
 	indicatorWidth, _ = lipgloss.Size(indicator)
@@ -127,8 +132,17 @@ func (c *chatWindow) redrawMessages() {
 }
 
 func (c *chatWindow) handleRecvTwitchMessage(msg twitch.IRCer) {
-	lastCursorEnd := -1
+	// remove messages after threshold is reached to clean up some memory
+	if len(c.entries) > cleanupThreshold {
+		_, currentEntry := c.findEntryForCursor()
 
+		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
+			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
+			c.redrawMessages()
+		}
+	}
+
+	lastCursorEnd := -1
 	if len(c.entries) > 0 {
 		newest := c.entries[len(c.entries)-1]
 		lastCursorEnd = newest.Position.CursorEnd
@@ -293,7 +307,6 @@ func (c *chatWindow) markCurrentMessage() {
 				Int("indicator-width", indicatorWidth).
 				Str("line", s).Msg("prevented negative count panic")
 			spacerLen = 0
-			panic("got negative spacerLen")
 		}
 
 		s = s + strings.Repeat(" ", spacerLen) + indicator
