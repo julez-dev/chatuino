@@ -23,7 +23,7 @@ type accountProvider interface {
 	GetAllWithAnonymous() []save.Account
 }
 
-type joinChannelCmd struct {
+type joinChannelMessage struct {
 	channel string
 	account save.Account
 }
@@ -123,7 +123,7 @@ func (c *channelInputScreen) Update(msg tea.Msg) (*channelInputScreen, tea.Cmd) 
 				}
 			case "enter":
 				return c, func() tea.Msg {
-					return joinChannelCmd{
+					return joinChannelMessage{
 						channel: c.input.Value(),
 						account: c.accounts[c.list.Cursor()],
 					}

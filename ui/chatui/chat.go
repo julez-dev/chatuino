@@ -120,7 +120,6 @@ func (c *chatWindow) redrawMessages() {
 		}
 
 		prevEntry = e
-		c.logger.Info().Int("cursor", c.cursor).Int("cursor-start", e.Position.CursorStart).Int("cursor-end", e.Position.CursorEnd).Send()
 	}
 
 	c.markCurrentMessage()

@@ -10,6 +10,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 	"golang.org/x/exp/slices"
@@ -28,6 +29,11 @@ type twitchAPI interface {
 
 type resizeTabContainerMessage struct {
 	Width, Height int
+}
+
+type loadedSaveStateMessage struct {
+	State    save.AppState
+	Accounts []save.Account
 }
 
 func computeTabContainerSize(m Model) tea.Cmd {
@@ -75,7 +81,20 @@ func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore, ttvA
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return func() tea.Msg {
+		state, err := save.AppStateFromDisk()
+		if err != nil {
+			panic(err)
+			return nil
+		}
+
+		accounts := m.accountProvider.GetAllWithAnonymous()
+
+		return loadedSaveStateMessage{
+			State:    state,
+			Accounts: accounts,
+		}
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -85,11 +104,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case loadedSaveStateMessage:
+		for _, t := range msg.State.Tabs {
+			var account save.Account
+
+			for _, a := range msg.Accounts {
+				if a.ID == t.IdentityID {
+					account = a
+				}
+			}
+
+			c := newTab(m.ctx, m.logger.With().Str("channel", t.Channel).Logger(), t.Channel, m.emoteStore, account)
+
+			c.chatWindow.entries = make([]*chatEntry, 0, len(t.IRCMessages))
+
+			for _, e := range t.IRCMessages {
+				c.chatWindow.entries = append(c.chatWindow.entries, &chatEntry{
+					Message: e,
+				})
+			}
+
+			m.tabs = append(m.tabs, c)
+			cmds = append(cmds, computeTabContainerSize(m))
+			cmds = append(cmds, c.Init())
+
+			if t.IsFocused {
+				if _, ok := m.getActiveTab(); ok {
+					m.tabs[m.activeTabIndex].Blur()
+				}
+
+				m.activeTabIndex = len(m.tabs) - 1 // set active index to newest tab
+				m.tabs[m.activeTabIndex].Focus()
+			}
+		}
+
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
 		cmds = append(cmds, computeTabContainerSize(m))
-	case joinChannelCmd:
+	case joinChannelMessage:
 		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.emoteStore, msg.account)
 		m.tabs = append(m.tabs, c)
 		cmds = append(cmds, computeTabContainerSize(m))
@@ -109,7 +162,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
-			return m, tea.Quit
+			return m, func() tea.Msg {
+				appState := save.AppState{}
+
+				for _, t := range m.tabs {
+					tabState := save.TabState{
+						IsFocused:   t.focused,
+						Channel:     t.channel,
+						IdentityID:  t.account.ID,
+						IRCMessages: make([]*twitch.PrivateMessage, 0, len(t.chatWindow.entries)),
+					}
+
+					relevantEntries := t.chatWindow.entries
+
+					// If the chat holds more than 10 times, only persist the latest 10 to save space
+					if len(relevantEntries) > 10 {
+						relevantEntries = relevantEntries[len(relevantEntries)-10:]
+					}
+
+					for _, e := range relevantEntries {
+						if msg, ok := e.Message.(*twitch.PrivateMessage); ok {
+							tabState.IRCMessages = append(tabState.IRCMessages, msg)
+						}
+					}
+
+					appState.Tabs = append(appState.Tabs, tabState)
+				}
+
+				err := appState.Save()
+				if err != nil {
+					panic(err)
+				}
+
+				return tea.QuitMsg{}
+			}
 		case "esc":
 			if m.screenType == inputScreen {
 				if len(m.tabs) > m.activeTabIndex {
