@@ -109,7 +109,6 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteSto
 	tab.channelInfo = newChannelInfo(ctx, logger, ttvAPI, channel)
 
 	tab.chatWindow = &chatWindow{
-		cursor:    -1,
 		parentTab: tab,
 		logger:    logger,
 	}

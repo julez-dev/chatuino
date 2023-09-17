@@ -106,8 +106,8 @@ func NewList() List {
 				key.WithHelp("?", "toggle help"),
 			),
 			Quit: key.NewBinding(
-				key.WithKeys("q", "esc", "ctrl+c"),
-				key.WithHelp("q", "quit"),
+				key.WithKeys("esc", "ctrl+c"),
+				key.WithHelp("esc", "quit"),
 			),
 		},
 		table:     t,
