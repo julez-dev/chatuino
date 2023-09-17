@@ -17,7 +17,7 @@ import (
 
 const (
 	cleanupAfterMessage float64 = 250.0
-	cleanupThreshold            = int(cleanupAfterMessage * 1.2)
+	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 )
 
 var (
@@ -139,6 +139,7 @@ func (c *chatWindow) handleRecvTwitchMessage(msg twitch.IRCer) {
 		_, currentEntry := c.findEntryForCursor()
 
 		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
+			c.logger.Info().Int("amount", cleanupThreshold-int(cleanupAfterMessage)).Msg("clean up messages now")
 			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
 			c.redrawMessages()
 		}

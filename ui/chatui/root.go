@@ -36,8 +36,8 @@ type loadedSaveStateMessage struct {
 	Accounts []save.Account
 }
 
-func computeTabContainerSize(m Model) tea.Cmd {
-	containerHeight := m.height - lipgloss.Height(m.renderTabHeader())
+func computeTabContainerSize(m *Model) tea.Cmd {
+	containerHeight := m.height - lipgloss.Height(m.renderTabHeader()) - 1 // -1 for new line
 
 	return func() tea.Msg {
 		return resizeTabContainerMessage{
@@ -55,12 +55,13 @@ const (
 )
 
 type Model struct {
-	screenType     activeScreen
-	ctx            context.Context
-	width, height  int
-	logger         zerolog.Logger
-	tabs           []*tab
-	activeTabIndex int
+	saveStateLoaded bool
+	screenType      activeScreen
+	ctx             context.Context
+	width, height   int
+	logger          zerolog.Logger
+	tabs            []*tab
+	activeTabIndex  int
 
 	inputScreen *channelInputScreen
 
@@ -81,22 +82,10 @@ func New(ctx context.Context, logger zerolog.Logger, emoteStore emoteStore, ttvA
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg {
-		state, err := save.AppStateFromDisk()
-		if err != nil {
-			return nil
-		}
-
-		accounts := m.accountProvider.GetAllWithAnonymous()
-
-		return loadedSaveStateMessage{
-			State:    state,
-			Accounts: accounts,
-		}
-	}
+	return nil
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -104,6 +93,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case loadedSaveStateMessage:
+		m.saveStateLoaded = true
+
 		for _, t := range msg.State.Tabs {
 			var account save.Account
 
@@ -141,6 +132,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.width = msg.Width
 		cmds = append(cmds, computeTabContainerSize(m))
+
+		// Load save state after the first resize event (A resize will always occur on start up)
+		cmds = append(cmds, func() tea.Msg {
+			if m.saveStateLoaded {
+				return nil
+			}
+
+			state, err := save.AppStateFromDisk()
+			if err != nil {
+				return nil
+			}
+
+			accounts := m.accountProvider.GetAllWithAnonymous()
+
+			return loadedSaveStateMessage{
+				State:    state,
+				Accounts: accounts,
+			}
+		})
 	case joinChannelMessage:
 		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.emoteStore, msg.account)
 		m.tabs = append(m.tabs, c)

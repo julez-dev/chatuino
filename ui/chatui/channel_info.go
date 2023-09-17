@@ -63,9 +63,7 @@ func (c *channelInfo) Init() tea.Cmd {
 }
 
 func (c *channelInfo) Update(msg tea.Msg) (*channelInfo, tea.Cmd) {
-	var (
-		cmds []tea.Cmd
-	)
+	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case setChannelIDMessage:
@@ -81,7 +79,6 @@ func (c *channelInfo) Update(msg tea.Msg) (*channelInfo, tea.Cmd) {
 			c.title = msg.title
 			c.viewer = msg.viewer
 			c.game = msg.game
-			c.logger.Info().Str("title", msg.title).Int("viewer", msg.viewer).Send()
 			cmds = append(cmds, doTick(c))
 		}
 	}
@@ -106,7 +103,6 @@ func fetchStreamData(c *channelInfo) tea.Msg {
 	resp, err := c.ttv.GetStreamInfo(ctx, []string{
 		c.channelID,
 	})
-
 	if err != nil {
 		c.logger.Err(err).Msg("failed to get channel info")
 		return nil

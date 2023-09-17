@@ -117,7 +117,9 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteSto
 }
 
 func (t *tab) Init() tea.Cmd {
-	cmds := make([]tea.Cmd, 0, 2)
+	cmds := make([]tea.Cmd, 0, 3)
+
+	cmds = append(cmds, t.channelInfo.Init())
 
 	cmds = append(cmds, func() tea.Msg {
 		in := make(chan twitch.IRCer)
@@ -167,8 +169,6 @@ func (t *tab) Init() tea.Cmd {
 		}
 	})
 
-	cmds = append(cmds, t.channelInfo.Init())
-
 	return tea.Batch(cmds...)
 }
 
@@ -186,7 +186,6 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 
 	case resizeTabContainerMessage:
-		t.chatWindow.viewport.Height = msg.Height
 		t.chatWindow.viewport.Width = msg.Width
 		t.channelInfo.width = msg.Width
 
@@ -262,7 +261,10 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					t.messageInput.SetCursor(wordStartIndex + len(t.eAutocomplete.Current().Text))
 					t.logger.Info().Str("word", t.eAutocomplete.Current().Text).Str("new", newInput).Send()
 				}
-
+			case "ctrl+w", " ":
+				if t.state == insertMode {
+					t.eAutocomplete.Reset()
+				}
 			case "i":
 				t.state = insertMode
 				t.messageInput.Focus()
@@ -302,13 +304,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	// calculate chatWindow height with channel info height
-	infoHeight := 0
-	info := t.channelInfo.View()
-	if info != "" {
-		infoHeight = lipgloss.Height(info)
-	}
+	infoHeight := lipgloss.Height(t.channelInfo.View())
 
-	t.chatWindow.viewport.Height = t.height - 3 - infoHeight
+	t.chatWindow.viewport.Height = t.height - 2 - infoHeight
 
 	t.chatWindow, cmd = t.chatWindow.Update(msg)
 	cmds = append(cmds, cmd)
