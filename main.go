@@ -47,7 +47,6 @@ func main() {
 			{
 				Name: "irc",
 				Action: func(ctx *cli.Context) error {
-
 					return nil
 					// chat := twitch.NewChat()
 					// in := make(chan twitch.IRCer)

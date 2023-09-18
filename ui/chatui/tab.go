@@ -124,11 +124,6 @@ func (t *tab) Init() tea.Cmd {
 	cmds = append(cmds, func() tea.Msg {
 		in := make(chan twitch.IRCer)
 
-		go func() {
-			<-t.ctx.Done()
-			close(in)
-		}()
-
 		chat := twitch.NewChat()
 
 		out, errChan, err := chat.Connect(t.ctx, in, t.account.DisplayName, t.account.AccessToken)
@@ -140,6 +135,11 @@ func (t *tab) Init() tea.Cmd {
 		in <- twitch.JoinMessage{
 			Channel: t.channel,
 		}
+
+		go func() {
+			<-t.ctx.Done()
+			close(in)
+		}()
 
 		return setChatInstanceMessage{
 			messagesOut:  in,

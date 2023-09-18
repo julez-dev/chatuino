@@ -187,14 +187,15 @@ func (c *chatWindow) findEntryForCursor() (int, *chatEntry) {
 }
 
 func (c *chatWindow) UpdateViewport() {
-	renderedRows := make([]string, 0, len(c.lines))
-
 	if c.cursor >= 0 {
 		c.start = clamp(c.cursor-c.viewport.Height, 0, c.cursor)
 	} else {
 		c.start = 0
 	}
 	c.end = clamp(c.cursor+c.viewport.Height, c.cursor, len(c.lines))
+
+	renderedRows := make([]string, 0, c.end-c.start)
+
 	for i := c.start; i < c.end; i++ {
 		renderedRows = append(renderedRows, c.lines[i])
 	}

@@ -141,7 +141,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			state, err := save.AppStateFromDisk()
 			if err != nil {
-				return nil
+				return loadedSaveStateMessage{}
 			}
 
 			accounts := m.accountProvider.GetAllWithAnonymous()
