@@ -45,29 +45,19 @@ func main() {
 			versionCMD,
 			accountCMD,
 			{
-				Name: "irc",
+				Name: "new-chat",
 				Action: func(ctx *cli.Context) error {
+					// p := tea.NewProgram(
+					// 	newChatWindow(logger),
+					// 	tea.WithContext(ctx.Context),
+					// 	tea.WithAltScreen(),
+					// )
+
+					// if _, err := p.Run(); err != nil {
+					// 	return fmt.Errorf("error while running TUI: %w", err)
+					// }
+
 					return nil
-					// chat := twitch.NewChat()
-					// in := make(chan twitch.IRCer)
-
-					// go func() {
-					// 	<-ctx.Done()
-					// 	fmt.Println("done")
-					// }()
-
-					// msgs, _, err := chat.Connect(ctx.Context, in, "julezdev", os.Getenv("TWITCH_OAUTH"))
-					// if err != nil {
-					// 	return err
-					// }
-
-					// in <- twitch.JoinMessage{Channel: "julezdev"}
-
-					// for msg := range msgs {
-					// 	_ = msg
-					// }
-
-					// return nil
 				},
 			},
 		},

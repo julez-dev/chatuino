@@ -108,10 +108,7 @@ func newTab(ctx context.Context, logger zerolog.Logger, channel string, emoteSto
 
 	tab.channelInfo = newChannelInfo(ctx, logger, ttvAPI, channel)
 
-	tab.chatWindow = &chatWindow{
-		parentTab: tab,
-		logger:    logger,
-	}
+	tab.chatWindow = newChatWindow(logger, tab, emoteStore)
 
 	return tab
 }
@@ -186,9 +183,6 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 
 	case resizeTabContainerMessage:
-		t.chatWindow.viewport.Width = msg.Width
-		t.channelInfo.width = msg.Width
-
 		t.width = msg.Width
 		t.height = msg.Height
 	case setChatInstanceMessage:
@@ -282,7 +276,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						SentAt:  time.Now(),
 					}
 					t.messagesOut <- msg
-					t.chatWindow.handleRecvTwitchMessage(msg)
+					t.chatWindow.handleMessage(msg)
 					t.messageInput.SetValue("")
 				}
 			case "q":
@@ -298,7 +292,8 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 	}
 
-	t.messageInput.Width = t.chatWindow.viewport.Width - 5
+	t.channelInfo.width = clamp(t.width, 0, t.width)
+	t.messageInput.Width = t.width - 5
 
 	t.channelInfo, cmd = t.channelInfo.Update(msg)
 	cmds = append(cmds, cmd)
@@ -306,7 +301,8 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	// calculate chatWindow height with channel info height
 	infoHeight := lipgloss.Height(t.channelInfo.View())
 
-	t.chatWindow.viewport.Height = t.height - 2 - infoHeight
+	t.chatWindow.height = clamp(t.height-2-infoHeight, 0, t.height)
+	t.chatWindow.width = clamp(t.width, 0, t.width)
 
 	t.chatWindow, cmd = t.chatWindow.Update(msg)
 	cmds = append(cmds, cmd)
@@ -325,7 +321,7 @@ func (t *tab) View() string {
 	}
 
 	inputView := lipgloss.NewStyle().
-		Width(t.chatWindow.viewport.Width - 2). // width of the chat window minus the border
+		Width(t.chatWindow.width - 2). // width of the chat window minus the border
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("135")).
 		Render(t.messageInput.View())
