@@ -37,8 +37,14 @@ type loadedSaveStateMessage struct {
 }
 
 func computeTabContainerSize(m *Model) tea.Cmd {
-	containerHeight := m.height - lipgloss.Height(m.renderTabHeader()) - 1 // -1 for new line
+	headerHeight := lipgloss.Height(m.renderTabHeader())
+	containerHeight := m.height
 
+	if headerHeight > 0 {
+		containerHeight = m.height - headerHeight - 3
+	}
+
+	m.logger.Info().Int("height", m.height).Int("header", headerHeight).Int("diff", containerHeight).Send()
 	return func() tea.Msg {
 		return resizeTabContainerMessage{
 			Width:  m.width,
@@ -108,14 +114,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			c.chatWindow.entries = make([]*chatEntry, 0, len(t.IRCMessages))
 
-			for _, e := range t.IRCMessages {
+			for i, e := range t.IRCMessages {
 				c.chatWindow.entries = append(c.chatWindow.entries, &chatEntry{
-					Message: e,
+					Message:  e,
+					Selected: i == t.SelectedIndex,
 				})
 			}
 
+			c.chatWindow.cursor = t.SelectedIndex
+			c.chatWindow.recalculateLines()
+
 			m.tabs = append(m.tabs, c)
-			cmds = append(cmds, computeTabContainerSize(m))
 			cmds = append(cmds, c.Init())
 
 			if t.IsFocused {
@@ -127,6 +136,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tabs[m.activeTabIndex].Focus()
 			}
 		}
+		cmds = append(cmds, computeTabContainerSize(m))
 
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
@@ -166,6 +176,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabs[m.activeTabIndex].Focus()
 		m.screenType = mainScreen
 		m.inputScreen.Blur()
+		cmds = append(cmds, computeTabContainerSize(m))
 	case removeTabMessage:
 		m.removeTab(msg.id)
 	case tea.KeyMsg:
@@ -189,8 +200,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						relevantEntries = relevantEntries[len(relevantEntries)-10:]
 					}
 
-					for _, e := range relevantEntries {
+					tabState.SelectedIndex = len(relevantEntries) - 1 // fallback to last entry if known of the filtered were selected
+					for i, e := range relevantEntries {
 						if msg, ok := e.Message.(*twitch.PrivateMessage); ok {
+							if e.Selected {
+								tabState.SelectedIndex = i
+							}
+
 							tabState.IRCMessages = append(tabState.IRCMessages, msg)
 						}
 					}

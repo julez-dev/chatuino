@@ -185,6 +185,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	case resizeTabContainerMessage:
 		t.width = msg.Width
 		t.height = msg.Height
+		t.setWidthAndHeight()
+	case channelInfoSetMessage:
+		t.setWidthAndHeight()
 	case setChatInstanceMessage:
 		if msg.target == t.id {
 			t.chat = msg.chat
@@ -292,17 +295,8 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 	}
 
-	t.channelInfo.width = clamp(t.width, 0, t.width)
-	t.messageInput.Width = t.width - 5
-
 	t.channelInfo, cmd = t.channelInfo.Update(msg)
 	cmds = append(cmds, cmd)
-
-	// calculate chatWindow height with channel info height
-	infoHeight := lipgloss.Height(t.channelInfo.View())
-
-	t.chatWindow.height = clamp(t.height-2-infoHeight, 0, t.height)
-	t.chatWindow.width = clamp(t.width, 0, t.width)
 
 	t.chatWindow, cmd = t.chatWindow.Update(msg)
 	cmds = append(cmds, cmd)
@@ -340,6 +334,22 @@ func (t *tab) View() string {
 		t.chatWindow.View(),
 		inputView,
 	)
+}
+
+func (t *tab) setWidthAndHeight() {
+	t.channelInfo.width = clamp(t.width, 0, t.width)
+	t.messageInput.Width = t.width - 5
+
+	// calculate chatWindow height with channel info height
+	var infoHeight int
+	channelInfoView := t.channelInfo.View()
+
+	if channelInfoView != "" {
+		infoHeight = lipgloss.Height(channelInfoView)
+	}
+
+	t.chatWindow.height = clamp(t.height-infoHeight, 0, t.height)
+	t.chatWindow.width = clamp(t.width, 0, t.width)
 }
 
 func (t *tab) Focus() {

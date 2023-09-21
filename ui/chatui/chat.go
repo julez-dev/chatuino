@@ -3,7 +3,6 @@ package chatui
 import (
 	"fmt"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -112,24 +111,14 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.messageUp(1)
 			}
 			switch msg.String() {
+			case "d":
+				c.logger.Info().Int("cursor", c.cursor).Int("start", c.lineStart).Int("end", c.lineEnd).Send()
+				c.logger.Info().Strs("lines", c.lines).Send()
+				c.logger.Info().Any("entries", c.entries).Send()
 			case "b":
 				c.moveToBottom()
 			case "t":
 				c.moveToTop()
-			case "ctrl+f":
-				for i := 0; i < c.height*2; i++ {
-					msg := &twitch.PrivateMessage{
-						From:    "test",
-						Message: fmt.Sprintf("test message %d", i),
-						SentAt:  time.Now(),
-					}
-
-					if i%4 == 0 {
-						msg.Message = strings.Repeat("$ ", 400)
-					}
-
-					c.handleMessage(msg)
-				}
 			case "ctrl+c":
 				return c, tea.Quit
 			}
@@ -395,9 +384,11 @@ func (c *chatWindow) updatePort() {
 	case c.cursor <= c.lineStart: // cursor is before the selection
 		c.lineStart = c.cursor
 		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
-	case c.cursor > c.lineEnd: // cursor is after the selection
+	case c.cursor >= c.lineEnd: // cursor is after the selection
 		c.lineEnd = c.cursor + 1
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
+	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
+		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
 	}
 }
 

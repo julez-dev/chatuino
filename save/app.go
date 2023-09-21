@@ -18,10 +18,11 @@ type AppState struct {
 }
 
 type TabState struct {
-	Channel     string                   `json:"channel"`
-	IsFocused   bool                     `json:"is_focused"`
-	IdentityID  string                   `json:"identity_id"`
-	IRCMessages []*twitch.PrivateMessage `json:"irc_messages"`
+	Channel       string                   `json:"channel"`
+	IsFocused     bool                     `json:"is_focused"`
+	IdentityID    string                   `json:"identity_id"`
+	SelectedIndex int                      `json:"selected_index"`
+	IRCMessages   []*twitch.PrivateMessage `json:"irc_messages"`
 }
 
 func (a *AppState) Save() error {

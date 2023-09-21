@@ -21,6 +21,8 @@ type setChannelInfoMessage struct {
 	game    string
 }
 
+type channelInfoSetMessage struct{}
+
 type channelInfo struct {
 	id     uuid.UUID
 	ttv    twitchAPI
@@ -80,6 +82,9 @@ func (c *channelInfo) Update(msg tea.Msg) (*channelInfo, tea.Cmd) {
 			c.viewer = msg.viewer
 			c.game = msg.game
 			cmds = append(cmds, doTick(c))
+			cmds = append(cmds, func() tea.Msg {
+				return channelInfoSetMessage{}
+			})
 		}
 	}
 
