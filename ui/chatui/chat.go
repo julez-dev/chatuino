@@ -96,8 +96,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
-	case resizeTabContainerMessage:
-		c.recalculateLines()
 	case recvTwitchMessage:
 		if msg.target == c.parentTab.id {
 			c.handleMessage(msg.message)
@@ -133,6 +131,9 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 
 func (c *chatWindow) View() string {
 	lines := c.lines[c.lineStart:c.lineEnd]
+
+	c.logger.Info().Int("len", len(lines)).Int("start", c.lineStart).Int("end", c.lineEnd).Send()
+
 	contents := lipgloss.NewStyle().
 		Height(c.height).
 		MaxHeight(c.height).

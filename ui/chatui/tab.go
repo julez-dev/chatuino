@@ -182,10 +182,10 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			t.eAutocomplete = &comp
 		}
 
-	case resizeTabContainerMessage:
-		t.width = msg.Width
-		t.height = msg.Height
-		t.setWidthAndHeight()
+	// case resizeTabContainerMessage:
+	// 	t.width = msg.Width
+	// 	t.height = msg.Height
+	// 	t.setWidthAndHeight()
 	case channelInfoSetMessage:
 		t.setWidthAndHeight()
 	case setChatInstanceMessage:
@@ -350,6 +350,7 @@ func (t *tab) setWidthAndHeight() {
 
 	t.chatWindow.height = clamp(t.height-infoHeight, 0, t.height)
 	t.chatWindow.width = clamp(t.width, 0, t.width)
+	t.chatWindow.recalculateLines()
 }
 
 func (t *tab) Focus() {

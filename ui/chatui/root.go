@@ -27,16 +27,12 @@ type twitchAPI interface {
 	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
 }
 
-type resizeTabContainerMessage struct {
-	Width, Height int
-}
-
 type loadedSaveStateMessage struct {
 	State    save.AppState
 	Accounts []save.Account
 }
 
-func computeTabContainerSize(m *Model) tea.Cmd {
+func computeAndSetTabContainerSize(m *Model) {
 	headerHeight := lipgloss.Height(m.renderTabHeader())
 	containerHeight := m.height
 
@@ -45,11 +41,11 @@ func computeTabContainerSize(m *Model) tea.Cmd {
 	}
 
 	m.logger.Info().Int("height", m.height).Int("header", headerHeight).Int("diff", containerHeight).Send()
-	return func() tea.Msg {
-		return resizeTabContainerMessage{
-			Width:  m.width,
-			Height: containerHeight,
-		}
+
+	for _, tab := range m.tabs {
+		tab.width = m.width
+		tab.height = containerHeight
+		tab.setWidthAndHeight()
 	}
 }
 
@@ -136,12 +132,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tabs[m.activeTabIndex].Focus()
 			}
 		}
-		cmds = append(cmds, computeTabContainerSize(m))
+		computeAndSetTabContainerSize(m)
 
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
-		cmds = append(cmds, computeTabContainerSize(m))
+		computeAndSetTabContainerSize(m)
 
 		// Load save state after the first resize event (A resize will always occur on start up)
 		cmds = append(cmds, func() tea.Msg {
@@ -164,7 +160,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case joinChannelMessage:
 		c := newTab(m.ctx, m.logger.With().Str("channel", msg.channel).Logger(), msg.channel, m.emoteStore, msg.account)
 		m.tabs = append(m.tabs, c)
-		cmds = append(cmds, computeTabContainerSize(m))
+		computeAndSetTabContainerSize(m)
+
 		cmds = append(cmds, c.Init())
 
 		// Blur active tab, if exists
@@ -176,7 +173,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tabs[m.activeTabIndex].Focus()
 		m.screenType = mainScreen
 		m.inputScreen.Blur()
-		cmds = append(cmds, computeTabContainerSize(m))
+		computeAndSetTabContainerSize(m)
 	case removeTabMessage:
 		m.removeTab(msg.id)
 	case tea.KeyMsg:
