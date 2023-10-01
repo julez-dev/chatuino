@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/julez-dev/chatuino/ui/mainui"
 	"os"
 	"os/signal"
 	"syscall"
@@ -47,15 +48,27 @@ func main() {
 			{
 				Name: "new-chat",
 				Action: func(ctx *cli.Context) error {
-					// p := tea.NewProgram(
-					// 	newChatWindow(logger),
-					// 	tea.WithContext(ctx.Context),
-					// 	tea.WithAltScreen(),
-					// )
+					list, err := save.AccountListFromDisk()
+					if err != nil {
+						return fmt.Errorf("error while fetching accounts from disk: %w", err)
+					}
 
-					// if _, err := p.Run(); err != nil {
-					// 	return fmt.Errorf("error while running TUI: %w", err)
-					// }
+					mainAccount, _ := list.GetMainAccount()
+
+					ttvAPI := twitch.NewAPI(nil, mainAccount.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
+					stvAPI := seventv.NewAPI(nil)
+
+					store := emote.NewStore(ttvAPI, stvAPI)
+
+					p := tea.NewProgram(
+						mainui.NewUI(logger, list, &store),
+						tea.WithContext(ctx.Context),
+						tea.WithAltScreen(),
+					)
+
+					if _, err := p.Run(); err != nil {
+						return fmt.Errorf("error while running TUI: %w", err)
+					}
 
 					return nil
 				},

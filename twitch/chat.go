@@ -33,6 +33,11 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 		oauth = "oauth:" + oauth
 	}
 
+	if oauth == "" || user == "" {
+		oauth = AnonymousOAuth
+		user = AnonymousUser
+	}
+
 	ctxWS, cancel := context.WithTimeout(ctx, time.Second*5)
 	defer cancel()
 
@@ -125,11 +130,6 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 			outErr <- err
 		}
 	}()
-
-	if oauth == "" || user == "" {
-		oauth = AnonymousOAuth
-		user = AnonymousUser
-	}
 
 	return out, outErr, nil
 }
