@@ -1,7 +1,9 @@
 package mainui
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -122,6 +124,40 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.moveToBottom()
 			case "t":
 				c.moveToTop()
+			case "f11":
+				// chat
+				type state struct {
+					Lines              []string
+					Cursor             int
+					LineStart, LineEnd int
+					View               string
+					Entries            []*chatEntry
+				}
+
+				dump := state{
+					Lines:     c.lines,
+					Cursor:    c.cursor,
+					LineEnd:   c.lineEnd,
+					LineStart: c.lineStart,
+					View:      c.View(),
+					Entries:   c.entries,
+				}
+
+				f, err := os.Create("chat_dump.txt")
+
+				if err != nil {
+					panic(err)
+				}
+
+				defer f.Close()
+
+				bytes, err := json.Marshal(dump)
+
+				if err != nil {
+					panic(err)
+				}
+
+				f.Write(bytes)
 			}
 		}
 	}

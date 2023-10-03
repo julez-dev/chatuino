@@ -1,6 +1,7 @@
 package twitch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -69,23 +70,32 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 				return err
 			}
 
-			parsed, err := parseIRC(string(message))
-			if err != nil {
-				if errors.Is(err, ErrUnhandledCommand) {
+			// sometimes we get two messages for whatever reason, seperated by \r\n
+			messages := bytes.Split(message, []byte("\r\n"))
+
+			for _, message := range messages {
+				if len(message) == 0 {
 					continue
 				}
 
-				return err
-			}
+				parsed, err := parseIRC(string(message))
+				if err != nil {
+					if errors.Is(err, ErrUnhandledCommand) {
+						continue
+					}
 
-			// automatically respond with pong
-			if _, ok := parsed.(PingMessage); ok {
-				if err := ws.WriteMessage(websocket.TextMessage, []byte("PONG tmi.twitch.tv\r\n")); err != nil {
 					return err
 				}
-			}
 
-			out <- parsed
+				// automatically respond with pong
+				if _, ok := parsed.(PingMessage); ok {
+					if err := ws.WriteMessage(websocket.TextMessage, []byte("PONG tmi.twitch.tv\r\n")); err != nil {
+						return err
+					}
+				}
+
+				out <- parsed
+			}
 		}
 	})
 
