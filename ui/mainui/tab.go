@@ -7,11 +7,13 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
+	"time"
 )
 
 type chatConnectionInitiatedMessage struct {
@@ -40,8 +42,17 @@ type setChannelDataMessage struct {
 	channelID string
 }
 
+type tabState int
+
+const (
+	inChatWindow tabState = iota
+	insertMode
+)
+
 type tab struct {
-	id      string
+	id    string
+	state tabState
+
 	account save.Account
 	focused bool
 
@@ -63,8 +74,11 @@ type tab struct {
 	cancelFunc context.CancelFunc
 
 	// components
-	chatWindow   chatWindow
+	chatWindow   *chatWindow
+	streamInfo   *streamInfo
 	messageInput textinput.Model
+
+	eAutocomplete *autocomplete.Completer
 
 	err error
 }
@@ -78,16 +92,17 @@ func newTab(id string, channel string, width, height int, emoteStore EmoteStore,
 	input.PromptStyle = input.PromptStyle.Foreground(lipgloss.Color("135"))
 
 	return tab{
-		id:           id,
-		width:        width,
-		height:       height,
-		account:      account,
-		ctx:          ctx,
-		cancelFunc:   cancel,
-		channel:      channel,
-		emoteStore:   emoteStore,
-		ttvAPI:       ttvAPI,
-		messageInput: input,
+		id:            id,
+		width:         width,
+		height:        height,
+		account:       account,
+		ctx:           ctx,
+		cancelFunc:    cancel,
+		channel:       channel,
+		emoteStore:    emoteStore,
+		ttvAPI:        ttvAPI,
+		messageInput:  input,
+		eAutocomplete: &autocomplete.Completer{},
 	}
 }
 
@@ -129,7 +144,7 @@ func (t tab) Init() tea.Cmd {
 		if err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      err,
+				err:      fmt.Errorf("error while fetching ttv user %s: %w", t.channel, err),
 			}
 		}
 
@@ -144,7 +159,7 @@ func (t tab) Init() tea.Cmd {
 		if err := t.emoteStore.RefreshLocal(t.ctx, userData.Data[0].ID); err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      err,
+				err:      fmt.Errorf("error while refreshing emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
 			}
 		}
 
@@ -177,7 +192,9 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		t.chatWindow, cmd = t.chatWindow.Update(msg)
+		if t.channelDataLoaded {
+			t.chatWindow, cmd = t.chatWindow.Update(msg)
+		}
 
 		return t, tea.Batch(t.waitTwitchMessage(), cmd)
 	case setChannelDataMessage:
@@ -185,10 +202,21 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		t.channelDataLoaded = true
+		completer := autocomplete.NewCompleter(t.emoteStore.GetAllForUser(msg.channelID))
+		completer.Reset()
 
+		t.eAutocomplete = &completer
+		t.channelDataLoaded = true
 		t.chatWindow = newChatWindow(zerolog.New(io.Discard), t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
-		return t, nil
+
+		if t.focused {
+			t.chatWindow.Focus()
+		}
+
+		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
+		t.handleResize()
+
+		return t, t.streamInfo.Init()
 	case chatConnectionInitiatedMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -220,8 +248,75 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, tea.Batch(cmds...)
 	}
 
-	t.chatWindow, cmd = t.chatWindow.Update(msg)
-	cmds = append(cmds, cmd)
+	if t.channelDataLoaded && t.focused {
+		if t.state == insertMode {
+			t.messageInput, cmd = t.messageInput.Update(msg)
+			cmds = append(cmds, cmd)
+
+			if pos := t.messageInput.Position(); pos > 0 && t.eAutocomplete.HasSearch() {
+				currChar := t.messageInput.Value()[pos-1]
+				if currChar == ' ' {
+					t.eAutocomplete.Reset()
+				}
+			}
+		}
+
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			switch msg.String() {
+			case "tab":
+				if t.state == insertMode {
+					input := t.messageInput.Value()
+					currWord := selectWordAtIndex(input, t.messageInput.Position())
+
+					if !t.eAutocomplete.HasSearch() {
+						t.eAutocomplete.SetSearch(currWord)
+					}
+
+					t.eAutocomplete.Next()
+
+					wordStartIndex, wordEndIndex := indexWordAtIndex(input, t.messageInput.Position())
+
+					newInput := input[:wordStartIndex] + t.eAutocomplete.Current().Text + input[wordEndIndex:]
+					t.messageInput.SetValue(newInput)
+					t.messageInput.SetCursor(wordStartIndex + len(t.eAutocomplete.Current().Text))
+				}
+			case "ctrl+w", " ":
+				if t.state == insertMode {
+					t.eAutocomplete.Reset()
+				}
+			case "i":
+				t.state = insertMode
+				t.messageInput.Focus()
+				t.chatWindow.Blur()
+			case "esc":
+				t.state = inChatWindow
+				t.chatWindow.Focus()
+				t.messageInput.Blur()
+			case "enter":
+				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
+					msg := &twitch.PrivateMessage{
+						In:      t.channel,
+						Message: t.messageInput.Value(),
+						From:    t.account.DisplayName,
+						SentAt:  time.Now(),
+					}
+					t.messagesOut <- msg
+					t.chatWindow.handleMessage(msg)
+					t.messageInput.SetValue("")
+				}
+			}
+		}
+	}
+
+	if t.channelDataLoaded {
+		t.chatWindow, cmd = t.chatWindow.Update(msg)
+		cmds = append(cmds, cmd)
+
+		info, cmd := t.streamInfo.Update(msg)
+		t.streamInfo = &info
+		cmds = append(cmds, cmd)
+	}
 
 	return t, tea.Batch(cmds...)
 }
@@ -249,18 +344,11 @@ func (t tab) View() string {
 			Render("Fetching channel data...")
 	}
 
-	inputView := lipgloss.NewStyle().
-		Width(t.chatWindow.width - 2). // width of the chat window minus the border
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("135")).
-		Render(t.messageInput.View())
-
-	_ = inputView
-
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
+		t.streamInfo.View(),
 		t.chatWindow.View(),
-		//inputView,
+		t.renderMessageInput(),
 	)
 }
 
@@ -287,20 +375,39 @@ func (t tab) waitTwitchMessage() tea.Cmd {
 	}
 }
 
-func (t *tab) handleResize() {
-	heightMessageInput := lipgloss.Height(t.messageInput.View())
+func (t *tab) renderMessageInput() string {
+	return lipgloss.NewStyle().
+		Width(t.width - 2). // width of the chat window minus the border
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("135")).
+		Render(t.messageInput.View())
+}
 
-	t.chatWindow.height = t.height - heightMessageInput - 50
-	t.chatWindow.width = t.width
-	t.chatWindow.recalculateLines()
+func (t *tab) handleResize() {
+	if t.channelDataLoaded {
+		heightMessageInput := lipgloss.Height(t.renderMessageInput())
+
+		t.streamInfo.width = t.width
+		heightInfo := lipgloss.Height(t.streamInfo.View())
+
+		t.chatWindow.height = t.height - heightMessageInput - heightInfo
+		t.chatWindow.width = t.width
+		t.chatWindow.recalculateLines()
+	}
 }
 
 func (t *tab) focus() {
 	t.focused = true
-	t.chatWindow.Focus()
+
+	if t.channelDataLoaded {
+		t.chatWindow.Focus()
+	}
 }
 
 func (t *tab) blur() {
 	t.focused = false
-	t.chatWindow.Blur()
+
+	if t.channelDataLoaded {
+		t.chatWindow.Blur()
+	}
 }

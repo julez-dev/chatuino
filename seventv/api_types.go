@@ -10,7 +10,7 @@ type APIError struct {
 }
 
 func (a APIError) Error() string {
-	return fmt.Sprintf("%s (%d): %s (%d)", a.Status, a.StatusCode, a.ErrorText, a.ErrorCode)
+	return fmt.Sprintf("%s (%d): %s (errcode: %d)", a.Status, a.StatusCode, a.ErrorText, a.ErrorCode)
 }
 
 type (

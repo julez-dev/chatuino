@@ -77,7 +77,7 @@ type chatWindow struct {
 	lines []string
 }
 
-func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore) chatWindow {
+func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore) *chatWindow {
 	c := chatWindow{
 		m:           DefaultKeyMap(),
 		logger:      logger,
@@ -89,23 +89,21 @@ func newChatWindow(logger zerolog.Logger, tabID string, width, height int, chann
 		emoteStore:  emoteStore,
 	}
 
-	return c
+	return &c
 }
 
-func (c chatWindow) Init() tea.Cmd {
+func (c *chatWindow) Init() tea.Cmd {
 	return nil
 }
 
-func (c chatWindow) Update(msg tea.Msg) (chatWindow, tea.Cmd) {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
+func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case recvTwitchMessage:
 		if msg.targetID == c.parentTabID {
 			c.handleMessage(msg.message)
+			c.updatePort()
+			return c, nil
 		}
 	case tea.KeyMsg:
 		if c.focused {
@@ -124,30 +122,23 @@ func (c chatWindow) Update(msg tea.Msg) (chatWindow, tea.Cmd) {
 				c.moveToBottom()
 			case "t":
 				c.moveToTop()
-			case "ctrl+c":
-				return c, tea.Quit
 			}
 		}
 	}
 
-	cmds = append(cmds, cmd)
 	c.updatePort()
 
-	return c, tea.Batch(cmds...)
+	return c, nil
 }
 
-func (c chatWindow) View() string {
-	lines := c.lines[c.lineStart:c.lineEnd]
+func (c *chatWindow) View() string {
+	lines := make([]string, c.height)
+
+	copy(lines, c.lines[c.lineStart:c.lineEnd])
 
 	c.logger.Info().Int("len", len(lines)).Int("start", c.lineStart).Int("end", c.lineEnd).Send()
 
-	contents := lipgloss.NewStyle().
-		Height(c.height).
-		MaxHeight(c.height).
-		MaxWidth(c.width).
-		Render(strings.Join(lines, "\n"))
-
-	return contents
+	return strings.Join(lines, "\n")
 }
 
 func (c *chatWindow) Focus() {

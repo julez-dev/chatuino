@@ -2,13 +2,19 @@ package mainui
 
 import (
 	"context"
+	"fmt"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
+	"io"
+	"os"
 	"slices"
+	"strings"
+	"time"
 )
 
 type AccountProvider interface {
@@ -26,6 +32,7 @@ type AppKeyMap struct {
 	ToggleJoinScreen key.Binding
 	CloseTab         key.Binding
 	EscapeJoinScreen key.Binding
+	DumpScreen       key.Binding
 }
 
 type HeaderKeyMap struct {
@@ -50,6 +57,10 @@ func buildDefaultKeyMap() AppKeyMap {
 		EscapeJoinScreen: key.NewBinding(
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "Close join input"),
+		),
+		DumpScreen: key.NewBinding(
+			key.WithKeys("f12"),
+			key.WithHelp("f12", "Dump curren buffer"),
 		),
 	}
 }
@@ -135,18 +146,62 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		headerHeight := r.getHeaderHeigth()
 
 		nTab := newTab(id, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account)
+		nTab.focus()
+
 		r.tabs = append(r.tabs, nTab)
 
 		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
 		r.header.selectTab(id)
-		nTab.focus()
+
 		r.joinInput.blur()
 
 		r.handleResize()
 
 		return r, nTab.Init()
 	case tea.KeyMsg:
+
+		// Intentionally block the app until all items are saved
 		if key.Matches(msg, r.keymap.Quit) {
+			appState := save.AppState{}
+
+			for _, t := range r.tabs {
+				if t.chatWindow == nil {
+					continue
+				}
+
+				tabState := save.TabState{
+					IsFocused:   t.focused,
+					Channel:     t.channel,
+					IdentityID:  t.account.ID,
+					IRCMessages: make([]*twitch.PrivateMessage, 0, len(t.chatWindow.entries)),
+				}
+
+				relevantEntries := t.chatWindow.entries
+
+				// If the chat holds more than 10 times, only persist the latest 10 to save space
+				if len(relevantEntries) > 10 {
+					relevantEntries = relevantEntries[len(relevantEntries)-10:]
+				}
+
+				tabState.SelectedIndex = len(relevantEntries) - 1 // fallback to last entry if known of the filtered were selected
+				for i, e := range relevantEntries {
+					if msg, ok := e.Message.(*twitch.PrivateMessage); ok {
+						if e.Selected {
+							tabState.SelectedIndex = i
+						}
+
+						tabState.IRCMessages = append(tabState.IRCMessages, msg)
+					}
+				}
+
+				appState.Tabs = append(appState.Tabs, tabState)
+			}
+
+			err := appState.Save()
+			if err != nil {
+				panic(err)
+			}
+
 			return r, tea.Quit
 		}
 
@@ -158,7 +213,23 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				r.joinInput.blur()
 				r.screenType = mainScreen
+
+				return r, nil
 			}
+		}
+
+		if key.Matches(msg, r.keymap.DumpScreen) {
+			f, err := os.Create(fmt.Sprintf("%s_dump.txt", time.Now().Format("2006-01-02_15_04_05")))
+
+			if err != nil {
+				return r, nil
+			}
+
+			defer f.Close()
+
+			io.Copy(f, strings.NewReader(r.View()))
+
+			return r, nil
 		}
 
 		if key.Matches(msg, r.keymap.ToggleJoinScreen) {
@@ -173,7 +244,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.joinInput.focus()
 			case inputScreen:
 				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].blur()
+					r.tabs[r.tabCursor].focus()
 				}
 
 				r.joinInput.blur()
@@ -185,6 +256,11 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if r.screenType == mainScreen {
 			if key.Matches(msg, r.headerKeymap.Next) {
+				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state == insertMode {
+					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
+					return r, cmd
+				}
+
 				r.nextTab()
 			}
 
@@ -193,7 +269,9 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.CloseTab) {
-				r.closeTab()
+				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state == inChatWindow {
+					r.closeTab()
+				}
 			}
 		}
 	}
@@ -251,6 +329,8 @@ func (r *Root) handleResize() {
 
 	for i := range r.tabs {
 		r.tabs[i].height = r.height - headerHeight
+		r.logger.Info().Int("tab-height", r.tabs[i].height).Send()
+
 		r.tabs[i].width = r.width
 		r.tabs[i].handleResize()
 	}
@@ -307,5 +387,6 @@ func (r *Root) closeTab() {
 			return t.id == tabID
 		})
 		r.prevTab()
+		r.handleResize()
 	}
 }

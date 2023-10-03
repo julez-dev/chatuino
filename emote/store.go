@@ -2,7 +2,9 @@ package emote
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -100,6 +102,13 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 	group.Go(func() error {
 		resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
 		if err != nil {
+			var apiErr seventv.APIError
+			if errors.As(err, &apiErr) {
+				if apiErr.StatusCode == http.StatusNotFound {
+					return nil
+				}
+			}
+
 			return err
 		}
 
