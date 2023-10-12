@@ -1,0 +1,28 @@
+{
+  "Lines": [
+    "16:49:04 \u001b[38;2;255;255;255mjulezdev\u001b[0m: 🫰 Hi                                                                                                                                                                                                                                    \u001b[38;5;135;48;5;135m \u001b[0m"
+  ],
+  "Cursor": 0,
+  "LineStart": 0,
+  "LineEnd": 1,
+  "View": "16:49:04 \u001b[38;2;255;255;255mjulezdev\u001b[0m: 🫰 Hi                                                                                                                                                                                                                                    \u001b[38;5;135;48;5;135m \u001b[0m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+  "Entries": [
+    {
+      "Position": {
+        "CursorStart": 0,
+        "CursorEnd": 0
+      },
+      "Selected": true,
+      "Message": {
+        "ID": "8832dd25-97b5-44ba-84e8-ec92989d645b",
+        "ParentThreadID": "",
+        "ParentMsgID": "",
+        "From": "julezdev",
+        "In": "julezdev",
+        "Message": "🫰 Hi",
+        "UserColor": "#FFFFFF",
+        "SentAt": "2023-10-04T16:49:04.331+02:00"
+      }
+    }
+  ]
+}

@@ -85,6 +85,11 @@ const (
 	inputScreen
 )
 
+type setStateMessage struct {
+	state    save.AppState
+	accounts []save.Account
+}
+
 type Root struct {
 	logger        zerolog.Logger
 	width, height int
@@ -125,7 +130,15 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 }
 
 func (r Root) Init() tea.Cmd {
-	return nil
+	return func() tea.Msg {
+		state, err := save.AppStateFromDisk()
+
+		if err != nil {
+			return nil
+		}
+
+		return setStateMessage{state: state, accounts: r.accounts.GetAllWithAnonymous()}
+	}
 }
 
 func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -135,6 +148,48 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case setStateMessage:
+		cmds = make([]tea.Cmd, 0, len(msg.state.Tabs))
+
+		for _, t := range msg.state.Tabs {
+			r.screenType = mainScreen
+
+			var account save.Account
+
+			for _, a := range msg.accounts {
+				if a.ID == t.IdentityID {
+					account = a
+				}
+			}
+
+			if account.ID == "" {
+				continue
+			}
+
+			tabCmds := make([]tea.Cmd, 0, len(t.IRCMessages)+1) // lengths of messages plus length for init message
+
+			id := r.header.addTab(t.Channel, account.DisplayName)
+			headerHeight := r.getHeaderHeigth()
+			nTab := newTab(id, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, t.IRCMessages)
+
+			if t.IsFocused {
+				nTab.focus()
+			}
+
+			tabCmds = append(tabCmds, nTab.Init())
+
+			r.tabs = append(r.tabs, nTab)
+
+			if t.IsFocused {
+				r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
+				r.header.selectTab(id)
+			}
+
+			cmds = append(cmds, tea.Sequence(tabCmds...))
+		}
+
+		r.handleResize()
+		return r, tea.Sequence(cmds...)
 	case tea.WindowSizeMsg:
 		r.width = msg.Width
 		r.height = msg.Height
@@ -145,7 +200,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := r.getHeaderHeigth()
 
-		nTab := newTab(id, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account)
+		nTab := newTab(id, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, nil)
 		nTab.focus()
 
 		r.tabs = append(r.tabs, nTab)

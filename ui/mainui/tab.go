@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"io"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,11 @@ type chatConnectionInitiatedMessage struct {
 }
 
 type recvTwitchMessage struct {
+	targetID string
+	message  twitch.IRCer
+}
+
+type recvTwitchLocalMessage struct {
 	targetID string
 	message  twitch.IRCer
 }
@@ -57,8 +63,10 @@ type tab struct {
 	focused bool
 
 	channelDataLoaded bool
-	channel           string
-	emoteStore        EmoteStore
+	initialMessages   []*twitch.PrivateMessage
+
+	channel    string
+	emoteStore EmoteStore
 
 	width, height int
 
@@ -83,26 +91,36 @@ type tab struct {
 	err error
 }
 
-func newTab(id string, channel string, width, height int, emoteStore EmoteStore, account save.Account) tab {
+func newTab(id string, channel string, width, height int, emoteStore EmoteStore, account save.Account, initialMessages []*twitch.PrivateMessage) tab {
 	ttvAPI := twitch.NewAPI(nil, account.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	input := textinput.New()
+
+	input.Validate = func(s string) error {
+		if strings.ContainsRune(s, '\U0001FAF0') || strings.ContainsRune(s, '\n') {
+			return fmt.Errorf("disallowed input")
+		}
+
+		return nil
+	}
+
 	input.PromptStyle = input.PromptStyle.Foreground(lipgloss.Color("135"))
 
 	return tab{
-		id:            id,
-		width:         width,
-		height:        height,
-		account:       account,
-		ctx:           ctx,
-		cancelFunc:    cancel,
-		channel:       channel,
-		emoteStore:    emoteStore,
-		ttvAPI:        ttvAPI,
-		messageInput:  input,
-		eAutocomplete: &autocomplete.Completer{},
+		id:              id,
+		width:           width,
+		height:          height,
+		account:         account,
+		ctx:             ctx,
+		cancelFunc:      cancel,
+		channel:         channel,
+		emoteStore:      emoteStore,
+		ttvAPI:          ttvAPI,
+		messageInput:    input,
+		eAutocomplete:   &autocomplete.Completer{},
+		initialMessages: initialMessages,
 	}
 }
 
@@ -197,6 +215,16 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		return t, tea.Batch(t.waitTwitchMessage(), cmd)
+	case recvTwitchLocalMessage:
+		if msg.targetID != t.id {
+			return t, nil
+		}
+
+		if t.channelDataLoaded {
+			t.chatWindow, cmd = t.chatWindow.Update(msg)
+		}
+
+		return t, cmd
 	case setChannelDataMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -208,6 +236,12 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.eAutocomplete = &completer
 		t.channelDataLoaded = true
 		t.chatWindow = newChatWindow(zerolog.New(io.Discard), t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
+
+		for _, m := range t.initialMessages {
+			t.chatWindow.handleMessage(m)
+		}
+
+		t.initialMessages = nil
 
 		if t.focused {
 			t.chatWindow.Focus()

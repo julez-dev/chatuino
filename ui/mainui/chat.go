@@ -143,7 +143,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 					Entries:   c.entries,
 				}
 
-				f, err := os.Create("chat_dump.txt")
+				f, err := os.Create("chat_dump.json")
 
 				if err != nil {
 					panic(err)
@@ -351,6 +351,12 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	case *twitch.PrivateMessage:
 		// filter non-printable characters
 		message := strings.Map(func(r rune) rune {
+			// There are a coupe of emojis that cause issues when displaying them
+			// They will always overflow the message width
+			if r == '🫰' {
+				return -1
+			}
+
 			if unicode.IsPrint(r) {
 				return r
 			}
