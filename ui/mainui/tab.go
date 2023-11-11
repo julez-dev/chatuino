@@ -4,17 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
+	"time"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
-	"io"
-	"os"
-	"strings"
-	"time"
 )
 
 type chatConnectionInitiatedMessage struct {
@@ -55,6 +56,11 @@ const (
 	insertMode
 )
 
+type apiClient interface {
+	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
+	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
+}
+
 type tab struct {
 	id    string
 	state tabState
@@ -75,9 +81,9 @@ type tab struct {
 	messagesOut  chan<- twitch.IRCer
 	messagesRecv <-chan twitch.IRCer
 
-	ttvAPI *twitch.API
+	ttvAPI apiClient
 
-	// internal cancelation
+	// internal cancellation
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 
@@ -91,8 +97,31 @@ type tab struct {
 	err error
 }
 
-func newTab(id string, channel string, width, height int, emoteStore EmoteStore, account save.Account, initialMessages []*twitch.PrivateMessage) tab {
-	ttvAPI := twitch.NewAPI(nil, account.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
+func newTab(
+	id,
+	clientID string,
+	serverAPI *server.Client,
+	channel string,
+	width, height int,
+	emoteStore EmoteStore,
+	account save.Account,
+	initialMessages []*twitch.PrivateMessage,
+) (tab, error) {
+	var ttvAPI apiClient
+
+	if account.IsAnonymous {
+		ttvAPI = serverAPI
+	} else {
+		api, err := twitch.NewAPI(
+			clientID,
+			twitch.WithUserAuthentication(account.AccessToken, account.RefreshToken, serverAPI),
+		)
+		if err != nil {
+			return tab{}, fmt.Errorf("error while creating twitch api client: %w", err)
+		}
+
+		ttvAPI = api
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -121,7 +150,7 @@ func newTab(id string, channel string, width, height int, emoteStore EmoteStore,
 		messageInput:    input,
 		eAutocomplete:   &autocomplete.Completer{},
 		initialMessages: initialMessages,
-	}
+	}, nil
 }
 
 func (t tab) Init() tea.Cmd {
@@ -157,7 +186,6 @@ func (t tab) Init() tea.Cmd {
 	})
 
 	cmds = append(cmds, func() tea.Msg {
-
 		userData, err := t.ttvAPI.GetUsers(t.ctx, []string{t.channel}, nil)
 		if err != nil {
 			return setErrorMessage{

@@ -3,19 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/julez-dev/chatuino/ui/mainui"
+	"net/http"
+	"net/mail"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/julez-dev/chatuino/server"
+	"github.com/julez-dev/chatuino/ui/mainui"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/seventv"
-	"github.com/julez-dev/chatuino/twitch"
-	"github.com/julez-dev/chatuino/ui/chatui"
 	"github.com/rs/zerolog"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const logFileName = "log.txt"
@@ -31,47 +33,32 @@ func main() {
 
 	logger := zerolog.New(f).With().Timestamp().Logger()
 
-	app := &cli.App{
+	app := &cli.Command{
 		Name:        "Chatuino",
 		Description: "Chatuino twitch IRC Client",
 		Usage:       "A client for twitch's IRC service",
-		HideVersion: true,
-		Authors: []*cli.Author{
-			{
-				Name:  "julez-dev",
-				Email: "julez-dev@pm.me",
+		// HideVersion: true,
+		Authors: []any{
+			&mail.Address{
+				Name:    "julez-dev",
+				Address: "julez-dev@pm.me",
 			},
 		},
 		Commands: []*cli.Command{
 			versionCMD,
 			accountCMD,
-			{
-				Name: "new-chat",
-				Action: func(ctx *cli.Context) error {
-					list, err := save.AccountListFromDisk()
-					if err != nil {
-						return fmt.Errorf("error while fetching accounts from disk: %w", err)
-					}
-
-					mainAccount, _ := list.GetMainAccount()
-
-					ttvAPI := twitch.NewAPI(nil, mainAccount.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
-					stvAPI := seventv.NewAPI(nil)
-
-					store := emote.NewStore(ttvAPI, stvAPI)
-
-					p := tea.NewProgram(
-						mainui.NewUI(logger, list, &store),
-						tea.WithContext(ctx.Context),
-						tea.WithAltScreen(),
-					)
-
-					if _, err := p.Run(); err != nil {
-						return fmt.Errorf("error while running TUI: %w", err)
-					}
-
-					return nil
-				},
+			serverCMD(zerolog.New(os.Stdout).With().Timestamp().Logger()),
+		},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "client-id",
+				Usage: "OAuth Client-ID",
+				Value: "jliqj1q6nmp0uh5ofangdx4iac7yd9",
+			},
+			&cli.StringFlag{
+				Name:  "api-host",
+				Usage: "Host of the Chatuino API",
+				Value: "http://localhost:8080",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -88,15 +75,13 @@ func main() {
 				}
 			}()
 
-			mainAccount, _ := list.GetMainAccount()
+			serverAPI := server.NewClient(c.String("api-host"), http.DefaultClient)
+			stvAPI := seventv.NewAPI(http.DefaultClient)
 
-			ttvAPI := twitch.NewAPI(nil, mainAccount.AccessToken, os.Getenv("TWITCH_CLIENT_ID"))
-			stvAPI := seventv.NewAPI(nil)
-
-			store := emote.NewStore(ttvAPI, stvAPI)
+			store := emote.NewStore(serverAPI, stvAPI)
 
 			p := tea.NewProgram(
-				chatui.New(c.Context, logger, &store, ttvAPI, list),
+				mainui.NewUI(logger, list, &store, c.String("client-id"), serverAPI),
 				tea.WithContext(c.Context),
 				tea.WithAltScreen(),
 			)
@@ -122,7 +107,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if err := app.RunContext(ctx, os.Args); err != nil {
+	if err := app.Run(ctx, os.Args); err != nil {
 		fmt.Printf("error while running Chatuino: %v", err)
 		os.Exit(1)
 	}

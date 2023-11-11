@@ -57,9 +57,11 @@ type List struct {
 	state         state
 	width, height int
 	err           error
+
+	clientID, apiHost string
 }
 
-func NewList() List {
+func NewList(clientID, apiHost string) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
 		{Title: "Is main", Width: 10},
@@ -86,6 +88,8 @@ func NewList() List {
 	t.SetStyles(s)
 
 	return List{
+		apiHost:  apiHost,
+		clientID: clientID,
 		key: keyMap{
 			Up:   t.KeyMap.LineUp,
 			Down: t.KeyMap.LineDown,
@@ -171,7 +175,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, l.key.Create):
 			if l.state == inTable {
 				l.state = inCreate
-				l.create = newCreateModel(l.width, l.height)
+				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost)
 			} else {
 				l.state = inTable
 			}
@@ -281,7 +285,7 @@ func (l List) addNewAccountRefresh(account save.Account) tea.Cmd {
 		}
 
 		// If this is the first account, add as admin account
-		if len(list.Accounts) < 1 {
+		if len(list.Accounts) < 2 {
 			account.IsMain = true
 		}
 

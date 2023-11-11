@@ -3,7 +3,6 @@ package accountui
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
 )
 
@@ -29,16 +29,18 @@ type setAccountMessage struct {
 }
 
 type createModel struct {
-	state         createState
-	textinput     textinput.Model
-	spinner       spinner.Model
-	width, height int
+	state     createState
+	textinput textinput.Model
+	spinner   spinner.Model
+
+	width, height     int
+	clientID, apiHost string
 
 	err     error
 	account save.Account
 }
 
-func newCreateModel(width, height int) createModel {
+func newCreateModel(width, height int, clientID, apiHost string) createModel {
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()
@@ -49,6 +51,8 @@ func newCreateModel(width, height int) createModel {
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	return createModel{
+		clientID:  clientID,
+		apiHost:   apiHost,
 		textinput: ti,
 		spinner:   s,
 		width:     width,
@@ -135,7 +139,15 @@ func (c createModel) handleSent(input string) tea.Cmd {
 			}
 		}
 
-		api := twitch.NewAPI(nil, split[0], os.Getenv("TWITCH_CLIENT_ID"))
+		api, err := twitch.NewAPI(
+			c.clientID,
+			twitch.WithUserAuthentication(split[0], split[1], server.NewClient(c.apiHost, nil)),
+		)
+		if err != nil {
+			return setAccountMessage{
+				err: err,
+			}
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()

@@ -60,11 +60,14 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 	})
 
 	ws.SetReadLimit(maxMessageSize)
-	ws.SetReadDeadline(time.Time{}) // disable read timeouts
 	ws.SetWriteDeadline(time.Time{})
 
 	wg.Go(func() error {
 		for {
+			if err := ws.SetReadDeadline(time.Now().Add(time.Minute * 6)); err != nil {
+				return err
+			}
+
 			_, message, err := ws.ReadMessage()
 			if err != nil {
 				return err

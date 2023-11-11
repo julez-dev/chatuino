@@ -3,13 +3,13 @@ package mainui
 import (
 	"context"
 	"fmt"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
-	"time"
 )
 
 type setStreamInfo struct {
@@ -22,7 +22,7 @@ type setStreamInfo struct {
 type streamInfo struct {
 	id        string
 	channelID string
-	ttvAPI    *twitch.API
+	ttvAPI    apiClient
 	ctx       context.Context
 
 	width int
@@ -33,7 +33,7 @@ type streamInfo struct {
 	game   string
 }
 
-func newStreamInfo(ctx context.Context, channelID string, ttvAPI *twitch.API, width int) *streamInfo {
+func newStreamInfo(ctx context.Context, channelID string, ttvAPI apiClient, width int) *streamInfo {
 	return &streamInfo{
 		id:        uuid.New().String(),
 		ctx:       ctx,

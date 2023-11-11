@@ -3,18 +3,20 @@ package mainui
 import (
 	"context"
 	"fmt"
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
-	"github.com/rs/zerolog"
 	"io"
 	"os"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/server"
+	"github.com/julez-dev/chatuino/twitch"
+	"github.com/rs/zerolog"
 )
 
 type AccountProvider interface {
@@ -91,7 +93,9 @@ type setStateMessage struct {
 }
 
 type Root struct {
-	logger        zerolog.Logger
+	logger   zerolog.Logger
+	clientID string
+
 	width, height int
 	keymap        AppKeyMap
 	headerKeymap  HeaderKeyMap
@@ -101,6 +105,7 @@ type Root struct {
 	// dependencies
 	accounts   AccountProvider
 	emoteStore EmoteStore
+	serverAPI  *server.Client
 
 	// components
 	splash    splash
@@ -111,8 +116,9 @@ type Root struct {
 	tabs      []tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore) Root {
+func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client) Root {
 	return Root{
+		clientID:     clientID,
 		logger:       logger,
 		width:        10,
 		height:       10,
@@ -126,13 +132,13 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 
 		accounts:   provider,
 		emoteStore: emoteStore,
+		serverAPI:  serverClient,
 	}
 }
 
 func (r Root) Init() tea.Cmd {
 	return func() tea.Msg {
 		state, err := save.AppStateFromDisk()
-
 		if err != nil {
 			return nil
 		}
@@ -170,7 +176,11 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			id := r.header.addTab(t.Channel, account.DisplayName)
 			headerHeight := r.getHeaderHeigth()
-			nTab := newTab(id, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, t.IRCMessages)
+			nTab, err := newTab(id, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, t.IRCMessages)
+			if err != nil {
+				r.logger.Error().Err(err).Send()
+				continue
+			}
 
 			if t.IsFocused {
 				nTab.focus()
@@ -200,7 +210,12 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := r.getHeaderHeigth()
 
-		nTab := newTab(id, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, nil)
+		nTab, err := newTab(id, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, nil)
+		if err != nil {
+			r.logger.Error().Err(err).Send()
+			return r, nil
+		}
+
 		nTab.focus()
 
 		r.tabs = append(r.tabs, nTab)
@@ -216,6 +231,8 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 
 		// Intentionally block the app until all items are saved
+		// TODO: The tea.Run() function returns the final model
+		// 	so we could get the state there which maybe the better way to handle this
 		if key.Matches(msg, r.keymap.Quit) {
 			appState := save.AppState{}
 
@@ -275,7 +292,6 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if key.Matches(msg, r.keymap.DumpScreen) {
 			f, err := os.Create(fmt.Sprintf("%s_dump.txt", time.Now().Format("2006-01-02_15_04_05")))
-
 			if err != nil {
 				return r, nil
 			}
