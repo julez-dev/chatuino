@@ -15,6 +15,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 )
 
@@ -65,11 +66,12 @@ type tab struct {
 	id    string
 	state tabState
 
-	account save.Account
-	focused bool
+	provider AccountProvider
+	account  save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
+	focused  bool
 
 	channelDataLoaded bool
-	initialMessages   []*twitch.PrivateMessage
+	initialMessages   []*command.PrivateMessage
 
 	channel    string
 	emoteStore EmoteStore
@@ -105,7 +107,8 @@ func newTab(
 	width, height int,
 	emoteStore EmoteStore,
 	account save.Account,
-	initialMessages []*twitch.PrivateMessage,
+	accountProvider AccountProvider,
+	initialMessages []*command.PrivateMessage,
 ) (tab, error) {
 	var ttvAPI apiClient
 
@@ -114,7 +117,7 @@ func newTab(
 	} else {
 		api, err := twitch.NewAPI(
 			clientID,
-			twitch.WithUserAuthentication(account.AccessToken, account.RefreshToken, serverAPI),
+			twitch.WithUserAuthentication(accountProvider, serverAPI, account.ID),
 		)
 		if err != nil {
 			return tab{}, fmt.Errorf("error while creating twitch api client: %w", err)
@@ -142,6 +145,7 @@ func newTab(
 		width:           width,
 		height:          height,
 		account:         account,
+		provider:        accountProvider,
 		ctx:             ctx,
 		cancelFunc:      cancel,
 		channel:         channel,
@@ -157,10 +161,18 @@ func (t tab) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
 	cmds = append(cmds, func() tea.Msg {
+		acc, err := t.provider.GetAccountBy(t.account.ID)
+		if err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("error while fetching account data: %w", err),
+			}
+		}
+
 		in := make(chan twitch.IRCer)
 		chat := twitch.NewChat()
 
-		out, errChan, err := chat.Connect(t.ctx, in, t.account.DisplayName, t.account.AccessToken)
+		out, errChan, err := chat.Connect(t.ctx, in, acc.DisplayName, acc.AccessToken)
 		if err != nil {
 			close(in)
 			return chatConnectionInitiatedMessage{
@@ -169,7 +181,7 @@ func (t tab) Init() tea.Cmd {
 			}
 		}
 
-		in <- twitch.JoinMessage{Channel: t.channel}
+		in <- command.JoinMessage{Channel: t.channel}
 
 		go func() {
 			<-t.ctx.Done()
@@ -357,7 +369,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.messageInput.Blur()
 			case "enter":
 				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
-					msg := &twitch.PrivateMessage{
+					msg := &command.PrivateMessage{
 						In:      t.channel,
 						Message: t.messageInput.Value(),
 						From:    t.account.DisplayName,

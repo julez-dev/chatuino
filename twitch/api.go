@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/julez-dev/chatuino/save"
 )
 
 var (
@@ -27,6 +29,11 @@ const baseURL = "https://api.twitch.tv/helix"
 
 type TokenRefresher interface {
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+}
+
+type AccountProvider interface {
+	GetAccountBy(id string) (save.Account, error)
+	UpdateTokensFor(id, accessToken, refreshToken string) error
 }
 
 type APIOptionFunc func(api *API) error
@@ -45,19 +52,11 @@ func WithClientSecret(secret string) APIOptionFunc {
 	}
 }
 
-func WithUserAuthentication(token, refreshToken string, refresher TokenRefresher) APIOptionFunc {
+func WithUserAuthentication(provider AccountProvider, refresher TokenRefresher, accountID string) APIOptionFunc {
 	return func(api *API) error {
-		if refreshToken == "" {
-			return ErrUserRefreshToken
-		}
-
-		if refresher == nil {
-			return ErrNoRefresher
-		}
-
-		api.userAccessToken = token
-		api.userRefreshToken = refreshToken
 		api.refresher = refresher
+		api.provider = provider
+		api.accountID = accountID
 		return nil
 	}
 }
@@ -65,10 +64,11 @@ func WithUserAuthentication(token, refreshToken string, refresher TokenRefresher
 type API struct {
 	client *http.Client
 
-	userAccessToken  string
-	userRefreshToken string
-	refresher        TokenRefresher
-	m                *sync.Mutex
+	provider  AccountProvider
+	refresher TokenRefresher
+	accountID string
+
+	m *sync.Mutex
 
 	appAccessToken string
 
@@ -86,10 +86,6 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 		if err := f(api); err != nil {
 			return nil, err
 		}
-	}
-
-	if api.userAccessToken == "" && api.clientSecret == "" {
-		return nil, ErrNoAuthProvided
 	}
 
 	if api.client == nil {
@@ -116,7 +112,7 @@ func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (User
 
 	url := fmt.Sprintf("/users?%s", values.Encode())
 
-	if a.userAccessToken != "" {
+	if a.provider != nil {
 		resp, err = doAuthenticatedUserRequest[UserResponse](ctx, a, http.MethodGet, url, nil)
 	} else {
 		resp, err = doAuthenticatedAppRequest[UserResponse](ctx, a, http.MethodGet, url, nil)
@@ -144,7 +140,7 @@ func (a *API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStrea
 		err  error
 	)
 
-	if a.userAccessToken != "" {
+	if a.provider != nil {
 		resp, err = doAuthenticatedUserRequest[GetStreamsResponse](ctx, a, http.MethodGet, url, nil)
 	} else {
 		resp, err = doAuthenticatedAppRequest[GetStreamsResponse](ctx, a, http.MethodGet, url, nil)
@@ -164,7 +160,7 @@ func (a *API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 
 	url := "/chat/emotes/global"
 
-	if a.userAccessToken != "" {
+	if a.provider != nil {
 		resp, err = doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, url, nil)
 	} else {
 		resp, err = doAuthenticatedAppRequest[EmoteResponse](ctx, a, http.MethodGet, url, nil)
@@ -183,7 +179,7 @@ func (a *API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteRe
 	)
 
 	// /chat/emotes?broadcaster_id=141981764
-	if a.userAccessToken != "" {
+	if a.provider != nil {
 		resp, err = doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
 	} else {
 		resp, err = doAuthenticatedAppRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
@@ -273,25 +269,33 @@ func doAuthenticatedAppRequest[T any](ctx context.Context, api *API, method, url
 }
 
 func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, url string, body io.Reader) (T, error) {
+	user, err := api.provider.GetAccountBy(api.accountID)
+	if err != nil {
+		var d T
+		return d, err
+	}
+
 	api.m.Lock()
 	defer api.m.Unlock()
 
-	resp, err := doAuthenticatedRequest[T](ctx, api, api.userAccessToken, method, url, body)
+	resp, err := doAuthenticatedRequest[T](ctx, api, user.AccessToken, method, url, body)
 	if err != nil {
 		apiErr := APIError{}
 		// Unauthorized - the access token may be expired
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
 			// refresh tokens
-			accessToken, refreshToken, err := api.refresher.RefreshToken(ctx, api.userRefreshToken)
+			accessToken, refreshToken, err := api.refresher.RefreshToken(ctx, user.RefreshToken)
 			if err != nil {
 				return resp, err
 			}
 
-			api.userAccessToken = accessToken
-			api.userRefreshToken = refreshToken
+			// persists new tokens
+			if err := api.provider.UpdateTokensFor(user.ID, accessToken, refreshToken); err != nil {
+				return resp, err
+			}
 
 			// retry request
-			return doAuthenticatedRequest[T](ctx, api, api.userAccessToken, method, url, body)
+			return doAuthenticatedRequest[T](ctx, api, accessToken, method, url, body)
 		}
 
 		return resp, err

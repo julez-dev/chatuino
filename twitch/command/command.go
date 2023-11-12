@@ -1,4 +1,4 @@
-package twitch
+package command
 
 import (
 	"fmt"

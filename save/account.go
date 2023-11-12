@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch"
 	"golang.org/x/exp/slices"
 )
 
@@ -23,8 +22,8 @@ var anonymousAccount = Account{
 	ID:          "anonymous-account",
 	IsMain:      false,
 	IsAnonymous: true,
-	DisplayName: twitch.AnonymousUser,
-	AccessToken: twitch.AnonymousOAuth,
+	DisplayName: "justinfan123123",
+	AccessToken: "oauth:123123123",
 	CreatedAt:   time.Now(),
 }
 

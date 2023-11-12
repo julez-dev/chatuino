@@ -16,7 +16,7 @@ var accountCMD = &cli.Command{
 		&cli.StringFlag{
 			Name:  "api-host",
 			Usage: "Host of the Chatuino API",
-			Value: "http://localhost:8080",
+			Value: "https://chatuino-server.onrender.com",
 		},
 		&cli.StringFlag{
 			Name:     "client-id",

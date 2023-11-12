@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/ui/mainui"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/seventv"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
@@ -58,30 +58,18 @@ func main() {
 			&cli.StringFlag{
 				Name:  "api-host",
 				Usage: "Host of the Chatuino API",
-				Value: "http://localhost:8080",
+				Value: "https://chatuino-server.onrender.com",
 			},
 		},
 		Action: func(c *cli.Context) error {
-			list, err := save.AccountListFromDisk()
-			if err != nil {
-				return fmt.Errorf("error while fetching accounts from disk: %w", err)
-			}
-
-			defer func() {
-				err = list.Save()
-				if err != nil {
-					fmt.Printf("error while saving save file: %v", err)
-					os.Exit(1)
-				}
-			}()
-
+			accountProvider := save.NewAccountProvider()
 			serverAPI := server.NewClient(c.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 
 			store := emote.NewStore(serverAPI, stvAPI)
 
 			p := tea.NewProgram(
-				mainui.NewUI(logger, list, &store, c.String("client-id"), serverAPI),
+				mainui.NewUI(logger, accountProvider, &store, c.String("client-id"), serverAPI),
 				tea.WithContext(c.Context),
 				tea.WithAltScreen(),
 			)

@@ -2,13 +2,14 @@ package mainui
 
 import (
 	"fmt"
+	"unicode"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
-	"unicode"
 )
 
 type JoinKeyMap struct {
@@ -49,18 +50,21 @@ type joinChannelMessage struct {
 	account save.Account
 }
 
+type setAccountsMessage struct {
+	accounts []save.Account
+}
 type join struct {
 	focused       bool
 	width, height int
 	input         textinput.Model
 	list          list.Model
 	selectedInput currentJoinInput
-
-	keymap   JoinKeyMap
-	accounts []save.Account
+	accounts      []save.Account
+	keymap        JoinKeyMap
+	provider      AccountProvider
 }
 
-func newJoin(accounts []save.Account, width, height int) join {
+func newJoin(provider AccountProvider, width, height int) join {
 	input := textinput.New()
 	input.Placeholder = "Channel"
 	input.CharLimit = 25
@@ -75,24 +79,9 @@ func newJoin(accounts []save.Account, width, height int) join {
 	}
 	input.Prompt = ""
 
-	listItems := make([]list.Item, 0, len(accounts))
-	var mainAccountIndex int
+	list := list.New(nil, list.NewDefaultDelegate(), width, height/2)
 
-	for i, a := range accounts {
-		name := a.DisplayName
-		if a.IsAnonymous {
-			name = "Anonymous"
-		}
-
-		listItems = append(listItems, listItem{title: name})
-		if a.IsMain {
-			mainAccountIndex = i
-		}
-	}
-
-	list := list.New(listItems, list.NewDefaultDelegate(), width, height/2)
-
-	list.Select(mainAccountIndex)
+	list.Select(0)
 	list.SetShowHelp(false)
 	list.SetShowPagination(false)
 	list.SetShowTitle(false)
@@ -103,14 +92,27 @@ func newJoin(accounts []save.Account, width, height int) join {
 		width:    width,
 		height:   height,
 		input:    input,
-		accounts: accounts,
+		provider: provider,
 		list:     list,
 		keymap:   buildDefaultJoinKeyMap(),
 	}
 }
 
 func (j join) Init() tea.Cmd {
-	return nil
+	return func() tea.Msg {
+		accounts, err := j.provider.GetAllAccounts()
+		if err != nil {
+			return nil
+		}
+
+		for i, a := range accounts {
+			if a.IsAnonymous {
+				accounts[i].DisplayName = "Anonymous"
+			}
+		}
+
+		return setAccountsMessage{accounts: accounts}
+	}
 }
 
 func (j join) Update(msg tea.Msg) (join, tea.Cmd) {
@@ -121,6 +123,22 @@ func (j join) Update(msg tea.Msg) (join, tea.Cmd) {
 
 	if j.focused {
 		switch msg := msg.(type) {
+		case setAccountsMessage:
+			j.accounts = msg.accounts
+			listItems := make([]list.Item, 0, len(j.accounts))
+
+			var index int
+			for i, a := range j.accounts {
+				listItems = append(listItems, listItem{title: a.DisplayName})
+
+				if a.IsMain {
+					index = i
+				}
+			}
+
+			j.list.SetItems(listItems)
+			j.list.Select(index)
+			return j, nil
 		case tea.KeyMsg:
 			if key.Matches(msg, j.keymap.FieldSelect) {
 				if j.selectedInput == channelInput {
@@ -160,7 +178,7 @@ func (j join) View() string {
 		MaxHeight(j.height).
 		Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("135")).
 		AlignHorizontal(lipgloss.Center)
-	//AlignVertical(lipgloss.Center)
+	// AlignVertical(lipgloss.Center)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render
 	labelIdentityStyle := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render

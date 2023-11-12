@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/julez-dev/chatuino/twitch/command"
 )
 
 var (
@@ -135,7 +137,7 @@ func parseIRC(message string) (IRCer, error) {
 
 	switch c.Command {
 	case "PRIVMSG":
-		p := PrivateMessage{
+		p := command.PrivateMessage{
 			ID:             string(c.tags["id"]),
 			ParentThreadID: string(c.tags["reply-thread-parent-msg-id"]),
 			ParentMsgID:    string(c.tags["reply-parent-msg-id"]),
@@ -148,7 +150,7 @@ func parseIRC(message string) (IRCer, error) {
 
 		return &p, nil
 	case "PING":
-		return PingMessage{}, nil
+		return command.PingMessage{}, nil
 	}
 
 	return nil, ErrUnhandledCommand

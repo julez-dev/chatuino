@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/julez-dev/chatuino/twitch/command"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -91,7 +92,7 @@ func (c *Chat) Connect(ctx context.Context, messages <-chan IRCer, user, oauth s
 				}
 
 				// automatically respond with pong
-				if _, ok := parsed.(PingMessage); ok {
+				if _, ok := parsed.(command.PingMessage); ok {
 					if err := ws.WriteMessage(websocket.TextMessage, []byte("PONG tmi.twitch.tv\r\n")); err != nil {
 						return err
 					}

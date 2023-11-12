@@ -15,12 +15,14 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 )
 
 type AccountProvider interface {
-	GetAllWithAnonymous() []save.Account
+	GetAllAccounts() ([]save.Account, error)
+	UpdateTokensFor(id, accessToken, refreshToken string) error
+	GetAccountBy(id string) (save.Account, error)
 }
 
 type EmoteStore interface {
@@ -128,7 +130,7 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 		// components
 		splash:    splash{},
 		header:    newTabHeader(),
-		joinInput: newJoin(provider.GetAllWithAnonymous(), 10, 10),
+		joinInput: newJoin(provider, 10, 10),
 
 		accounts:   provider,
 		emoteStore: emoteStore,
@@ -137,14 +139,22 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 }
 
 func (r Root) Init() tea.Cmd {
-	return func() tea.Msg {
-		state, err := save.AppStateFromDisk()
-		if err != nil {
-			return nil
-		}
+	return tea.Batch(
+		func() tea.Msg {
+			state, err := save.AppStateFromDisk()
+			if err != nil {
+				return nil
+			}
 
-		return setStateMessage{state: state, accounts: r.accounts.GetAllWithAnonymous()}
-	}
+			accounts, err := r.accounts.GetAllAccounts()
+			if err != nil {
+				return nil
+			}
+
+			return setStateMessage{state: state, accounts: accounts}
+		},
+		r.joinInput.Init(),
+	)
 }
 
 func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -174,9 +184,15 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			tabCmds := make([]tea.Cmd, 0, len(t.IRCMessages)+1) // lengths of messages plus length for init message
 
-			id := r.header.addTab(t.Channel, account.DisplayName)
+			identity := account.DisplayName
+
+			if account.IsAnonymous {
+				identity = "Anonymous"
+			}
+
+			id := r.header.addTab(t.Channel, identity)
 			headerHeight := r.getHeaderHeigth()
-			nTab, err := newTab(id, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, t.IRCMessages)
+			nTab, err := newTab(id, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages)
 			if err != nil {
 				r.logger.Error().Err(err).Send()
 				continue
@@ -206,11 +222,18 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.handleResize()
 	case joinChannelMessage:
 		r.screenType = mainScreen
-		id := r.header.addTab(msg.channel, msg.account.DisplayName)
+
+		identity := msg.account.DisplayName
+
+		if msg.account.IsAnonymous {
+			identity = "Anonymous"
+		}
+
+		id := r.header.addTab(msg.channel, identity)
 
 		headerHeight := r.getHeaderHeigth()
 
-		nTab, err := newTab(id, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, nil)
+		nTab, err := newTab(id, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil)
 		if err != nil {
 			r.logger.Error().Err(err).Send()
 			return r, nil
@@ -245,7 +268,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					IsFocused:   t.focused,
 					Channel:     t.channel,
 					IdentityID:  t.account.ID,
-					IRCMessages: make([]*twitch.PrivateMessage, 0, len(t.chatWindow.entries)),
+					IRCMessages: make([]*command.PrivateMessage, 0, len(t.chatWindow.entries)),
 				}
 
 				relevantEntries := t.chatWindow.entries
@@ -257,7 +280,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				tabState.SelectedIndex = len(relevantEntries) - 1 // fallback to last entry if known of the filtered were selected
 				for i, e := range relevantEntries {
-					if msg, ok := e.Message.(*twitch.PrivateMessage); ok {
+					if msg, ok := e.Message.(*command.PrivateMessage); ok {
 						if e.Selected {
 							tabState.SelectedIndex = i
 						}
@@ -311,8 +334,9 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.screenType = inputScreen
-				r.joinInput = newJoin(r.accounts.GetAllWithAnonymous(), r.width, r.height)
+				r.joinInput = newJoin(r.accounts, r.width, r.height)
 				r.joinInput.focus()
+				return r, r.joinInput.Init()
 			case inputScreen:
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].focus()

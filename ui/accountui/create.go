@@ -141,7 +141,7 @@ func (c createModel) handleSent(input string) tea.Cmd {
 
 		api, err := twitch.NewAPI(
 			c.clientID,
-			twitch.WithUserAuthentication(split[0], split[1], server.NewClient(c.apiHost, nil)),
+			twitch.WithUserAuthentication(save.NewAccountProvider(), server.NewClient(c.apiHost, nil), c.account.ID),
 		)
 		if err != nil {
 			return setAccountMessage{

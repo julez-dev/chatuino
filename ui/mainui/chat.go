@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
@@ -99,7 +100,6 @@ func (c *chatWindow) Init() tea.Cmd {
 }
 
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
-
 	switch msg := msg.(type) {
 	case recvTwitchMessage:
 		if msg.targetID == c.parentTabID {
@@ -144,7 +144,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				}
 
 				f, err := os.Create("chat_dump.json")
-
 				if err != nil {
 					panic(err)
 				}
@@ -152,7 +151,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				defer f.Close()
 
 				bytes, err := json.Marshal(dump)
-
 				if err != nil {
 					panic(err)
 				}
@@ -303,7 +301,7 @@ func (c *chatWindow) markSelectedMessages() {
 }
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
-	if msg, ok := msg.(*twitch.PrivateMessage); ok {
+	if msg, ok := msg.(*command.PrivateMessage); ok {
 		if len(c.entries) > cleanupThreshold {
 			_, currentEntry := c.entryForCurrentCursor()
 
@@ -348,7 +346,7 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 
 func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	switch msg := msg.(type) {
-	case *twitch.PrivateMessage:
+	case *command.PrivateMessage:
 		// filter non-printable characters
 		message := strings.Map(func(r rune) rune {
 			// There are a coupe of emojis that cause issues when displaying them
