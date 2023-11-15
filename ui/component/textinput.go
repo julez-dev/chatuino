@@ -2,7 +2,6 @@ package component
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 
@@ -11,12 +10,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/rs/zerolog"
-)
-
-var (
-	f, _   = os.OpenFile("log.txt", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
-	logger = zerolog.New(f)
 )
 
 // KeyMap is the key bindings for different actions within the textinput.
@@ -83,7 +76,6 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 				tiVal := s.ti.Value()
 
 				_, start, end := selectWordAtIndex(tiVal, s.ti.Position())
-				logger.Info().Int("start", start).Int("end", end).Send()
 				before := tiVal[:start]
 				after := tiVal[end:]
 

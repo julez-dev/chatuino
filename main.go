@@ -22,63 +22,6 @@ import (
 
 const logFileName = "log.txt"
 
-// type (
-// 	errMsg error
-// )
-
-// type model struct {
-// 	textInput *component.SuggestionTextInput
-// 	err       error
-// }
-
-// func initialModel() model {
-// 	ti := component.NewSuggestionTextInput()
-// 	ti.Focus()
-// 	ti.SetWidth(20)
-
-// 	return model{
-// 		textInput: &ti,
-// 		err:       nil,
-// 	}
-// }
-
-// func (m model) Init() tea.Cmd {
-// 	return textinput.Blink
-// }
-
-// func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-// 	var cmd tea.Cmd
-
-// 	switch msg := msg.(type) {
-// 	case tea.KeyMsg:
-// 		switch msg.Type {
-// 		case tea.KeyEnter, tea.KeyCtrlC, tea.KeyEsc:
-// 			return m, tea.Quit
-// 		}
-
-// 		switch msg.String() {
-// 		case "f1":
-// 			m.textInput.SetSuggestions([]string{"KEKW"})
-// 		}
-
-// 	// We handle errors just like any other message
-// 	case errMsg:
-// 		m.err = msg
-// 		return m, nil
-// 	}
-
-// 	m.textInput, cmd = m.textInput.Update(msg)
-// 	return m, cmd
-// }
-
-// func (m model) View() string {
-// 	return fmt.Sprintf(
-// 		"What’s your favorite Pokémon?\n\n%s\n\n%s",
-// 		m.textInput.View(),
-// 		"(esc to quit)",
-// 	) + "\n"
-// }
-
 func main() {
 	f, err := setupLogFile()
 	if err != nil {
