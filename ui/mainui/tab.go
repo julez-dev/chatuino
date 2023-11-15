@@ -5,17 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/emote/autocomplete"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/rs/zerolog"
 )
 
@@ -92,9 +90,7 @@ type tab struct {
 	// components
 	chatWindow   *chatWindow
 	streamInfo   *streamInfo
-	messageInput textinput.Model
-
-	eAutocomplete *autocomplete.Completer
+	messageInput *component.SuggestionTextInput
 
 	err error
 }
@@ -128,17 +124,7 @@ func newTab(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	input := textinput.New()
-
-	input.Validate = func(s string) error {
-		if strings.ContainsRune(s, '\U0001FAF0') || strings.ContainsRune(s, '\n') {
-			return fmt.Errorf("disallowed input")
-		}
-
-		return nil
-	}
-
-	input.PromptStyle = input.PromptStyle.Foreground(lipgloss.Color("135"))
+	input := component.NewSuggestionTextInput()
 
 	return tab{
 		id:              id,
@@ -152,7 +138,6 @@ func newTab(
 		emoteStore:      emoteStore,
 		ttvAPI:          ttvAPI,
 		messageInput:    input,
-		eAutocomplete:   &autocomplete.Completer{},
 		initialMessages: initialMessages,
 	}, nil
 }
@@ -270,10 +255,17 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		completer := autocomplete.NewCompleter(t.emoteStore.GetAllForUser(msg.channelID))
-		completer.Reset()
+		if !t.account.IsAnonymous {
+			emoteSet := t.emoteStore.GetAllForUser(msg.channelID)
+			suggestions := make([]string, 0, len(emoteSet))
 
-		t.eAutocomplete = &completer
+			for _, emote := range emoteSet {
+				suggestions = append(suggestions, emote.Text)
+			}
+
+			t.messageInput.SetSuggestions(suggestions)
+		}
+
 		t.channelDataLoaded = true
 		t.chatWindow = newChatWindow(zerolog.New(io.Discard), t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
 
@@ -326,47 +318,23 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		if t.state == insertMode {
 			t.messageInput, cmd = t.messageInput.Update(msg)
 			cmds = append(cmds, cmd)
-
-			if pos := t.messageInput.Position(); pos > 0 && t.eAutocomplete.HasSearch() {
-				currChar := t.messageInput.Value()[pos-1]
-				if currChar == ' ' {
-					t.eAutocomplete.Reset()
-				}
-			}
 		}
 
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
-			case "tab":
-				if t.state == insertMode {
-					input := t.messageInput.Value()
-					currWord := selectWordAtIndex(input, t.messageInput.Position())
-
-					if !t.eAutocomplete.HasSearch() {
-						t.eAutocomplete.SetSearch(currWord)
-					}
-
-					t.eAutocomplete.Next()
-
-					wordStartIndex, wordEndIndex := indexWordAtIndex(input, t.messageInput.Position())
-
-					newInput := input[:wordStartIndex] + t.eAutocomplete.Current().Text + input[wordEndIndex:]
-					t.messageInput.SetValue(newInput)
-					t.messageInput.SetCursor(wordStartIndex + len(t.eAutocomplete.Current().Text))
-				}
-			case "ctrl+w", " ":
-				if t.state == insertMode {
-					t.eAutocomplete.Reset()
-				}
 			case "i":
-				t.state = insertMode
-				t.messageInput.Focus()
-				t.chatWindow.Blur()
+				if !t.account.IsAnonymous {
+					t.state = insertMode
+					t.messageInput.Focus()
+					t.chatWindow.Blur()
+				}
 			case "esc":
-				t.state = inChatWindow
-				t.chatWindow.Focus()
-				t.messageInput.Blur()
+				if !t.account.IsAnonymous {
+					t.state = inChatWindow
+					t.chatWindow.Focus()
+					t.messageInput.Blur()
+				}
 			case "enter":
 				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
 					msg := &command.PrivateMessage{
@@ -450,6 +418,10 @@ func (t tab) waitTwitchMessage() tea.Cmd {
 }
 
 func (t *tab) renderMessageInput() string {
+	if t.account.IsAnonymous {
+		return ""
+	}
+
 	return lipgloss.NewStyle().
 		Width(t.width - 2). // width of the chat window minus the border
 		Border(lipgloss.NormalBorder()).
