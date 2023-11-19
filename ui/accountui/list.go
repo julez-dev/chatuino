@@ -2,6 +2,7 @@ package accountui
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -11,6 +12,14 @@ import (
 	"github.com/julez-dev/chatuino/save"
 )
 
+type AccountProvider interface {
+	GetAllAccounts() ([]save.Account, error)
+	UpdateTokensFor(id, accessToken, refreshToken string) error
+	MarkAccountAsMain(id string) error
+	Remove(id string) error
+	Add(account save.Account) error
+}
+
 type state int
 
 const (
@@ -18,9 +27,9 @@ const (
 	inCreate
 )
 
-type setAccountListMessage struct {
-	err         error
-	accountList save.AccountList
+type setAccountsMessage struct {
+	err      error
+	accounts []save.Account
 }
 
 var baseStyle = lipgloss.NewStyle().
@@ -49,19 +58,19 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 type List struct {
-	key           keyMap
-	accountList   save.AccountList
-	table         table.Model
-	create        createModel
-	tableHelp     help.Model
-	state         state
-	width, height int
-	err           error
+	key             keyMap
+	accountProvider AccountProvider
+	table           table.Model
+	create          createModel
+	tableHelp       help.Model
+	state           state
+	width, height   int
+	err             error
 
 	clientID, apiHost string
 }
 
-func NewList(clientID, apiHost string) List {
+func NewList(clientID, apiHost string, accountProvider AccountProvider) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
 		{Title: "Is main", Width: 10},
@@ -88,8 +97,9 @@ func NewList(clientID, apiHost string) List {
 	t.SetStyles(s)
 
 	return List{
-		apiHost:  apiHost,
-		clientID: clientID,
+		apiHost:         apiHost,
+		clientID:        clientID,
+		accountProvider: accountProvider,
 		key: keyMap{
 			Up:   t.KeyMap.LineUp,
 			Down: t.KeyMap.LineDown,
@@ -121,10 +131,10 @@ func NewList(clientID, apiHost string) List {
 
 func (l List) Init() tea.Cmd {
 	return func() tea.Msg {
-		accountList, err := save.AccountListFromDisk()
-		return setAccountListMessage{
-			err:         err,
-			accountList: accountList,
+		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
+		return setAccountsMessage{
+			err:      err,
+			accounts: accounts,
 		}
 	}
 }
@@ -154,15 +164,18 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case setAccountMessage:
 		l.err = msg.err
 		l.state = inTable
-		cmds = append(cmds, l.addNewAccountRefresh(msg.account))
+
+		if msg.err == nil {
+			cmds = append(cmds, l.addNewAccountRefresh(msg.account))
+		}
+
 		return l, tea.Batch(cmds...)
 
-	case setAccountListMessage:
+	case setAccountsMessage:
 		l.err = msg.err
-		l.accountList = msg.accountList
-		rows := make([]table.Row, 0, len(msg.accountList.Accounts))
+		rows := make([]table.Row, 0, len(msg.accounts))
 
-		for _, acc := range msg.accountList.GetAll() {
+		for _, acc := range msg.accounts {
 			rows = append(rows, table.Row{
 				acc.ID, fmt.Sprintf("%v", acc.IsMain), acc.DisplayName, acc.CreatedAt.Local().Format("02.01.2006 15:04"),
 			})
@@ -229,77 +242,77 @@ func (l List) View() string {
 
 func (l List) markAccountMain(id string) tea.Cmd {
 	return func() tea.Msg {
-		list, err := save.AccountListFromDisk()
+		err := l.accountProvider.MarkAccountAsMain(id)
 		if err != nil {
-			return setAccountListMessage{
+			return setAccountsMessage{
 				err: err,
 			}
 		}
 
-		list.MarkAsMain(id)
-
-		err = list.Save()
+		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
 		if err != nil {
-			return setAccountListMessage{
+			return setAccountsMessage{
 				err: err,
 			}
 		}
 
-		return setAccountListMessage{
-			accountList: list,
+		return setAccountsMessage{
+			accounts: accounts,
 		}
 	}
 }
 
 func (l List) removeAccountRefresh(id string) tea.Cmd {
 	return func() tea.Msg {
-		list, err := save.AccountListFromDisk()
-		if err != nil {
-			return setAccountListMessage{
+		if err := l.accountProvider.Remove(id); err != nil {
+			return setAccountsMessage{
 				err: err,
 			}
 		}
 
-		list.Remove(id)
-
-		err = list.Save()
+		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
 		if err != nil {
-			return setAccountListMessage{
+			return setAccountsMessage{
 				err: err,
 			}
 		}
 
-		return setAccountListMessage{
-			accountList: list,
+		return setAccountsMessage{
+			accounts: accounts,
 		}
 	}
 }
 
 func (l List) addNewAccountRefresh(account save.Account) tea.Cmd {
 	return func() tea.Msg {
-		list, err := save.AccountListFromDisk()
-		if err != nil {
-			return setAccountListMessage{
+		if err := l.accountProvider.Add(account); err != nil {
+			return setAccountsMessage{
 				err: err,
 			}
 		}
 
-		// If this is the first account, add as admin account
-		if len(list.Accounts) < 2 {
-			account.IsMain = true
-		}
-
-		list.Upsert(account)
-
-		err = list.Save()
+		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
 		if err != nil {
-			return setAccountListMessage{
+			return setAccountsMessage{
 				err: err,
 			}
 		}
 
-		return setAccountListMessage{
-			accountList: list,
+		return setAccountsMessage{
+			accounts: accounts,
 		}
 	}
+}
+
+func fetchAccountsNonAnonymous(provider AccountProvider) ([]save.Account, error) {
+	accounts, err := provider.GetAllAccounts()
+	if err != nil {
+		return nil, err
+	}
+
+	accounts = slices.DeleteFunc(accounts, func(a save.Account) bool {
+		return a.IsAnonymous
+	})
+
+	return accounts, nil
 }

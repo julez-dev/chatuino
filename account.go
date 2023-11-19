@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/accountui"
 	"github.com/urfave/cli/v3"
 )
@@ -27,7 +28,7 @@ var accountCMD = &cli.Command{
 	},
 	Action: func(ctx *cli.Context) error {
 		p := tea.NewProgram(
-			accountui.NewList(ctx.String("client-id"), ctx.String("api-host")),
+			accountui.NewList(ctx.String("client-id"), ctx.String("api-host"), save.NewAccountProvider()),
 			tea.WithContext(ctx.Context),
 			tea.WithAltScreen(),
 		)

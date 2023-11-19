@@ -139,9 +139,18 @@ func (c createModel) handleSent(input string) tea.Cmd {
 			}
 		}
 
+		tmpAccount := &save.Account{
+			ID:           "temp-static-account",
+			AccessToken:  split[0],
+			RefreshToken: split[1],
+		}
+
 		api, err := twitch.NewAPI(
 			c.clientID,
-			twitch.WithUserAuthentication(save.NewAccountProvider(), server.NewClient(c.apiHost, nil), c.account.ID),
+			twitch.WithUserAuthentication(newStaticAccountProvider(tmpAccount),
+				server.NewClient(c.apiHost, nil),
+				tmpAccount.ID,
+			),
 		)
 		if err != nil {
 			return setAccountMessage{
@@ -169,8 +178,8 @@ func (c createModel) handleSent(input string) tea.Cmd {
 			account: save.Account{
 				ID:           resp.Data[0].ID,
 				DisplayName:  resp.Data[0].DisplayName,
-				AccessToken:  split[0],
-				RefreshToken: split[1],
+				AccessToken:  tmpAccount.AccessToken,
+				RefreshToken: tmpAccount.RefreshToken,
 				CreatedAt:    time.Now(),
 			},
 		}

@@ -5,11 +5,38 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"time"
 )
 
+const (
+	chatuinoConfigDir = "chatuino"
+	accountFileName   = "accounts.json"
+)
+
 var ErrAccountNotFound = errors.New("account not found")
+
+var anonymousAccount = Account{
+	ID:          "anonymous-account",
+	IsMain:      false,
+	IsAnonymous: true,
+	DisplayName: "justinfan123123",
+	AccessToken: "oauth:123123123",
+	CreatedAt:   time.Now(),
+}
+
+type Account struct {
+	ID           string    `json:"id"`
+	IsMain       bool      `json:"is_main"`
+	IsAnonymous  bool      `json:"-"`
+	DisplayName  string    `json:"display_name"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	CreatedAt    time.Time `json:"created_at"`
+}
 
 type accountFile struct {
 	Accounts []Account `json:"accounts"`
@@ -160,6 +187,10 @@ func (a AccountProvider) MarkAccountAsMain(id string) error {
 
 	accounts[accountIndex].IsMain = true
 
+	if err = a.saveAccounts(accounts); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -228,4 +259,37 @@ func (a AccountProvider) saveAccounts(accounts []Account) error {
 	}
 
 	return nil
+}
+
+func openCreateConfigFile(file string) (*os.File, error) {
+	configDir, err := os.UserConfigDir() // get users config directory, depending on OS
+	if err != nil {
+		return nil, err
+	}
+
+	// ensure dir config dir exists
+	configDirChatuino := filepath.Join(configDir, chatuinoConfigDir)
+	err = os.Mkdir(configDirChatuino, 0o755)
+	var alreadyExistsError bool
+
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			alreadyExistsError = true
+		} else {
+			return nil, err
+		}
+	}
+
+	if err != nil && !alreadyExistsError {
+		return nil, err
+	}
+
+	path := filepath.Join(configDirChatuino, file)
+
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+
+	return f, nil
 }
