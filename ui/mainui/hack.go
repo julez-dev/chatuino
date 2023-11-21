@@ -1,6 +1,15 @@
 package mainui
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+var ansiRegex = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
+
+func stripAnsi(str string) string {
+	return ansiRegex.ReplaceAllString(str, "")
+}
 
 func max(a, b int) int {
 	if a > b {

@@ -41,7 +41,7 @@ func NewSuggestionTextInput() *SuggestionTextInput {
 	input := textinput.New()
 
 	input.Validate = func(s string) error {
-		if strings.ContainsRune(s, '\U0001FAF0') || strings.ContainsRune(s, '\n') {
+		if strings.ContainsRune(s, '\n') {
 			return fmt.Errorf("disallowed input")
 		}
 

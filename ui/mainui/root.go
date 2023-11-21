@@ -321,7 +321,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			defer f.Close()
 
-			io.Copy(f, strings.NewReader(r.View()))
+			io.Copy(f, strings.NewReader(stripAnsi(r.View())))
 
 			return r, nil
 		}
@@ -391,7 +391,7 @@ func (r Root) View() string {
 			return r.splash.View()
 		}
 
-		return lipgloss.JoinVertical(lipgloss.Top, r.header.View(), r.tabs[r.tabCursor].View())
+		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
 	case inputScreen:
 		return r.joinInput.View()
 	}

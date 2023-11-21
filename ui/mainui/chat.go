@@ -15,6 +15,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
+	"github.com/rivo/uniseg"
 	"github.com/rs/zerolog"
 )
 
@@ -44,7 +45,7 @@ func DefaultKeyMap() KeyMap {
 
 var badgeMap = map[string]string{
 	"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color("#E91916")).Render("Streamer"),
-	"no_audio":    "No Sound",
+	"no_audio":    "No Audio",
 	"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color("#E005B9")).Render("VIP"),
 	"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color("#8B54F0")).Render("Sub"),
 	"admin":       "Admin",
@@ -54,8 +55,8 @@ var badgeMap = map[string]string{
 }
 
 var (
-	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render(" ")
-	indicatorWidth, _ = lipgloss.Size(indicator)
+	indicator      = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render("@")
+	indicatorWidth = lipgloss.Width(indicator)
 )
 
 var (
@@ -176,7 +177,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 					panic(err)
 				}
 
-				f.Write(bytes)
+				f.Write([]byte(stripAnsi(string(bytes))))
 			}
 		}
 	}
@@ -187,9 +188,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 }
 
 func (c *chatWindow) View() string {
-	lines := make([]string, c.height)
-
-	copy(lines, c.lines[c.lineStart:c.lineEnd])
+	lines := append(c.lines[c.lineStart:c.lineEnd], make([]string, c.height-len(c.lines[c.lineStart:c.lineEnd]))...)
 
 	return strings.Join(lines, "\n")
 }
@@ -289,7 +288,7 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 func (c *chatWindow) markSelectedMessage() {
 	for i, s := range c.lines {
 		s = strings.TrimSuffix(s, indicator)
-		c.lines[i] = strings.TrimRight(s, " ")
+		c.lines[i] = s
 	}
 
 	for _, e := range c.entries {
@@ -300,7 +299,7 @@ func (c *chatWindow) markSelectedMessage() {
 		lines := c.lines[e.Position.CursorStart : e.Position.CursorEnd+1]
 
 		for i, s := range lines {
-			strWidth, _ := lipgloss.Size(s)
+			strWidth := uniseg.StringWidth(stripAnsi(s))
 			spacerLen := c.width - strWidth - indicatorWidth
 
 			if spacerLen < 0 {
@@ -313,9 +312,7 @@ func (c *chatWindow) markSelectedMessage() {
 				spacerLen = 0
 			}
 
-			s = s + strings.Repeat(" ", spacerLen) + indicator
-
-			lines[i] = s
+			lines[i] = s + strings.Repeat(" ", spacerLen) + indicator
 		}
 	}
 }
@@ -371,7 +368,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		message := strings.Map(func(r rune) rune {
 			// There are a coupe of emojis that cause issues when displaying them
 			// They will always overflow the message width
-			if r == '🫰' || r == '\u267B' || unicode.IsControl(r) || r == '🫵' {
+			if unicode.IsControl(r) {
 				return -1
 			}
 

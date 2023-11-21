@@ -127,6 +127,7 @@ func newTab(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	input := component.NewSuggestionTextInput()
+	input.SetWidth(width)
 
 	return tab{
 		id:              id,
@@ -233,6 +234,10 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.err = errors.Join(t.err, msg.err)
 		return t, nil
+	case tea.WindowSizeMsg:
+		t.messageInput.SetWidth(t.width)
+		return t, nil
+
 	case recvTwitchMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -389,12 +394,7 @@ func (t tab) View() string {
 			Render("Fetching channel data...")
 	}
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		t.streamInfo.View(),
-		t.chatWindow.View(),
-		t.renderMessageInput(),
-	)
+	return t.streamInfo.View() + "\n" + t.chatWindow.View() + "\n" + t.renderMessageInput()
 }
 
 func (r *tab) Close() error {
@@ -425,11 +425,7 @@ func (t *tab) renderMessageInput() string {
 		return ""
 	}
 
-	return lipgloss.NewStyle().
-		Width(t.width - 2). // width of the chat window minus the border
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("135")).
-		Render(t.messageInput.View())
+	return t.messageInput.View()
 }
 
 func (t *tab) handleResize() {
