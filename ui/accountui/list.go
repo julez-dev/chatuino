@@ -285,6 +285,18 @@ func (l List) removeAccountRefresh(id string) tea.Cmd {
 
 func (l List) addNewAccountRefresh(account save.Account) tea.Cmd {
 	return func() tea.Msg {
+		var shouldSetMain bool
+
+		if accounts, err := l.accountProvider.GetAllAccounts(); err == nil {
+			accounts = slices.DeleteFunc(accounts, func(a save.Account) bool {
+				return a.IsAnonymous
+			})
+
+			shouldSetMain = len(accounts) == 0
+		}
+
+		account.IsMain = shouldSetMain
+
 		if err := l.accountProvider.Add(account); err != nil {
 			return setAccountsMessage{
 				err: err,
