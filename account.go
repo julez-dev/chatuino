@@ -20,10 +20,9 @@ var accountCMD = &cli.Command{
 			Value: "https://chatuino-server.onrender.com",
 		},
 		&cli.StringFlag{
-			Name:     "client-id",
-			Usage:    "OAuth Client-ID",
-			Sources:  cli.EnvVars("TWITCH_CLIENT_ID"),
-			Required: true,
+			Name:  "client-id",
+			Usage: "OAuth Client-ID",
+			Value: defaultClientID,
 		},
 	},
 	Action: func(ctx *cli.Context) error {

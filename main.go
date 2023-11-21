@@ -20,7 +20,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const logFileName = "log.txt"
+const (
+	defaultClientID = "jliqj1q6nmp0uh5ofangdx4iac7yd9"
+	logFileName     = "log.txt"
+)
 
 func main() {
 	f, err := setupLogFile()
@@ -53,7 +56,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "client-id",
 				Usage: "OAuth Client-ID",
-				Value: "jliqj1q6nmp0uh5ofangdx4iac7yd9",
+				Value: defaultClientID,
 			},
 			&cli.StringFlag{
 				Name:  "api-host",
