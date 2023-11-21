@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+type Badge struct {
+	Name string
+
+	// Only applies to badges that "stack" like sub badges, indicating how long a user was subbed for
+	// For non "stacking" badges, this will be 1
+	Count int
+}
+
 type PrivateMessage struct {
 	ID             string
 	ParentThreadID string
@@ -15,6 +23,8 @@ type PrivateMessage struct {
 	Message   string
 	UserColor string
 	SentAt    time.Time
+
+	Badges []Badge
 }
 
 // socket.send(`PRIVMSG ${room} :${message}`);

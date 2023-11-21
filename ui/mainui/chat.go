@@ -42,9 +42,25 @@ func DefaultKeyMap() KeyMap {
 	}
 }
 
+var badgeMap = map[string]string{
+	"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color("#E91916")).Render("Streamer"),
+	"no_audio":    "No Sound",
+	"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color("#E005B9")).Render("VIP"),
+	"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color("#8B54F0")).Render("Sub"),
+	"admin":       "Admin",
+	"staff":       "Staff",
+	"Turbo":       lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render("Turbo"),
+	"moderator":   lipgloss.NewStyle().Foreground(lipgloss.Color("#00AD03")).Render("Mod"),
+}
+
 var (
 	indicator         = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render(" ")
 	indicatorWidth, _ = lipgloss.Size(indicator)
+)
+
+var (
+	stvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
+	ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
 )
 
 type chatEntry struct {
@@ -78,18 +94,23 @@ type chatWindow struct {
 
 	// Every single row, multiple rows may be part of a single message
 	lines []string
+
+	// optimize color rendering by caching render functions
+	// so we don't need to recreate a new lipgloss.Style for every message
+	userColorCache map[string]func(...string) string
 }
 
 func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore) *chatWindow {
 	c := chatWindow{
-		m:           DefaultKeyMap(),
-		logger:      logger,
-		parentTabID: tabID,
-		channel:     channel,
-		width:       width,
-		height:      height,
-		channelID:   channelID,
-		emoteStore:  emoteStore,
+		m:              DefaultKeyMap(),
+		logger:         logger,
+		parentTabID:    tabID,
+		channel:        channel,
+		width:          width,
+		height:         height,
+		channelID:      channelID,
+		emoteStore:     emoteStore,
+		userColorCache: map[string]func(...string) string{},
 	}
 
 	return &c
@@ -170,8 +191,6 @@ func (c *chatWindow) View() string {
 
 	copy(lines, c.lines[c.lineStart:c.lineEnd])
 
-	c.logger.Info().Int("len", len(lines)).Int("start", c.lineStart).Int("end", c.lineEnd).Send()
-
 	return strings.Join(lines, "\n")
 }
 
@@ -215,7 +234,7 @@ func (c *chatWindow) messageDown(n int) {
 	c.entries[i].Selected = true
 	c.cursor = c.entries[i].Position.CursorEnd
 
-	c.markSelectedMessages()
+	c.markSelectedMessage()
 }
 
 func (c *chatWindow) messageUp(n int) {
@@ -236,7 +255,7 @@ func (c *chatWindow) messageUp(n int) {
 	c.entries[i].Selected = true
 	c.cursor = c.entries[i].Position.CursorStart
 
-	c.markSelectedMessages()
+	c.markSelectedMessage()
 }
 
 func (c *chatWindow) moveToBottom() {
@@ -267,7 +286,7 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 	return nil
 }
 
-func (c *chatWindow) markSelectedMessages() {
+func (c *chatWindow) markSelectedMessage() {
 	for i, s := range c.lines {
 		s = strings.TrimSuffix(s, indicator)
 		c.lines[i] = strings.TrimRight(s, " ")
@@ -295,6 +314,7 @@ func (c *chatWindow) markSelectedMessages() {
 			}
 
 			s = s + strings.Repeat(" ", spacerLen) + indicator
+
 			lines[i] = s
 		}
 	}
@@ -351,7 +371,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		message := strings.Map(func(r rune) rune {
 			// There are a coupe of emojis that cause issues when displaying them
 			// They will always overflow the message width
-			if r == '🫰' {
+			if r == '🫰' || r == '\u267B' || unicode.IsControl(r) || r == '🫵' {
 				return -1
 			}
 
@@ -362,25 +382,63 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			return -1
 		}, msg.Message)
 
+		var (
+			startMsgStr string
+			badges      = make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
+		)
+
+		for _, badge := range msg.Badges {
+			if b, ok := badgeMap[badge.Name]; ok {
+				badges = append(badges, b)
+			}
+		}
+
+		// if render function not in cache yet, compute now
+		userRenderFunc, ok := c.userColorCache[msg.UserColor]
+
+		if !ok {
+			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.UserColor)).Render
+			c.userColorCache[msg.UserColor] = userRenderFunc
+		}
+
+		if len(badges) == 0 {
+			// start of the message (sent date + username)
+			startMsgStr = fmt.Sprintf("%s %s: ",
+				msg.SentAt.Local().Format("15:04:05"),
+				userRenderFunc(msg.From),
+			)
+		} else {
+			// start of the message (sent date + badges + username)
+			startMsgStr = fmt.Sprintf("%s [%s] %s: ",
+				msg.SentAt.Local().Format("15:04:05"),
+				strings.Join(badges, ", "),
+				userRenderFunc(msg.From),
+			)
+		}
+
+		startMsgStrWidth := lipgloss.Width(startMsgStr)
+
+		const startMsgPadding = 35
+		if startMsgStrWidth < startMsgPadding {
+			startMsgStr = startMsgStr + strings.Repeat(" ", startMsgPadding-startMsgStrWidth)
+			startMsgStrWidth = lipgloss.Width(startMsgStr)
+		}
+
+		// calculate the maximum text length which the message content is allowed to have
+		textLimit := c.width - startMsgStrWidth - indicatorWidth
+
 		message = c.colorMessageEmotes(message)
-		var lines []string
-
-		userColor := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.UserColor))
-
-		dateUserStr := fmt.Sprintf("%s %s: ", msg.SentAt.Local().Format("15:04:05"), userColor.Render(msg.From)) // start of the message (sent date + username)
-		widthDateUserStr, _ := lipgloss.Size(dateUserStr)
-
-		textLimit := c.width - widthDateUserStr - indicatorWidth
 
 		// wrap text to textLimit, if soft wrapping fails (for example in links) force break
 		wrappedText := wrap.String(wordwrap.String(message, textLimit), textLimit)
 		splits := strings.Split(wrappedText, "\n")
 
-		lines = append(lines, dateUserStr+splits[0])
+		lines := make([]string, 0, len(splits))
+		lines = append(lines, startMsgStr+splits[0])
 
 		if len(splits) > 1 {
 			for _, line := range splits[1:] {
-				lines = append(lines, strings.Repeat(" ", widthDateUserStr)+line)
+				lines = append(lines, strings.Repeat(" ", startMsgStrWidth)+line)
 			}
 		}
 
@@ -391,11 +449,6 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 }
 
 func (c *chatWindow) colorMessageEmotes(message string) string {
-	var (
-		stvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
-		ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
-	)
-
 	splits := strings.Fields(message)
 	for i, split := range splits {
 		if e, ok := c.emoteStore.GetByText(c.channelID, split); ok {
@@ -464,5 +517,5 @@ func (c *chatWindow) recalculateLines() {
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	}
 
-	c.markSelectedMessages()
+	c.markSelectedMessage()
 }

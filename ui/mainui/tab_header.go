@@ -2,10 +2,11 @@ package mainui
 
 import (
 	"fmt"
+	"slices"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
-	"golang.org/x/exp/slices"
 )
 
 var (

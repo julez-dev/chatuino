@@ -191,8 +191,8 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			id := r.header.addTab(t.Channel, identity)
-			headerHeight := r.getHeaderHeigth()
-			nTab, err := newTab(id, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages)
+			headerHeight := r.getHeaderHeight()
+			nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages)
 			if err != nil {
 				r.logger.Error().Err(err).Send()
 				continue
@@ -231,9 +231,9 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		id := r.header.addTab(msg.channel, identity)
 
-		headerHeight := r.getHeaderHeigth()
+		headerHeight := r.getHeaderHeight()
 
-		nTab, err := newTab(id, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil)
+		nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil)
 		if err != nil {
 			r.logger.Error().Err(err).Send()
 			return r, nil
@@ -399,7 +399,7 @@ func (r Root) View() string {
 	return ""
 }
 
-func (r *Root) getHeaderHeigth() int {
+func (r *Root) getHeaderHeight() int {
 	headerView := r.header.View()
 	return lipgloss.Height(headerView)
 }
@@ -418,7 +418,7 @@ func (r *Root) handleResize() {
 	r.joinInput.list.SetHeight(r.height / 2)
 
 	// tab
-	headerHeight := r.getHeaderHeigth()
+	headerHeight := r.getHeaderHeight()
 
 	r.logger.Info().Int("header-height", headerHeight).Send()
 

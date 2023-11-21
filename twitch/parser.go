@@ -137,6 +137,7 @@ func parseIRC(message string) (IRCer, error) {
 
 	switch c.Command {
 	case "PRIVMSG":
+
 		p := command.PrivateMessage{
 			ID:             string(c.tags["id"]),
 			ParentThreadID: string(c.tags["reply-thread-parent-msg-id"]),
@@ -146,6 +147,27 @@ func parseIRC(message string) (IRCer, error) {
 			Message:        c.Params[1],
 			UserColor:      string(c.tags["color"]),
 			SentAt:         parseTimestamp(string(c.tags["tmi-sent-ts"])),
+		}
+
+		if badgeStr := c.tags["badges"]; badgeStr != "" {
+			badgeSplit := strings.Split(string(badgeStr), ",")
+			p.Badges = make([]command.Badge, 0, len(badgeSplit))
+
+			for _, badge := range badgeSplit {
+				parts := strings.SplitN(badge, "/", 2)
+				if len(parts) == 1 {
+					p.Badges = append(p.Badges, command.Badge{Name: parts[0]})
+					continue
+				}
+
+				count, err := strconv.Atoi(parts[1])
+				if err != nil {
+					p.Badges = append(p.Badges, command.Badge{Name: parts[0]})
+					continue
+				}
+
+				p.Badges = append(p.Badges, command.Badge{Name: parts[0], Count: count})
+			}
 		}
 
 		return &p, nil

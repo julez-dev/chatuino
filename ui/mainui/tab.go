@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -61,7 +60,9 @@ type apiClient interface {
 }
 
 type tab struct {
-	id    string
+	id     string
+	logger zerolog.Logger
+
 	state tabState
 
 	provider AccountProvider
@@ -96,7 +97,8 @@ type tab struct {
 }
 
 func newTab(
-	id,
+	id string,
+	logger zerolog.Logger,
 	clientID string,
 	serverAPI *server.Client,
 	channel string,
@@ -128,6 +130,7 @@ func newTab(
 
 	return tab{
 		id:              id,
+		logger:          logger,
 		width:           width,
 		height:          height,
 		account:         account,
@@ -267,7 +270,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		t.channelDataLoaded = true
-		t.chatWindow = newChatWindow(zerolog.New(io.Discard), t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
+		t.chatWindow = newChatWindow(t.logger, t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
 
 		for _, m := range t.initialMessages {
 			t.chatWindow.handleMessage(m)
