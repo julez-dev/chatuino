@@ -16,9 +16,24 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type ircConnectionError struct {
+	err error
+}
+
+func (e ircConnectionError) Error() string {
+	return fmt.Sprintf("Disconnected from chat server. (%s)", e.err.Error())
+}
+
+func (e ircConnectionError) Unwrap() error {
+	return e.err
+}
+
+func (e ircConnectionError) IRC() string {
+	return e.Error()
+}
+
 type chatConnectionInitiatedMessage struct {
 	targetID string
-	err      error
 
 	chat         *twitch.Chat
 	messagesOut  chan<- twitch.IRCer
@@ -26,12 +41,7 @@ type chatConnectionInitiatedMessage struct {
 	errRecv      <-chan error
 }
 
-type recvTwitchMessage struct {
-	targetID string
-	message  twitch.IRCer
-}
-
-type recvTwitchLocalMessage struct {
+type chatWindowUpdateMessage struct {
 	targetID string
 	message  twitch.IRCer
 }
@@ -81,6 +91,7 @@ type tab struct {
 	chat         *twitch.Chat
 	messagesOut  chan<- twitch.IRCer
 	messagesRecv <-chan twitch.IRCer
+	errRecv      <-chan error
 
 	ttvAPI apiClient
 
@@ -158,18 +169,10 @@ func (t tab) Init() tea.Cmd {
 			}
 		}
 
-		in := make(chan twitch.IRCer)
-		chat := twitch.NewChat()
+		in := make(chan twitch.IRCer, 1)
+		chat := twitch.NewChat(t.logger)
 
-		out, errChan, err := chat.Connect(t.ctx, in, acc.DisplayName, acc.AccessToken)
-		if err != nil {
-			close(in)
-			return chatConnectionInitiatedMessage{
-				targetID: t.id,
-				err:      err,
-			}
-		}
-
+		out, errChan := chat.ConnectWithRetry(t.ctx, in, acc.DisplayName, acc.AccessToken)
 		in <- command.JoinMessage{Channel: t.channel}
 
 		go func() {
@@ -238,26 +241,6 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.messageInput.SetWidth(t.width)
 		return t, nil
 
-	case recvTwitchMessage:
-		if msg.targetID != t.id {
-			return t, nil
-		}
-
-		if t.channelDataLoaded {
-			t.chatWindow, cmd = t.chatWindow.Update(msg)
-		}
-
-		return t, tea.Batch(t.waitTwitchMessage(), cmd)
-	case recvTwitchLocalMessage:
-		if msg.targetID != t.id {
-			return t, nil
-		}
-
-		if t.channelDataLoaded {
-			t.chatWindow, cmd = t.chatWindow.Update(msg)
-		}
-
-		return t, cmd
 	case setChannelDataMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -296,30 +279,34 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		if msg.err != nil {
-			t.err = msg.err
-			return t, nil
-		}
-
-		cmds := make([]tea.Cmd, 0, 2)
 		t.chat = msg.chat
 		t.messagesRecv = msg.messagesRecv
 		t.messagesOut = msg.messagesOut
+		t.errRecv = msg.errRecv
 
-		cmds = append(cmds, t.waitTwitchMessage())
-		cmds = append(cmds, func() tea.Msg {
-			select {
-			case err := <-msg.errRecv:
-				return setErrorMessage{
-					targetID: t.id,
-					err:      err,
-				}
-			case <-t.ctx.Done():
-				return nil
-			}
-		})
+		cmds = append(cmds, t.waitTwitchEvent())
 
 		return t, tea.Batch(cmds...)
+	case chatWindowUpdateMessage: // delegate message event to chat window
+		if msg.targetID != t.id {
+			return t, nil
+		}
+
+		if t.channelDataLoaded {
+			t.chatWindow, cmd = t.chatWindow.Update(msg)
+		}
+
+		if err, ok := msg.message.(ircConnectionError); ok {
+			// if is error returned from final retry, don't wait again and return early
+			var matchErr twitch.RetryReachedError
+
+			if errors.As(err, &matchErr) {
+				t.logger.Info().Err(err).Msg("retry limit reached error matched, don't wait for next message")
+				return t, nil
+			}
+		}
+
+		return t, tea.Batch(t.waitTwitchEvent(), cmd)
 	}
 
 	if t.channelDataLoaded && t.focused {
@@ -402,7 +389,7 @@ func (r *tab) Close() error {
 	return r.ctx.Err()
 }
 
-func (t tab) waitTwitchMessage() tea.Cmd {
+func (t tab) waitTwitchEvent() tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case msg, ok := <-t.messagesRecv:
@@ -410,12 +397,21 @@ func (t tab) waitTwitchMessage() tea.Cmd {
 				return nil
 			}
 
-			return recvTwitchMessage{
+			return chatWindowUpdateMessage{
 				targetID: t.id,
 				message:  msg,
 			}
-		case <-t.ctx.Done():
-			return nil
+		case err, ok := <-t.errRecv:
+			if !ok {
+				return nil
+			}
+
+			return chatWindowUpdateMessage{
+				targetID: t.id,
+				message:  ircConnectionError{err: err},
+			}
+			// case <-t.ctx.Done(): This select should always be implicitly cancelled because the other channels are closed by the context
+			// 	return nil
 		}
 	}
 }

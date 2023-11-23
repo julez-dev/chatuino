@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -123,7 +124,7 @@ func (c *chatWindow) Init() tea.Cmd {
 
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
-	case recvTwitchMessage:
+	case chatWindowUpdateMessage:
 		if msg.targetID == c.parentTabID {
 			c.handleMessage(msg.message)
 			c.updatePort()
@@ -318,51 +319,65 @@ func (c *chatWindow) markSelectedMessage() {
 }
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
-	if msg, ok := msg.(*command.PrivateMessage); ok {
-		if len(c.entries) > cleanupThreshold {
-			_, currentEntry := c.entryForCurrentCursor()
+	switch msg.(type) {
+	case error, *command.PrivateMessage: // supported Message types
+	default: // exit only on other types
+		return
+	}
 
-			if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
-				c.logger.Info().Int("amount", cleanupThreshold-int(cleanupAfterMessage)).Msg("clean up messages now")
-				c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
-				c.recalculateLines()
-			}
+	if len(c.entries) > cleanupThreshold {
+		_, currentEntry := c.entryForCurrentCursor()
+
+		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
+			c.logger.Info().Int("amount", cleanupThreshold-int(cleanupAfterMessage)).Msg("clean up messages now")
+			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
+			c.recalculateLines()
 		}
+	}
 
-		lines := c.messageToText(msg)
+	lines := c.messageToText(msg)
 
-		// create new message - append to entries list
-		var (
-			positionStart    = -1
-			wasLatestMessage = true
-		)
+	// create new message - append to entries list
+	var (
+		positionStart    = -1
+		wasLatestMessage = true
+	)
 
-		if newestEntry := c.getNewestEntry(); newestEntry != nil {
-			positionStart = newestEntry.Position.CursorEnd
-			wasLatestMessage = newestEntry.Selected
-			newestEntry.Selected = false
-		}
+	if newestEntry := c.getNewestEntry(); newestEntry != nil {
+		positionStart = newestEntry.Position.CursorEnd
+		wasLatestMessage = newestEntry.Selected
+		newestEntry.Selected = false
+	}
 
-		entry := &chatEntry{
-			Position: position{
-				CursorStart: positionStart + 1,
-				CursorEnd:   positionStart + len(lines),
-			},
-			Selected: wasLatestMessage,
-			Message:  msg,
-		}
+	entry := &chatEntry{
+		Position: position{
+			CursorStart: positionStart + 1,
+			CursorEnd:   positionStart + len(lines),
+		},
+		Selected: wasLatestMessage,
+		Message:  msg,
+	}
 
-		c.entries = append(c.entries, entry)
-		c.lines = append(c.lines, lines...)
+	c.entries = append(c.entries, entry)
+	c.lines = append(c.lines, lines...)
 
-		if wasLatestMessage {
-			c.messageDown(1)
-		}
+	if wasLatestMessage {
+		c.messageDown(1)
 	}
 }
 
 func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	switch msg := msg.(type) {
+	case error:
+		availableWidth := c.width - indicatorWidth
+
+		wrappedText := wrap.String(wordwrap.String(
+			time.Now().Format("15:04:05")+" [System]: "+strings.ReplaceAll(msg.Error(), "\n", ""),
+			availableWidth,
+		), availableWidth)
+
+		splits := strings.Split(wrappedText, "\n")
+		return splits
 	case *command.PrivateMessage:
 		// filter non-printable characters
 		message := strings.Map(func(r rune) rune {

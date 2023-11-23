@@ -1,11 +1,5 @@
 package emote
 
-import (
-	_ "image/gif"
-
-	_ "golang.org/x/image/webp"
-)
-
 type Platform int
 
 func (p Platform) String() string {

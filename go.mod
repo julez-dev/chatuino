@@ -15,11 +15,13 @@ require (
 	github.com/rs/zerolog v1.31.0
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli/v3 v3.0.0-alpha4
-	golang.org/x/image v0.14.0
 	golang.org/x/sync v0.5.0
 )
 
-require golang.org/x/net v0.18.0 // indirect
+require (
+	github.com/avast/retry-go/v4 v4.5.1
+	golang.org/x/net v0.18.0 // indirect
+)
 
 require (
 	github.com/atotto/clipboard v0.1.4 // indirect
