@@ -39,6 +39,7 @@ type SuggestionTextInput struct {
 // NewSuggestionTextInput creates a new model with default settings.
 func NewSuggestionTextInput() *SuggestionTextInput {
 	input := textinput.New()
+	input.Width = 20
 
 	input.Validate = func(s string) error {
 		if strings.ContainsRune(s, '\n') {
@@ -135,7 +136,7 @@ func (s *SuggestionTextInput) Focus() {
 }
 
 func (s *SuggestionTextInput) SetWidth(width int) {
-	s.ti.Width = width
+	s.ti.Width = width - 3 // -3 for prompt
 }
 
 func (s *SuggestionTextInput) Value() string {

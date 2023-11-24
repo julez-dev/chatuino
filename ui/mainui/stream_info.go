@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 	"github.com/muesli/reflow/wordwrap"
-	"github.com/muesli/reflow/wrap"
 )
 
 type setStreamInfo struct {
@@ -71,7 +70,7 @@ func (s streamInfo) View() string {
 	}
 
 	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).Width(s.width).MaxWidth(s.width)
-	info := wrap.String(wordwrap.String(fmt.Sprintf("%s - %s (%d)", s.game, s.title, s.viewer), s.width-5), s.width-5)
+	info := wordwrap.String(fmt.Sprintf("%s - %s (%d)", s.game, s.title, s.viewer), s.width-10)
 	return style.Render(info)
 }
 

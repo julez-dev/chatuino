@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -237,10 +238,25 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.err = errors.Join(t.err, msg.err)
 		return t, nil
-	case tea.WindowSizeMsg:
-		t.messageInput.SetWidth(t.width)
-		return t, nil
+	case setStreamInfo:
+		if t.channelDataLoaded {
+			if msg.target != t.streamInfo.id {
+				return t, nil
+			}
 
+			beforeView := t.streamInfo.View()
+
+			info, cmd := t.streamInfo.Update(msg)
+			t.streamInfo = &info
+			cmds = append(cmds, cmd)
+
+			// only do expensive resize if view has changed
+			if beforeView != t.streamInfo.View() {
+				t.handleResize()
+			}
+
+			return t, tea.Batch(cmds...)
+		}
 	case setChannelDataMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -381,7 +397,24 @@ func (t tab) View() string {
 			Render("Fetching channel data...")
 	}
 
-	return t.streamInfo.View() + "\n" + t.chatWindow.View() + "\n" + t.renderMessageInput()
+	builder := strings.Builder{}
+
+	si := t.streamInfo.View()
+	if si != "" {
+		builder.WriteString(si)
+		builder.WriteString("\n")
+	}
+
+	cw := t.chatWindow.View()
+	builder.WriteString(cw)
+
+	mi := t.renderMessageInput()
+	if mi != "" {
+		builder.WriteString("\n")
+		builder.WriteString(mi)
+	}
+
+	return builder.String()
 }
 
 func (r *tab) Close() error {
@@ -426,14 +459,26 @@ func (t *tab) renderMessageInput() string {
 
 func (t *tab) handleResize() {
 	if t.channelDataLoaded {
-		heightMessageInput := lipgloss.Height(t.renderMessageInput())
+		mi := t.renderMessageInput()
+		heightMessageInput := lipgloss.Height(mi)
+
+		if mi == "" {
+			heightMessageInput = 0
+		}
 
 		t.streamInfo.width = t.width
-		heightInfo := lipgloss.Height(t.streamInfo.View())
+		si := t.streamInfo.View()
+		heightInfo := lipgloss.Height(si)
+		if si == "" {
+			heightInfo = 0
+		}
 
 		t.chatWindow.height = t.height - heightMessageInput - heightInfo
 		t.chatWindow.width = t.width
 		t.chatWindow.recalculateLines()
+
+		t.logger.Info().Int("width", t.width).Send()
+		t.messageInput.SetWidth(t.width)
 	}
 }
 
