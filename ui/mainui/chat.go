@@ -91,7 +91,7 @@ type chatWindow struct {
 	lineStart, lineEnd int
 
 	// Entries keep track which actual original message is behind a single row.
-	// A single message can span multiple line so this is needed to resolve a message based on a line
+	// A single message can span multiple lines so this is needed to resolve a message based on a line
 	entries []*chatEntry
 
 	// Every single row, multiple rows may be part of a single message
@@ -139,10 +139,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.messageUp(1)
 			}
 			switch msg.String() {
-			case "d":
-				c.logger.Info().Int("cursor", c.cursor).Int("start", c.lineStart).Int("end", c.lineEnd).Send()
-				c.logger.Info().Strs("lines", c.lines).Send()
-				c.logger.Info().Any("entries", c.entries).Send()
 			case "b":
 				c.moveToBottom()
 			case "t":

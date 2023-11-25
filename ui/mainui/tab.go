@@ -63,6 +63,7 @@ type tabState int
 const (
 	inChatWindow tabState = iota
 	insertMode
+	userInspectMode
 )
 
 type apiClient interface {
@@ -102,6 +103,7 @@ type tab struct {
 
 	// components
 	chatWindow   *chatWindow
+	userInspect  *userInspect
 	streamInfo   *streamInfo
 	messageInput *component.SuggestionTextInput
 
@@ -310,6 +312,12 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		if t.channelDataLoaded {
 			t.chatWindow, cmd = t.chatWindow.Update(msg)
+			cmds = append(cmds, cmd)
+
+			if t.state == userInspectMode {
+				t.userInspect, cmd = t.userInspect.Update(msg)
+				cmds = append(cmds, cmd)
+			}
 		}
 
 		if err, ok := msg.message.(ircConnectionError); ok {
@@ -322,7 +330,9 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 		}
 
-		return t, tea.Batch(t.waitTwitchEvent(), cmd)
+		cmds = append(cmds, t.waitTwitchEvent())
+
+		return t, tea.Batch(cmds...)
 	}
 
 	if t.channelDataLoaded && t.focused {
@@ -340,12 +350,48 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					t.messageInput.Focus()
 					t.chatWindow.Blur()
 				}
+			case "u":
+				// open up user inspect mode
+				switch t.state {
+				case inChatWindow, userInspectMode:
+					_, e := t.chatWindow.entryForCurrentCursor()
+
+					if e == nil {
+						return t, nil
+					}
+
+					msg, ok := e.Message.(*command.PrivateMessage)
+
+					if !ok {
+						return t, nil
+					}
+
+					t.state = userInspectMode
+					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, msg.From, t.channel, t.chatWindow.channelID, t.emoteStore)
+					cmds = append(cmds, t.userInspect.Init())
+
+					t.handleResize()
+
+					t.chatWindow, cmd = t.chatWindow.Update(msg)
+					cmds = append(cmds, cmd)
+
+					return t, tea.Batch(cmds...)
+				}
 			case "esc":
+				if t.state == userInspectMode {
+					t.state = inChatWindow
+					t.handleResize()
+					t.chatWindow.updatePort()
+					return t, nil
+				}
+
 				if !t.account.IsAnonymous {
 					t.state = inChatWindow
 					t.chatWindow.Focus()
 					t.messageInput.Blur()
 				}
+
+				return t, nil
 			case "enter":
 				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
 					msg := &command.PrivateMessage{
@@ -369,6 +415,11 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		info, cmd := t.streamInfo.Update(msg)
 		t.streamInfo = &info
 		cmds = append(cmds, cmd)
+
+		if t.state == userInspectMode {
+			t.userInspect, cmd = t.userInspect.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	return t, tea.Batch(cmds...)
@@ -407,6 +458,12 @@ func (t tab) View() string {
 
 	cw := t.chatWindow.View()
 	builder.WriteString(cw)
+
+	if t.state == userInspectMode {
+		uiView := t.userInspect.View()
+		builder.WriteString("\n")
+		builder.WriteString(uiView)
+	}
 
 	mi := t.renderMessageInput()
 	if mi != "" {
@@ -450,7 +507,7 @@ func (t tab) waitTwitchEvent() tea.Cmd {
 }
 
 func (t *tab) renderMessageInput() string {
-	if t.account.IsAnonymous {
+	if t.account.IsAnonymous || t.state == userInspectMode {
 		return ""
 	}
 
@@ -473,11 +530,19 @@ func (t *tab) handleResize() {
 			heightInfo = 0
 		}
 
-		t.chatWindow.height = t.height - heightMessageInput - heightInfo
-		t.chatWindow.width = t.width
-		t.chatWindow.recalculateLines()
+		if t.state == userInspectMode {
+			t.chatWindow.height = (t.height - heightInfo) / 2
+			t.chatWindow.width = t.width
 
-		t.logger.Info().Int("width", t.width).Send()
+			t.userInspect.height = t.height - heightInfo - t.chatWindow.height
+			t.userInspect.width = t.width
+			t.userInspect.handleResize()
+		} else {
+			t.chatWindow.height = t.height - heightMessageInput - heightInfo
+			t.chatWindow.width = t.width
+			t.chatWindow.recalculateLines()
+		}
+
 		t.messageInput.SetWidth(t.width)
 	}
 }
