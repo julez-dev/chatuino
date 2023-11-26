@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	cleanupAfterMessage float64 = 250.0
+	cleanupAfterMessage float64 = 400.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 )
 
