@@ -358,7 +358,7 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	c.lines = append(c.lines, lines...)
 
 	if wasLatestMessage {
-		c.messageDown(1)
+		c.moveToBottom()
 	}
 }
 

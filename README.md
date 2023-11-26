@@ -4,7 +4,7 @@ Cha*tui*no is a TUI utilizing bubbletea to bring a feature rich Twitch Chat Clie
 
 > **Note**: This project is still in early development
 
-![Screenshot of chatuino showing liriks twitch chat.](doc/lirik.png)
+![Screenshot of chatuino showing chatuino.](doc/chat.png)
 
 ## Table of Contents
 
@@ -68,6 +68,8 @@ Here is an short overview
 | down arrow | Insert mode | Previous suggestion |
 | tab | Insert mode | Accept suggestion |
 | esc | Insert mode | Quit Insert mode |
+| u | Chat window message | Open user inspect window
+| esc | User inspect window | Quit user inspect window |
 | ctrl+c | Everywhere | Quit |
 
 ### server sub-command and hosting you own server

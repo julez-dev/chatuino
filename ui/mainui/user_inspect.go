@@ -144,12 +144,20 @@ func (u *userInspect) handleResize() {
 }
 
 func (u *userInspect) renderUserInfo() string {
+	style := lipgloss.NewStyle().
+		Padding(1).
+		Border(lipgloss.BlockBorder(), true).
+		BorderForeground(lipgloss.Color("135"))
+		// Width(u.width)
+
+	styleCentered := style.Copy().MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
+
 	if !u.isDataFetched {
-		return lipgloss.NewStyle().Width(u.width).MaxWidth(u.width).AlignHorizontal(lipgloss.Center).Render("Fetching data...")
+		return styleCentered.Render("Fetching data...")
 	}
 
 	if u.err != nil {
-		return lipgloss.NewStyle().Width(u.width).MaxWidth(u.width).AlignHorizontal(lipgloss.Center).Render(fmt.Sprintf("Error while fetching data: %s", u.err.Error()))
+		return styleCentered.Render(fmt.Sprintf("Error while fetching data: %s", u.err.Error()))
 	}
 
 	b := &strings.Builder{}
@@ -169,10 +177,5 @@ func (u *userInspect) renderUserInfo() string {
 		fmt.Fprintf(b, "%d Month Sub Streak!", u.subAge.Streak.Months)
 	}
 
-	return lipgloss.NewStyle().
-		Padding(1).
-		Border(lipgloss.BlockBorder(), true, false).
-		BorderForeground(lipgloss.Color("135")).
-		Width(u.width).
-		Render(strings.TrimSuffix(b.String(), "\n"))
+	return style.Render(strings.TrimSuffix(b.String(), "\n"))
 }

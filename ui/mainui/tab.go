@@ -315,8 +315,14 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			cmds = append(cmds, cmd)
 
 			if t.state == userInspectMode {
-				t.userInspect, cmd = t.userInspect.Update(msg)
-				cmds = append(cmds, cmd)
+				irc, ok := msg.message.(*command.PrivateMessage)
+
+				if ok {
+					if irc.From == t.userInspect.user {
+						t.userInspect, cmd = t.userInspect.Update(msg)
+						cmds = append(cmds, cmd)
+					}
+				}
 			}
 		}
 
@@ -345,7 +351,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "i":
-				if !t.account.IsAnonymous {
+				if !t.account.IsAnonymous && t.state == inChatWindow {
 					t.state = insertMode
 					t.messageInput.Focus()
 					t.chatWindow.Blur()
@@ -370,7 +376,23 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, msg.From, t.channel, t.chatWindow.channelID, t.emoteStore)
 					cmds = append(cmds, t.userInspect.Init())
 
+					for _, e := range t.chatWindow.entries {
+						msg, ok := e.Message.(*command.PrivateMessage)
+
+						if !ok {
+							continue
+						}
+
+						if msg.From == t.userInspect.user {
+							t.userInspect.chatWindow.handleMessage(msg)
+						}
+					}
+
+					t.userInspect.chatWindow.moveToBottom()
+
 					t.handleResize()
+					t.chatWindow.Blur()
+					t.userInspect.chatWindow.Focus()
 
 					t.chatWindow, cmd = t.chatWindow.Update(msg)
 					cmds = append(cmds, cmd)
@@ -380,6 +402,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			case "esc":
 				if t.state == userInspectMode {
 					t.state = inChatWindow
+					t.chatWindow.Focus()
 					t.handleResize()
 					t.chatWindow.updatePort()
 					return t, nil
