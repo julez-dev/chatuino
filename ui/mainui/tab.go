@@ -425,7 +425,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 					return t, tea.Batch(cmds...)
 				}
-			case "p", "t":
+			case "p", "c":
 				switch t.state {
 				case inChatWindow, userInspectMode:
 					return t, func() tea.Msg {

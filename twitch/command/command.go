@@ -6,11 +6,14 @@ import (
 )
 
 type Badge struct {
-	Name string
+	Name    string
+	Version int
+}
 
-	// Only applies to badges that "stack" like sub badges, indicating how long a user was subbed for
-	// For non "stacking" badges, this will be 1
-	Count int
+type Emote struct {
+	ID    string
+	Start int
+	End   int
 }
 
 type PrivateMessage struct {
@@ -54,4 +57,130 @@ type JoinMessage struct {
 
 func (j JoinMessage) IRC() string {
 	return "JOIN #" + j.Channel
+}
+
+type MsgID string
+
+const (
+	Sub                 MsgID = "sub"
+	ReSub               MsgID = "resub"
+	SubGift             MsgID = "subgift"
+	SubMysteryGift      MsgID = "submysterygift"
+	GiftPaidUpgrade     MsgID = "giftpaidupgrade"
+	RewardGift          MsgID = "rewardgift"
+	AnonGiftPaidUpgrade MsgID = "anongiftpaidupgrade"
+	Raid                MsgID = "raid"
+	UnRaid              MsgID = "unraid"
+	Ritual              MsgID = "ritual"
+	BitsBadgeTier       MsgID = "bitsbadgetier"
+	Announcement        MsgID = "announcement"
+)
+
+type UserType string
+
+const (
+	Empty     UserType = "" // normal user
+	Admin     UserType = "admin"
+	GlobalMod UserType = "global_mod"
+	Staff     UserType = "staff"
+)
+
+type UserNotice struct {
+	BadgeInfo   []Badge
+	Badges      []Badge
+	Color       string
+	DisplayName string
+	Emotes      []Emote
+	ID          string
+	Login       string
+	Mod         bool
+	MsgID       MsgID
+	RoomID      string
+	Subscriber  bool
+	SystemMsg   string
+	TMISentTS   time.Time
+	Turbo       bool
+	UserID      string
+	UserType    UserType
+}
+
+func (u *UserNotice) IRC() string {
+	return ""
+}
+
+type SubPlan string
+
+func (s SubPlan) String() string {
+	switch s {
+	case Prime:
+		return "Prime"
+	case Tier1:
+		return "Tier 1"
+	case Tier2:
+		return "Tier 2"
+	case Tier3:
+		return "Tier 3"
+	}
+
+	return ""
+}
+
+const (
+	Prime SubPlan = "Prime"
+	Tier1 SubPlan = "1000"
+	Tier2 SubPlan = "2000"
+	Tier3 SubPlan = "3000"
+)
+
+type SubMessage struct {
+	UserNotice
+	Message           string
+	CumulativeMonths  int
+	ShouldShareStreak bool
+	StreakMonths      int
+	SubPlan           SubPlan
+	SubPlanName       string
+}
+
+type SubGiftMessage struct {
+	UserNotice
+	Months             int
+	ReceiptDisplayName string
+	RecipientID        string
+	RecipientUserName  string
+	SubPlan            SubPlan
+	SubPlanName        string
+	GiftMonths         int
+}
+
+type AnnouncementMessage struct {
+	UserNotice
+	Message string
+}
+
+type RaidMessage struct {
+	UserNotice
+	DisplayName string
+	Login       string
+	ViewerCount int
+}
+
+type AnonGiftPaidUpgradeMessage struct {
+	UserNotice
+	PromoGiftTotal int
+	PromoName      string
+}
+
+type GiftPaidUpgradeMessage struct {
+	UserNotice
+	PromoGiftTotal int
+	PromoName      string
+	SenderLogin    string
+	SenderName     string
+}
+
+type RitualMessage struct {
+	UserNotice
+	RitualName string
+	Message    string
 }

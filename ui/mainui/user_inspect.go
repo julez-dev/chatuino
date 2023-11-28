@@ -150,10 +150,10 @@ func (u *userInspect) renderUserInfo() string {
 	}
 
 	style := lipgloss.NewStyle().
-		Padding(1).
+		Padding(0).
 		Border(border, true).
 		BorderForeground(lipgloss.Color("135")).
-		Width(u.width)
+		Width(u.width - 2)
 
 	styleCentered := style.Copy().MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
 
@@ -167,19 +167,20 @@ func (u *userInspect) renderUserInfo() string {
 
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "User %s (%s)\n", u.subAge.User.DisplayName, u.subAge.User.ID)
-	fmt.Fprintf(b, "Account created at: %s\n", u.userData.CreatedAt.Format("02.01.2006 15:04:05"))
+	fmt.Fprintf(b, "Account created at: %s", u.userData.CreatedAt.Format("02.01.2006 15:04:05"))
+
 	if !u.subAge.FollowedAt.IsZero() {
-		fmt.Fprintf(b, "Following since: %s\n", u.subAge.FollowedAt.Format("02.01.2006 15:04:05"))
+		fmt.Fprintf(b, " - Following since: %s\n", u.subAge.FollowedAt.Format("02.01.2006 15:04:05"))
 	} else {
-		b.WriteString("User does not follow the channel\n")
+		b.WriteString(" - User does not follow the channel\n")
 	}
 
 	if u.subAge.Cumulative.Months > 0 {
-		fmt.Fprintf(b, "Subscribed for %d Months\n", u.subAge.Cumulative.Months)
+		fmt.Fprintf(b, "Subscribed for %d Months", u.subAge.Cumulative.Months)
 	}
 
 	if u.subAge.Streak.Months > 0 {
-		fmt.Fprintf(b, "%d Month Sub Streak!", u.subAge.Streak.Months)
+		fmt.Fprintf(b, " - %d Month Sub Streak!", u.subAge.Streak.Months)
 	}
 
 	return style.Render(strings.TrimSuffix(b.String(), "\n"))

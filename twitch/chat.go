@@ -117,6 +117,7 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user
 						parsed, err := parseIRC(string(message))
 						if err != nil {
 							if errors.Is(err, ErrUnhandledCommand) {
+								c.logger.Info().Str("unhandled", string(message)).Send()
 								continue
 							}
 

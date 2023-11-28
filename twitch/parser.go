@@ -137,7 +137,6 @@ func parseIRC(message string) (IRCer, error) {
 
 	switch c.Command {
 	case "PRIVMSG":
-
 		p := command.PrivateMessage{
 			ID:             string(c.tags["id"]),
 			ParentThreadID: string(c.tags["reply-thread-parent-msg-id"]),
@@ -150,32 +149,233 @@ func parseIRC(message string) (IRCer, error) {
 		}
 
 		if badgeStr := c.tags["badges"]; badgeStr != "" {
-			badgeSplit := strings.Split(string(badgeStr), ",")
-			p.Badges = make([]command.Badge, 0, len(badgeSplit))
-
-			for _, badge := range badgeSplit {
-				parts := strings.SplitN(badge, "/", 2)
-				if len(parts) == 1 {
-					p.Badges = append(p.Badges, command.Badge{Name: parts[0]})
-					continue
-				}
-
-				count, err := strconv.Atoi(parts[1])
-				if err != nil {
-					p.Badges = append(p.Badges, command.Badge{Name: parts[0]})
-					continue
-				}
-
-				p.Badges = append(p.Badges, command.Badge{Name: parts[0], Count: count})
-			}
+			p.Badges = parseBadges(string(badgeStr))
 		}
 
 		return &p, nil
 	case "PING":
 		return command.PingMessage{}, nil
+	case "USERNOTICE":
+		u := command.UserNotice{
+			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
+			Badges:      parseBadges(string(c.tags["badges"])),
+			Color:       string(c.tags["color"]),
+			DisplayName: string(c.tags["display-name"]),
+			Emotes:      parseEmotes(string(c.tags["emotes"])),
+			ID:          string(c.tags["id"]),
+			Login:       string(c.tags["login"]),
+			MsgID:       command.MsgID(c.tags["msg-id"]),
+			RoomID:      string(c.tags["room-id"]),
+			SystemMsg:   string(c.tags["system-msg"]),
+			TMISentTS:   parseTimestamp(string(c.tags["tmi-sent-ts"])),
+			UserID:      string(c.tags["user-id"]),
+			UserType:    command.UserType(c.tags["user-type"]),
+		}
+
+		if hasMod, err := strconv.ParseBool(string(c.tags["mod"])); err == nil {
+			u.Mod = hasMod
+		}
+
+		if hasSub, err := strconv.ParseBool(string(c.tags["subscriber"])); err == nil {
+			u.Subscriber = hasSub
+		}
+
+		if hasTurbo, err := strconv.ParseBool(string(c.tags["turbo"])); err == nil {
+			u.Turbo = hasTurbo
+		}
+
+		switch u.MsgID {
+		case command.Sub, command.ReSub:
+			cumMonths, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-cumulative-months"])))
+			if err != nil {
+				return nil, err
+			}
+
+			shouldShare, err := strconv.ParseBool(string(c.tags["msg-param-should-share-streak"]))
+			if err != nil {
+				return nil, err
+			}
+
+			streakMonths, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-streak-months"])))
+			if err != nil {
+				return nil, err
+			}
+
+			sub := &command.SubMessage{
+				UserNotice:        u,
+				CumulativeMonths:  cumMonths,
+				ShouldShareStreak: shouldShare,
+				StreakMonths:      streakMonths,
+				SubPlan:           command.SubPlan(c.tags["msg-param-sub-plan"]),
+				SubPlanName:       string(c.tags["msg-param-sub-plan-name"]),
+			}
+
+			if len(c.Params) > 1 {
+				sub.Message = c.Params[1]
+			}
+
+			return sub, nil
+		case command.SubGift:
+			months, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-months"])))
+			if err != nil {
+				return nil, err
+			}
+
+			giftMonths, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-gift-months"])))
+			if err != nil {
+				return nil, err
+			}
+
+			sub := command.SubGiftMessage{
+				UserNotice:         u,
+				Months:             months,
+				ReceiptDisplayName: string(c.tags["msg-param-recipient-display-name"]),
+				RecipientID:        string(c.tags["msg-param-recipient-id"]),
+				RecipientUserName:  string(c.tags["msg-param-recipient-user-name"]),
+				SubPlan:            command.SubPlan(c.tags["msg-param-sub-plan"]),
+				SubPlanName:        string(c.tags["msg-param-sub-plan-name"]),
+				GiftMonths:         giftMonths,
+			}
+
+			return &sub, nil
+		case command.Announcement:
+			announcement := command.AnnouncementMessage{
+				UserNotice: u,
+			}
+
+			if len(c.Params) > 1 {
+				announcement.Message = c.Params[1]
+			}
+
+			return &announcement, nil
+		case command.Raid:
+			viewerCount, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-viewerCount"])))
+			if err != nil {
+				return nil, err
+			}
+
+			raid := command.RaidMessage{
+				UserNotice:  u,
+				DisplayName: string(c.tags["msg-param-displayName"]),
+				Login:       string(c.tags["msg-param-login"]),
+				ViewerCount: viewerCount,
+			}
+
+			return &raid, nil
+		case command.AnonGiftPaidUpgrade:
+			giftTotal, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-promo-gift-total"])))
+			if err != nil {
+				return nil, err
+			}
+
+			gift := command.AnonGiftPaidUpgradeMessage{
+				UserNotice:     u,
+				PromoGiftTotal: giftTotal,
+				PromoName:      string(c.tags["msg-param-promo-name"]),
+			}
+
+			return &gift, nil
+		case command.GiftPaidUpgrade:
+			giftTotal, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-promo-gift-total"])))
+			if err != nil {
+				return nil, err
+			}
+
+			gift := command.GiftPaidUpgradeMessage{
+				UserNotice:     u,
+				PromoGiftTotal: giftTotal,
+				PromoName:      string(c.tags["msg-param-promo-name"]),
+				SenderLogin:    string(c.tags["msg-param-sender-login"]),
+				SenderName:     string(c.tags["msg-param-sender-name"]),
+			}
+
+			return &gift, nil
+		case command.Ritual:
+			ritual := command.RitualMessage{
+				UserNotice: u,
+				RitualName: string(c.tags["msg-param-ritual-name"]),
+			}
+
+			if len(c.Params) > 1 {
+				ritual.Message = c.Params[1]
+			}
+
+			return &ritual, nil
+		}
+
+		return &u, nil
 	}
 
 	return nil, ErrUnhandledCommand
+}
+
+func emptyStringZero(s string) string {
+	if s == "" {
+		return "0"
+	}
+
+	return s
+}
+
+func parseEmotes(emoteStr string) []command.Emote {
+	// emote format 79382:20-24
+	emoteSplit := strings.Split(string(emoteStr), ",")
+	emotes := make([]command.Emote, 0, len(emoteSplit))
+
+	for _, emote := range emoteSplit {
+		parts := strings.Split(emote, ":")
+		if len(parts) != 2 {
+			continue
+		}
+
+		positions := strings.Split(parts[1], "-")
+
+		if len(positions) != 2 {
+			continue
+		}
+
+		start, err := strconv.Atoi(positions[0])
+		if err != nil {
+			continue
+		}
+
+		end, err := strconv.Atoi(positions[1])
+		if err != nil {
+			continue
+		}
+
+		emotes = append(emotes, command.Emote{
+			ID:    parts[0],
+			Start: start,
+			End:   end,
+		})
+
+	}
+
+	return emotes
+}
+
+func parseBadges(badgeStr string) []command.Badge {
+	badgeSplit := strings.Split(string(badgeStr), ",")
+	badges := make([]command.Badge, 0, len(badgeSplit))
+
+	for _, badge := range badgeSplit {
+		parts := strings.SplitN(badge, "/", 2)
+		if len(parts) == 1 {
+			badges = append(badges, command.Badge{Name: parts[0]})
+			continue
+		}
+
+		count, err := strconv.Atoi(parts[1])
+		if err != nil {
+			badges = append(badges, command.Badge{Name: parts[0]})
+			continue
+		}
+
+		badges = append(badges, command.Badge{Name: parts[0], Version: count})
+	}
+
+	return badges
 }
 
 func parseTimestamp(timeStr string) time.Time {
