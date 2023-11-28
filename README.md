@@ -35,7 +35,7 @@ The name and idea to create a Twitch Chat Client is inspired by [Chatterino](htt
 
 ## Installation
 
-You can use go install to install the program (`go install github.com/julez-dev/chatuino`)
+You can use go install to install the program (`go install github.com/julez-dev/chatuino@latest`)
 
 ## Usage
 
