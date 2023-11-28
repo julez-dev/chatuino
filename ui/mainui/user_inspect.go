@@ -144,11 +144,16 @@ func (u *userInspect) handleResize() {
 }
 
 func (u *userInspect) renderUserInfo() string {
+	border := lipgloss.Border{
+		Top:    "+",
+		Bottom: "+",
+	}
+
 	style := lipgloss.NewStyle().
 		Padding(1).
-		Border(lipgloss.BlockBorder(), true).
-		BorderForeground(lipgloss.Color("135"))
-		// Width(u.width)
+		Border(border, true).
+		BorderForeground(lipgloss.Color("135")).
+		Width(u.width)
 
 	styleCentered := style.Copy().MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
 
