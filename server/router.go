@@ -28,6 +28,7 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 
 		r.Get("/channel/{channelID}/emotes", api.handleGetChannelEmotes())
 		r.Get("/channel/{channelID}/info", api.handleGetStreamInfo())
+		r.Get("/channel/{channelID}/chat/settings", api.handleGetChatSettings())
 		r.Get("/channel/{login}/user", api.handleGetStreamUser())
 	})
 

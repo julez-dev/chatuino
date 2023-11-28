@@ -192,6 +192,34 @@ func (a *API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteRe
 	return resp, nil
 }
 
+// moderatorID needs to match ID of the user the token was generated for
+func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (GetChatSettingsResponse, error) {
+	var (
+		resp GetChatSettingsResponse
+		err  error
+	)
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	if moderatorID != "" {
+		values.Add("moderator_id", moderatorID)
+	}
+
+	url := fmt.Sprintf("/chat/settings?%s", values.Encode())
+
+	if a.provider != nil {
+		resp, err = doAuthenticatedUserRequest[GetChatSettingsResponse](ctx, a, http.MethodGet, url, nil)
+	} else {
+		resp, err = doAuthenticatedAppRequest[GetChatSettingsResponse](ctx, a, http.MethodGet, url, nil)
+	}
+
+	if err != nil {
+		return GetChatSettingsResponse{}, err
+	}
+
+	return resp, nil
+}
+
 func (a *API) createAppAccessToken(ctx context.Context) (string, error) {
 	if a.clientSecret == "" {
 		return "", ErrNoClientSecret

@@ -68,7 +68,7 @@ func (u *userInspect) Init() tea.Cmd {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		ttvResp, err := u.ttvAPI.GetUsers(ctx, nil, []string{ivrResp.User.ID})
+		ttvResp, err := u.ttvAPI.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,

@@ -42,13 +42,13 @@ func newStreamInfo(ctx context.Context, channelID string, ttvAPI apiClient, widt
 	}
 }
 
-func (s streamInfo) Init() tea.Cmd {
+func (s *streamInfo) Init() tea.Cmd {
 	return func() tea.Msg {
 		return s.refreshStreamInfo()
 	}
 }
 
-func (s streamInfo) Update(msg tea.Msg) (streamInfo, tea.Cmd) {
+func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 	switch msg := msg.(type) {
 	case setStreamInfo:
 		if msg.target != s.id {
@@ -64,7 +64,7 @@ func (s streamInfo) Update(msg tea.Msg) (streamInfo, tea.Cmd) {
 	return s, nil
 }
 
-func (s streamInfo) View() string {
+func (s *streamInfo) View() string {
 	if s.game == "" && s.viewer == 0 && s.title == "" {
 		return ""
 	}

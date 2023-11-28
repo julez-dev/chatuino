@@ -82,6 +82,10 @@ func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (t
 	return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
 }
 
+func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error) {
+	return do[twitch.GetChatSettingsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/settings")
+}
+
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	var respData T
 
@@ -103,7 +107,7 @@ func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return respData, fmt.Errorf("non 200 response code (%d):  %s", resp.StatusCode, bodyBytes)
+		return respData, fmt.Errorf("non 200 response code (%d): %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	if err := json.Unmarshal(bodyBytes, &respData); err != nil {

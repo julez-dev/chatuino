@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"os"
@@ -11,7 +12,9 @@ import (
 
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
+	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/ui/mainui"
+	"github.com/pkg/browser"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
@@ -19,6 +22,11 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
 )
+
+func init() {
+	browser.Stderr = io.Discard
+	browser.Stdout = io.Discard
+}
 
 const (
 	defaultClientID = "jliqj1q6nmp0uh5ofangdx4iac7yd9"
@@ -69,23 +77,20 @@ func main() {
 			serverAPI := server.NewClient(c.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 
-			store := emote.NewStore(serverAPI, stvAPI)
+			emoteStore := emote.NewStore(serverAPI, stvAPI)
+
+			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
+				ttvAPI, err := twitch.NewAPI(c.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
+				if err == nil {
+					emoteStore = emote.NewStore(ttvAPI, stvAPI)
+				}
+			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(logger, accountProvider, &store, c.String("client-id"), serverAPI),
+				mainui.NewUI(logger, accountProvider, &emoteStore, c.String("client-id"), serverAPI),
 				tea.WithContext(c.Context),
 				tea.WithAltScreen(),
 			)
-
-			// Refresh global emotes in the background to reduce start up time, quit tea event loop if error occurred
-			go func() {
-				if err := store.RefreshGlobal(c.Context); err != nil {
-					p.Quit()
-					p.Wait()
-					fmt.Printf("error while fetching global emotes: %v", err)
-					os.Exit(1)
-				}
-			}()
 
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("error while running TUI: %w", err)

@@ -17,7 +17,7 @@ import (
 )
 
 var scopes = [...]string{
-	"chat:read", "chat:edit", "channel:moderate", "moderation:read", "user:read:chat",
+	"chat:read", "chat:edit", "channel:moderate", "moderator:read:chat_settings", "moderation:read", "user:read:chat",
 }
 
 type tokenPair struct {
@@ -321,6 +321,30 @@ func (a *API) handleGetStreamInfo() http.HandlerFunc {
 		jsonData, err := json.Marshal(info)
 		if err != nil {
 			logger.Err(err).Msg("could not marshal info")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonData)
+	})
+}
+
+func (a *API) handleGetChatSettings() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := a.getLoggerFrom(r.Context())
+
+		settings, err := a.ttvAPI.GetChatSettings(r.Context(), chi.URLParam(r, "channelID"), "")
+		if err != nil {
+			logger.Err(err).Str("channel", chi.URLParam(r, "channelID")).Msg("could not get chat settings")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		jsonData, err := json.Marshal(settings)
+		if err != nil {
+			logger.Err(err).Msg("could not marshal settings")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

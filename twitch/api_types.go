@@ -88,3 +88,22 @@ type (
 		Cursor string `json:"cursor"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#get-chat-settings
+type (
+	GetChatSettingsResponse struct {
+		Data []ChatSettingData `json:"data"`
+	}
+	ChatSettingData struct {
+		BroadcasterID                 string `json:"broadcaster_id"`
+		SlowMode                      bool   `json:"slow_mode"`
+		SlowModeWaitTime              int    `json:"slow_mode_wait_time"` // in seconds
+		FollowerMode                  bool   `json:"follower_mode"`
+		FollowerModeDuration          int    `json:"follower_mode_duration"` // in minutes
+		SubscriberMode                bool   `json:"subscriber_mode"`
+		EmoteMode                     bool   `json:"emote_mode"`
+		UniqueChatMode                bool   `json:"unique_chat_mode"`
+		NonModeratorChatDelay         bool   `json:"non_moderator_chat_delay"`
+		NonModeratorChatDelayDuration int    `json:"non_moderator_chat_delay_duration"` // in seconds
+	}
+)

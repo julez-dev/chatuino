@@ -28,6 +28,7 @@ type AccountProvider interface {
 type EmoteStore interface {
 	GetByText(channel, text string) (emote.Emote, bool)
 	RefreshLocal(ctx context.Context, channelID string) error
+	RefreshGlobal(ctx context.Context) error
 	GetAllForUser(id string) emote.EmoteSet
 }
 
@@ -115,7 +116,7 @@ type Root struct {
 	joinInput join
 
 	tabCursor int
-	tabs      []tab
+	tabs      []*tab
 }
 
 func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client) Root {
@@ -364,7 +365,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.CloseTab) {
-				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state == inChatWindow {
+				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state != insertMode {
 					r.closeTab()
 				}
 			}
@@ -478,7 +479,7 @@ func (r *Root) closeTab() {
 		tabID := r.tabs[r.tabCursor].id
 		r.header.removeTab(tabID)
 		r.tabs[r.tabCursor].Close()
-		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
+		r.tabs = slices.DeleteFunc(r.tabs, func(t *tab) bool {
 			return t.id == tabID
 		})
 		r.prevTab()

@@ -14,7 +14,13 @@ import (
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/pkg/browser"
 	"github.com/rs/zerolog"
+)
+
+const (
+	twitchBaseURL = "https://twitch.tv"
+	popupFmt      = "https://www.twitch.tv/popout/%s/chat?popout="
 )
 
 type ircConnectionError struct {
@@ -60,6 +66,17 @@ type setChannelDataMessage struct {
 
 type tabState int
 
+func (t tabState) String() string {
+	switch t {
+	case 1:
+		return "Insert"
+	case 2:
+		return "Inspect"
+	}
+
+	return "View"
+}
+
 const (
 	inChatWindow tabState = iota
 	insertMode
@@ -69,6 +86,7 @@ const (
 type apiClient interface {
 	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
 	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
+	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
 }
 
 type tab struct {
@@ -102,10 +120,11 @@ type tab struct {
 	cancelFunc context.CancelFunc
 
 	// components
+	streamInfo   *streamInfo
 	chatWindow   *chatWindow
 	userInspect  *userInspect
-	streamInfo   *streamInfo
 	messageInput *component.SuggestionTextInput
+	statusInfo   *status
 
 	err error
 }
@@ -121,7 +140,7 @@ func newTab(
 	account save.Account,
 	accountProvider AccountProvider,
 	initialMessages []*command.PrivateMessage,
-) (tab, error) {
+) (*tab, error) {
 	var ttvAPI apiClient
 
 	if account.IsAnonymous {
@@ -132,7 +151,7 @@ func newTab(
 			twitch.WithUserAuthentication(accountProvider, serverAPI, account.ID),
 		)
 		if err != nil {
-			return tab{}, fmt.Errorf("error while creating twitch api client: %w", err)
+			return nil, fmt.Errorf("error while creating twitch api client: %w", err)
 		}
 
 		ttvAPI = api
@@ -143,7 +162,7 @@ func newTab(
 	input := component.NewSuggestionTextInput()
 	input.SetWidth(width)
 
-	return tab{
+	return &tab{
 		id:              id,
 		logger:          logger,
 		width:           width,
@@ -160,9 +179,48 @@ func newTab(
 	}, nil
 }
 
-func (t tab) Init() tea.Cmd {
+func (t *tab) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
+	cmds = append(cmds, func() tea.Msg {
+		userData, err := t.ttvAPI.GetUsers(t.ctx, []string{t.channel}, nil)
+		if err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("error while fetching ttv user %s: %w", t.channel, err),
+			}
+		}
+
+		if len(userData.Data) < 1 {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("could not find channel: %s", t.channel),
+			}
+		}
+
+		// refresh emote set for joined channel
+		if err := t.emoteStore.RefreshLocal(t.ctx, userData.Data[0].ID); err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("error while refreshing emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
+			}
+		}
+
+		if err := t.emoteStore.RefreshGlobal(t.ctx); err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("error while refreshing global emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
+			}
+		}
+
+		return setChannelDataMessage{
+			targetID:  t.id,
+			channelID: userData.Data[0].ID,
+			channel:   userData.Data[0].DisplayName,
+		}
+	})
+
+	// Start chat connection after channel data has been loaded, to guarantee that the user token is valid/was refreshed
 	cmds = append(cmds, func() tea.Msg {
 		acc, err := t.provider.GetAccountBy(t.account.ID)
 		if err != nil {
@@ -192,41 +250,10 @@ func (t tab) Init() tea.Cmd {
 		}
 	})
 
-	cmds = append(cmds, func() tea.Msg {
-		userData, err := t.ttvAPI.GetUsers(t.ctx, []string{t.channel}, nil)
-		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("error while fetching ttv user %s: %w", t.channel, err),
-			}
-		}
-
-		if len(userData.Data) < 1 {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not find channel: %s", t.channel),
-			}
-		}
-
-		// refresh emote set for joined channel
-		if err := t.emoteStore.RefreshLocal(t.ctx, userData.Data[0].ID); err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("error while refreshing emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
-			}
-		}
-
-		return setChannelDataMessage{
-			targetID:  t.id,
-			channelID: userData.Data[0].ID,
-			channel:   userData.Data[0].DisplayName,
-		}
-	})
-
-	return tea.Batch(cmds...)
+	return tea.Sequence(cmds...)
 }
 
-func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
+func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -248,16 +275,14 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			beforeView := t.streamInfo.View()
 
-			info, cmd := t.streamInfo.Update(msg)
-			t.streamInfo = &info
-			cmds = append(cmds, cmd)
+			t.streamInfo, cmd = t.streamInfo.Update(msg)
 
 			// only do expensive resize if view has changed
 			if beforeView != t.streamInfo.View() {
 				t.handleResize()
 			}
 
-			return t, tea.Batch(cmds...)
+			return t, cmd
 		}
 	case setChannelDataMessage:
 		if msg.targetID != t.id {
@@ -277,6 +302,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.channelDataLoaded = true
 		t.chatWindow = newChatWindow(t.logger, t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
+		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
 		for _, m := range t.initialMessages {
 			t.chatWindow.handleMessage(m)
@@ -291,7 +317,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
 		t.handleResize()
 
-		return t, t.streamInfo.Init()
+		return t, tea.Batch(t.streamInfo.Init(), t.statusInfo.Init())
 	case chatConnectionInitiatedMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -399,6 +425,23 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 					return t, tea.Batch(cmds...)
 				}
+			case "p", "t":
+				switch t.state {
+				case inChatWindow, userInspectMode:
+					return t, func() tea.Msg {
+						url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel)
+
+						if msg.String() == "p" {
+							url = fmt.Sprintf(popupFmt, t.channel)
+						}
+
+						if err := browser.OpenURL(url); err != nil {
+							t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
+						}
+
+						return nil
+					}
+				}
 			case "esc":
 				if t.state == userInspectMode {
 					t.state = inChatWindow
@@ -435,8 +478,10 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.chatWindow, cmd = t.chatWindow.Update(msg)
 		cmds = append(cmds, cmd)
 
-		info, cmd := t.streamInfo.Update(msg)
-		t.streamInfo = &info
+		t.streamInfo, cmd = t.streamInfo.Update(msg)
+		cmds = append(cmds, cmd)
+
+		t.statusInfo, cmd = t.statusInfo.Update(msg)
 		cmds = append(cmds, cmd)
 
 		if t.state == userInspectMode {
@@ -448,7 +493,7 @@ func (t tab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	return t, tea.Batch(cmds...)
 }
 
-func (t tab) View() string {
+func (t *tab) View() string {
 	if t.err != nil {
 		return lipgloss.NewStyle().
 			Width(t.width).
@@ -494,6 +539,12 @@ func (t tab) View() string {
 		builder.WriteString(mi)
 	}
 
+	statusInfo := t.statusInfo.View()
+	if statusInfo != "" {
+		builder.WriteString("\n")
+		builder.WriteString(statusInfo)
+	}
+
 	return builder.String()
 }
 
@@ -502,7 +553,7 @@ func (r *tab) Close() error {
 	return r.ctx.Err()
 }
 
-func (t tab) waitTwitchEvent() tea.Cmd {
+func (t *tab) waitTwitchEvent() tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case msg, ok := <-t.messagesRecv:
@@ -539,29 +590,37 @@ func (t *tab) renderMessageInput() string {
 
 func (t *tab) handleResize() {
 	if t.channelDataLoaded {
-		mi := t.renderMessageInput()
-		heightMessageInput := lipgloss.Height(mi)
+		messageInput := t.renderMessageInput()
+		heightMessageInput := lipgloss.Height(messageInput)
 
-		if mi == "" {
+		if messageInput == "" {
 			heightMessageInput = 0
 		}
 
-		t.streamInfo.width = t.width
-		si := t.streamInfo.View()
-		heightInfo := lipgloss.Height(si)
-		if si == "" {
-			heightInfo = 0
+		statusInfo := t.statusInfo.View()
+		heightStatusInfo := lipgloss.Height(statusInfo)
+
+		if statusInfo == "" {
+			heightStatusInfo = 0
 		}
 
+		streamInfo := t.streamInfo.View()
+		heightStreamInfo := lipgloss.Height(streamInfo)
+		if streamInfo == "" {
+			heightStreamInfo = 0
+		}
+
+		t.statusInfo.width = t.width
+		t.streamInfo.width = t.width
 		if t.state == userInspectMode {
-			t.chatWindow.height = (t.height - heightInfo) / 2
+			t.chatWindow.height = (t.height - heightStreamInfo - heightStatusInfo) / 2
 			t.chatWindow.width = t.width
 
-			t.userInspect.height = t.height - heightInfo - t.chatWindow.height
+			t.userInspect.height = t.height - heightStreamInfo - t.chatWindow.height - heightStatusInfo
 			t.userInspect.width = t.width
 			t.userInspect.handleResize()
 		} else {
-			t.chatWindow.height = t.height - heightMessageInput - heightInfo
+			t.chatWindow.height = t.height - heightMessageInput - heightStreamInfo - heightStatusInfo
 			t.chatWindow.width = t.width
 			t.chatWindow.recalculateLines()
 		}
