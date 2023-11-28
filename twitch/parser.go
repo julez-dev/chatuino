@@ -137,24 +137,74 @@ func parseIRC(message string) (IRCer, error) {
 
 	switch c.Command {
 	case "PRIVMSG":
-		p := command.PrivateMessage{
-			ID:             string(c.tags["id"]),
-			ParentThreadID: string(c.tags["reply-thread-parent-msg-id"]),
-			ParentMsgID:    string(c.tags["reply-parent-msg-id"]),
-			From:           string(c.tags["display-name"]),
-			In:             strings.TrimPrefix(c.Params[0], "#"),
-			Message:        c.Params[1],
-			UserColor:      string(c.tags["color"]),
-			SentAt:         parseTimestamp(string(c.tags["tmi-sent-ts"])),
+		bits, err := strconv.Atoi(emptyStringZero(string(c.tags["bits"])))
+		if err != nil {
+			return nil, err
 		}
 
-		if badgeStr := c.tags["badges"]; badgeStr != "" {
-			p.Badges = parseBadges(string(badgeStr))
+		paidAmount, err := strconv.Atoi(emptyStringZero(string(c.tags["pinned-chat-paid-amount"])))
+		if err != nil {
+			return nil, err
+		}
+
+		paidExponent, err := strconv.Atoi(emptyStringZero(string(c.tags["pinned-chat-paid-exponent"])))
+		if err != nil {
+			return nil, err
+		}
+
+		p := command.PrivateMessage{
+			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
+			Badges:      parseBadges(string(c.tags["badges"])),
+			Bits:        bits,
+			Color:       string(c.tags["color"]),
+			DisplayName: string(c.tags["display-name"]),
+			Emotes:      parseEmotes(string(c.tags["emotes"])),
+			ID:          string(c.tags["id"]),
+			Mod:         c.tags["mod"] == "1",
+			FirstMsg:    c.tags["first-msg"] == "1",
+
+			PaidAmount:          paidAmount,
+			PaidCurrency:        string(c.tags["pinned-chat-paid-currency"]),
+			PaidExponent:        paidExponent,
+			PaidLevel:           string(c.tags["pinned-chat-paid-level"]),
+			PaidIsSystemMessage: c.tags["pinned-chat-paid-is-system-message"] == "1",
+
+			ParentMsgID:           string(c.tags["reply-parent-msg-id"]),
+			ParentUserID:          string(c.tags["reply-parent-user-id"]),
+			ParentUserLogin:       string(c.tags["reply-parent-user-login"]),
+			ParentDisplayName:     string(c.tags["reply-parent-display-name"]),
+			ParentMsgBody:         string(c.tags["reply-parent-msg-body"]),
+			ThreadParentMsgID:     string(c.tags["reply-thread-parent-msg-id"]),
+			ThreadParentUserLogin: string(c.tags["reply-thread-parent-user-login"]),
+
+			RoomID:          string(c.tags["room-id"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
+			Subscriber:      c.tags["subscriber"] == "1",
+			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
+			Turbo:           c.tags["turbo"] == "1",
+			UserID:          string(c.tags["user-id"]),
+			UserType:        command.UserType(c.tags["user-type"]),
+			VIP:             c.tags["vip"] == "1",
+		}
+
+		if len(c.Params) > 1 {
+			p.Message = c.Params[1]
 		}
 
 		return &p, nil
 	case "PING":
 		return command.PingMessage{}, nil
+	case "NOTICE":
+		n := command.Notice{
+			MsgID: command.MsgID(c.tags["msg-id"]),
+		}
+
+		if len(c.Params) > 1 {
+			n.ChannelUserName = strings.TrimPrefix(c.Params[0], "#")
+			n.Message = c.Params[1]
+		}
+
+		return &n, nil
 	case "USERNOTICE":
 		u := command.UserNotice{
 			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
@@ -170,28 +220,14 @@ func parseIRC(message string) (IRCer, error) {
 			TMISentTS:   parseTimestamp(string(c.tags["tmi-sent-ts"])),
 			UserID:      string(c.tags["user-id"]),
 			UserType:    command.UserType(c.tags["user-type"]),
-		}
-
-		if hasMod, err := strconv.ParseBool(string(c.tags["mod"])); err == nil {
-			u.Mod = hasMod
-		}
-
-		if hasSub, err := strconv.ParseBool(string(c.tags["subscriber"])); err == nil {
-			u.Subscriber = hasSub
-		}
-
-		if hasTurbo, err := strconv.ParseBool(string(c.tags["turbo"])); err == nil {
-			u.Turbo = hasTurbo
+			Mod:         c.tags["mod"] == "1",
+			Subscriber:  c.tags["subscriber"] == "1",
+			Turbo:       c.tags["turbo"] == "1",
 		}
 
 		switch u.MsgID {
 		case command.Sub, command.ReSub:
 			cumMonths, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-cumulative-months"])))
-			if err != nil {
-				return nil, err
-			}
-
-			shouldShare, err := strconv.ParseBool(string(c.tags["msg-param-should-share-streak"]))
 			if err != nil {
 				return nil, err
 			}
@@ -204,7 +240,7 @@ func parseIRC(message string) (IRCer, error) {
 			sub := &command.SubMessage{
 				UserNotice:        u,
 				CumulativeMonths:  cumMonths,
-				ShouldShareStreak: shouldShare,
+				ShouldShareStreak: c.tags["msg-param-should-share-streak"] == "1",
 				StreakMonths:      streakMonths,
 				SubPlan:           command.SubPlan(c.tags["msg-param-sub-plan"]),
 				SubPlanName:       string(c.tags["msg-param-sub-plan-name"]),
@@ -304,9 +340,108 @@ func parseIRC(message string) (IRCer, error) {
 		}
 
 		return &u, nil
+	case "USERSTATE":
+		u := command.UserState{
+			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
+			Badges:      parseBadges(string(c.tags["badges"])),
+			Color:       string(c.tags["color"]),
+			DisplayName: string(c.tags["display-name"]),
+			EmoteSets:   strings.Split(string(c.tags["emote-sets"]), ","),
+			ID:          string(c.tags["id"]),
+			Subscriber:  c.tags["subscriber"] == "1",
+			Turbo:       c.tags["turbo"] == "1",
+			UserType:    command.UserType(c.tags["user-type"]),
+		}
+
+		return &u, nil
+	case "WHISPER":
+		w := command.Whisper{
+			Badges:      parseBadges(string(c.tags["badges"])),
+			Color:       string(c.tags["color"]),
+			DisplayName: string(c.tags["display-name"]),
+			Emotes:      parseEmotes(string(c.tags["emotes"])),
+			ID:          string(c.tags["id"]),
+			ThreadID:    string(c.tags["thread-id"]),
+			Turbo:       c.tags["turbo"] == "1",
+			UserID:      string(c.tags["user-id"]),
+			UserType:    command.UserType(c.tags["user-type"]),
+		}
+
+		if len(c.Params) > 1 {
+			w.Message = c.Params[1]
+		}
+
+		return &w, nil
+	case "ROOMSTATE":
+		r := command.RoomState{
+			RoomID: string(c.tags["room-id"]),
+		}
+
+		if val, ok := c.tags["emote-only"]; ok {
+			r.EmoteOnly = pointer(val == "1")
+		}
+
+		if val, ok := c.tags["r9k"]; ok {
+			r.R9K = pointer(val == "1")
+		}
+
+		if val, ok := c.tags["subs-only"]; ok {
+			r.SubsOnly = pointer(val == "1")
+		}
+
+		if val, ok := c.tags["followers-only"]; ok {
+			followerDelay, err := strconv.Atoi(emptyStringZero(string(val)))
+			if err != nil {
+				return nil, err
+			}
+
+			r.FollowersOnly = pointer(followerDelay)
+		}
+
+		if val, ok := c.tags["slow"]; ok {
+			slow, err := strconv.Atoi(emptyStringZero(string(val)))
+			if err != nil {
+				return nil, err
+			}
+
+			r.Slow = pointer(slow)
+		}
+
+		return &r, nil
+	case "CLEARCHAT":
+		banDuration, err := strconv.Atoi(emptyStringZero(string(c.tags["ban-duration"])))
+		if err != nil {
+			return nil, err
+		}
+
+		cc := command.ClearChat{
+			BanDuration:  banDuration,
+			RoomID:       string(c.tags["room-id"]),
+			TargetUserID: string(c.tags["target-user-id"]),
+			TMISentTS:    parseTimestamp(string(c.tags["tmi-sent-ts"])),
+		}
+
+		if len(c.Params) > 1 {
+			cc.UserName = c.Params[1]
+		}
+
+		return &cc, nil
+	case "CLEARMSG":
+		c := command.ClearMessage{
+			Login:       string(c.tags["login"]),
+			RoomID:      string(c.tags["room-id"]),
+			TargetMsgID: string(c.tags["target-msg-id"]),
+			TMISentTS:   parseTimestamp(string(c.tags["tmi-sent-ts"])),
+		}
+
+		return &c, nil
 	}
 
 	return nil, ErrUnhandledCommand
+}
+
+func pointer[T any](i T) *T {
+	return &i
 }
 
 func emptyStringZero(s string) string {
@@ -356,6 +491,10 @@ func parseEmotes(emoteStr string) []command.Emote {
 }
 
 func parseBadges(badgeStr string) []command.Badge {
+	if badgeStr == "" {
+		return nil
+	}
+
 	badgeSplit := strings.Split(string(badgeStr), ",")
 	badges := make([]command.Badge, 0, len(badgeSplit))
 

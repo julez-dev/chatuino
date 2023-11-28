@@ -340,11 +340,17 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			t.chatWindow, cmd = t.chatWindow.Update(msg)
 			cmds = append(cmds, cmd)
 
+			// if room state update, update status info
+			if _, ok := msg.message.(*command.RoomState); ok {
+				cmds = append(cmds, t.statusInfo.Init()) // resend init command
+			}
+
+			// if in inspect mode, update user inspect window only on private messages
 			if t.state == userInspectMode {
 				irc, ok := msg.message.(*command.PrivateMessage)
 
 				if ok {
-					if irc.From == t.userInspect.user {
+					if irc.DisplayName == t.userInspect.user {
 						t.userInspect, cmd = t.userInspect.Update(msg)
 						cmds = append(cmds, cmd)
 					}
@@ -399,7 +405,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					}
 
 					t.state = userInspectMode
-					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, msg.From, t.channel, t.chatWindow.channelID, t.emoteStore)
+					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, msg.DisplayName, t.channel, t.chatWindow.channelID, t.emoteStore)
 					cmds = append(cmds, t.userInspect.Init())
 
 					for _, e := range t.chatWindow.entries {
@@ -409,7 +415,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 							continue
 						}
 
-						if msg.From == t.userInspect.user {
+						if msg.DisplayName == t.userInspect.user {
 							t.userInspect.chatWindow.handleMessage(msg)
 						}
 					}
@@ -461,10 +467,10 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			case "enter":
 				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
 					msg := &command.PrivateMessage{
-						In:      t.channel,
-						Message: t.messageInput.Value(),
-						From:    t.account.DisplayName,
-						SentAt:  time.Now(),
+						ChannelUserName: t.channel,
+						Message:         t.messageInput.Value(),
+						DisplayName:     t.account.DisplayName,
+						TMISentTS:       time.Now(),
 					}
 					t.messagesOut <- msg
 					t.chatWindow.handleMessage(msg)

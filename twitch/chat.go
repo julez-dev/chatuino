@@ -124,6 +124,42 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user
 							return err
 						}
 
+						if msg, ok := parsed.(*command.Whisper); ok {
+							c.logger.Info().Any("whisper", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.UserState); ok {
+							c.logger.Info().Any("user state", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.AnnouncementMessage); ok {
+							c.logger.Info().Any("announcement", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.Notice); ok {
+							c.logger.Info().Any("notice", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.RoomState); ok {
+							c.logger.Info().Any("room state", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.ClearChat); ok {
+							c.logger.Info().Any("clear chat", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.ClearMessage); ok {
+							c.logger.Info().Any("clear message", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.RitualMessage); ok {
+							c.logger.Info().Any("ritual", msg).Str("raw", string(message)).Send()
+						}
+
+						if msg, ok := parsed.(*command.PrivateMessage); ok {
+							c.logger.Info().Any("pvm", msg).Str("raw", string(message)).Send()
+						}
+
 						// automatically respond with pong
 						if _, ok := parsed.(command.PingMessage); ok {
 							if err := ws.WriteMessage(websocket.TextMessage, []byte("PONG tmi.twitch.tv\r\n")); err != nil {

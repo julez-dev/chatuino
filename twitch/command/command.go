@@ -16,27 +16,60 @@ type Emote struct {
 	End   int
 }
 
+type UserType string
+
+const (
+	Empty     UserType = "" // normal user
+	Admin     UserType = "admin"
+	GlobalMod UserType = "global_mod"
+	Staff     UserType = "staff"
+)
+
 type PrivateMessage struct {
-	ID             string
-	ParentThreadID string
-	ParentMsgID    string
+	BadgeInfo   []Badge
+	Badges      []Badge
+	Bits        int
+	Color       string
+	DisplayName string
+	Emotes      []Emote
+	ID          string
+	Mod         bool
+	FirstMsg    bool
 
-	From      string
-	In        string
-	Message   string
-	UserColor string
-	SentAt    time.Time
+	// Hype chat
+	PaidAmount          int
+	PaidCurrency        string
+	PaidExponent        int
+	PaidLevel           string
+	PaidIsSystemMessage bool
 
-	Badges []Badge
+	// Reply
+	ParentMsgID           string
+	ParentUserID          string
+	ParentUserLogin       string
+	ParentDisplayName     string
+	ParentMsgBody         string
+	ThreadParentMsgID     string
+	ThreadParentUserLogin string
+
+	RoomID          string
+	ChannelUserName string
+	Subscriber      bool
+	TMISentTS       time.Time
+	Turbo           bool
+	UserID          string
+	UserType        UserType
+	VIP             bool
+
+	Message string
 }
 
-// socket.send(`PRIVMSG ${room} :${message}`);
 func (p *PrivateMessage) IRC() string {
 	if p.ParentMsgID != "" {
-		return fmt.Sprintf("@reply-parent-msg-id=%s PRIVMSG #%s :%s", p.ParentMsgID, p.In, p.Message)
+		return fmt.Sprintf("@reply-parent-msg-id=%s PRIVMSG #%s :%s", p.ParentMsgID, p.ChannelUserName, p.Message)
 	}
 
-	return fmt.Sprintf("PRIVMSG #%s :%s", p.In, p.Message)
+	return fmt.Sprintf("PRIVMSG #%s :%s", p.ChannelUserName, p.Message)
 }
 
 type PongMessage struct{}
@@ -62,6 +95,7 @@ func (j JoinMessage) IRC() string {
 type MsgID string
 
 const (
+	// UserNotice
 	Sub                 MsgID = "sub"
 	ReSub               MsgID = "resub"
 	SubGift             MsgID = "subgift"
@@ -74,15 +108,18 @@ const (
 	Ritual              MsgID = "ritual"
 	BitsBadgeTier       MsgID = "bitsbadgetier"
 	Announcement        MsgID = "announcement"
-)
 
-type UserType string
-
-const (
-	Empty     UserType = "" // normal user
-	Admin     UserType = "admin"
-	GlobalMod UserType = "global_mod"
-	Staff     UserType = "staff"
+	// Notice
+	SubsOn       MsgID = "subs_on"
+	SubsOff      MsgID = "subs_off"
+	EmoteOnlyOn  MsgID = "emote_only_on"
+	EmoteOnlyOff MsgID = "emote_only_off"
+	FollowersOn  MsgID = "followers_on"
+	FollowersOff MsgID = "followers_off"
+	SlowOn       MsgID = "slow_on"
+	SlowOff      MsgID = "slow_off"
+	R9kOn        MsgID = "r9k_on" // also known as unique chat
+	R9kOff       MsgID = "r9k_off"
 )
 
 type UserNotice struct {
@@ -183,4 +220,85 @@ type RitualMessage struct {
 	UserNotice
 	RitualName string
 	Message    string
+}
+
+type UserState struct {
+	BadgeInfo   []Badge
+	Badges      []Badge
+	Color       string
+	DisplayName string
+	EmoteSets   []string
+	ID          string
+	Subscriber  bool
+	Turbo       bool
+	UserType    UserType
+}
+
+func (u *UserState) IRC() string {
+	return ""
+}
+
+type Whisper struct {
+	Badges      []Badge
+	Color       string
+	DisplayName string
+	Emotes      []Emote
+	ID          string
+	ThreadID    string
+	Turbo       bool
+	UserID      string
+	UserType    UserType
+	Message     string
+}
+
+func (w *Whisper) IRC() string {
+	return ""
+}
+
+type Notice struct {
+	ChannelUserName string
+	Message         string
+	MsgID           MsgID
+}
+
+func (n *Notice) IRC() string {
+	return ""
+}
+
+// Only the changed values are set
+// RoomState does not represent the final state
+type RoomState struct {
+	EmoteOnly     *bool
+	FollowersOnly *int
+	R9K           *bool
+	RoomID        string
+	Slow          *int
+	SubsOnly      *bool
+}
+
+func (r *RoomState) IRC() string {
+	return ""
+}
+
+type ClearChat struct {
+	BanDuration  int // in seconds
+	RoomID       string
+	TargetUserID string
+	TMISentTS    time.Time
+	UserName     string
+}
+
+func (c *ClearChat) IRC() string {
+	return ""
+}
+
+type ClearMessage struct {
+	Login       string
+	RoomID      string
+	TargetMsgID string
+	TMISentTS   time.Time
+}
+
+func (c *ClearMessage) IRC() string {
+	return ""
 }

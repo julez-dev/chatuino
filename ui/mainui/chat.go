@@ -316,7 +316,7 @@ func (c *chatWindow) markSelectedMessage() {
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	switch msg.(type) {
-	case error, *command.PrivateMessage: // supported Message types
+	case error, *command.PrivateMessage, *command.Notice: // supported Message types
 	default: // exit only on other types
 		return
 	}
@@ -402,25 +402,25 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		}
 
 		// if render function not in cache yet, compute now
-		userRenderFunc, ok := c.userColorCache[msg.UserColor]
+		userRenderFunc, ok := c.userColorCache[msg.Color]
 
 		if !ok {
-			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.UserColor)).Render
-			c.userColorCache[msg.UserColor] = userRenderFunc
+			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
+			c.userColorCache[msg.Color] = userRenderFunc
 		}
 
 		if len(badges) == 0 {
 			// start of the message (sent date + username)
 			startMsgStr = fmt.Sprintf("%s %s: ",
-				msg.SentAt.Local().Format("15:04:05"),
-				userRenderFunc(msg.From),
+				msg.TMISentTS.Local().Format("15:04:05"),
+				userRenderFunc(msg.DisplayName),
 			)
 		} else {
 			// start of the message (sent date + badges + username)
 			startMsgStr = fmt.Sprintf("%s [%s] %s: ",
-				msg.SentAt.Local().Format("15:04:05"),
+				msg.TMISentTS.Local().Format("15:04:05"),
 				strings.Join(badges, ", "),
-				userRenderFunc(msg.From),
+				userRenderFunc(msg.DisplayName),
 			)
 		}
 
@@ -451,6 +451,14 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		}
 
 		return lines
+	case *command.Notice:
+		textLimit := c.width - indicatorWidth
+
+		styled := lipgloss.NewStyle().Italic(true).Render("[System] " + msg.Message)
+		wrappedText := wrap.String(wordwrap.String(styled, textLimit), textLimit)
+		splits := strings.Split(wrappedText, "\n")
+
+		return splits
 	}
 
 	return []string{}
