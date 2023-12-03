@@ -12,6 +12,7 @@ import (
 
 	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/rs/zerolog"
 )
 
 type TwitchEmoteFetcher interface {
@@ -25,6 +26,7 @@ type SevenTVEmoteFetcher interface {
 }
 
 type Store struct {
+	logger  zerolog.Logger
 	m       *sync.RWMutex
 	global  EmoteSet
 	channel map[string]EmoteSet
@@ -33,8 +35,9 @@ type Store struct {
 	sevenTVEmotes SevenTVEmoteFetcher
 }
 
-func NewStore(twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher) Store {
+func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher) Store {
 	return Store{
+		logger:        logger,
 		m:             &sync.RWMutex{},
 		channel:       map[string]EmoteSet{},
 		twitchEmotes:  twitchEmotes,
@@ -102,6 +105,8 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 	group.Go(func() error {
 		resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
 		if err != nil {
+			s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch 7TV emotes")
+
 			var apiErr seventv.APIError
 			if errors.As(err, &apiErr) {
 				if apiErr.StatusCode == http.StatusNotFound {
@@ -124,7 +129,7 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 	s.channel[channelID] = make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes))
 
 	for _, ttvEmote := range ttvResp.Data {
-		s.global = append(s.global, Emote{
+		s.channel[channelID] = append(s.channel[channelID], Emote{
 			ID:       ttvEmote.ID,
 			Text:     ttvEmote.Name,
 			Platform: Twitch,
@@ -137,7 +142,7 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 		url, _ = strings.CutPrefix(url, "//")
 		url = "https://" + url
 
-		s.global = append(s.global, Emote{
+		s.channel[channelID] = append(s.channel[channelID], Emote{
 			ID:       stvEmote.ID,
 			Text:     stvEmote.Name,
 			Platform: SevenTV,

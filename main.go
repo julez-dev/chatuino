@@ -75,12 +75,12 @@ func main() {
 			accountProvider := save.NewAccountProvider()
 			serverAPI := server.NewClient(c.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
-			emoteStore := emote.NewStore(serverAPI, stvAPI)
+			emoteStore := emote.NewStore(logger, serverAPI, stvAPI)
 
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(c.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					emoteStore = emote.NewStore(ttvAPI, stvAPI)
+					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI)
 				}
 			}
 
