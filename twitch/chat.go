@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -19,8 +20,6 @@ import (
 
 const (
 	maxMessageSize = 4096
-	AnonymousUser  = "justinfan123123"
-	AnonymousOAuth = "oauth:123123123"
 )
 
 // IRCer are types that can be turned into an IRC command
@@ -44,26 +43,22 @@ type Chat struct {
 	channels []string
 	m        *sync.Mutex
 
+	accountProvider AccountProvider
+	accountID       string
+
 	logger zerolog.Logger
 }
 
-func NewChat(logger zerolog.Logger) *Chat {
+func NewChat(logger zerolog.Logger, accountProvider AccountProvider, accountID string) *Chat {
 	return &Chat{
-		m:      &sync.Mutex{},
-		logger: logger,
+		m:               &sync.Mutex{},
+		logger:          logger,
+		accountProvider: accountProvider,
+		accountID:       accountID,
 	}
 }
 
-func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user, oauth string) (<-chan IRCer, <-chan error) {
-	if !strings.HasPrefix(oauth, "oauth:") {
-		oauth = "oauth:" + oauth
-	}
-
-	if oauth == "" || user == "" {
-		oauth = AnonymousOAuth
-		user = AnonymousUser
-	}
-
+func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-chan IRCer, <-chan error) {
 	out := make(chan IRCer)
 	outErr := make(chan error, 1)
 
@@ -83,9 +78,15 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user
 			// innerWG is done, once either the writer or reader returns an error
 			innerWG, innerCtx := errgroup.WithContext(outerCtx)
 
+			// sometime the reader needs to write to the websocket
+			// if the reader writes to the websocket we may get a data race
+			// so we send internal messages from the reader to the writer
+			innerMessages := make(chan IRCer, 10)
+
 			// close the websocket, once the context is done
 			innerWG.Go(func() error {
 				defer ws.Close()
+				defer close(innerMessages)
 				<-innerCtx.Done() // processes once a other routine has failed
 				return ctx.Err()
 			})
@@ -124,46 +125,17 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user
 							return err
 						}
 
-						if msg, ok := parsed.(*command.Whisper); ok {
-							c.logger.Info().Any("whisper", msg).Str("raw", string(message)).Send()
+						switch parsed.(type) {
+						case *command.PrivateMessage:
+						default:
+							c.logger.Info().Str("type", reflect.TypeOf(parsed).String()).Any("data", parsed).Send()
 						}
 
-						if msg, ok := parsed.(*command.UserState); ok {
-							c.logger.Info().Any("user state", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.AnnouncementMessage); ok {
-							c.logger.Info().Any("announcement", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.Notice); ok {
-							c.logger.Info().Any("notice", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.RoomState); ok {
-							c.logger.Info().Any("room state", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.ClearChat); ok {
-							c.logger.Info().Any("clear chat", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.ClearMessage); ok {
-							c.logger.Info().Any("clear message", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.RitualMessage); ok {
-							c.logger.Info().Any("ritual", msg).Str("raw", string(message)).Send()
-						}
-
-						if msg, ok := parsed.(*command.PrivateMessage); ok {
-							c.logger.Info().Any("pvm", msg).Str("raw", string(message)).Send()
-						}
-
-						// automatically respond with pong
 						if _, ok := parsed.(command.PingMessage); ok {
-							if err := ws.WriteMessage(websocket.TextMessage, []byte("PONG tmi.twitch.tv\r\n")); err != nil {
-								return err
+							select {
+							case innerMessages <- command.PongMessage{}:
+							case <-innerCtx.Done():
+								return nil
 							}
 						}
 
@@ -173,6 +145,18 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user
 			})
 
 			innerWG.Go(func() error {
+				account, err := c.accountProvider.GetAccountBy(c.accountID)
+				if err != nil {
+					return retry.Unrecoverable(err)
+				}
+
+				oauth := account.AccessToken
+				user := account.DisplayName
+
+				if !strings.HasPrefix(oauth, "oauth:") {
+					oauth = "oauth:" + oauth
+				}
+
 				initMessages := []string{
 					fmt.Sprintf("PASS %s", oauth),
 					fmt.Sprintf("NICK %s", user),
@@ -194,6 +178,14 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer, user
 
 				for {
 					select {
+					case msg, ok := <-innerMessages:
+						if !ok {
+							return nil
+						}
+
+						if err := ws.WriteMessage(websocket.TextMessage, []byte(msg.IRC())); err != nil {
+							return err
+						}
 					case msg, ok := <-messages:
 						if !ok {
 							return retry.Unrecoverable(errors.New("messages channel closed"))

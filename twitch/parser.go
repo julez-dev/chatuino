@@ -196,7 +196,8 @@ func parseIRC(message string) (IRCer, error) {
 		return command.PingMessage{}, nil
 	case "NOTICE":
 		n := command.Notice{
-			MsgID: command.MsgID(c.tags["msg-id"]),
+			MsgID:           command.MsgID(c.tags["msg-id"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
 		}
 
 		if len(c.Params) > 1 {
@@ -207,22 +208,23 @@ func parseIRC(message string) (IRCer, error) {
 		return &n, nil
 	case "USERNOTICE":
 		u := command.UserNotice{
-			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
-			Badges:      parseBadges(string(c.tags["badges"])),
-			Color:       string(c.tags["color"]),
-			DisplayName: string(c.tags["display-name"]),
-			Emotes:      parseEmotes(string(c.tags["emotes"])),
-			ID:          string(c.tags["id"]),
-			Login:       string(c.tags["login"]),
-			MsgID:       command.MsgID(c.tags["msg-id"]),
-			RoomID:      string(c.tags["room-id"]),
-			SystemMsg:   string(c.tags["system-msg"]),
-			TMISentTS:   parseTimestamp(string(c.tags["tmi-sent-ts"])),
-			UserID:      string(c.tags["user-id"]),
-			UserType:    command.UserType(c.tags["user-type"]),
-			Mod:         c.tags["mod"] == "1",
-			Subscriber:  c.tags["subscriber"] == "1",
-			Turbo:       c.tags["turbo"] == "1",
+			BadgeInfo:       parseBadges(string(c.tags["badge-info"])),
+			Badges:          parseBadges(string(c.tags["badges"])),
+			Color:           string(c.tags["color"]),
+			DisplayName:     string(c.tags["display-name"]),
+			Emotes:          parseEmotes(string(c.tags["emotes"])),
+			ID:              string(c.tags["id"]),
+			Login:           string(c.tags["login"]),
+			MsgID:           command.MsgID(c.tags["msg-id"]),
+			RoomID:          string(c.tags["room-id"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
+			SystemMsg:       string(c.tags["system-msg"]),
+			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
+			UserID:          string(c.tags["user-id"]),
+			UserType:        command.UserType(c.tags["user-type"]),
+			Mod:             c.tags["mod"] == "1",
+			Subscriber:      c.tags["subscriber"] == "1",
+			Turbo:           c.tags["turbo"] == "1",
 		}
 
 		switch u.MsgID {
@@ -342,15 +344,16 @@ func parseIRC(message string) (IRCer, error) {
 		return &u, nil
 	case "USERSTATE":
 		u := command.UserState{
-			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
-			Badges:      parseBadges(string(c.tags["badges"])),
-			Color:       string(c.tags["color"]),
-			DisplayName: string(c.tags["display-name"]),
-			EmoteSets:   strings.Split(string(c.tags["emote-sets"]), ","),
-			ID:          string(c.tags["id"]),
-			Subscriber:  c.tags["subscriber"] == "1",
-			Turbo:       c.tags["turbo"] == "1",
-			UserType:    command.UserType(c.tags["user-type"]),
+			BadgeInfo:       parseBadges(string(c.tags["badge-info"])),
+			Badges:          parseBadges(string(c.tags["badges"])),
+			Color:           string(c.tags["color"]),
+			DisplayName:     string(c.tags["display-name"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
+			EmoteSets:       strings.Split(string(c.tags["emote-sets"]), ","),
+			ID:              string(c.tags["id"]),
+			Subscriber:      c.tags["subscriber"] == "1",
+			Turbo:           c.tags["turbo"] == "1",
+			UserType:        command.UserType(c.tags["user-type"]),
 		}
 
 		return &u, nil
@@ -374,7 +377,8 @@ func parseIRC(message string) (IRCer, error) {
 		return &w, nil
 	case "ROOMSTATE":
 		r := command.RoomState{
-			RoomID: string(c.tags["room-id"]),
+			RoomID:          string(c.tags["room-id"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
 		}
 
 		if val, ok := c.tags["emote-only"]; ok {
@@ -415,10 +419,11 @@ func parseIRC(message string) (IRCer, error) {
 		}
 
 		cc := command.ClearChat{
-			BanDuration:  banDuration,
-			RoomID:       string(c.tags["room-id"]),
-			TargetUserID: string(c.tags["target-user-id"]),
-			TMISentTS:    parseTimestamp(string(c.tags["tmi-sent-ts"])),
+			BanDuration:     banDuration,
+			RoomID:          string(c.tags["room-id"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
+			TargetUserID:    string(c.tags["target-user-id"]),
+			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
 		}
 
 		if len(c.Params) > 1 {
@@ -428,10 +433,11 @@ func parseIRC(message string) (IRCer, error) {
 		return &cc, nil
 	case "CLEARMSG":
 		c := command.ClearMessage{
-			Login:       string(c.tags["login"]),
-			RoomID:      string(c.tags["room-id"]),
-			TargetMsgID: string(c.tags["target-msg-id"]),
-			TMISentTS:   parseTimestamp(string(c.tags["tmi-sent-ts"])),
+			Login:           string(c.tags["login"]),
+			RoomID:          string(c.tags["room-id"]),
+			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
+			TargetMsgID:     string(c.tags["target-msg-id"]),
+			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
 		}
 
 		return &c, nil

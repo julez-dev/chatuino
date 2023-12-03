@@ -13,8 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
+	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 )
@@ -90,9 +92,35 @@ const (
 	inputScreen
 )
 
+type ircConnectionError struct {
+	err error
+}
+
+func (e ircConnectionError) Error() string {
+	return fmt.Sprintf("Disconnected from chat server. (%s)", e.err.Error())
+}
+
+func (e ircConnectionError) Unwrap() error {
+	return e.err
+}
+
+func (e ircConnectionError) IRC() string {
+	return e.Error()
+}
+
 type setStateMessage struct {
 	state    save.AppState
 	accounts []save.Account
+}
+
+type chatEventMessage struct {
+	accountID string
+	channel   string
+	message   twitch.IRCer
+}
+
+type forwardChatMessage struct {
+	msg multiplexer.InboundMessage
 }
 
 type Root struct {
@@ -110,6 +138,10 @@ type Root struct {
 	emoteStore EmoteStore
 	serverAPI  *server.Client
 
+	// chat multiplexer channels
+	in  chan multiplexer.InboundMessage
+	out <-chan multiplexer.OutboundMessage
+
 	// components
 	splash    splash
 	header    tabHeader
@@ -120,6 +152,11 @@ type Root struct {
 }
 
 func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client) Root {
+	multi := multiplexer.NewMultiplexer(logger, provider)
+
+	in := make(chan multiplexer.InboundMessage)
+	out := multi.ListenAndServe(in)
+
 	return Root{
 		clientID:     clientID,
 		logger:       logger,
@@ -132,6 +169,10 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 		splash:    splash{},
 		header:    newTabHeader(),
 		joinInput: newJoin(provider, 10, 10),
+
+		// chat multiplexer channels
+		in:  in,
+		out: out,
 
 		accounts:   provider,
 		emoteStore: emoteStore,
@@ -155,6 +196,7 @@ func (r Root) Init() tea.Cmd {
 			return setStateMessage{state: state, accounts: accounts}
 		},
 		r.joinInput.Init(),
+		r.waitChatEvents(),
 	)
 }
 
@@ -217,6 +259,24 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		r.handleResize()
 		return r, tea.Sequence(cmds...)
+	case chatEventMessage:
+		for i, t := range r.tabs {
+			if t.account.ID == msg.accountID && (t.channel == msg.channel || msg.channel == "") {
+				r.tabs[i], cmd = r.tabs[i].Update(msg)
+				cmds = append(cmds, cmd)
+			}
+		}
+
+		cmds = append(cmds, r.waitChatEvents())
+
+		return r, tea.Batch(cmds...)
+	case forwardChatMessage:
+		cmd := func() tea.Msg {
+			r.in <- msg.msg
+			return nil
+		}
+
+		return r, cmd
 	case tea.WindowSizeMsg:
 		r.width = msg.Width
 		r.height = msg.Height
@@ -298,6 +358,8 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				panic(err)
 			}
 
+			close(r.in)
+
 			return r, tea.Quit
 		}
 
@@ -366,7 +428,46 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if key.Matches(msg, r.keymap.CloseTab) {
 				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state != insertMode {
+					currentTab := r.tabs[r.tabCursor]
 					r.closeTab()
+
+					// if tab was connected to IRC, disconnect it
+					if currentTab.channelDataLoaded {
+						cmds := make([]tea.Cmd, 0, 2)
+
+						// if there is another tab for the same channel and the same account
+						hasOther := slices.ContainsFunc(r.tabs, func(t *tab) bool {
+							return t.id != currentTab.id &&
+								t.account.ID == currentTab.account.ID &&
+								t.channel == currentTab.channel
+						})
+
+						if !hasOther {
+							// send part message
+							r.logger.Info().Str("channel", currentTab.channel).Str("id", currentTab.account.ID).Msg("sending part message")
+							cmds = append(cmds, func() tea.Msg {
+								r.in <- multiplexer.InboundMessage{
+									AccountID: currentTab.account.ID,
+									Msg: command.PartMessage{
+										Channel: currentTab.channel,
+									},
+								}
+								return nil
+							})
+						}
+
+						cmds = append(cmds, func() tea.Msg {
+							r.in <- multiplexer.InboundMessage{
+								AccountID: currentTab.account.ID,
+								Msg:       multiplexer.DecrementTabCounter{},
+							}
+							return nil
+						})
+
+						return r, tea.Sequence(cmds...)
+					}
+
+					return r, nil
 				}
 			}
 		}
@@ -471,6 +572,55 @@ func (r *Root) prevTab() {
 	if len(r.tabs) > r.tabCursor {
 		r.header.selectTab(r.tabs[r.tabCursor].id)
 		r.tabs[r.tabCursor].focus()
+	}
+}
+
+func (r *Root) waitChatEvents() tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-r.out
+
+		if !ok {
+			return nil
+		}
+
+		if msg.Err != nil {
+			return chatEventMessage{
+				accountID: msg.ID,
+				channel:   "",
+				message:   ircConnectionError{err: msg.Err},
+			}
+		}
+
+		var channel string
+
+		switch msg.Msg.(type) {
+		case *command.PrivateMessage:
+			channel = msg.Msg.(*command.PrivateMessage).ChannelUserName
+		case *command.RoomState:
+			channel = msg.Msg.(*command.RoomState).ChannelUserName
+		case *command.UserNotice:
+			channel = msg.Msg.(*command.UserNotice).ChannelUserName
+		case *command.UserState:
+			channel = msg.Msg.(*command.UserState).ChannelUserName
+		case *command.ClearChat:
+			channel = msg.Msg.(*command.ClearChat).ChannelUserName
+		case *command.ClearMessage:
+			channel = msg.Msg.(*command.ClearMessage).ChannelUserName
+		case *command.SubMessage:
+			channel = msg.Msg.(*command.SubMessage).ChannelUserName
+		case *command.RaidMessage:
+			channel = msg.Msg.(*command.RaidMessage).ChannelUserName
+		case *command.SubGiftMessage:
+			channel = msg.Msg.(*command.SubGiftMessage).ChannelUserName
+		case *command.RitualMessage:
+			channel = msg.Msg.(*command.RitualMessage).ChannelUserName
+		}
+
+		return chatEventMessage{
+			accountID: msg.ID,
+			channel:   channel,
+			message:   msg.Msg,
+		}
 	}
 }
 

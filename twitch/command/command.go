@@ -92,6 +92,14 @@ func (j JoinMessage) IRC() string {
 	return "JOIN #" + j.Channel
 }
 
+type PartMessage struct {
+	Channel string
+}
+
+func (p PartMessage) IRC() string {
+	return "PART #" + p.Channel
+}
+
 type MsgID string
 
 const (
@@ -123,22 +131,23 @@ const (
 )
 
 type UserNotice struct {
-	BadgeInfo   []Badge
-	Badges      []Badge
-	Color       string
-	DisplayName string
-	Emotes      []Emote
-	ID          string
-	Login       string
-	Mod         bool
-	MsgID       MsgID
-	RoomID      string
-	Subscriber  bool
-	SystemMsg   string
-	TMISentTS   time.Time
-	Turbo       bool
-	UserID      string
-	UserType    UserType
+	BadgeInfo       []Badge
+	Badges          []Badge
+	Color           string
+	DisplayName     string
+	Emotes          []Emote
+	ID              string
+	Login           string
+	Mod             bool
+	MsgID           MsgID
+	RoomID          string
+	ChannelUserName string
+	Subscriber      bool
+	SystemMsg       string
+	TMISentTS       time.Time
+	Turbo           bool
+	UserID          string
+	UserType        UserType
 }
 
 func (u *UserNotice) IRC() string {
@@ -223,15 +232,16 @@ type RitualMessage struct {
 }
 
 type UserState struct {
-	BadgeInfo   []Badge
-	Badges      []Badge
-	Color       string
-	DisplayName string
-	EmoteSets   []string
-	ID          string
-	Subscriber  bool
-	Turbo       bool
-	UserType    UserType
+	BadgeInfo       []Badge
+	Badges          []Badge
+	Color           string
+	DisplayName     string
+	ChannelUserName string
+	EmoteSets       []string
+	ID              string
+	Subscriber      bool
+	Turbo           bool
+	UserType        UserType
 }
 
 func (u *UserState) IRC() string {
@@ -268,12 +278,13 @@ func (n *Notice) IRC() string {
 // Only the changed values are set
 // RoomState does not represent the final state
 type RoomState struct {
-	EmoteOnly     *bool
-	FollowersOnly *int
-	R9K           *bool
-	RoomID        string
-	Slow          *int
-	SubsOnly      *bool
+	EmoteOnly       *bool
+	FollowersOnly   *int
+	R9K             *bool
+	RoomID          string
+	ChannelUserName string
+	Slow            *int
+	SubsOnly        *bool
 }
 
 func (r *RoomState) IRC() string {
@@ -281,11 +292,12 @@ func (r *RoomState) IRC() string {
 }
 
 type ClearChat struct {
-	BanDuration  int // in seconds
-	RoomID       string
-	TargetUserID string
-	TMISentTS    time.Time
-	UserName     string
+	BanDuration     int // in seconds
+	RoomID          string
+	ChannelUserName string
+	TargetUserID    string
+	TMISentTS       time.Time
+	UserName        string
 }
 
 func (c *ClearChat) IRC() string {
@@ -293,10 +305,11 @@ func (c *ClearChat) IRC() string {
 }
 
 type ClearMessage struct {
-	Login       string
-	RoomID      string
-	TargetMsgID string
-	TMISentTS   time.Time
+	Login           string
+	RoomID          string
+	ChannelUserName string
+	TargetMsgID     string
+	TMISentTS       time.Time
 }
 
 func (c *ClearMessage) IRC() string {

@@ -10,15 +10,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
+	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/ui/mainui"
 	"github.com/pkg/browser"
-
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/seventv"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
 )
@@ -76,7 +75,6 @@ func main() {
 			accountProvider := save.NewAccountProvider()
 			serverAPI := server.NewClient(c.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
-
 			emoteStore := emote.NewStore(serverAPI, stvAPI)
 
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {

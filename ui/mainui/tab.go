@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
@@ -22,36 +23,6 @@ const (
 	twitchBaseURL = "https://twitch.tv"
 	popupFmt      = "https://www.twitch.tv/popout/%s/chat?popout="
 )
-
-type ircConnectionError struct {
-	err error
-}
-
-func (e ircConnectionError) Error() string {
-	return fmt.Sprintf("Disconnected from chat server. (%s)", e.err.Error())
-}
-
-func (e ircConnectionError) Unwrap() error {
-	return e.err
-}
-
-func (e ircConnectionError) IRC() string {
-	return e.Error()
-}
-
-type chatConnectionInitiatedMessage struct {
-	targetID string
-
-	chat         *twitch.Chat
-	messagesOut  chan<- twitch.IRCer
-	messagesRecv <-chan twitch.IRCer
-	errRecv      <-chan error
-}
-
-type chatWindowUpdateMessage struct {
-	targetID string
-	message  twitch.IRCer
-}
 
 type setErrorMessage struct {
 	targetID string
@@ -106,12 +77,6 @@ type tab struct {
 	emoteStore EmoteStore
 
 	width, height int
-
-	// twitch chat connection
-	chat         *twitch.Chat
-	messagesOut  chan<- twitch.IRCer
-	messagesRecv <-chan twitch.IRCer
-	errRecv      <-chan error
 
 	ttvAPI apiClient
 
@@ -180,9 +145,7 @@ func newTab(
 }
 
 func (t *tab) Init() tea.Cmd {
-	var cmds []tea.Cmd
-
-	cmds = append(cmds, func() tea.Msg {
+	cmd := func() tea.Msg {
 		userData, err := t.ttvAPI.GetUsers(t.ctx, []string{t.channel}, nil)
 		if err != nil {
 			return setErrorMessage{
@@ -218,39 +181,9 @@ func (t *tab) Init() tea.Cmd {
 			channelID: userData.Data[0].ID,
 			channel:   userData.Data[0].DisplayName,
 		}
-	})
+	}
 
-	// Start chat connection after channel data has been loaded, to guarantee that the user token is valid/was refreshed
-	cmds = append(cmds, func() tea.Msg {
-		acc, err := t.provider.GetAccountBy(t.account.ID)
-		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("error while fetching account data: %w", err),
-			}
-		}
-
-		in := make(chan twitch.IRCer, 1)
-		chat := twitch.NewChat(t.logger)
-
-		out, errChan := chat.ConnectWithRetry(t.ctx, in, acc.DisplayName, acc.AccessToken)
-		in <- command.JoinMessage{Channel: t.channel}
-
-		go func() {
-			<-t.ctx.Done()
-			close(in)
-		}()
-
-		return chatConnectionInitiatedMessage{
-			targetID:     t.id,
-			errRecv:      errChan,
-			messagesOut:  in,
-			messagesRecv: out,
-			chat:         chat,
-		}
-	})
-
-	return tea.Sequence(cmds...)
+	return cmd
 }
 
 func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
@@ -289,6 +222,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			return t, nil
 		}
 
+		t.channelDataLoaded = true
+
+		// set chat suggestions if non anonymous user
 		if !t.account.IsAnonymous {
 			emoteSet := t.emoteStore.GetAllForUser(msg.channelID)
 			suggestions := make([]string, 0, len(emoteSet))
@@ -300,7 +236,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			t.messageInput.SetSuggestions(suggestions)
 		}
 
-		t.channelDataLoaded = true
+		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
 		t.chatWindow = newChatWindow(t.logger, t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
@@ -314,25 +250,34 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			t.chatWindow.Focus()
 		}
 
-		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
+		ircCmds := make([]tea.Cmd, 0, 2)
+
+		ircCmds = append(ircCmds, func() tea.Msg {
+			return forwardChatMessage{
+				msg: multiplexer.InboundMessage{
+					AccountID: t.account.ID,
+					Msg:       multiplexer.IncrementTabCounter{},
+				},
+			}
+		})
+
+		ircCmds = append(ircCmds, func() tea.Msg {
+			return forwardChatMessage{
+				msg: multiplexer.InboundMessage{
+					AccountID: t.account.ID,
+					Msg: command.JoinMessage{
+						Channel: msg.channel,
+					},
+				},
+			}
+		})
+
 		t.handleResize()
 
-		return t, tea.Batch(t.streamInfo.Init(), t.statusInfo.Init())
-	case chatConnectionInitiatedMessage:
-		if msg.targetID != t.id {
-			return t, nil
-		}
+		return t, tea.Batch(t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 
-		t.chat = msg.chat
-		t.messagesRecv = msg.messagesRecv
-		t.messagesOut = msg.messagesOut
-		t.errRecv = msg.errRecv
-
-		cmds = append(cmds, t.waitTwitchEvent())
-
-		return t, tea.Batch(cmds...)
-	case chatWindowUpdateMessage: // delegate message event to chat window
-		if msg.targetID != t.id {
+	case chatEventMessage: // delegate message event to chat window
+		if msg.channel != t.channel {
 			return t, nil
 		}
 
@@ -367,8 +312,6 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				return t, nil
 			}
 		}
-
-		cmds = append(cmds, t.waitTwitchEvent())
 
 		return t, tea.Batch(cmds...)
 	}
@@ -472,9 +415,16 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						DisplayName:     t.account.DisplayName,
 						TMISentTS:       time.Now(),
 					}
-					t.messagesOut <- msg
 					t.chatWindow.handleMessage(msg)
 					t.messageInput.SetValue("")
+					return t, func() tea.Msg {
+						return forwardChatMessage{
+							msg: multiplexer.InboundMessage{
+								AccountID: t.account.ID,
+								Msg:       msg,
+							},
+						}
+					}
 				}
 			}
 		}
@@ -557,33 +507,6 @@ func (t *tab) View() string {
 func (r *tab) Close() error {
 	r.cancelFunc()
 	return r.ctx.Err()
-}
-
-func (t *tab) waitTwitchEvent() tea.Cmd {
-	return func() tea.Msg {
-		select {
-		case msg, ok := <-t.messagesRecv:
-			if !ok {
-				return nil
-			}
-
-			return chatWindowUpdateMessage{
-				targetID: t.id,
-				message:  msg,
-			}
-		case err, ok := <-t.errRecv:
-			if !ok {
-				return nil
-			}
-
-			return chatWindowUpdateMessage{
-				targetID: t.id,
-				message:  ircConnectionError{err: err},
-			}
-			// case <-t.ctx.Done(): This select should always be implicitly cancelled because the other channels are closed by the context
-			// 	return nil
-		}
-	}
 }
 
 func (t *tab) renderMessageInput() string {

@@ -124,8 +124,8 @@ func (c *chatWindow) Init() tea.Cmd {
 
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
-	case chatWindowUpdateMessage:
-		if msg.targetID == c.parentTabID {
+	case chatEventMessage:
+		if msg.channel == c.channel {
 			c.handleMessage(msg.message)
 			c.updatePort()
 			return c, nil
