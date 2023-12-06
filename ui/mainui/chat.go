@@ -16,7 +16,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
-	"github.com/rivo/uniseg"
 	"github.com/rs/zerolog"
 )
 
@@ -57,7 +56,7 @@ var badgeMap = map[string]string{
 
 var (
 	indicator      = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render("@")
-	indicatorWidth = lipgloss.Width(indicator)
+	indicatorWidth = lipgloss.Width(indicator) + 1 // for empty space
 )
 
 var (
@@ -66,9 +65,10 @@ var (
 )
 
 type chatEntry struct {
-	Position position
-	Selected bool
-	Message  twitch.IRCer
+	Position  position
+	Selected  bool
+	IsDeleted bool
+	Message   twitch.IRCer
 }
 
 type position struct {
@@ -127,7 +127,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	case chatEventMessage:
 		if msg.channel == c.channel {
 			c.handleMessage(msg.message)
-			c.updatePort()
 			return c, nil
 		}
 	case tea.KeyMsg:
@@ -230,6 +229,7 @@ func (c *chatWindow) messageDown(n int) {
 	c.entries[i].Selected = true
 	c.cursor = c.entries[i].Position.CursorEnd
 
+	c.updatePort()
 	c.markSelectedMessage()
 }
 
@@ -251,6 +251,7 @@ func (c *chatWindow) messageUp(n int) {
 	c.entries[i].Selected = true
 	c.cursor = c.entries[i].Position.CursorStart
 
+	c.updatePort()
 	c.markSelectedMessage()
 }
 
@@ -283,9 +284,12 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 }
 
 func (c *chatWindow) markSelectedMessage() {
-	for i, s := range c.lines {
-		s = strings.TrimSuffix(s, indicator)
-		c.lines[i] = s
+	linesInView := c.lines[c.lineStart:c.lineEnd]
+	for i, s := range linesInView {
+		if strings.HasPrefix(s, indicator+" ") {
+			s = strings.TrimPrefix(s, indicator+" ")
+			linesInView[i] = "  " + s
+		}
 	}
 
 	for _, e := range c.entries {
@@ -296,37 +300,52 @@ func (c *chatWindow) markSelectedMessage() {
 		lines := c.lines[e.Position.CursorStart : e.Position.CursorEnd+1]
 
 		for i, s := range lines {
-			strWidth := uniseg.StringWidth(stripAnsi(s))
-			spacerLen := c.width - strWidth - indicatorWidth
-
-			if spacerLen < 0 {
-				c.logger.Warn().
-					Int("spacer-len", spacerLen).
-					Int("viewport-width", c.width).
-					Int("str-width", strWidth).
-					Int("indicator-width", indicatorWidth).
-					Str("line", s).Msg("prevented negative count panic")
-				spacerLen = 0
+			if strings.HasPrefix(s, indicator) {
+				continue
 			}
 
-			lines[i] = s + strings.Repeat(" ", spacerLen) + indicator
+			s = strings.TrimPrefix(s, "  ")
+			lines[i] = indicator + " " + s
 		}
 	}
 }
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	switch msg.(type) {
-	case error, *command.PrivateMessage, *command.Notice: // supported Message types
+	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat: // supported Message types
 	default: // exit only on other types
 		return
 	}
 
+	// cleanup messages if we have more messages than cleanupThreshold
 	if len(c.entries) > cleanupThreshold {
 		_, currentEntry := c.entryForCurrentCursor()
 
 		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
 			c.logger.Info().Int("amount", cleanupThreshold-int(cleanupAfterMessage)).Msg("clean up messages now")
 			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
+			c.recalculateLines()
+		}
+	}
+
+	// if timeout message, rewrite all messages from user
+	if timeoutMsg, ok := msg.(*command.ClearChat); ok {
+		var hasDeleted bool
+		for _, e := range c.entries {
+			privMsg, ok := e.Message.(*command.PrivateMessage)
+
+			if !ok {
+				continue
+			}
+
+			if strings.EqualFold(privMsg.DisplayName, timeoutMsg.UserName) && !e.IsDeleted {
+				hasDeleted = true
+				e.IsDeleted = true
+				privMsg.Message = fmt.Sprintf("[deleted by moderator] %s", privMsg.Message)
+			}
+		}
+
+		if hasDeleted {
 			c.recalculateLines()
 		}
 	}
@@ -356,6 +375,7 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 
 	c.entries = append(c.entries, entry)
 	c.lines = append(c.lines, lines...)
+	c.updatePort()
 
 	if wasLatestMessage {
 		c.moveToBottom()
@@ -411,13 +431,13 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		if len(badges) == 0 {
 			// start of the message (sent date + username)
-			startMsgStr = fmt.Sprintf("%s %s: ",
+			startMsgStr = fmt.Sprintf("  %s %s: ",
 				msg.TMISentTS.Local().Format("15:04:05"),
 				userRenderFunc(msg.DisplayName),
 			)
 		} else {
 			// start of the message (sent date + badges + username)
-			startMsgStr = fmt.Sprintf("%s [%s] %s: ",
+			startMsgStr = fmt.Sprintf("  %s [%s] %s: ",
 				msg.TMISentTS.Local().Format("15:04:05"),
 				strings.Join(badges, ", "),
 				userRenderFunc(msg.DisplayName),
@@ -454,9 +474,27 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	case *command.Notice:
 		textLimit := c.width - indicatorWidth
 
-		styled := lipgloss.NewStyle().Italic(true).Render("[System] " + msg.Message)
+		styled := lipgloss.NewStyle().Italic(true).Render(time.Now().Format("15:04:05") + "[System] " + msg.Message)
 		wrappedText := wrap.String(wordwrap.String(styled, textLimit), textLimit)
 		splits := strings.Split(wrappedText, "\n")
+
+		return splits
+	case *command.ClearChat:
+
+		prefix := "  " + msg.TMISentTS.Format("15:04:05")
+		textLimit := c.width - indicatorWidth - lipgloss.Width(prefix)
+
+		text := " [System] " + msg.UserName
+		if msg.BanDuration == 0 {
+			text += " was permanently banned."
+		} else {
+			dur := time.Duration(msg.BanDuration * 1e9)
+			text += " was timed out for " + dur.String()
+		}
+
+		wrappedText := wrap.String(wordwrap.String(text, textLimit), textLimit)
+		splits := strings.Split(wrappedText, "\n")
+		splits[0] = prefix + splits[0]
 
 		return splits
 	}

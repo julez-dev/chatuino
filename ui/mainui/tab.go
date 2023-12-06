@@ -290,16 +290,23 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				cmds = append(cmds, t.statusInfo.Init()) // resend init command
 			}
 
-			// if in inspect mode, update user inspect window only on private messages
+			// if in inspect mode, update user inspect window only on private messages or timeouts
 			if t.state == userInspectMode {
-				irc, ok := msg.message.(*command.PrivateMessage)
-
-				if ok {
-					if irc.DisplayName == t.userInspect.user {
-						t.userInspect, cmd = t.userInspect.Update(msg)
-						cmds = append(cmds, cmd)
+				switch msg := msg.message.(type) {
+				case *command.PrivateMessage:
+					if msg.DisplayName != t.userInspect.user {
+						return t, nil
 					}
+				case *command.ClearChat:
+					if msg.UserName != t.userInspect.user {
+						return t, nil
+					}
+				default:
+					return t, nil
 				}
+
+				t.userInspect, cmd = t.userInspect.Update(msg)
+				cmds = append(cmds, cmd)
 			}
 		}
 
@@ -341,25 +348,31 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						return t, nil
 					}
 
-					msg, ok := e.Message.(*command.PrivateMessage)
-
-					if !ok {
+					var username string
+					switch msg := e.Message.(type) {
+					case *command.PrivateMessage:
+						username = msg.DisplayName
+					case *command.ClearChat:
+						username = msg.UserName
+					default:
 						return t, nil
 					}
 
 					t.state = userInspectMode
-					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, msg.DisplayName, t.channel, t.chatWindow.channelID, t.emoteStore)
+					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore)
 					cmds = append(cmds, t.userInspect.Init())
 
 					for _, e := range t.chatWindow.entries {
-						msg, ok := e.Message.(*command.PrivateMessage)
 
-						if !ok {
+						switch e.Message.(type) {
+						case *command.PrivateMessage, *command.ClearChat: // only private messages and timeouts
+						default:
 							continue
 						}
 
-						if msg.DisplayName == t.userInspect.user {
-							t.userInspect.chatWindow.handleMessage(msg)
+						t.logger.Info().Str("username", username).Str("user", t.userInspect.user).Bool("is", strings.EqualFold(username, t.userInspect.user)).Msg("comparing usernames")
+						if strings.EqualFold(username, t.userInspect.user) {
+							t.userInspect.chatWindow.handleMessage(e.Message)
 						}
 					}
 
