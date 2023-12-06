@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/julez-dev/chatuino/server"
@@ -40,10 +41,10 @@ func serverCMD(logger zerolog.Logger) *cli.Command {
 				Required: true,
 			},
 		},
-		Action: func(c *cli.Context) error {
-			ttvAPI, err := twitch.NewAPI(c.String("client-id"),
+		Action: func(ctx context.Context, command *cli.Command) error {
+			ttvAPI, err := twitch.NewAPI(command.String("client-id"),
 				twitch.WithHTTPClient(http.DefaultClient),
-				twitch.WithClientSecret(c.String("client-secret")),
+				twitch.WithClientSecret(command.String("client-secret")),
 			)
 			if err != nil {
 				logger.Err(err).Msg("could not create new twitch API client")
@@ -53,16 +54,16 @@ func serverCMD(logger zerolog.Logger) *cli.Command {
 			api := server.New(
 				logger,
 				server.Config{
-					HostAndPort:  c.String("addr"),
-					ClientID:     c.String("client-id"),
-					ClientSecret: c.String("client-secret"),
-					RedirectURL:  c.String("redirect-url"),
+					HostAndPort:  command.String("addr"),
+					ClientID:     command.String("client-id"),
+					ClientSecret: command.String("client-secret"),
+					RedirectURL:  command.String("redirect-url"),
 				},
 				http.DefaultClient,
 				ttvAPI,
 			)
 
-			if err := api.Launch(c.Context); err != nil {
+			if err := api.Launch(ctx); err != nil {
 				return err
 			}
 

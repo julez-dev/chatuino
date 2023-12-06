@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,10 +26,10 @@ var accountCMD = &cli.Command{
 			Value: defaultClientID,
 		},
 	},
-	Action: func(ctx *cli.Context) error {
+	Action: func(ctx context.Context, command *cli.Command) error {
 		p := tea.NewProgram(
-			accountui.NewList(ctx.String("client-id"), ctx.String("api-host"), save.NewAccountProvider()),
-			tea.WithContext(ctx.Context),
+			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider()),
+			tea.WithContext(ctx),
 			tea.WithAltScreen(),
 		)
 

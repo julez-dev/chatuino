@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -19,7 +20,7 @@ var versionCMD = &cli.Command{
 	Name:    "version",
 	Aliases: []string{"v"},
 	Usage:   "Print the version",
-	Action: func(_ *cli.Context) error {
+	Action: func(_ context.Context, _ *cli.Command) error {
 		res := fmt.Sprintf("Chatuino version %s\n"+
 			"commit: %s\n"+
 			"built at: %s\n"+

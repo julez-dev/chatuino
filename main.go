@@ -71,22 +71,22 @@ func main() {
 				Value: "https://chatuino-server.onrender.com",
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(ctx context.Context, command *cli.Command) error {
 			accountProvider := save.NewAccountProvider()
-			serverAPI := server.NewClient(c.String("api-host"), http.DefaultClient)
+			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			emoteStore := emote.NewStore(logger, serverAPI, stvAPI)
 
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
-				ttvAPI, err := twitch.NewAPI(c.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
+				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
 					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI)
 				}
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(logger, accountProvider, &emoteStore, c.String("client-id"), serverAPI),
-				tea.WithContext(c.Context),
+				mainui.NewUI(logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI),
+				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 			)
 
