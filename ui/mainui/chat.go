@@ -338,7 +338,7 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 				continue
 			}
 
-			if strings.EqualFold(privMsg.DisplayName, timeoutMsg.UserName) && !e.IsDeleted {
+			if strings.EqualFold(privMsg.DisplayName, timeoutMsg.UserName) && !e.IsDeleted && !strings.HasPrefix(privMsg.Message, "[deleted by moderator]") {
 				hasDeleted = true
 				e.IsDeleted = true
 				privMsg.Message = fmt.Sprintf("[deleted by moderator] %s", privMsg.Message)

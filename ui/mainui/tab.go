@@ -364,14 +364,17 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 					for _, e := range t.chatWindow.entries {
 
-						switch e.Message.(type) {
-						case *command.PrivateMessage, *command.ClearChat: // only private messages and timeouts
+						var entryUsername string
+						switch msg := e.Message.(type) {
+						case *command.PrivateMessage:
+							entryUsername = msg.DisplayName
+						case *command.ClearChat:
+							entryUsername = msg.UserName
 						default:
 							continue
 						}
 
-						t.logger.Info().Str("username", username).Str("user", t.userInspect.user).Bool("is", strings.EqualFold(username, t.userInspect.user)).Msg("comparing usernames")
-						if strings.EqualFold(username, t.userInspect.user) {
+						if strings.EqualFold(entryUsername, t.userInspect.user) {
 							t.userInspect.chatWindow.handleMessage(e.Message)
 						}
 					}
