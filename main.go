@@ -90,8 +90,17 @@ func main() {
 				tea.WithAltScreen(),
 			)
 
-			if _, err := p.Run(); err != nil {
+			final, err := p.Run()
+			if err != nil {
 				return fmt.Errorf("error while running TUI: %w", err)
+			}
+
+			if final, ok := final.(mainui.Root); ok {
+				state := final.TakeStateSnapshot()
+
+				if err := state.Save(); err != nil {
+					return fmt.Errorf("error while saving state: %w", err)
+				}
 			}
 
 			return nil

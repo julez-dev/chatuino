@@ -314,52 +314,8 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, nTab.Init()
 	case tea.KeyMsg:
 
-		// Intentionally block the app until all items are saved
-		// TODO: The tea.Run() function returns the final model
-		// 	so we could get the state there which maybe the better way to handle this
 		if key.Matches(msg, r.keymap.Quit) {
-			appState := save.AppState{}
-
-			for _, t := range r.tabs {
-				if t.chatWindow == nil {
-					continue
-				}
-
-				tabState := save.TabState{
-					IsFocused:   t.focused,
-					Channel:     t.channel,
-					IdentityID:  t.account.ID,
-					IRCMessages: make([]*command.PrivateMessage, 0, len(t.chatWindow.entries)),
-				}
-
-				relevantEntries := t.chatWindow.entries
-
-				// If the chat holds more than 10 times, only persist the latest 10 to save space
-				if len(relevantEntries) > 10 {
-					relevantEntries = relevantEntries[len(relevantEntries)-10:]
-				}
-
-				tabState.SelectedIndex = len(relevantEntries) - 1 // fallback to last entry if known of the filtered were selected
-				for i, e := range relevantEntries {
-					if msg, ok := e.Message.(*command.PrivateMessage); ok {
-						if e.Selected {
-							tabState.SelectedIndex = i
-						}
-
-						tabState.IRCMessages = append(tabState.IRCMessages, msg)
-					}
-				}
-
-				appState.Tabs = append(appState.Tabs, tabState)
-			}
-
-			err := appState.Save()
-			if err != nil {
-				panic(err)
-			}
-
 			close(r.in)
-
 			return r, tea.Quit
 		}
 
@@ -499,6 +455,45 @@ func (r Root) View() string {
 	}
 
 	return ""
+}
+
+func (r Root) TakeStateSnapshot() save.AppState {
+	appState := save.AppState{}
+
+	for _, t := range r.tabs {
+		if t.chatWindow == nil {
+			continue
+		}
+
+		tabState := save.TabState{
+			IsFocused:   t.focused,
+			Channel:     t.channel,
+			IdentityID:  t.account.ID,
+			IRCMessages: make([]*command.PrivateMessage, 0, len(t.chatWindow.entries)),
+		}
+
+		relevantEntries := t.chatWindow.entries
+
+		// If the chat holds more than 10 times, only persist the latest 10 to save space
+		if len(relevantEntries) > 10 {
+			relevantEntries = relevantEntries[len(relevantEntries)-10:]
+		}
+
+		tabState.SelectedIndex = len(relevantEntries) - 1 // fallback to last entry if known of the filtered were selected
+		for i, e := range relevantEntries {
+			if msg, ok := e.Message.(*command.PrivateMessage); ok {
+				if e.Selected {
+					tabState.SelectedIndex = i
+				}
+
+				tabState.IRCMessages = append(tabState.IRCMessages, msg)
+			}
+		}
+
+		appState.Tabs = append(appState.Tabs, tabState)
+	}
+
+	return appState
 }
 
 func (r *Root) getHeaderHeight() int {

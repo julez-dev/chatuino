@@ -63,7 +63,7 @@ var (
 var (
 	stvStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
 	ttvStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
-	subAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	subAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
 )
 
 type chatEntry struct {
