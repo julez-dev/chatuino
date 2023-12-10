@@ -599,10 +599,8 @@ func (c *chatWindow) colorMessageEmotes(message string) string {
 func (c *chatWindow) colorMessageMentions(message string) string {
 	splits := strings.Fields(message)
 	for i, split := range splits {
-		c.logger.Info().Str("split", split).Bool("has", strings.HasPrefix(split, "@")).Send()
 		if strings.HasPrefix(split, "@") {
 			renderFn, ok := c.userColorCache[strings.ToLower(strings.TrimPrefix(split, "@"))]
-			c.logger.Info().Str("key", strings.ToLower(strings.TrimPrefix(split, "@"))).Bool("ok", ok).Send()
 
 			if !ok {
 				continue
