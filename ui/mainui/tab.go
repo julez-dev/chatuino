@@ -277,7 +277,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		return t, tea.Batch(t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 
 	case chatEventMessage: // delegate message event to chat window
-		if msg.channel != t.channel {
+		if msg.channel != "" && msg.channel != t.channel {
 			return t, nil
 		}
 
@@ -295,14 +295,14 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				switch msg := msg.message.(type) {
 				case *command.PrivateMessage:
 					if msg.DisplayName != t.userInspect.user {
-						return t, nil
+						return t, tea.Batch(cmds...)
 					}
 				case *command.ClearChat:
 					if msg.UserName != t.userInspect.user {
-						return t, nil
+						return t, tea.Batch(cmds...)
 					}
 				default:
-					return t, nil
+					return t, tea.Batch(cmds...)
 				}
 
 				t.userInspect, cmd = t.userInspect.Update(msg)
@@ -316,7 +316,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 			if errors.As(err, &matchErr) {
 				t.logger.Info().Err(err).Msg("retry limit reached error matched, don't wait for next message")
-				return t, nil
+				return t, tea.Batch(cmds...)
 			}
 		}
 

@@ -22,6 +22,7 @@ import (
 const (
 	cleanupAfterMessage float64 = 400.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
+	prefixPadding               = 35
 )
 
 type KeyMap struct {
@@ -60,8 +61,9 @@ var (
 )
 
 var (
-	stvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
-	ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	stvStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
+	ttvStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	subAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
 )
 
 type chatEntry struct {
@@ -125,7 +127,7 @@ func (c *chatWindow) Init() tea.Cmd {
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
 	case chatEventMessage:
-		if msg.channel == c.channel {
+		if msg.channel == c.channel || msg.channel == "" {
 			c.handleMessage(msg.message)
 			return c, nil
 		}
@@ -150,6 +152,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 					LineStart, LineEnd int
 					View               string
 					Entries            []*chatEntry
+					UserCache          []string
 				}
 
 				dump := state{
@@ -159,6 +162,12 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 					LineStart: c.lineStart,
 					View:      c.View(),
 					Entries:   c.entries,
+				}
+
+				dump.UserCache = make([]string, 0, len(c.userColorCache))
+
+				for k := range c.userColorCache {
+					dump.UserCache = append(dump.UserCache, k)
 				}
 
 				f, err := os.Create("chat_dump.json")
@@ -312,7 +321,7 @@ func (c *chatWindow) markSelectedMessage() {
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	switch msg.(type) {
-	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat: // supported Message types
+	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage: // supported Message types
 	default: // exit only on other types
 		return
 	}
@@ -322,7 +331,6 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 		_, currentEntry := c.entryForCurrentCursor()
 
 		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
-			c.logger.Info().Int("amount", cleanupThreshold-int(cleanupAfterMessage)).Msg("clean up messages now")
 			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
 			c.recalculateLines()
 		}
@@ -422,11 +430,11 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		}
 
 		// if render function not in cache yet, compute now
-		userRenderFunc, ok := c.userColorCache[msg.Color]
+		userRenderFunc, ok := c.userColorCache[strings.ToLower(msg.DisplayName)]
 
 		if !ok {
 			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
-			c.userColorCache[msg.Color] = userRenderFunc
+			c.userColorCache[strings.ToLower(msg.DisplayName)] = userRenderFunc
 		}
 
 		if len(badges) == 0 {
@@ -446,9 +454,8 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		startMsgStrWidth := lipgloss.Width(startMsgStr)
 
-		const startMsgPadding = 35
-		if startMsgStrWidth < startMsgPadding {
-			startMsgStr = startMsgStr + strings.Repeat(" ", startMsgPadding-startMsgStrWidth)
+		if startMsgStrWidth < prefixPadding {
+			startMsgStr = startMsgStr + strings.Repeat(" ", prefixPadding-startMsgStrWidth)
 			startMsgStrWidth = lipgloss.Width(startMsgStr)
 		}
 
@@ -484,7 +491,15 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		prefix := "  " + msg.TMISentTS.Format("15:04:05")
 		textLimit := c.width - indicatorWidth - lipgloss.Width(prefix)
 
-		text := " [System] " + msg.UserName
+		text := " [System] "
+		userRenderFunc, ok := c.userColorCache[msg.UserName]
+
+		if !ok {
+			text += msg.UserName
+		} else {
+			text += userRenderFunc(msg.UserName)
+		}
+
 		if msg.BanDuration == 0 {
 			text += " was permanently banned."
 		} else {
@@ -497,6 +512,55 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		splits[0] = prefix + splits[0]
 
 		return splits
+	case *command.SubMessage:
+		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
+		startMsgStrWidth := lipgloss.Width(prefix)
+
+		textLimit := c.width - indicatorWidth - startMsgStrWidth
+
+		if startMsgStrWidth < prefixPadding {
+			prefix = prefix + strings.Repeat(" ", prefixPadding-startMsgStrWidth)
+			startMsgStrWidth = lipgloss.Width(prefix)
+		}
+
+		subResubText := "subscribed"
+		if msg.MsgID == "resub" {
+			subResubText = "resubscribed"
+		}
+
+		// if render function not in cache yet, compute now
+		userRenderFunc, ok := c.userColorCache[msg.Login]
+
+		if !ok {
+			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
+			c.userColorCache[msg.Login] = userRenderFunc
+		}
+
+		text := fmt.Sprintf("%s just %s with a %s subscription. (%d Months, %d Month Streak)",
+			userRenderFunc(msg.DisplayName),
+			subResubText,
+			msg.SubPlan.String(),
+			msg.CumulativeMonths,
+			msg.StreakMonths,
+		)
+
+		if msg.Message != "" {
+			text += ": " + c.colorMessageEmotes(msg.Message)
+		}
+
+		wrappedText := wrap.String(wordwrap.String(text, textLimit), textLimit)
+		splits := strings.Split(wrappedText, "\n")
+
+		lines := make([]string, 0, len(splits))
+		lines = append(lines, prefix+splits[0])
+
+		if len(splits) > 1 {
+			for _, line := range splits[1:] {
+				lines = append(lines, strings.Repeat(" ", startMsgStrWidth)+line)
+			}
+		}
+
+		return lines
 	}
 
 	return []string{}

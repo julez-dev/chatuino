@@ -522,12 +522,8 @@ func (r *Root) handleResize() {
 	// tab
 	headerHeight := r.getHeaderHeight()
 
-	r.logger.Info().Int("header-height", headerHeight).Send()
-
 	for i := range r.tabs {
 		r.tabs[i].height = r.height - headerHeight
-		r.logger.Info().Int("tab-height", r.tabs[i].height).Send()
-
 		r.tabs[i].width = r.width
 		r.tabs[i].handleResize()
 	}

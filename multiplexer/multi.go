@@ -127,7 +127,6 @@ func (m *Multiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan Outbo
 				continue // don't forward message
 			}
 
-			m.logger.Info().Msg("forwarding message to channel")
 			select {
 			case in <- msg.Msg.(twitch.IRCer): // we know it's an IRCer
 			case <-chatDones[accountID]:
@@ -140,7 +139,6 @@ func (m *Multiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan Outbo
 				delete(numListeners, accountID)
 				m.logger.Warn().Msgf("done for %s is closed", msg.AccountID)
 			}
-			m.logger.Info().Msg("forwarded message to channel")
 		}
 
 		for _, cancel := range cancels {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -123,12 +122,6 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 							}
 
 							return err
-						}
-
-						switch parsed.(type) {
-						case *command.PrivateMessage:
-						default:
-							c.logger.Info().Str("type", reflect.TypeOf(parsed).String()).Any("data", parsed).Send()
 						}
 
 						if _, ok := parsed.(command.PingMessage); ok {
