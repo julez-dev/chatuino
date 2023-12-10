@@ -22,7 +22,7 @@ import (
 const (
 	cleanupAfterMessage float64 = 400.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
-	prefixPadding               = 35
+	prefixPadding               = 40
 )
 
 type KeyMap struct {
@@ -472,7 +472,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		// calculate the maximum text length which the message content is allowed to have
 		textLimit := c.width - startMsgStrWidth - indicatorWidth
 
-		message = c.colorMessageEmotes(message)
+		message = c.colorMessageMentions(c.colorMessageEmotes(message))
 
 		// wrap text to textLimit, if soft wrapping fails (for example in links) force break
 		wrappedText := wrap.String(wordwrap.String(message, textLimit), textLimit)
@@ -586,6 +586,29 @@ func (c *chatWindow) colorMessageEmotes(message string) string {
 			case emote.SevenTV:
 				splits[i] = stvStyle.Render(split)
 			}
+
+			continue
+		}
+
+		splits[i] = split
+	}
+
+	return strings.Join(splits, " ")
+}
+
+func (c *chatWindow) colorMessageMentions(message string) string {
+	splits := strings.Fields(message)
+	for i, split := range splits {
+		c.logger.Info().Str("split", split).Bool("has", strings.HasPrefix(split, "@")).Send()
+		if strings.HasPrefix(split, "@") {
+			renderFn, ok := c.userColorCache[strings.ToLower(strings.TrimPrefix(split, "@"))]
+			c.logger.Info().Str("key", strings.ToLower(strings.TrimPrefix(split, "@"))).Bool("ok", ok).Send()
+
+			if !ok {
+				continue
+			}
+
+			splits[i] = renderFn(split)
 
 			continue
 		}
