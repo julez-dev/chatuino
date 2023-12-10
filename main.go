@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"net/mail"
 	"os"
 	"os/signal"
@@ -70,8 +71,22 @@ func main() {
 				Usage: "Host of the Chatuino API",
 				Value: "https://chatuino-server.onrender.com",
 			},
+			&cli.BoolFlag{
+				Name:  "enable-profiling",
+				Usage: "If profiling should be enabled",
+				Value: false,
+			},
+			&cli.StringFlag{
+				Name:  "profiling-host",
+				Usage: "Host of the profiling http server",
+				Value: "0.0.0.0:6060",
+			},
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
+			if command.Bool("enable-profiling") {
+				runProfilingServer(ctx, logger, command.String("profiling-host"))
+			}
+
 			accountProvider := save.NewAccountProvider()
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
@@ -114,6 +129,33 @@ func main() {
 		fmt.Printf("error while running Chatuino: %v", err)
 		os.Exit(1)
 	}
+}
+
+func runProfilingServer(ctx context.Context, logger zerolog.Logger, host string) {
+	srv := &http.Server{
+		Addr: host,
+	}
+
+	go func() {
+		<-ctx.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 10)
+		defer cancel()
+
+		logger.Info().Msg("shutting down profiling server")
+		if err := srv.Shutdown(ctx); err != nil {
+			logger.Error().Err(err).Msg("error while shutting down profiling server")
+			os.Exit(1)
+		}
+	}()
+
+	go func() {
+		logger.Info().Str("host", host).Msg("running profiling server")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("error while running profiling server: %v", err)
+			logger.Error().Err(err).Msg("error while running profiling server")
+			os.Exit(1)
+		}
+	}()
 }
 
 func setupLogFile() (*os.File, error) {
