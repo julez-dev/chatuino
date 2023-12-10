@@ -516,12 +516,12 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
 		startMsgStrWidth := lipgloss.Width(prefix)
 
-		textLimit := c.width - indicatorWidth - startMsgStrWidth
-
 		if startMsgStrWidth < prefixPadding {
 			prefix = prefix + strings.Repeat(" ", prefixPadding-startMsgStrWidth)
 			startMsgStrWidth = lipgloss.Width(prefix)
 		}
+
+		textLimit := c.width - indicatorWidth - startMsgStrWidth
 
 		subResubText := "subscribed"
 		if msg.MsgID == "resub" {
