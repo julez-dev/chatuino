@@ -403,26 +403,9 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		splits := strings.Split(wrappedText, "\n")
 		return splits
 	case *command.PrivateMessage:
-		// filter non-printable characters
-		message := strings.Map(func(r rune) rune {
-			// There are a coupe of emojis that cause issues when displaying them
-			// They will always overflow the message width
-			if unicode.IsControl(r) {
-				return -1
-			}
+		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
-			if unicode.IsPrint(r) {
-				return r
-			}
-
-			return -1
-		}, msg.Message)
-
-		var (
-			startMsgStr string
-			badges      = make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
-		)
-
+		// format users badges
 		for _, badge := range msg.Badges {
 			if b, ok := badgeMap[badge.Name]; ok {
 				badges = append(badges, b)
@@ -447,47 +430,23 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			c.userColorCache[strings.ToLower(msg.DisplayName)] = userRenderFunc
 		}
 
+		var prefix string
 		if len(badges) == 0 {
 			// start of the message (sent date + username)
-			startMsgStr = fmt.Sprintf("  %s %s: ",
+			prefix = fmt.Sprintf("  %s %s: ",
 				msg.TMISentTS.Local().Format("15:04:05"),
 				userRenderFunc(msg.DisplayName),
 			)
 		} else {
 			// start of the message (sent date + badges + username)
-			startMsgStr = fmt.Sprintf("  %s [%s] %s: ",
+			prefix = fmt.Sprintf("  %s [%s] %s: ",
 				msg.TMISentTS.Local().Format("15:04:05"),
 				strings.Join(badges, ", "),
 				userRenderFunc(msg.DisplayName),
 			)
 		}
 
-		startMsgStrWidth := lipgloss.Width(startMsgStr)
-
-		if startMsgStrWidth < prefixPadding {
-			startMsgStr = startMsgStr + strings.Repeat(" ", prefixPadding-startMsgStrWidth)
-			startMsgStrWidth = lipgloss.Width(startMsgStr)
-		}
-
-		// calculate the maximum text length which the message content is allowed to have
-		textLimit := c.width - startMsgStrWidth - indicatorWidth
-
-		message = c.colorMessageMentions(c.colorMessageEmotes(message))
-
-		// wrap text to textLimit, if soft wrapping fails (for example in links) force break
-		wrappedText := wrap.String(wordwrap.String(message, textLimit), textLimit)
-		splits := strings.Split(wrappedText, "\n")
-
-		lines := make([]string, 0, len(splits))
-		lines = append(lines, startMsgStr+splits[0])
-
-		if len(splits) > 1 {
-			for _, line := range splits[1:] {
-				lines = append(lines, strings.Repeat(" ", startMsgStrWidth)+line)
-			}
-		}
-
-		return lines
+		return c.wordwrapMessage(prefix, msg.Message)
 	case *command.Notice:
 		textLimit := c.width - indicatorWidth
 
@@ -498,6 +457,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		return splits
 	case *command.ClearChat:
 
+		// if render function not in cache yet, compute now
 		prefix := "  " + msg.TMISentTS.Format("15:04:05")
 		textLimit := c.width - indicatorWidth - lipgloss.Width(prefix)
 
@@ -574,6 +534,49 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	}
 
 	return []string{}
+}
+
+func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
+	content = strings.Map(func(r rune) rune {
+		// There are a coupe of emojis that cause issues when displaying them
+		// They will always overflow the message width
+		if unicode.IsControl(r) {
+			return -1
+		}
+
+		if unicode.IsPrint(r) {
+			return r
+		}
+
+		return -1
+	}, content)
+
+	content = c.colorMessageEmotes(content)
+	content = c.colorMessageMentions(content)
+
+	prefixWidth := lipgloss.Width(prefix)
+
+	// Assure that the prefix is at least prefixPadding wide
+	if prefixWidth < prefixPadding {
+		prefix = prefix + strings.Repeat(" ", prefixPadding-prefixWidth)
+		prefixWidth = lipgloss.Width(prefix)
+	}
+
+	contentWidthLimit := c.width - indicatorWidth - prefixWidth
+
+	// softwrap text to contentWidthLimit, if soft wrapping fails (for example in links) force break
+	wrappedText := wrap.String(wordwrap.String(content, contentWidthLimit), contentWidthLimit)
+	splits := strings.Split(wrappedText, "\n")
+
+	lines := make([]string, 0, len(splits))
+	lines = append(lines, prefix+splits[0]) // first line is prefix + content at index 0
+
+	// if there are more lines, add prefixPadding spaces to the beginning of the line
+	for _, line := range splits[1:] {
+		lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
+	}
+
+	return lines
 }
 
 func (c *chatWindow) colorMessageEmotes(message string) string {

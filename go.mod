@@ -20,6 +20,8 @@ require (
 
 require github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8
 
+require nhooyr.io/websocket v1.8.10 // indirect
+
 require (
 	github.com/avast/retry-go/v4 v4.5.1
 	golang.org/x/net v0.19.0 // indirect

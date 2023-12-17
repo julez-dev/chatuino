@@ -21,6 +21,7 @@ import (
 	"github.com/pkg/browser"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
+	"nhooyr.io/websocket"
 )
 
 func init() {
@@ -83,6 +84,13 @@ func main() {
 			},
 		},
 		Action: func(ctx context.Context, command *cli.Command) error {
+			conn, _, err := websocket.Dial(ctx, "wss://irc-ws.chat.twitch.tv:443", &websocket.DialOptions{})
+			if err != nil {
+				return fmt.Errorf("error while connecting to twitch IRC: %w", err)
+			}
+
+			conn.CloseNow()
+
 			if command.Bool("enable-profiling") {
 				runProfilingServer(ctx, logger, command.String("profiling-host"))
 			}
