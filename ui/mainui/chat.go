@@ -61,9 +61,13 @@ var (
 )
 
 var (
-	stvStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
-	ttvStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
-	subAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
+	stvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
+	ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+
+	subAlertStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
+	noticeAlertStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
+	clearChatAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
+	errorAlertStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff6347")).Bold(true)
 )
 
 type chatEntry struct {
@@ -321,7 +325,7 @@ func (c *chatWindow) markSelectedMessage() {
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	switch msg.(type) {
-	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage: // supported Message types
+	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage: // supported Message types
 	default: // exit only on other types
 		return
 	}
@@ -393,15 +397,9 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	switch msg := msg.(type) {
 	case error:
-		availableWidth := c.width - indicatorWidth
-
-		wrappedText := wrap.String(wordwrap.String(
-			time.Now().Format("15:04:05")+" [System]: "+strings.ReplaceAll(msg.Error(), "\n", ""),
-			availableWidth,
-		), availableWidth)
-
-		splits := strings.Split(wrappedText, "\n")
-		return splits
+		prefix := "  " + time.Now().Format("15:04:05") + " [" + errorAlertStyle.Render("Error") + "]: "
+		text := strings.ReplaceAll(msg.Error(), "\n", "")
+		return c.wordwrapMessage(prefix, text)
 	case *command.PrivateMessage:
 		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
@@ -448,21 +446,16 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		return c.wordwrapMessage(prefix, msg.Message)
 	case *command.Notice:
-		textLimit := c.width - indicatorWidth
+		prefix := "  " + time.Now().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
+		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
-		styled := lipgloss.NewStyle().Italic(true).Render(time.Now().Format("15:04:05") + "[System] " + msg.Message)
-		wrappedText := wrap.String(wordwrap.String(styled, textLimit), textLimit)
-		splits := strings.Split(wrappedText, "\n")
-
-		return splits
+		return c.wordwrapMessage(prefix, styled)
 	case *command.ClearChat:
+		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + clearChatAlertStyle.Render("Clear Chat") + "]: "
 
-		// if render function not in cache yet, compute now
-		prefix := "  " + msg.TMISentTS.Format("15:04:05")
-		textLimit := c.width - indicatorWidth - lipgloss.Width(prefix)
-
-		text := " [System] "
 		userRenderFunc, ok := c.userColorCache[msg.UserName]
+
+		var text string
 
 		if !ok {
 			text += msg.UserName
@@ -477,21 +470,9 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			text += " was timed out for " + dur.String()
 		}
 
-		wrappedText := wrap.String(wordwrap.String(text, textLimit), textLimit)
-		splits := strings.Split(wrappedText, "\n")
-		splits[0] = prefix + splits[0]
-
-		return splits
+		return c.wordwrapMessage(prefix, text)
 	case *command.SubMessage:
 		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
-		startMsgStrWidth := lipgloss.Width(prefix)
-
-		if startMsgStrWidth < prefixPadding {
-			prefix = prefix + strings.Repeat(" ", prefixPadding-startMsgStrWidth)
-			startMsgStrWidth = lipgloss.Width(prefix)
-		}
-
-		textLimit := c.width - indicatorWidth - startMsgStrWidth
 
 		subResubText := "subscribed"
 		if msg.MsgID == "resub" {
@@ -515,42 +496,40 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		)
 
 		if msg.Message != "" {
-			text += ": " + c.colorMessageEmotes(msg.Message)
+			text += ": " + msg.Message
 		}
 
-		wrappedText := wrap.String(wordwrap.String(text, textLimit), textLimit)
-		splits := strings.Split(wrappedText, "\n")
+		return c.wordwrapMessage(prefix, text)
+	case *command.SubGiftMessage:
+		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
 
-		lines := make([]string, 0, len(splits))
-		lines = append(lines, prefix+splits[0])
+		gifterRenderFunc, ok := c.userColorCache[msg.Login]
 
-		if len(splits) > 1 {
-			for _, line := range splits[1:] {
-				lines = append(lines, strings.Repeat(" ", startMsgStrWidth)+line)
-			}
+		if !ok {
+			gifterRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
+			c.userColorCache[msg.Login] = gifterRenderFunc
 		}
 
-		return lines
+		receiptRenderFunc, ok := c.userColorCache[msg.RecipientUserName]
+
+		if !ok {
+			receiptRenderFunc = lipgloss.NewStyle().Render
+		}
+
+		text := fmt.Sprintf("%s gifted a %s sub to %s. (%d Months)",
+			gifterRenderFunc(msg.DisplayName),
+			msg.SubPlan.String(),
+			receiptRenderFunc(msg.ReceiptDisplayName),
+			msg.Months,
+		)
+
+		return c.wordwrapMessage(prefix, text)
 	}
 
 	return []string{}
 }
 
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
-	content = strings.Map(func(r rune) rune {
-		// There are a coupe of emojis that cause issues when displaying them
-		// They will always overflow the message width
-		if unicode.IsControl(r) {
-			return -1
-		}
-
-		if unicode.IsPrint(r) {
-			return r
-		}
-
-		return -1
-	}, content)
-
 	content = c.colorMessageEmotes(content)
 	content = c.colorMessageMentions(content)
 
