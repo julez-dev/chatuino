@@ -125,7 +125,7 @@ func newTab(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	input := component.NewSuggestionTextInput()
-	input.SetWidth(width)
+	input.SetWidth(width - 2)
 
 	return &tab{
 		id:              id,
@@ -507,7 +507,7 @@ func (t *tab) View() string {
 
 	mi := t.renderMessageInput()
 	if mi != "" {
-		builder.WriteString("\n")
+		builder.WriteString("\n ")
 		builder.WriteString(mi)
 	}
 
@@ -570,7 +570,7 @@ func (t *tab) handleResize() {
 			t.chatWindow.recalculateLines()
 		}
 
-		t.messageInput.SetWidth(t.width)
+		t.messageInput.SetWidth(t.width - 2)
 	}
 }
 

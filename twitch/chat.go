@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	maxMessageSize = 4096
+	maxMessageSize = 16384
 )
 
 var defaultTransport http.RoundTripper = &http.Transport{
@@ -123,7 +123,6 @@ func (c *Chat) ConnectWithRetryNewSocket(ctx context.Context, messages <-chan IR
 						return nil
 					case <-t.C:
 						pingCtx, cancel := context.WithTimeout(innerCtx, time.Second*5)
-						c.logger.Info().Msg("sending ping")
 						if err := ws.Ping(pingCtx); err != nil {
 							cancel()
 							return err
