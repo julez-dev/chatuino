@@ -325,7 +325,7 @@ func (c *chatWindow) markSelectedMessage() {
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	switch msg.(type) {
-	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage: // supported Message types
+	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage: // supported Message types
 	default: // exit only on other types
 		return
 	}
@@ -524,12 +524,39 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		)
 
 		return c.wordwrapMessage(prefix, text)
+	case *command.AnnouncementMessage:
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
+
+		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + style.Render("Announcement") + "] "
+
+		userRenderFn, ok := c.userColorCache[msg.Login]
+
+		if !ok {
+			userRenderFn = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
+			c.userColorCache[msg.Login] = userRenderFn
+		}
+
+		text := fmt.Sprintf("%s: %s",
+			userRenderFn(msg.DisplayName),
+			msg.Message,
+		)
+
+		return c.wordwrapMessage(prefix, text)
 	}
 
 	return []string{}
 }
 
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
+	content = strings.Map(func(r rune) rune {
+		// this rune is commonly used to bypass the twitch spam detection
+		if r == rune(917504) {
+			return -1
+		}
+
+		return r
+	}, content)
+
 	content = c.colorMessageEmotes(content)
 	content = c.colorMessageMentions(content)
 

@@ -97,7 +97,7 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 				for {
 					// this deadline just tracks how much time can pass without getting a new message
 					// not to check if the connection is still up, so not a keep-alive
-					if err := ws.SetReadDeadline(time.Now().Add(time.Minute * 1)); err != nil {
+					if err := ws.SetReadDeadline(time.Now().Add(time.Minute * 4)); err != nil {
 						return err
 					}
 

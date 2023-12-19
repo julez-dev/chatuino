@@ -279,6 +279,7 @@ func parseIRC(message string) (IRCer, error) {
 		case command.Announcement:
 			announcement := command.AnnouncementMessage{
 				UserNotice: u,
+				ParamColor: command.AnnouncementColor(c.tags["msg-param-color"]),
 			}
 
 			if len(c.Params) > 1 {

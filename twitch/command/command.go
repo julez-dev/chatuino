@@ -118,16 +118,16 @@ const (
 	Announcement        MsgID = "announcement"
 
 	// Notice
-	SubsOn       MsgID = "subs_on"
-	SubsOff      MsgID = "subs_off"
-	EmoteOnlyOn  MsgID = "emote_only_on"
-	EmoteOnlyOff MsgID = "emote_only_off"
-	FollowersOn  MsgID = "followers_on"
-	FollowersOff MsgID = "followers_off"
-	SlowOn       MsgID = "slow_on"
-	SlowOff      MsgID = "slow_off"
-	R9kOn        MsgID = "r9k_on" // also known as unique chat
-	R9kOff       MsgID = "r9k_off"
+	//SubsOn       MsgID = "subs_on"
+	//SubsOff      MsgID = "subs_off"
+	//EmoteOnlyOn  MsgID = "emote_only_on"
+	//EmoteOnlyOff MsgID = "emote_only_off"
+	//FollowersOn  MsgID = "followers_on"
+	//FollowersOff MsgID = "followers_off"
+	//SlowOn       MsgID = "slow_on"
+	//SlowOff      MsgID = "slow_off"
+	//R9kOn        MsgID = "r9k_on" // also known as unique chat
+	//R9kOff       MsgID = "r9k_off"
 )
 
 type UserNotice struct {
@@ -178,6 +178,37 @@ const (
 	Tier3 SubPlan = "3000"
 )
 
+type AnnouncementColor string
+
+func (a AnnouncementColor) String() string {
+	return string(a)
+}
+
+func (a AnnouncementColor) RGBHex() string {
+	switch a {
+	case Primary:
+		return "#EFEFF1"
+	case Blue:
+		return "#4E88EC"
+	case Green:
+		return "#1ED1A6"
+	case Orange:
+		return "#EAD008"
+	case Purple:
+		return "#C65DF3"
+	}
+
+	return ""
+}
+
+const (
+	Primary AnnouncementColor = "PRIMARY"
+	Blue    AnnouncementColor = "BLUE"
+	Green   AnnouncementColor = "GREEN"
+	Orange  AnnouncementColor = "ORANGE"
+	Purple  AnnouncementColor = "PURPLE"
+)
+
 type SubMessage struct {
 	UserNotice
 	Message           string
@@ -201,7 +232,8 @@ type SubGiftMessage struct {
 
 type AnnouncementMessage struct {
 	UserNotice
-	Message string
+	ParamColor AnnouncementColor
+	Message    string
 }
 
 type RaidMessage struct {
