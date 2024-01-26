@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
@@ -63,6 +65,7 @@ type apiClient interface {
 type tab struct {
 	id     string
 	logger zerolog.Logger
+	keymap keybind.KeyMap
 
 	state tabState
 
@@ -105,6 +108,7 @@ func newTab(
 	account save.Account,
 	accountProvider AccountProvider,
 	initialMessages []*command.PrivateMessage,
+	keymap keybind.KeyMap,
 ) (*tab, error) {
 	var ttvAPI apiClient
 
@@ -130,6 +134,7 @@ func newTab(
 	return &tab{
 		id:              id,
 		logger:          logger,
+		keymap:          keymap,
 		width:           width,
 		height:          height,
 		account:         account,
@@ -237,7 +242,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 
 		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
-		t.chatWindow = newChatWindow(t.logger, t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore)
+		t.chatWindow = newChatWindow(t.logger, t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
 		for _, m := range t.initialMessages {
@@ -331,14 +336,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
-			switch msg.String() {
-			case "i":
+			if key.Matches(msg, t.keymap.InsertMode) {
 				if !t.account.IsAnonymous && t.state == inChatWindow {
 					t.state = insertMode
 					t.messageInput.Focus()
 					t.chatWindow.Blur()
 				}
-			case "u":
+			}
+
+			if key.Matches(msg, t.keymap.InspectMode) {
 				// open up user inspect mode
 				switch t.state {
 				case inChatWindow, userInspectMode:
@@ -359,7 +365,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					}
 
 					t.state = userInspectMode
-					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore)
+					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore, t.keymap)
 					cmds = append(cmds, t.userInspect.Init())
 
 					for _, e := range t.chatWindow.entries {
@@ -390,12 +396,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 					return t, tea.Batch(cmds...)
 				}
-			case "p", "c":
+			}
+
+			if key.Matches(msg, t.keymap.ChatPopUp) {
 				switch t.state {
 				case inChatWindow, userInspectMode:
 					return t, func() tea.Msg {
-						url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel)
+						url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
 
+						// open popout chat if modifier is pressed
 						if msg.String() == "p" {
 							url = fmt.Sprintf(popupFmt, t.channel)
 						}
@@ -407,7 +416,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						return nil
 					}
 				}
-			case "esc":
+			}
+
+			if key.Matches(msg, t.keymap.Escape) {
 				if t.state == userInspectMode {
 					t.state = inChatWindow
 					t.chatWindow.Focus()
@@ -423,7 +434,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				}
 
 				return t, nil
-			case "enter":
+			}
+
+			if key.Matches(msg, t.keymap.Confirm) {
 				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
 					msg := &command.PrivateMessage{
 						ChannelUserName: t.channel,

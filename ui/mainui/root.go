@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
@@ -32,57 +33,6 @@ type EmoteStore interface {
 	RefreshLocal(ctx context.Context, channelID string) error
 	RefreshGlobal(ctx context.Context) error
 	GetAllForUser(id string) emote.EmoteSet
-}
-
-type AppKeyMap struct {
-	Quit             key.Binding
-	ToggleJoinScreen key.Binding
-	CloseTab         key.Binding
-	EscapeJoinScreen key.Binding
-	DumpScreen       key.Binding
-}
-
-type HeaderKeyMap struct {
-	Next     key.Binding
-	Previous key.Binding
-}
-
-func buildDefaultKeyMap() AppKeyMap {
-	return AppKeyMap{
-		Quit: key.NewBinding(
-			key.WithKeys("ctrl+c"),
-			key.WithHelp("ctrl+c", "Quit the program"),
-		),
-		ToggleJoinScreen: key.NewBinding(
-			key.WithKeys("f1"),
-			key.WithHelp("f1", "Toggle join channel scrren"),
-		),
-		CloseTab: key.NewBinding(
-			key.WithKeys("q", "ctrl+w"),
-			key.WithHelp("q/ctrl+w", "Close Tab"),
-		),
-		EscapeJoinScreen: key.NewBinding(
-			key.WithKeys("esc"),
-			key.WithHelp("esc", "Close join input"),
-		),
-		DumpScreen: key.NewBinding(
-			key.WithKeys("f12"),
-			key.WithHelp("f12", "Dump curren buffer"),
-		),
-	}
-}
-
-func buildDefaultHeaderKeyMap() HeaderKeyMap {
-	return HeaderKeyMap{
-		Next: key.NewBinding(
-			key.WithKeys("tab"),
-			key.WithHelp("tab", "Select next tab"),
-		),
-		Previous: key.NewBinding(
-			key.WithKeys("shift+tab"),
-			key.WithHelp("shift+tab", "Select previous tab"),
-		),
-	}
 }
 
 type activeScreen int
@@ -128,8 +78,7 @@ type Root struct {
 	clientID string
 
 	width, height int
-	keymap        AppKeyMap
-	headerKeymap  HeaderKeyMap
+	keymap        keybind.KeyMap
 
 	screenType activeScreen
 
@@ -151,24 +100,23 @@ type Root struct {
 	tabs      []*tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client) Root {
+func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client, keymap keybind.KeyMap) Root {
 	multi := multiplexer.NewMultiplexer(logger, provider)
 
 	in := make(chan multiplexer.InboundMessage)
 	out := multi.ListenAndServe(in)
 
 	return Root{
-		clientID:     clientID,
-		logger:       logger,
-		width:        10,
-		height:       10,
-		keymap:       buildDefaultKeyMap(),
-		headerKeymap: buildDefaultHeaderKeyMap(),
+		clientID: clientID,
+		logger:   logger,
+		width:    10,
+		height:   10,
+		keymap:   keymap,
 
 		// components
 		splash:    splash{},
 		header:    newTabHeader(),
-		joinInput: newJoin(provider, 10, 10),
+		joinInput: newJoin(provider, 10, 10, keymap),
 
 		// chat multiplexer channels
 		in:  in,
@@ -235,7 +183,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			id := r.header.addTab(t.Channel, identity)
 			headerHeight := r.getHeaderHeight()
-			nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages)
+			nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages, r.keymap)
 			if err != nil {
 				r.logger.Error().Err(err).Send()
 				continue
@@ -294,7 +242,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := r.getHeaderHeight()
 
-		nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil)
+		nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil, r.keymap)
 		if err != nil {
 			r.logger.Error().Err(err).Send()
 			return r, nil
@@ -319,7 +267,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, tea.Quit
 		}
 
-		if key.Matches(msg, r.keymap.EscapeJoinScreen) {
+		if key.Matches(msg, r.keymap.Escape) {
 			if r.screenType == inputScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].focus()
@@ -345,7 +293,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 
-		if key.Matches(msg, r.keymap.ToggleJoinScreen) {
+		if key.Matches(msg, r.keymap.Create) {
 			switch r.screenType {
 			case mainScreen:
 				if len(r.tabs) > r.tabCursor {
@@ -353,7 +301,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.screenType = inputScreen
-				r.joinInput = newJoin(r.accounts, r.width, r.height)
+				r.joinInput = newJoin(r.accounts, r.width, r.height, r.keymap)
 				r.joinInput.focus()
 				return r, r.joinInput.Init()
 			case inputScreen:
@@ -369,7 +317,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if r.screenType == mainScreen {
-			if key.Matches(msg, r.headerKeymap.Next) {
+			if key.Matches(msg, r.keymap.Next) {
 				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state == insertMode {
 					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
 					return r, cmd
@@ -378,7 +326,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.nextTab()
 			}
 
-			if key.Matches(msg, r.headerKeymap.Previous) {
+			if key.Matches(msg, r.keymap.Previous) {
 				r.prevTab()
 			}
 

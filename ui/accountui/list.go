@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 )
 
@@ -36,21 +37,15 @@ var baseStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color("240"))
 
-type keyMap struct {
-	Up         key.Binding
-	Down       key.Binding
-	Create     key.Binding
-	Remove     key.Binding
-	MarkLeader key.Binding
-	Help       key.Binding
-	Quit       key.Binding
+type keyMapWithHelp struct {
+	keybind.KeyMap
 }
 
-func (k keyMap) ShortHelp() []key.Binding {
+func (k keyMapWithHelp) ShortHelp() []key.Binding {
 	return []key.Binding{k.Help, k.Quit}
 }
 
-func (k keyMap) FullHelp() [][]key.Binding {
+func (k keyMapWithHelp) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Create, k.Remove, k.MarkLeader}, // first column
 		{k.Help, k.Quit}, // second column
@@ -58,7 +53,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 }
 
 type List struct {
-	key             keyMap
+	key             keyMapWithHelp
 	accountProvider AccountProvider
 	table           table.Model
 	create          createModel
@@ -70,7 +65,7 @@ type List struct {
 	clientID, apiHost string
 }
 
-func NewList(clientID, apiHost string, accountProvider AccountProvider) List {
+func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap keybind.KeyMap) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
 		{Title: "Is main", Width: 10},
@@ -100,29 +95,8 @@ func NewList(clientID, apiHost string, accountProvider AccountProvider) List {
 		apiHost:         apiHost,
 		clientID:        clientID,
 		accountProvider: accountProvider,
-		key: keyMap{
-			Up:   t.KeyMap.LineUp,
-			Down: t.KeyMap.LineDown,
-			Create: key.NewBinding(
-				key.WithKeys("f1"),
-				key.WithHelp("f1", "register new account"),
-			),
-			Remove: key.NewBinding(
-				key.WithKeys("r"),
-				key.WithHelp("r", "remove selected account"),
-			),
-			MarkLeader: key.NewBinding(
-				key.WithKeys("m"),
-				key.WithHelp("m", "mark selected account as main"),
-			),
-			Help: key.NewBinding(
-				key.WithKeys("?"),
-				key.WithHelp("?", "toggle help"),
-			),
-			Quit: key.NewBinding(
-				key.WithKeys("esc", "ctrl+c"),
-				key.WithHelp("esc", "quit"),
-			),
+		key: keyMapWithHelp{
+			KeyMap: keymap,
 		},
 		table:     t,
 		tableHelp: help.New(),
@@ -188,7 +162,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, l.key.Create):
 			if l.state == inTable {
 				l.state = inCreate
-				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost)
+				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost, l.key.KeyMap)
 			} else {
 				l.state = inTable
 			}

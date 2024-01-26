@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/accountui"
 	"github.com/urfave/cli/v3"
@@ -28,7 +29,7 @@ var accountCMD = &cli.Command{
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		p := tea.NewProgram(
-			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider()),
+			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(), keybind.BuildDefaultKeyMap()),
 			tea.WithContext(ctx),
 			tea.WithAltScreen(),
 		)

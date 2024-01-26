@@ -6,10 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
@@ -32,6 +34,7 @@ type createModel struct {
 	state     createState
 	textinput textinput.Model
 	spinner   spinner.Model
+	keymap    keybind.KeyMap
 
 	width, height     int
 	clientID, apiHost string
@@ -40,7 +43,7 @@ type createModel struct {
 	account save.Account
 }
 
-func newCreateModel(width, height int, clientID, apiHost string) createModel {
+func newCreateModel(width, height int, clientID, apiHost string, keymap keybind.KeyMap) createModel {
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()
@@ -53,6 +56,7 @@ func newCreateModel(width, height int, clientID, apiHost string) createModel {
 	return createModel{
 		clientID:  clientID,
 		apiHost:   apiHost,
+		keymap:    keymap,
 		textinput: ti,
 		spinner:   s,
 		width:     width,
@@ -78,8 +82,7 @@ func (c createModel) Update(msg tea.Msg) (createModel, tea.Cmd) {
 		c.account = msg.account
 		c.state = finished
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
+		if key.Matches(msg, c.keymap.Confirm) {
 			if c.state == input {
 				cmd = c.handleSent(c.textinput.Value())
 				c.state = loading

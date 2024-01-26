@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/ivr"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 )
@@ -37,7 +38,7 @@ type userInspect struct {
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI apiClient, tabID string, width, height int, user, channel string, channelID string, emoteStore EmoteStore) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI apiClient, tabID string, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap keybind.KeyMap) *userInspect {
 	return &userInspect{
 		tabID:   tabID,
 		channel: channel,
@@ -45,7 +46,7 @@ func newUserInspect(logger zerolog.Logger, ttvAPI apiClient, tabID string, width
 		ivr:     ivr.NewAPI(http.DefaultClient),
 		ttvAPI:  ttvAPI,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow: newChatWindow(logger, tabID, width, height, channel, channelID, emoteStore),
+		chatWindow: newChatWindow(logger, tabID, width, height, channel, channelID, emoteStore, keymap),
 	}
 }
 

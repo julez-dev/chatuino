@@ -13,6 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/seventv"
@@ -108,7 +109,7 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI),
+				mainui.NewUI(logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keybind.BuildDefaultKeyMap()),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 			)

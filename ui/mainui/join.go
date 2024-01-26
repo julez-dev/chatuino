@@ -9,26 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 )
-
-type JoinKeyMap struct {
-	FieldSelect key.Binding
-	Enter       key.Binding
-}
-
-func buildDefaultJoinKeyMap() JoinKeyMap {
-	return JoinKeyMap{
-		FieldSelect: key.NewBinding(
-			key.WithKeys("tab"),
-			key.WithHelp("tab", "Select next field"),
-		),
-		Enter: key.NewBinding(
-			key.WithKeys("enter"),
-			key.WithHelp("enter", "Confirm select"),
-		),
-	}
-}
 
 type currentJoinInput int
 
@@ -60,11 +43,11 @@ type join struct {
 	list          list.Model
 	selectedInput currentJoinInput
 	accounts      []save.Account
-	keymap        JoinKeyMap
+	keymap        keybind.KeyMap
 	provider      AccountProvider
 }
 
-func newJoin(provider AccountProvider, width, height int) join {
+func newJoin(provider AccountProvider, width, height int, keymap keybind.KeyMap) join {
 	input := textinput.New()
 	input.Placeholder = "Channel"
 	input.CharLimit = 25
@@ -94,7 +77,7 @@ func newJoin(provider AccountProvider, width, height int) join {
 		input:    input,
 		provider: provider,
 		list:     list,
-		keymap:   buildDefaultJoinKeyMap(),
+		keymap:   keymap,
 	}
 }
 
@@ -140,7 +123,7 @@ func (j join) Update(msg tea.Msg) (join, tea.Cmd) {
 			j.list.Select(index)
 			return j, nil
 		case tea.KeyMsg:
-			if key.Matches(msg, j.keymap.FieldSelect) {
+			if key.Matches(msg, j.keymap.Next) {
 				if j.selectedInput == channelInput {
 					j.selectedInput = accountSelect
 				} else {
@@ -148,7 +131,7 @@ func (j join) Update(msg tea.Msg) (join, tea.Cmd) {
 				}
 			}
 
-			if key.Matches(msg, j.keymap.Enter) {
+			if key.Matches(msg, j.keymap.Confirm) {
 				return j, func() tea.Msg {
 					return joinChannelMessage{
 						channel: j.input.Value(),

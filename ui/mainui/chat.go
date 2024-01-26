@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/muesli/reflow/wordwrap"
@@ -24,25 +25,6 @@ const (
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 	prefixPadding               = 40
 )
-
-type KeyMap struct {
-	Down key.Binding
-	Up   key.Binding
-}
-
-// DefaultKeyMap returns a set of pager-like default keybindings.
-func DefaultKeyMap() KeyMap {
-	return KeyMap{
-		Up: key.NewBinding(
-			key.WithKeys("up", "k"),
-			key.WithHelp("↑/k", "up"),
-		),
-		Down: key.NewBinding(
-			key.WithKeys("down", "j"),
-			key.WithHelp("↓/j", "down"),
-		),
-	}
-}
 
 var badgeMap = map[string]string{
 	"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color("#E91916")).Render("Streamer"),
@@ -88,7 +70,7 @@ type chatWindow struct {
 	channelID   string
 
 	logger        zerolog.Logger
-	m             KeyMap
+	keymap        keybind.KeyMap
 	width, height int
 	emoteStore    EmoteStore
 	focused       bool
@@ -108,9 +90,9 @@ type chatWindow struct {
 	userColorCache map[string]func(...string) string
 }
 
-func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore) *chatWindow {
+func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap keybind.KeyMap) *chatWindow {
 	c := chatWindow{
-		m:              DefaultKeyMap(),
+		keymap:         keymap,
 		logger:         logger,
 		parentTabID:    tabID,
 		channel:        channel,
@@ -138,17 +120,15 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	case tea.KeyMsg:
 		if c.focused {
 			switch {
-			case key.Matches(msg, c.m.Down):
+			case key.Matches(msg, c.keymap.Down):
 				c.messageDown(1)
-			case key.Matches(msg, c.m.Up):
+			case key.Matches(msg, c.keymap.Up):
 				c.messageUp(1)
-			}
-			switch msg.String() {
-			case "b":
+			case key.Matches(msg, c.keymap.GoToBottom):
 				c.moveToBottom()
-			case "t":
+			case key.Matches(msg, c.keymap.GoToTop):
 				c.moveToTop()
-			case "f11":
+			case key.Matches(msg, c.keymap.DumpChat):
 				// chat
 				type state struct {
 					Lines              []string
