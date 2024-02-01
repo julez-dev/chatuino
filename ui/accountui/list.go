@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 )
 
@@ -38,7 +37,7 @@ var baseStyle = lipgloss.NewStyle().
 	BorderForeground(lipgloss.Color("240"))
 
 type keyMapWithHelp struct {
-	keybind.KeyMap
+	save.KeyMap
 }
 
 func (k keyMapWithHelp) ShortHelp() []key.Binding {
@@ -65,7 +64,7 @@ type List struct {
 	clientID, apiHost string
 }
 
-func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap keybind.KeyMap) List {
+func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap save.KeyMap) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
 		{Title: "Is main", Width: 10},

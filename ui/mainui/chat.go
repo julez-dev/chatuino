@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/keybind"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/muesli/reflow/wordwrap"
@@ -70,7 +70,7 @@ type chatWindow struct {
 	channelID   string
 
 	logger        zerolog.Logger
-	keymap        keybind.KeyMap
+	keymap        save.KeyMap
 	width, height int
 	emoteStore    EmoteStore
 	focused       bool
@@ -90,7 +90,7 @@ type chatWindow struct {
 	userColorCache map[string]func(...string) string
 }
 
-func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap keybind.KeyMap) *chatWindow {
+func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
 	c := chatWindow{
 		keymap:         keymap,
 		logger:         logger,

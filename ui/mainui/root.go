@@ -13,7 +13,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
@@ -78,7 +77,7 @@ type Root struct {
 	clientID string
 
 	width, height int
-	keymap        keybind.KeyMap
+	keymap        save.KeyMap
 
 	screenType activeScreen
 
@@ -100,7 +99,7 @@ type Root struct {
 	tabs      []*tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client, keymap keybind.KeyMap) Root {
+func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client, keymap save.KeyMap) Root {
 	multi := multiplexer.NewMultiplexer(logger, provider)
 
 	in := make(chan multiplexer.InboundMessage)

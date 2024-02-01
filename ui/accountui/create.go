@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
@@ -34,7 +33,7 @@ type createModel struct {
 	state     createState
 	textinput textinput.Model
 	spinner   spinner.Model
-	keymap    keybind.KeyMap
+	keymap    save.KeyMap
 
 	width, height     int
 	clientID, apiHost string
@@ -43,7 +42,7 @@ type createModel struct {
 	account save.Account
 }
 
-func newCreateModel(width, height int, clientID, apiHost string, keymap keybind.KeyMap) createModel {
+func newCreateModel(width, height int, clientID, apiHost string, keymap save.KeyMap) createModel {
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()

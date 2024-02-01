@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 )
 
@@ -43,11 +42,11 @@ type join struct {
 	list          list.Model
 	selectedInput currentJoinInput
 	accounts      []save.Account
-	keymap        keybind.KeyMap
+	keymap        save.KeyMap
 	provider      AccountProvider
 }
 
-func newJoin(provider AccountProvider, width, height int, keymap keybind.KeyMap) join {
+func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) join {
 	input := textinput.New()
 	input.Placeholder = "Channel"
 	input.CharLimit = 25

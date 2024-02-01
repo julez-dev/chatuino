@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
@@ -65,7 +64,7 @@ type apiClient interface {
 type tab struct {
 	id     string
 	logger zerolog.Logger
-	keymap keybind.KeyMap
+	keymap save.KeyMap
 
 	state tabState
 
@@ -108,7 +107,7 @@ func newTab(
 	account save.Account,
 	accountProvider AccountProvider,
 	initialMessages []*command.PrivateMessage,
-	keymap keybind.KeyMap,
+	keymap save.KeyMap,
 ) (*tab, error) {
 	var ttvAPI apiClient
 

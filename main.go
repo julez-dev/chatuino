@@ -13,7 +13,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/keybind"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/seventv"
@@ -108,8 +107,14 @@ func main() {
 				}
 			}
 
+			keys, err := save.CreateReadKeyMap()
+
+			if err != nil {
+				return fmt.Errorf("error while reading keymap: %w", err)
+			}
+
 			p := tea.NewProgram(
-				mainui.NewUI(logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keybind.BuildDefaultKeyMap()),
+				mainui.NewUI(logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keys),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 			)
