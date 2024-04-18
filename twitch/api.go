@@ -1,6 +1,7 @@
 package twitch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -93,6 +94,44 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	}
 
 	return api, nil
+}
+
+func (a *API) BanUser(ctx context.Context, broadcasterID string, data BanUserData) error {
+
+	if a.provider == nil {
+		return ErrNoUserAccess
+	}
+
+	loggedInUser, err := a.GetUsers(ctx, nil, nil)
+
+	if err != nil {
+		return err
+	}
+
+	if len(loggedInUser.Data) == 0 {
+		return errors.New("could not fetch logged in user for current token")
+	}
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", loggedInUser.Data[0].ID)
+
+	url := fmt.Sprintf("/moderation/bans?%s", values.Encode())
+
+	body, err := json.Marshal(BanUserRequest{Data: data})
+
+	if err != nil {
+		return err
+	}
+
+	_, err = doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, url, body)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {
@@ -265,7 +304,7 @@ func (a *API) createAppAccessToken(ctx context.Context) (string, error) {
 	return token.AccessToken, nil
 }
 
-func doAuthenticatedAppRequest[T any](ctx context.Context, api *API, method, url string, body io.Reader) (T, error) {
+func doAuthenticatedAppRequest[T any](ctx context.Context, api *API, method, url string, body []byte) (T, error) {
 	api.m.Lock()
 	defer api.m.Unlock()
 
@@ -296,7 +335,7 @@ func doAuthenticatedAppRequest[T any](ctx context.Context, api *API, method, url
 	return resp, nil
 }
 
-func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, url string, body io.Reader) (T, error) {
+func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, url string, body []byte) (T, error) {
 	user, err := api.provider.GetAccountBy(api.accountID)
 	if err != nil {
 		var d T
@@ -332,17 +371,21 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 	return resp, nil
 }
 
-func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method, url string, body io.Reader) (T, error) {
+func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method, url string, body []byte) (T, error) {
 	var data T
 
 	url = fmt.Sprintf("%s%s", baseURL, url)
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return data, err
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Client-Id", api.clientID)
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	resp, err := api.client.Do(req)
 	if err != nil {

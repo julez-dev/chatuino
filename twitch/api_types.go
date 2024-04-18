@@ -107,3 +107,15 @@ type (
 		NonModeratorChatDelayDuration int    `json:"non_moderator_chat_delay_duration"` // in seconds
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#ban-user
+type (
+	BanUserRequest struct {
+		Data BanUserData `json:"data"`
+	}
+	BanUserData struct {
+		UserID            string `json:"user_id"`
+		DurationInSeconds int    `json:"duration,omitempty"`
+		Reason            string `json:"reason"`
+	}
+)

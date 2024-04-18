@@ -17,7 +17,7 @@ import (
 )
 
 var scopes = [...]string{
-	"chat:read", "chat:edit", "channel:moderate", "moderator:read:chat_settings", "moderation:read", "user:read:chat",
+	"chat:read", "chat:edit", "channel:moderate", "moderator:read:chat_settings", "moderation:read", "user:read:chat", "moderator:manage:banned_users",
 }
 
 type tokenPair struct {
