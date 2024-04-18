@@ -16,6 +16,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/seventv"
+	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/ui/mainui"
 	"github.com/pkg/browser"
 	"github.com/rs/zerolog"
@@ -90,6 +91,13 @@ func main() {
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			emoteStore := emote.NewStore(logger, serverAPI, stvAPI)
+
+			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
+				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
+				if err == nil {
+					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI)
+				}
+			}
 
 			keys, err := save.CreateReadKeyMap()
 
