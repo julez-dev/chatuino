@@ -127,11 +127,13 @@ func (s *SuggestionTextInput) View() string {
 			s.ti.SetValue(val)
 		}
 
+		// Workaround so that the internal textinputs offset changes
+		// resulting in the suggestion being displayed when text would overflow width
 		s.ti.CursorEnd()
-		view := s.ti.View()
-
-		s.ti.SetValue(oldVal)
 		s.ti.SetCursor(oldPos)
+
+		view := s.ti.View()
+		s.ti.SetValue(oldVal)
 
 		return view
 	}
