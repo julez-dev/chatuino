@@ -3,11 +3,6 @@ package mainui
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
-	"time"
-	"unicode"
-
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,12 +13,15 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
+	"os"
+	"strings"
+	"time"
 )
 
 const (
 	cleanupAfterMessage float64 = 400.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
-	prefixPadding               = 40
+	prefixPadding               = 0
 )
 
 var badgeMap = map[string]string{
@@ -388,15 +386,16 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			if b, ok := badgeMap[badge.Name]; ok {
 				badges = append(badges, b)
 			} else {
+				// TODO: Make this optional
 				// example map badge gold-pixel-heart -> Gold Pixel Heart
-				splits := strings.Split(badge.Name, "-")
-				for i, split := range splits {
-					r := []rune(split)
-					r[0] = unicode.ToUpper(r[0])
-					splits[i] = string(r)
-				}
-
-				badges = append(badges, strings.Join(splits, " "))
+				//splits := strings.Split(badge.Name, "-")
+				//for i, split := range splits {
+				//	r := []rune(split)
+				//	r[0] = unicode.ToUpper(r[0])
+				//	splits[i] = string(r)
+				//}
+				//
+				//badges = append(badges, strings.Join(splits, " "))
 			}
 		}
 

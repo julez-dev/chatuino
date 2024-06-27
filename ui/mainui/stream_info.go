@@ -2,7 +2,8 @@ package mainui
 
 import (
 	"context"
-	"fmt"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +24,7 @@ type streamInfo struct {
 	channelID string
 	ttvAPI    apiClient
 	ctx       context.Context
+	printer   *message.Printer
 
 	width int
 
@@ -39,6 +41,7 @@ func newStreamInfo(ctx context.Context, channelID string, ttvAPI apiClient, widt
 		width:     width,
 		channelID: channelID,
 		ttvAPI:    ttvAPI,
+		printer:   message.NewPrinter(language.English),
 	}
 }
 
@@ -70,7 +73,7 @@ func (s *streamInfo) View() string {
 	}
 
 	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).Width(s.width).MaxWidth(s.width)
-	info := wordwrap.String(fmt.Sprintf("%s - %s (%d)", s.game, s.title, s.viewer), s.width-10)
+	info := wordwrap.String(s.printer.Sprintf("%s - %s (%d Viewer)", s.game, s.title, s.viewer), s.width-10)
 	return style.Render(info)
 }
 
