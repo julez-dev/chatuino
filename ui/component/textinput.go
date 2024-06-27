@@ -36,6 +36,14 @@ type SuggestionTextInput struct {
 	suggestions     []string
 }
 
+func defaultTrie() *trie.Trie {
+	t := trie.New()
+	t = t.WithoutFuzzy()
+	t = t.WithoutLevenshtein()
+	//t = t.WithoutNormalisation()
+	return t
+}
+
 // NewSuggestionTextInput creates a new model with default settings.
 func NewSuggestionTextInput() *SuggestionTextInput {
 	input := textinput.New()
@@ -50,7 +58,7 @@ func NewSuggestionTextInput() *SuggestionTextInput {
 	}
 
 	input.PromptStyle = input.PromptStyle.Foreground(lipgloss.Color("135"))
-	t := trie.New()
+	t := defaultTrie()
 
 	return &SuggestionTextInput{
 		trie:   t,
@@ -65,9 +73,6 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	}
 
 	var cmd tea.Cmd
-
-	s.ti, cmd = s.ti.Update(msg)
-	s.updateSuggestions()
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -94,9 +99,10 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 		case key.Matches(msg, s.KeyMap.PrevSuggestion):
 			s.previousSuggestion()
 		}
-
-		s.updateSuggestions()
 	}
+
+	s.ti, cmd = s.ti.Update(msg)
+	s.updateSuggestions()
 
 	return s, cmd
 }
@@ -105,7 +111,9 @@ func (s *SuggestionTextInput) View() string {
 	if s.canAcceptSuggestion() {
 		word, _, end := selectWordAtIndex(s.ti.Value(), s.ti.Position())
 		suggestion := s.suggestions[s.suggestionIndex]
+
 		oldVal := s.ti.Value()
+		oldPos := s.ti.Position()
 
 		var val string
 
@@ -119,8 +127,12 @@ func (s *SuggestionTextInput) View() string {
 			s.ti.SetValue(val)
 		}
 
+		s.ti.CursorEnd()
 		view := s.ti.View()
+
 		s.ti.SetValue(oldVal)
+		s.ti.SetCursor(oldPos)
+
 		return view
 	}
 
@@ -147,7 +159,7 @@ func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
 	sugg := make([]string, len(suggestions))
 	copy(sugg, suggestions)
 
-	trie := trie.New()
+	trie := defaultTrie()
 	trie.Insert(sugg...)
 
 	s.trie = trie
@@ -163,7 +175,11 @@ func (s *SuggestionTextInput) SetValue(val string) {
 }
 
 func (s *SuggestionTextInput) canAcceptSuggestion() bool {
-	return len(s.suggestions) > 0
+	// only shop if the current word is longer than 2 characters
+	tiVal := s.ti.Value()
+	word, _, _ := selectWordAtIndex(tiVal, s.ti.Position())
+
+	return len(word) > 2 && len(s.suggestions) > 0
 }
 
 func (s *SuggestionTextInput) updateSuggestions() {

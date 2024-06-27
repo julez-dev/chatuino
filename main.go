@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	_ "net/http/pprof"
@@ -43,6 +44,7 @@ func main() {
 	defer f.Close()
 
 	logger := zerolog.New(f).With().Timestamp().Logger()
+	log.Logger = logger
 
 	app := &cli.Command{
 		Name:        "Chatuino",
