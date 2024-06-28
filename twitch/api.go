@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"net/url"
+	"resenje.org/singleflight"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,7 +71,8 @@ type API struct {
 	refresher TokenRefresher
 	accountID string
 
-	m *sync.Mutex
+	m             *sync.Mutex
+	singleRefresh *singleflight.Group[string, string]
 
 	appAccessToken string
 
@@ -79,8 +82,9 @@ type API struct {
 
 func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	api := &API{
-		clientID: clientID,
-		m:        &sync.Mutex{},
+		clientID:      clientID,
+		m:             &sync.Mutex{},
+		singleRefresh: &singleflight.Group[string, string]{},
 	}
 
 	for _, f := range opts {
@@ -342,22 +346,34 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 		return d, err
 	}
 
-	api.m.Lock()
-	defer api.m.Unlock()
-
 	resp, err := doAuthenticatedRequest[T](ctx, api, user.AccessToken, method, url, body)
 	if err != nil {
 		apiErr := APIError{}
 		// Unauthorized - the access token may be expired
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
-			// refresh tokens
-			accessToken, refreshToken, err := api.refresher.RefreshToken(ctx, user.RefreshToken)
-			if err != nil {
-				return resp, err
-			}
 
-			// persists new tokens
-			if err := api.provider.UpdateTokensFor(user.ID, accessToken, refreshToken); err != nil {
+			// Single flight to prevent multiple refreshes at the same time
+			// If multiple requests are made at the same time, only one will refresh the token
+			// The others will wait for the first to finish then use the new token
+			accessToken, shared, err := api.singleRefresh.Do(ctx, "user-refresh"+user.ID+user.RefreshToken, func(ctx context.Context) (string, error) {
+				log.Logger.Info().Str("user-id", user.ID).Msg("running singleflight for token refresh")
+				// refresh tokens
+				accessToken, refreshToken, err := api.refresher.RefreshToken(ctx, user.RefreshToken)
+				if err != nil {
+					return "", err
+				}
+
+				// persists new tokens
+				if err := api.provider.UpdateTokensFor(user.ID, accessToken, refreshToken); err != nil {
+					return "", err
+				}
+
+				return accessToken, nil
+			})
+
+			log.Logger.Info().Str("user-id", user.ID).Bool("shared", shared).Msg("refreshed token")
+
+			if err != nil {
 				return resp, err
 			}
 

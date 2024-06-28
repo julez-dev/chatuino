@@ -11,7 +11,7 @@ import (
 
 var (
 	tabHeaderStyle       = lipgloss.NewStyle().Padding(0, 2).Background(lipgloss.Color("#556")).Margin(1)
-	tabHeaderActiveStyle = tabHeaderStyle.Copy().Background(lipgloss.Color("135"))
+	tabHeaderActiveStyle = tabHeaderStyle.Background(lipgloss.Color("135"))
 )
 
 type tabHeaderEntry struct {

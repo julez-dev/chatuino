@@ -386,18 +386,19 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 		for _, badge := range msg.Badges {
 			if b, ok := badgeMap[badge.Name]; ok {
 				badges = append(badges, b)
-			} else {
-				// TODO: Make this optional
-				// example map badge gold-pixel-heart -> Gold Pixel Heart
-				//splits := strings.Split(badge.Name, "-")
-				//for i, split := range splits {
-				//	r := []rune(split)
-				//	r[0] = unicode.ToUpper(r[0])
-				//	splits[i] = string(r)
-				//}
-				//
-				//badges = append(badges, strings.Join(splits, " "))
 			}
+			// else {
+			// TODO: Make this optional
+			// example map badge gold-pixel-heart -> Gold Pixel Heart
+			//splits := strings.Split(badge.Name, "-")
+			//for i, split := range splits {
+			//	r := []rune(split)
+			//	r[0] = unicode.ToUpper(r[0])
+			//	splits[i] = string(r)
+			//}
+			//
+			//badges = append(badges, strings.Join(splits, " "))
+			// }
 		}
 
 		// if render function not in cache yet, compute now

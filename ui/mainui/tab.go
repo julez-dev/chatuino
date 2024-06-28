@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/ui/component"
@@ -99,8 +98,7 @@ type tab struct {
 func newTab(
 	id string,
 	logger zerolog.Logger,
-	clientID string,
-	serverAPI *server.Client,
+	ttvAPI apiClient,
 	channel string,
 	width, height int,
 	emoteStore EmoteStore,
@@ -109,21 +107,22 @@ func newTab(
 	initialMessages []*command.PrivateMessage,
 	keymap save.KeyMap,
 ) (*tab, error) {
-	var ttvAPI apiClient
 
-	if account.IsAnonymous {
-		ttvAPI = serverAPI
-	} else {
-		api, err := twitch.NewAPI(
-			clientID,
-			twitch.WithUserAuthentication(accountProvider, serverAPI, account.ID),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("error while creating twitch api client: %w", err)
-		}
-
-		ttvAPI = api
-	}
+	//if account.IsAnonymous {
+	//	// User server implementation to proxy API requests
+	//	ttvAPI = serverAPI
+	//} else {
+	//	// Use user authentication for twitch API
+	//	api, err := twitch.NewAPI(
+	//		clientID,
+	//		twitch.WithUserAuthentication(accountProvider, serverAPI, account.ID),
+	//	)
+	//	if err != nil {
+	//		return nil, fmt.Errorf("error while creating twitch api client: %w", err)
+	//	}
+	//
+	//	ttvAPI = api
+	//}
 
 	ctx, cancel := context.WithCancel(context.Background())
 

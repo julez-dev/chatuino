@@ -21,7 +21,10 @@ require github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 
 require nhooyr.io/websocket v1.8.11
 
-require github.com/avast/retry-go/v4 v4.6.0
+require (
+	github.com/avast/retry-go/v4 v4.6.0
+	resenje.org/singleflight v0.4.2
+)
 
 require (
 	github.com/charmbracelet/x/ansi v0.1.2 // indirect
@@ -37,7 +40,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/containerd/console v1.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-chi/chi/v5 v5.0.14
+	github.com/go-chi/chi/v5 v5.1.0
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

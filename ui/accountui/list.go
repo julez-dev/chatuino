@@ -32,9 +32,9 @@ type setAccountsMessage struct {
 	accounts []save.Account
 }
 
-var baseStyle = lipgloss.NewStyle().
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("240"))
+//var baseStyle = lipgloss.NewStyle().
+//	BorderStyle(lipgloss.NormalBorder()).
+//	BorderForeground(lipgloss.Color("240"))
 
 type keyMapWithHelp struct {
 	save.KeyMap

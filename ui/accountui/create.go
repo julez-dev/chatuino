@@ -107,9 +107,8 @@ func (c createModel) View() string {
 	switch c.state {
 	case input:
 		view = fmt.Sprintf(
-			"Please enter the Access Token + Refresh Token combination.\n\n%s",
-			c.textinput.View(),
-		) + "\n"
+			"Please enter the Access Token + Refresh Token combination.\nAccess %s/auth/start to start auth flow\n%s\n", c.apiHost, c.textinput.View(),
+		)
 	case loading:
 		view = c.spinner.View() + " Loading user information"
 	case finished:

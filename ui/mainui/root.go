@@ -86,6 +86,9 @@ type Root struct {
 	emoteStore EmoteStore
 	serverAPI  *server.Client
 
+	// One API Client per Chatuino User Tab
+	ttvAPIUserClient map[string]apiClient
+
 	// chat multiplexer channels
 	in  chan multiplexer.InboundMessage
 	out <-chan multiplexer.OutboundMessage
@@ -121,9 +124,10 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 		in:  in,
 		out: out,
 
-		accounts:   provider,
-		emoteStore: emoteStore,
-		serverAPI:  serverClient,
+		accounts:         provider,
+		ttvAPIUserClient: make(map[string]apiClient),
+		emoteStore:       emoteStore,
+		serverAPI:        serverClient,
 	}
 }
 
@@ -182,7 +186,30 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			id := r.header.addTab(t.Channel, identity)
 			headerHeight := r.getHeaderHeight()
-			nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages, r.keymap)
+
+			if _, ok := r.ttvAPIUserClient[account.ID]; !ok {
+				var api apiClient
+				var err error
+
+				if !account.IsAnonymous {
+					api, err = twitch.NewAPI(
+						r.clientID,
+						twitch.WithUserAuthentication(r.accounts, r.serverAPI, account.ID),
+					)
+
+					// err -should- never happen
+					if err != nil {
+						r.logger.Error().Err(err).Send()
+						continue
+					}
+				} else {
+					api = r.serverAPI
+				}
+
+				r.ttvAPIUserClient[account.ID] = api
+			}
+
+			nTab, err := newTab(id, r.logger, r.ttvAPIUserClient[account.ID], t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages, r.keymap)
 			if err != nil {
 				r.logger.Error().Err(err).Send()
 				continue
@@ -228,6 +255,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.width = msg.Width
 		r.height = msg.Height
 		r.handleResize()
+	// TODO: refactor joinChannelMessage & setStateMessage
 	case joinChannelMessage:
 		r.screenType = mainScreen
 
@@ -241,7 +269,29 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := r.getHeaderHeight()
 
-		nTab, err := newTab(id, r.logger, r.clientID, r.serverAPI, msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil, r.keymap)
+		if _, ok := r.ttvAPIUserClient[msg.account.ID]; !ok {
+			var api apiClient
+			var err error
+
+			if !msg.account.IsAnonymous {
+				api, err = twitch.NewAPI(
+					r.clientID,
+					twitch.WithUserAuthentication(r.accounts, r.serverAPI, msg.account.ID),
+				)
+
+				// err -should- never happen
+				if err != nil {
+					r.logger.Error().Err(err).Send()
+					return r, nil
+				}
+			} else {
+				api = r.serverAPI
+			}
+
+			r.ttvAPIUserClient[msg.account.ID] = api
+		}
+
+		nTab, err := newTab(id, r.logger, r.ttvAPIUserClient[msg.account.ID], msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil, r.keymap)
 		if err != nil {
 			r.logger.Error().Err(err).Send()
 			return r, nil
@@ -287,7 +337,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			defer f.Close()
 
-			io.Copy(f, strings.NewReader(stripAnsi(r.View())))
+			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.View())))
 
 			return r, nil
 		}

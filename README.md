@@ -51,26 +51,30 @@ If want to link a new account you need to provide a user token to Chatuino which
 
 ### key-binds
 
-Currently, key-binds are hard coded and can not be changed.
+Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file.
 
-Here is a short overview
+Here is a short overview of the default key-binds:
 
-| key-bind | where | description |
-| -------- | ----- | ----------- |
-| F1       | Home/In channel | Join a new channel |
-| Tab | Join channel prompt | Switch between input fields |
-| Enter | Inputs | Confirm |
-| j | In lists/Chat window | Down |
-| k | In lists/Chat window | Up |
-| q | In window(tab) | Quit channel |
-| i | In window(tab) | Insert mode for writing/sending chat message |
-| down arrow | Insert mode | Next suggestion |
-| down arrow | Insert mode | Previous suggestion |
-| tab | Insert mode | Accept suggestion |
-| esc | Insert mode | Quit Insert mode |
-| u | Chat window message | Open user inspect window
-| esc | User inspect window | Quit user inspect window |
-| ctrl+c | Everywhere | Quit |
+| key-bind   | where | description                                  |
+|------------| ----- |----------------------------------------------|
+| F1         | Home/In channel | Join a new channel                           |
+| Tab        | Join channel prompt | Switch between input fields                  |
+| Enter      | Inputs | Confirm                                      |
+| j          | In lists/Chat window | Down                                         |
+| k          | In lists/Chat window | Up                                           |
+| t          | In lists/Chat window | Go to top message                            |
+| b          | In lists/Chat window | Go to most recent message                    |
+| c          | In lists/Chat window | Open twitch channel page of joined channel   |
+| p          | In lists/Chat window | Open popup web chat                          |
+| q          | In window(tab) | Quit channel                                 |
+| i          | In window(tab) | Insert mode for writing/sending chat message |
+| up arrow   | Insert mode | Next suggestion                              |
+| down arrow | Insert mode | Previous suggestion                          |
+| tab        | Insert mode | Accept suggestion                            |
+| esc        | Insert mode | Quit Insert mode                             |
+| u          | Chat window message | Open user inspect window                     
+| esc        | User inspect window | Quit user inspect window                     |
+| ctrl+c     | Everywhere | Quit                                         |
 
 ### server sub-command and hosting you own server
 

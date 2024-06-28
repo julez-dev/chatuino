@@ -132,11 +132,14 @@ func main() {
 
 			emoteStore := emote.NewStore(logger, serverAPI, stvAPI, bttvAPI)
 
+			// If the user has provided an account we can use the users local authentication
+			// Instead of using Chatuino's server to handle requests for emote fetching.
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
 					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI, bttvAPI)
 				}
+
 			}
 
 			keys, err := save.CreateReadKeyMap()
