@@ -64,7 +64,7 @@ func (m *Multiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan Outbo
 				in = chatIns[accountID]
 				done := chatDones[accountID]
 
-				outChat, outErrChat := chat.ConnectWithRetryNewSocket(ctx, in)
+				outChat, outErrChat := chat.ConnectWithRetry(ctx, in)
 
 				chatWG.Add(1)
 				go func() {

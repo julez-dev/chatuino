@@ -1,6 +1,7 @@
 package twitch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -71,7 +72,7 @@ func NewChat(logger zerolog.Logger, accountProvider AccountProvider, accountID s
 	}
 }
 
-func (c *Chat) ConnectWithRetryNewSocket(ctx context.Context, messages <-chan IRCer) (<-chan IRCer, <-chan error) {
+func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-chan IRCer, <-chan error) {
 	out := make(chan IRCer)
 	outErr := make(chan error, 1)
 
@@ -99,8 +100,8 @@ func (c *Chat) ConnectWithRetryNewSocket(ctx context.Context, messages <-chan IR
 			// innerWG is done, once either the writer or reader returns an error
 			innerWG, innerCtx := errgroup.WithContext(outerCtx)
 
-			// sometime the reader needs to write to the websocket
-			// if the reader writes to the websocket we may get a data race
+			// sometimes the reader needs to write to the websocket
+			// if the reader writes to the websocket we may get a data race,
 			// so we send internal messages from the reader to the writer
 			innerMessages := make(chan IRCer, 10)
 
@@ -136,31 +137,40 @@ func (c *Chat) ConnectWithRetryNewSocket(ctx context.Context, messages <-chan IR
 				for {
 					// this deadline just tracks how much time can pass without getting a new message
 					// not to check if the connection is still up, so not a keep-alive
-					_, message, err := ws.Read(innerCtx)
+					_, wsMessage, err := ws.Read(innerCtx)
 
 					if err != nil {
 						return err
 					}
 
-					parsed, err := parseIRC(string(message))
-					if err != nil {
-						if errors.Is(err, ErrUnhandledCommand) {
-							c.logger.Info().Str("unhandled", string(message)).Send()
+					// sometimes twitch sends multiple messages in one response
+					messages := bytes.Split(wsMessage, []byte("\r\n"))
+
+					for _, message := range messages {
+						if len(message) == 0 {
 							continue
 						}
 
-						return err
-					}
+						parsed, err := parseIRC(string(message))
+						if err != nil {
+							if errors.Is(err, ErrUnhandledCommand) {
+								c.logger.Info().Str("unhandled", string(message)).Send()
+								continue
+							}
 
-					if _, ok := parsed.(command.PingMessage); ok {
-						select {
-						case innerMessages <- command.PongMessage{}:
-						case <-innerCtx.Done():
-							return nil
+							return err
 						}
-					}
 
-					out <- parsed
+						if _, ok := parsed.(command.PingMessage); ok {
+							select {
+							case innerMessages <- command.PongMessage{}:
+							case <-innerCtx.Done():
+								return nil
+							}
+						}
+
+						out <- parsed
+					}
 				}
 			})
 

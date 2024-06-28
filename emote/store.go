@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/julez-dev/chatuino/bttv"
 	"net/http"
 	"strings"
 	"sync"
@@ -25,6 +26,11 @@ type SevenTVEmoteFetcher interface {
 	GetChannelEmotes(ctx context.Context, broadcaster string) (seventv.ChannelEmoteResponse, error)
 }
 
+type BTTVEmoteFetcher interface {
+	GetGlobalEmotes(context.Context) (bttv.GlobalEmoteResponse, error)
+	GetChannelEmotes(ctx context.Context, broadcaster string) (bttv.UserResponse, error)
+}
+
 type Store struct {
 	logger  zerolog.Logger
 	m       *sync.RWMutex
@@ -33,15 +39,17 @@ type Store struct {
 
 	twitchEmotes  TwitchEmoteFetcher
 	sevenTVEmotes SevenTVEmoteFetcher
+	bttvEmotes    BTTVEmoteFetcher
 }
 
-func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher) Store {
+func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher) Store {
 	return Store{
 		logger:        logger,
 		m:             &sync.RWMutex{},
 		channel:       map[string]EmoteSet{},
 		twitchEmotes:  twitchEmotes,
 		sevenTVEmotes: sevenTVEmotes,
+		bttvEmotes:    bttvEmotes,
 	}
 }
 
@@ -85,8 +93,9 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 	delete(s.channel, channelID)
 
 	var (
-		ttvResp twitch.EmoteResponse
-		stvResp seventv.ChannelEmoteResponse
+		ttvResp  twitch.EmoteResponse
+		stvResp  seventv.ChannelEmoteResponse
+		bttvResp bttv.UserResponse
 	)
 
 	group, ctx := errgroup.WithContext(ctx)
@@ -122,11 +131,31 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 		return nil
 	})
 
+	group.Go(func() error {
+		resp, err := s.bttvEmotes.GetChannelEmotes(ctx, channelID)
+		if err != nil {
+			s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch BTTV emotes")
+
+			var apiErr bttv.APIError
+			if errors.As(err, &apiErr) {
+				if apiErr.StatusCode == http.StatusNotFound {
+					return nil
+				}
+			}
+
+			return err
+		}
+
+		bttvResp = resp
+
+		return nil
+	})
+
 	if err := group.Wait(); err != nil {
 		return err
 	}
 
-	s.channel[channelID] = make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes))
+	s.channel[channelID] = make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes)+len(bttvResp.ChannelEmotes))
 
 	for _, ttvEmote := range ttvResp.Data {
 		s.channel[channelID] = append(s.channel[channelID], Emote{
@@ -134,6 +163,15 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 			Text:     ttvEmote.Name,
 			Platform: Twitch,
 			URL:      ttvEmote.Images.URL1X,
+		})
+	}
+
+	for _, bttvEmote := range bttvResp.ChannelEmotes {
+		s.channel[channelID] = append(s.channel[channelID], Emote{
+			ID:       bttvEmote.ID,
+			Text:     bttvEmote.Code,
+			Platform: BTTV,
+			URL:      fmt.Sprintf("https://betterttv.com/emotes/%s", bttvEmote.ID),
 		})
 	}
 
@@ -160,8 +198,9 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 	group, ctx := errgroup.WithContext(ctx)
 
 	var (
-		ttvResp twitch.EmoteResponse
-		stvResp seventv.EmoteResponse
+		ttvResp  twitch.EmoteResponse
+		stvResp  seventv.EmoteResponse
+		bttvResp bttv.GlobalEmoteResponse
 	)
 
 	group.Go(func() error {
@@ -184,6 +223,16 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 		return nil
 	})
 
+	group.Go(func() error {
+		resp, err := s.bttvEmotes.GetGlobalEmotes(ctx)
+		if err != nil {
+			return err
+		}
+
+		bttvResp = resp
+		return nil
+	})
+
 	if err := group.Wait(); err != nil {
 		return err
 	}
@@ -197,6 +246,15 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 			Text:     ttvEmote.Name,
 			Platform: Twitch,
 			URL:      ttvEmote.Images.URL1X,
+		})
+	}
+
+	for _, bttvEmote := range bttvResp {
+		s.global = append(s.global, Emote{
+			ID:       bttvEmote.ID,
+			Text:     bttvEmote.Code,
+			Platform: BTTV,
+			URL:      fmt.Sprintf("https://betterttv.com/emotes/%s", bttvEmote.ID),
 		})
 	}
 

@@ -8,6 +8,8 @@ func (p Platform) String() string {
 		return "Twitch"
 	case 2:
 		return "SevenTV"
+	case 3:
+		return "BTTV"
 	}
 
 	return "Unknown"
@@ -17,6 +19,7 @@ const (
 	Unknown Platform = iota
 	Twitch
 	SevenTV
+	BTTV
 )
 
 // func Decode(r io.Reader) (image.Image, error) {

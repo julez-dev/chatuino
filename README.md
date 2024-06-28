@@ -29,7 +29,7 @@ The name and idea to create a Twitch Chat Client is inspired by [Chatterino](htt
 - You can host the server component for authentication/anonymous usage yourself
 - Emote Suggestions
 - Local save state to persist sessions
-- Simple emote support for Twitch(purple) and SevenTV(blue) emotes (Emotes are colored), graphic display planned
+- Simple emote support for Twitch(purple), BTTV(red) and SevenTV(blue) emotes (Emotes are colored), graphic display planned
 - Advanced moderation tools planned
 - More twitch integration planned (Announcements etc.)
 
@@ -51,9 +51,9 @@ If want to link a new account you need to provide a user token to Chatuino which
 
 ### key-binds
 
-Currently key-binds are hard coded and can not be changed.
+Currently, key-binds are hard coded and can not be changed.
 
-Here is an short overview
+Here is a short overview
 
 | key-bind | where | description |
 | -------- | ----- | ----------- |

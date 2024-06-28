@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	cleanupAfterMessage float64 = 400.0
+	cleanupAfterMessage float64 = 1500.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
-	prefixPadding               = 0
+	prefixPadding               = 41
 )
 
 var badgeMap = map[string]string{
@@ -41,8 +41,9 @@ var (
 )
 
 var (
-	stvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
-	ttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	stvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
+	ttvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	bttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d50014"))
 
 	subAlertStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
 	noticeAlertStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
@@ -573,6 +574,10 @@ func (c *chatWindow) colorMessageEmotes(message string) string {
 				splits[i] = ttvStyle.Render(split)
 			case emote.SevenTV:
 				splits[i] = stvStyle.Render(split)
+			case emote.BTTV:
+				splits[i] = bttvStyle.Render(split)
+			default:
+
 			}
 
 			continue

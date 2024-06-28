@@ -12,6 +12,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var commandSuggestions = []string{
+	"/ban [user] [reason]",
+	"/unban [user]",
+	"/timeout [user] [duration] [reason]",
+}
+
 // KeyMap is the key bindings for different actions within the textinput.
 type KeyMap struct {
 	AcceptSuggestion key.Binding
@@ -29,7 +35,8 @@ var DefaultKeyMap = KeyMap{
 
 type SuggestionTextInput struct {
 	trie *trie.Trie
-	ti   textinput.Model
+
+	ti textinput.Model
 
 	KeyMap          KeyMap
 	suggestionIndex int
@@ -77,20 +84,14 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, s.KeyMap.AcceptSuggestion):
-			if s.canAcceptSuggestion() {
-				tiVal := s.ti.Value()
+		case key.Matches(msg, s.KeyMap.AcceptSuggestion) && s.canAcceptSuggestion():
+			_, startIndex, endIndex := selectWordAtIndex(s.ti.Value(), s.ti.Position())
+			before := s.ti.Value()[:startIndex]
+			after := s.ti.Value()[endIndex:]
+			suggestion := s.suggestions[s.suggestionIndex]
 
-				_, start, end := selectWordAtIndex(tiVal, s.ti.Position())
-				before := tiVal[:start]
-				after := tiVal[end:]
-
-				suggestion := s.suggestions[s.suggestionIndex]
-				s.ti.SetValue(before + suggestion + after)
-
-				_, _, end = selectWordAtIndex(s.ti.Value(), s.ti.Position())
-				s.ti.SetCursor(end)
-			}
+			s.ti.SetValue(before + suggestion + " " + after)
+			s.ti.SetCursor(len(before) + len(suggestion) + 1) // set cursor to end of suggestion + 1 for space
 
 			return s, nil
 
@@ -109,36 +110,10 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 func (s *SuggestionTextInput) View() string {
 	if s.canAcceptSuggestion() {
-		word, _, end := selectWordAtIndex(s.ti.Value(), s.ti.Position())
-		suggestion := s.suggestions[s.suggestionIndex]
-
-		oldVal := s.ti.Value()
-		oldPos := s.ti.Position()
-
-		var val string
-
-		if len(s.suggestions) == 1 {
-			val = s.ti.Value()[:end] + " |" + suggestion + "|" + s.ti.Value()[end:]
-		} else {
-			val = s.ti.Value()[:end] + " |" + suggestion + fmt.Sprintf("/%dx|", len(s.suggestions)) + s.ti.Value()[end:]
-		}
-
-		if suggestion != word {
-			s.ti.SetValue(val)
-		}
-
-		// Workaround so that the internal textinputs offset changes
-		// resulting in the suggestion being displayed when text would overflow width
-		s.ti.CursorEnd()
-		s.ti.SetCursor(oldPos)
-
-		view := s.ti.View()
-		s.ti.SetValue(oldVal)
-
-		return view
+		return fmt.Sprintf(" %s (%dx)\n%s", s.suggestions[s.suggestionIndex], len(s.suggestions), s.ti.View())
 	}
 
-	return s.ti.View()
+	return "\n" + s.ti.View()
 }
 
 func (s *SuggestionTextInput) Blur() {
@@ -177,11 +152,11 @@ func (s *SuggestionTextInput) SetValue(val string) {
 }
 
 func (s *SuggestionTextInput) canAcceptSuggestion() bool {
-	// only shop if the current word is longer than 2 characters
 	tiVal := s.ti.Value()
 	word, _, _ := selectWordAtIndex(tiVal, s.ti.Position())
 
-	return len(word) > 2 && len(s.suggestions) > 0
+	// only show if the current word is longer than 2 characters and the suggestion is different from the current word
+	return len(word) > 2 && len(s.suggestions) > 0 && s.suggestions[s.suggestionIndex] != word
 }
 
 func (s *SuggestionTextInput) updateSuggestions() {
@@ -190,7 +165,13 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		return
 	}
 
-	currWord, _, _ := selectWordAtIndex(s.ti.Value(), s.ti.Position())
+	currWord, startIndex, _ := selectWordAtIndex(s.ti.Value(), s.ti.Position())
+
+	if currWord == "" {
+		s.suggestions = nil
+		return
+	}
+
 	matches := s.trie.SearchAll(currWord)
 
 	if !reflect.DeepEqual(matches, s.suggestions) {
@@ -198,6 +179,15 @@ func (s *SuggestionTextInput) updateSuggestions() {
 	}
 
 	s.suggestions = matches
+
+	// If the current word is a command and is at the start of the message, add command help to suggestions
+	if strings.HasPrefix(currWord, "/") && startIndex == 0 {
+		for _, suggestion := range commandSuggestions {
+			if strings.Contains(suggestion, currWord) {
+				s.suggestions = append(s.suggestions, suggestion)
+			}
+		}
+	}
 }
 
 func (s *SuggestionTextInput) nextSuggestion() {

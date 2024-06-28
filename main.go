@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/julez-dev/chatuino/bttv"
 	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/emote"
@@ -33,6 +35,32 @@ const (
 	defaultClientID = "jliqj1q6nmp0uh5ofangdx4iac7yd9"
 	logFileName     = "log.txt"
 )
+
+type transportWithLogger struct {
+	rt     http.RoundTripper
+	logger zerolog.Logger
+}
+
+func (t *transportWithLogger) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt := t.rt
+
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+
+	now := time.Now()
+	resp, err := rt.RoundTrip(req)
+
+	if err != nil {
+		t.logger.Error().Err(err).Msg("error while making request")
+		return nil, err
+	}
+
+	dur := time.Since(now)
+	t.logger.Info().Str("method", req.Method).Str("url", req.URL.String()).Dur("took", dur).Int("status", resp.StatusCode).Msg("request made")
+
+	return resp, nil
+}
 
 func main() {
 	f, err := setupLogFile()
@@ -89,15 +117,25 @@ func main() {
 				runProfilingServer(ctx, logger, command.String("profiling-host"))
 			}
 
+			// Override the default http client transport to log requests
+			transport := http.DefaultClient.Transport
+
+			http.DefaultClient.Transport = &transportWithLogger{
+				rt:     transport,
+				logger: logger,
+			}
+
 			accountProvider := save.NewAccountProvider()
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
-			emoteStore := emote.NewStore(logger, serverAPI, stvAPI)
+			bttvAPI := bttv.NewAPI(http.DefaultClient)
+
+			emoteStore := emote.NewStore(logger, serverAPI, stvAPI, bttvAPI)
 
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI)
+					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI, bttvAPI)
 				}
 			}
 
