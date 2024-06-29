@@ -355,7 +355,8 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 			// Single flight to prevent multiple refreshes at the same time
 			// If multiple requests are made at the same time, only one will refresh the token
 			// The others will wait for the first to finish then use the new token
-			accessToken, shared, err := api.singleRefresh.Do(ctx, "user-refresh"+user.ID+user.RefreshToken, func(ctx context.Context) (string, error) {
+			key := "user-refresh" + user.ID + user.RefreshToken
+			accessToken, shared, err := api.singleRefresh.Do(ctx, key, func(ctx context.Context) (string, error) {
 				log.Logger.Info().Str("user-id", user.ID).Msg("running singleflight for token refresh")
 				// refresh tokens
 				accessToken, refreshToken, err := api.refresher.RefreshToken(ctx, user.RefreshToken)
@@ -371,11 +372,14 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 				return accessToken, nil
 			})
 
-			log.Logger.Info().Str("user-id", user.ID).Bool("shared", shared).Msg("refreshed token")
-
 			if err != nil {
+				log.Logger.Err(err).Str("user-id", user.ID).Bool("shared", shared).Msg("could not refresh token")
+
+				api.singleRefresh.Forget(key)
 				return resp, err
 			}
+
+			log.Logger.Info().Str("user-id", user.ID).Bool("shared", shared).Msg("refreshed token")
 
 			// retry request
 			return doAuthenticatedRequest[T](ctx, api, accessToken, method, url, body)

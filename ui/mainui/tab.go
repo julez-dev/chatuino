@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +61,11 @@ type apiClient interface {
 	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
 }
 
+type moderationAPIClient interface {
+	apiClient
+	BanUser(ctx context.Context, broadcasterID string, data twitch.BanUserData) error
+}
+
 type tab struct {
 	id     string
 	logger zerolog.Logger
@@ -107,23 +113,6 @@ func newTab(
 	initialMessages []*command.PrivateMessage,
 	keymap save.KeyMap,
 ) (*tab, error) {
-
-	//if account.IsAnonymous {
-	//	// User server implementation to proxy API requests
-	//	ttvAPI = serverAPI
-	//} else {
-	//	// Use user authentication for twitch API
-	//	api, err := twitch.NewAPI(
-	//		clientID,
-	//		twitch.WithUserAuthentication(accountProvider, serverAPI, account.ID),
-	//	)
-	//	if err != nil {
-	//		return nil, fmt.Errorf("error while creating twitch api client: %w", err)
-	//	}
-	//
-	//	ttvAPI = api
-	//}
-
 	ctx, cancel := context.WithCancel(context.Background())
 
 	input := component.NewSuggestionTextInput()
@@ -227,7 +216,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 		t.channelDataLoaded = true
 
-		// set chat suggestions if non anonymous user
+		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
 			emoteSet := t.emoteStore.GetAllForUser(msg.channelID)
 			suggestions := make([]string, 0, len(emoteSet))
@@ -434,26 +423,10 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				return t, nil
 			}
 
-			if key.Matches(msg, t.keymap.Confirm) {
-				if t.state == insertMode && len(t.messageInput.Value()) > 0 {
-					msg := &command.PrivateMessage{
-						ChannelUserName: t.channel,
-						Message:         t.messageInput.Value(),
-						DisplayName:     t.account.DisplayName,
-						TMISentTS:       time.Now(),
-					}
-					t.chatWindow.handleMessage(msg)
-					t.messageInput.SetValue("")
-					return t, func() tea.Msg {
-						return forwardChatMessage{
-							msg: multiplexer.InboundMessage{
-								AccountID: t.account.ID,
-								Msg:       msg,
-							},
-						}
-					}
-				}
+			if key.Matches(msg, t.keymap.Confirm) && t.state == insertMode && len(t.messageInput.Value()) > 0 {
+				return t, t.handleMessageSent()
 			}
+
 		}
 	}
 
@@ -534,6 +507,133 @@ func (t *tab) View() string {
 func (r *tab) Close() error {
 	r.cancelFunc()
 	return r.ctx.Err()
+}
+
+func (t *tab) handleMessageSent() tea.Cmd {
+	input := t.messageInput.Value()
+
+	// Check if input is a command
+	if strings.HasPrefix(input, "/") {
+		// Message input is only allowed for authenticated users
+		// so ttvAPI is guaranteed to be a moderationAPIClient
+		client := t.ttvAPI.(moderationAPIClient)
+
+		// Get command name
+		end := strings.Index(input, " ")
+		if end == -1 {
+			end = len(input)
+		}
+
+		commandName := input[1:end]
+
+		argStr := strings.TrimSpace(input[end:])
+		args := strings.SplitN(argStr, " ", 3)
+		channelID := t.chatWindow.channelID
+		channel := t.channel
+		accountID := t.account.ID
+		t.messageInput.SetValue("")
+
+		switch commandName {
+		case "timeout":
+			if len(args) < 2 {
+				return func() tea.Msg {
+					return chatEventMessage{
+						accountID: accountID,
+						channel:   channel,
+						message: &command.Notice{
+							Message: "Expected Usage: /timeout <username> <duration> [reason]",
+						},
+					}
+				}
+			}
+
+			if len(args) == 2 {
+				args = append(args, "")
+			}
+
+			return func() tea.Msg {
+				users, err := client.GetUsers(t.ctx, []string{args[0]}, nil)
+
+				if err != nil {
+					return chatEventMessage{
+						accountID: accountID,
+						channel:   channel,
+						message: &command.Notice{
+							Message: fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error()),
+						},
+					}
+				}
+
+				if len(users.Data) < 1 {
+					return chatEventMessage{
+						accountID: accountID,
+						channel:   channel,
+						message: &command.Notice{
+							Message: fmt.Sprintf("User %s can not be found", args[0]),
+						},
+					}
+				}
+
+				duration, err := strconv.Atoi(args[1])
+
+				if err != nil {
+					return chatEventMessage{
+						accountID: accountID,
+						channel:   channel,
+						message: &command.Notice{
+							Message: fmt.Sprintf("Could not convert %s to integer: %s", args[1], err.Error()),
+						},
+					}
+				}
+
+				err = client.BanUser(t.ctx, channelID, twitch.BanUserData{
+					UserID:            users.Data[0].ID,
+					DurationInSeconds: duration,
+					Reason:            args[2],
+				})
+
+				if err != nil {
+					return chatEventMessage{
+						accountID: accountID,
+						channel:   channel,
+						message: &command.Notice{
+							Message: fmt.Sprintf("Error while sending ban request: %s", err.Error()),
+						},
+					}
+				}
+
+				return chatEventMessage{
+					accountID: accountID,
+					channel:   channel,
+					message: &command.Notice{
+						Message: fmt.Sprintf("User %s recerived a timeout by you for %d seconds because: %s", users.Data[0].DisplayName, duration, args[2]),
+					},
+				}
+			}
+		}
+
+		return nil
+
+	}
+
+	msg := &command.PrivateMessage{
+		ChannelUserName: t.channel,
+		Message:         input,
+		DisplayName:     t.account.DisplayName,
+		TMISentTS:       time.Now(),
+	}
+
+	t.chatWindow.handleMessage(msg)
+	t.messageInput.SetValue("")
+
+	return func() tea.Msg {
+		return forwardChatMessage{
+			msg: multiplexer.InboundMessage{
+				AccountID: t.account.ID,
+				Msg:       msg,
+			},
+		}
+	}
 }
 
 func (t *tab) renderMessageInput() string {

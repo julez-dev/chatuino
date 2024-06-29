@@ -15,7 +15,7 @@ import (
 var commandSuggestions = []string{
 	"/ban [user] [reason]",
 	"/unban [user]",
-	"/timeout [user] [duration] [reason]",
+	"/timeout <username> <duration> [reason]",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
