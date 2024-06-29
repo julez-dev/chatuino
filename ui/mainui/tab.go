@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 
@@ -533,90 +533,11 @@ func (t *tab) handleMessageSent() tea.Cmd {
 		accountID := t.account.ID
 		t.messageInput.SetValue("")
 
-		switch commandName {
-		case "timeout":
-			if len(args) < 2 {
-				return func() tea.Msg {
-					return chatEventMessage{
-						accountID: accountID,
-						channel:   channel,
-						message: &command.Notice{
-							Message: "Expected Usage: /timeout <username> <duration> [reason]",
-						},
-					}
-				}
-			}
-
-			if len(args) == 2 {
-				args = append(args, "")
-			}
-
-			return func() tea.Msg {
-				users, err := client.GetUsers(t.ctx, []string{args[0]}, nil)
-
-				if err != nil {
-					return chatEventMessage{
-						accountID: accountID,
-						channel:   channel,
-						message: &command.Notice{
-							Message: fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error()),
-						},
-					}
-				}
-
-				if len(users.Data) < 1 {
-					return chatEventMessage{
-						accountID: accountID,
-						channel:   channel,
-						message: &command.Notice{
-							Message: fmt.Sprintf("User %s can not be found", args[0]),
-						},
-					}
-				}
-
-				duration, err := strconv.Atoi(args[1])
-
-				if err != nil {
-					return chatEventMessage{
-						accountID: accountID,
-						channel:   channel,
-						message: &command.Notice{
-							Message: fmt.Sprintf("Could not convert %s to integer: %s", args[1], err.Error()),
-						},
-					}
-				}
-
-				err = client.BanUser(t.ctx, channelID, twitch.BanUserData{
-					UserID:            users.Data[0].ID,
-					DurationInSeconds: duration,
-					Reason:            args[2],
-				})
-
-				if err != nil {
-					return chatEventMessage{
-						accountID: accountID,
-						channel:   channel,
-						message: &command.Notice{
-							Message: fmt.Sprintf("Error while sending ban request: %s", err.Error()),
-						},
-					}
-				}
-
-				return chatEventMessage{
-					accountID: accountID,
-					channel:   channel,
-					message: &command.Notice{
-						Message: fmt.Sprintf("User %s recerived a timeout by you for %d seconds because: %s", users.Data[0].DisplayName, duration, args[2]),
-					},
-				}
-			}
-		}
-
-		return nil
-
+		return handleCommand(t.ctx, commandName, args, channelID, channel, accountID, client)
 	}
 
 	msg := &command.PrivateMessage{
+		ID:              uuid.Must(uuid.NewUUID()).String(),
 		ChannelUserName: t.channel,
 		Message:         input,
 		DisplayName:     t.account.DisplayName,
