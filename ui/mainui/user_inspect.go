@@ -29,7 +29,7 @@ type userInspect struct {
 	isDataFetched bool
 
 	width, height int
-	tabID         string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
+	tab           tab    // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
 	user          string // the chatter
 	channel       string // the streamer
 
@@ -38,15 +38,15 @@ type userInspect struct {
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI apiClient, tabID string, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI apiClient, tab tab, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
 	return &userInspect{
-		tabID:   tabID,
+		tab:     tab,
 		channel: channel,
 		user:    user,
 		ivr:     ivr.NewAPI(http.DefaultClient),
 		ttvAPI:  ttvAPI,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow: newChatWindow(logger, tabID, width, height, channel, channelID, emoteStore, keymap),
+		chatWindow: newChatWindow(logger, &tab, width, height, channel, channelID, emoteStore, keymap),
 	}
 }
 
@@ -61,7 +61,7 @@ func (u *userInspect) Init() tea.Cmd {
 		ivrResp, err := u.ivr.GetSubAge(ctx, u.user, u.channel)
 		if err != nil {
 			return setUserInspectData{
-				target: u.tabID,
+				target: u.tab.id,
 				err:    err,
 			}
 		}
@@ -72,20 +72,20 @@ func (u *userInspect) Init() tea.Cmd {
 		ttvResp, err := u.ttvAPI.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
-				target: u.tabID,
+				target: u.tab.id,
 				err:    err,
 			}
 		}
 
 		if len(ttvResp.Data) != 1 {
 			return setUserInspectData{
-				target: u.tabID,
+				target: u.tab.id,
 				err:    fmt.Errorf("could not return user data for: %s", ivrResp.User.ID),
 			}
 		}
 
 		return setUserInspectData{
-			target:   u.tabID,
+			target:   u.tab.id,
 			err:      err,
 			ivrResp:  ivrResp,
 			userData: ttvResp.Data[0],
@@ -102,7 +102,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case setUserInspectData:
-		if msg.target != u.tabID {
+		if msg.target != u.tab.id {
 			return u, nil
 		}
 

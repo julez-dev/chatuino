@@ -64,9 +64,9 @@ type position struct {
 }
 
 type chatWindow struct {
-	parentTabID string
-	channel     string
-	channelID   string
+	parentTab *tab
+	channel   string
+	channelID string
 
 	logger        zerolog.Logger
 	keymap        save.KeyMap
@@ -89,11 +89,11 @@ type chatWindow struct {
 	userColorCache map[string]func(...string) string
 }
 
-func newChatWindow(logger zerolog.Logger, tabID string, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
+func newChatWindow(logger zerolog.Logger, tab *tab, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
 	c := chatWindow{
 		keymap:         keymap,
 		logger:         logger,
-		parentTabID:    tabID,
+		parentTab:      tab,
 		channel:        channel,
 		width:          width,
 		height:         height,
@@ -166,6 +166,9 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				}
 
 				f.Write([]byte(stripAnsi(string(bytes))))
+			case key.Matches(msg, c.keymap.QuickTimeout):
+				c.handleTimeoutShortcut()
+				return c, nil
 			}
 		}
 	}
@@ -300,6 +303,24 @@ func (c *chatWindow) markSelectedMessage() {
 			lines[i] = indicator + " " + s
 		}
 	}
+}
+
+func (c *chatWindow) handleTimeoutShortcut() {
+	_, entry := c.entryForCurrentCursor()
+
+	if entry == nil {
+		return
+	}
+
+	msg, ok := entry.Message.(*command.PrivateMessage)
+
+	if !ok {
+		return
+	}
+
+	c.parentTab.state = insertMode
+	c.parentTab.messageInput.Focus()
+	c.parentTab.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
 }
 
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {

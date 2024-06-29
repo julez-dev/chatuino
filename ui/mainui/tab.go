@@ -229,7 +229,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		}
 
 		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
-		t.chatWindow = newChatWindow(t.logger, t.id, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
+		t.chatWindow = newChatWindow(t.logger, t, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
 		for _, m := range t.initialMessages {
@@ -352,7 +352,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					}
 
 					t.state = userInspectMode
-					t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore, t.keymap)
+					t.userInspect = newUserInspect(t.logger, t.ttvAPI, *t, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore, t.keymap)
 					cmds = append(cmds, t.userInspect.Init())
 
 					for _, e := range t.chatWindow.entries {

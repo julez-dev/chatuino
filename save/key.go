@@ -31,12 +31,13 @@ type KeyMap struct {
 	Previous key.Binding
 
 	// Chat Binds
-	InsertMode  key.Binding
-	InspectMode key.Binding
-	ChatPopUp   key.Binding
-	GoToTop     key.Binding
-	GoToBottom  key.Binding
-	DumpChat    key.Binding
+	InsertMode   key.Binding
+	InspectMode  key.Binding
+	ChatPopUp    key.Binding
+	GoToTop      key.Binding
+	GoToBottom   key.Binding
+	DumpChat     key.Binding
+	QuickTimeout key.Binding
 
 	// Account Binds
 	MarkLeader key.Binding
@@ -116,6 +117,10 @@ func buildDefaultKeyMap() KeyMap {
 			key.WithKeys("b"),
 			key.WithHelp("b", "go to bottom"),
 		),
+		QuickTimeout: key.NewBinding(
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+t", "quick timeout"),
+		),
 		DumpChat: key.NewBinding(
 			key.WithKeys("ctrl+alt+c"),
 			key.WithHelp("ctrl+alt+c", "dump chat"),
@@ -125,25 +130,26 @@ func buildDefaultKeyMap() KeyMap {
 
 func (k KeyMap) saveRepresentation() saveableKeyMap {
 	return saveableKeyMap{
-		Up:          k.Up.Keys(),
-		Down:        k.Down.Keys(),
-		Escape:      k.Escape.Keys(),
-		Confirm:     k.Confirm.Keys(),
-		Help:        k.Help.Keys(),
-		Quit:        k.Quit.Keys(),
-		Create:      k.Create.Keys(),
-		Remove:      k.Remove.Keys(),
-		CloseTab:    k.CloseTab.Keys(),
-		DumpScreen:  k.DumpScreen.Keys(),
-		Next:        k.Next.Keys(),
-		Previous:    k.Previous.Keys(),
-		InsertMode:  k.InsertMode.Keys(),
-		InspectMode: k.InspectMode.Keys(),
-		ChatPopUp:   k.ChatPopUp.Keys(),
-		GoToTop:     k.GoToTop.Keys(),
-		GoToBottom:  k.GoToBottom.Keys(),
-		DumpChat:    k.DumpChat.Keys(),
-		MarkLeader:  k.MarkLeader.Keys(),
+		Up:           k.Up.Keys(),
+		Down:         k.Down.Keys(),
+		Escape:       k.Escape.Keys(),
+		Confirm:      k.Confirm.Keys(),
+		Help:         k.Help.Keys(),
+		Quit:         k.Quit.Keys(),
+		Create:       k.Create.Keys(),
+		Remove:       k.Remove.Keys(),
+		CloseTab:     k.CloseTab.Keys(),
+		DumpScreen:   k.DumpScreen.Keys(),
+		Next:         k.Next.Keys(),
+		Previous:     k.Previous.Keys(),
+		InsertMode:   k.InsertMode.Keys(),
+		InspectMode:  k.InspectMode.Keys(),
+		ChatPopUp:    k.ChatPopUp.Keys(),
+		GoToTop:      k.GoToTop.Keys(),
+		GoToBottom:   k.GoToBottom.Keys(),
+		DumpChat:     k.DumpChat.Keys(),
+		MarkLeader:   k.MarkLeader.Keys(),
+		QuickTimeout: k.QuickTimeout.Keys(),
 	}
 }
 
@@ -166,39 +172,47 @@ type saveableKeyMap struct {
 	Previous []string `yaml:"previous"`
 
 	// Chat Binds
-	InsertMode  []string `yaml:"insert_mode"`
-	InspectMode []string `yaml:"inspect_mode"`
-	ChatPopUp   []string `yaml:"chat_pop_up"`
-	GoToTop     []string `yaml:"go_to_top"`
-	GoToBottom  []string `yaml:"go_to_bottom"`
-	DumpChat    []string `yaml:"dump_chat"`
+	InsertMode   []string `yaml:"insert_mode"`
+	InspectMode  []string `yaml:"inspect_mode"`
+	ChatPopUp    []string `yaml:"chat_pop_up"`
+	GoToTop      []string `yaml:"go_to_top"`
+	GoToBottom   []string `yaml:"go_to_bottom"`
+	DumpChat     []string `yaml:"dump_chat"`
+	QuickTimeout []string `yaml:"quick_timeout"`
 
 	// Account Binds
 	MarkLeader []string `yaml:"mark_leader"`
 }
 
+func setIfNotEmpty(b *key.Binding, keys []string) {
+	if len(keys) > 0 {
+		b.SetKeys(keys...)
+	}
+}
+
 func (s saveableKeyMap) keyMap() KeyMap {
 	m := buildDefaultKeyMap() // For loading help texts
 
-	m.Up.SetKeys(s.Up...)
-	m.Down.SetKeys(s.Down...)
-	m.Escape.SetKeys(s.Escape...)
-	m.Confirm.SetKeys(s.Confirm...)
-	m.Help.SetKeys(s.Help...)
-	m.Quit.SetKeys(s.Quit...)
-	m.Create.SetKeys(s.Create...)
-	m.Remove.SetKeys(s.Remove...)
-	m.CloseTab.SetKeys(s.CloseTab...)
-	m.DumpScreen.SetKeys(s.DumpScreen...)
-	m.Next.SetKeys(s.Next...)
-	m.Previous.SetKeys(s.Previous...)
-	m.InsertMode.SetKeys(s.InsertMode...)
-	m.InspectMode.SetKeys(s.InspectMode...)
-	m.ChatPopUp.SetKeys(s.ChatPopUp...)
-	m.GoToTop.SetKeys(s.GoToTop...)
-	m.GoToBottom.SetKeys(s.GoToBottom...)
-	m.DumpChat.SetKeys(s.DumpChat...)
-	m.MarkLeader.SetKeys(s.MarkLeader...)
+	setIfNotEmpty(&m.Up, s.Up)
+	setIfNotEmpty(&m.Down, s.Down)
+	setIfNotEmpty(&m.Escape, s.Escape)
+	setIfNotEmpty(&m.Confirm, s.Confirm)
+	setIfNotEmpty(&m.Help, s.Help)
+	setIfNotEmpty(&m.Quit, s.Quit)
+	setIfNotEmpty(&m.Create, s.Create)
+	setIfNotEmpty(&m.Remove, s.Remove)
+	setIfNotEmpty(&m.CloseTab, s.CloseTab)
+	setIfNotEmpty(&m.DumpScreen, s.DumpScreen)
+	setIfNotEmpty(&m.Next, s.Next)
+	setIfNotEmpty(&m.Previous, s.Previous)
+	setIfNotEmpty(&m.InsertMode, s.InsertMode)
+	setIfNotEmpty(&m.InspectMode, s.InspectMode)
+	setIfNotEmpty(&m.ChatPopUp, s.ChatPopUp)
+	setIfNotEmpty(&m.GoToTop, s.GoToTop)
+	setIfNotEmpty(&m.GoToBottom, s.GoToBottom)
+	setIfNotEmpty(&m.DumpChat, s.DumpChat)
+	setIfNotEmpty(&m.MarkLeader, s.MarkLeader)
+	setIfNotEmpty(&m.QuickTimeout, s.QuickTimeout)
 
 	return m
 }
