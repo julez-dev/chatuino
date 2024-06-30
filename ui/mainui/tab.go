@@ -63,7 +63,8 @@ type apiClient interface {
 
 type moderationAPIClient interface {
 	apiClient
-	BanUser(ctx context.Context, broadcasterID string, data twitch.BanUserData) error
+	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitch.BanUserData) error
+	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
 }
 
 type tab struct {
@@ -79,6 +80,7 @@ type tab struct {
 
 	channelDataLoaded bool
 	initialMessages   []*command.PrivateMessage
+	lastMessageSent   string
 
 	channel    string
 	emoteStore EmoteStore
@@ -535,6 +537,18 @@ func (t *tab) handleMessageSent() tea.Cmd {
 
 		return handleCommand(t.ctx, commandName, args, channelID, channel, accountID, client)
 	}
+
+	// Check if message is the same as the last message sent
+	// If so, append special character to bypass twitch duplicate message filter
+	if strings.EqualFold(input, t.lastMessageSent) {
+		r := []byte{
+			0xF3, 0xA0, 0x80, 0x80,
+		}
+
+		input += string(r)
+	}
+
+	t.lastMessageSent = input
 
 	msg := &command.PrivateMessage{
 		ID:              uuid.Must(uuid.NewUUID()).String(),

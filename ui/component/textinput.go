@@ -3,6 +3,7 @@ package component
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	trie "github.com/Vivino/go-autocomplete-trie"
@@ -13,9 +14,9 @@ import (
 )
 
 var commandSuggestions = []string{
-	"/ban [user] [reason]",
-	"/unban [user]",
-	"/timeout <username> <duration> [reason]",
+	"/ban <user> [reason]",
+	"/unban <user>",
+	"/timeout <username> [duration] [reason]",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
@@ -41,6 +42,9 @@ type SuggestionTextInput struct {
 	KeyMap          KeyMap
 	suggestionIndex int
 	suggestions     []string
+
+	history      []string
+	historyIndex int
 }
 
 func defaultTrie() *trie.Trie {
@@ -68,9 +72,10 @@ func NewSuggestionTextInput() *SuggestionTextInput {
 	t := defaultTrie()
 
 	return &SuggestionTextInput{
-		trie:   t,
-		KeyMap: DefaultKeyMap,
-		ti:     input,
+		trie:    t,
+		KeyMap:  DefaultKeyMap,
+		ti:      input,
+		history: make([]string, 0),
 	}
 }
 
@@ -84,6 +89,40 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
+		case msg.String() == "enter":
+			s.history = append(s.history, s.ti.Value())
+			s.historyIndex = len(s.history)
+			return s, nil
+		case key.Matches(msg, s.KeyMap.PrevSuggestion) && (slices.Contains(s.history, s.ti.Value()) || s.ti.Value() == ""):
+			s.historyIndex--
+
+			if s.historyIndex < 0 {
+				if len(s.history) != 0 {
+					s.historyIndex = len(s.history) - 1
+				} else {
+					s.historyIndex = 0
+				}
+			}
+
+			if len(s.history) > s.historyIndex {
+				s.SetValue(s.history[s.historyIndex])
+				s.ti.CursorEnd()
+			}
+
+			return s, nil
+		case key.Matches(msg, s.KeyMap.NextSuggestion) && (slices.Contains(s.history, s.ti.Value()) || s.ti.Value() == ""):
+			s.historyIndex++
+
+			if s.historyIndex >= len(s.history) {
+				s.historyIndex = 0
+			}
+
+			if len(s.history) > s.historyIndex {
+				s.SetValue(s.history[s.historyIndex])
+				s.ti.CursorEnd()
+			}
+
+			return s, nil
 		case key.Matches(msg, s.KeyMap.AcceptSuggestion) && s.canAcceptSuggestion():
 			_, startIndex, endIndex := selectWordAtIndex(s.ti.Value(), s.ti.Position())
 			before := s.ti.Value()[:startIndex]
@@ -94,7 +133,6 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			s.ti.SetCursor(len(before) + len(suggestion) + 1) // set cursor to end of suggestion + 1 for space
 
 			return s, nil
-
 		case key.Matches(msg, s.KeyMap.NextSuggestion):
 			s.nextSuggestion()
 		case key.Matches(msg, s.KeyMap.PrevSuggestion):
@@ -191,14 +229,14 @@ func (s *SuggestionTextInput) updateSuggestions() {
 }
 
 func (s *SuggestionTextInput) nextSuggestion() {
-	s.suggestionIndex = (s.suggestionIndex + 1)
+	s.suggestionIndex = s.suggestionIndex + 1
 	if s.suggestionIndex >= len(s.suggestions) {
 		s.suggestionIndex = 0
 	}
 }
 
 func (s *SuggestionTextInput) previousSuggestion() {
-	s.suggestionIndex = (s.suggestionIndex - 1)
+	s.suggestionIndex = s.suggestionIndex - 1
 	if s.suggestionIndex < 0 {
 		s.suggestionIndex = len(s.suggestions) - 1
 	}

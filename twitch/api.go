@@ -100,25 +100,14 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	return api, nil
 }
 
-func (a *API) BanUser(ctx context.Context, broadcasterID string, data BanUserData) error {
-
+func (a *API) BanUser(ctx context.Context, broadcasterID string, moderatorID string, data BanUserData) error {
 	if a.provider == nil {
 		return ErrNoUserAccess
 	}
 
-	loggedInUser, err := a.GetUsers(ctx, nil, nil)
-
-	if err != nil {
-		return err
-	}
-
-	if len(loggedInUser.Data) == 0 {
-		return errors.New("could not fetch logged in user for current token")
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
-	values.Add("moderator_id", loggedInUser.Data[0].ID)
+	values.Add("moderator_id", moderatorID)
 
 	url := fmt.Sprintf("/moderation/bans?%s", values.Encode())
 
@@ -135,7 +124,27 @@ func (a *API) BanUser(ctx context.Context, broadcasterID string, data BanUserDat
 	}
 
 	return nil
+}
 
+func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error {
+	if a.provider == nil {
+		return ErrNoUserAccess
+	}
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", moderatorID)
+	values.Add("user_id", userID)
+
+	url := fmt.Sprintf("/moderation/bans?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, url, nil)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {
@@ -413,6 +422,10 @@ func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method,
 	}
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return data, nil
+	}
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
