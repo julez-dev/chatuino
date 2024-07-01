@@ -306,6 +306,10 @@ func (c *chatWindow) markSelectedMessage() {
 }
 
 func (c *chatWindow) handleTimeoutShortcut() {
+	if c.parentTab.account.IsAnonymous {
+		return
+	}
+
 	_, entry := c.entryForCurrentCursor()
 
 	if entry == nil {
