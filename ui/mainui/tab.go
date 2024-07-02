@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
+	"github.com/rs/zerolog/log"
+	"maps"
 	"strings"
 	"time"
 
@@ -21,8 +24,8 @@ import (
 )
 
 const (
-	twitchBaseURL = "https://twitch.tv"
-	popupFmt      = "https://www.twitch.tv/popout/%s/chat?popout="
+	twitchBaseURL = "https://www.twitch.tv"
+	popupFmt      = "https://www.twitch.tv/popout/%s/chat?popout=1"
 )
 
 type setErrorMessage struct {
@@ -44,6 +47,8 @@ func (t tabState) String() string {
 		return "Insert"
 	case 2:
 		return "Inspect"
+	case 3:
+		return "Unban"
 	}
 
 	return "View"
@@ -53,6 +58,7 @@ const (
 	inChatWindow tabState = iota
 	insertMode
 	userInspectMode
+	unbanRequestMode
 )
 
 type apiClient interface {
@@ -99,6 +105,7 @@ type tab struct {
 	userInspect  *userInspect
 	messageInput *component.SuggestionTextInput
 	statusInfo   *status
+	unbanWindow  *unbanrequest.UnbanWindow
 
 	err error
 }
@@ -333,6 +340,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				}
 			}
 
+			if msg.String() == "r" && t.state == inChatWindow {
+				t.state = unbanRequestMode
+				t.unbanWindow = unbanrequest.New(&unbanrequest.FakeUnbanRequestService{}, t.height, t.width)
+				t.handleResize()
+
+				cmds = append(cmds, t.unbanWindow.Init())
+				return t, tea.Batch(cmds...)
+			}
+
 			if key.Matches(msg, t.keymap.InspectMode) {
 				// open up user inspect mode
 				switch t.state {
@@ -378,6 +394,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 					t.handleResize()
 					t.chatWindow.Blur()
+					t.userInspect.chatWindow.userColorCache = maps.Clone(t.chatWindow.userColorCache)
 					t.userInspect.chatWindow.Focus()
 
 					t.chatWindow, cmd = t.chatWindow.Update(msg)
@@ -442,6 +459,11 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		t.statusInfo, cmd = t.statusInfo.Update(msg)
 		cmds = append(cmds, cmd)
 
+		if t.state == unbanRequestMode {
+			t.unbanWindow, cmd = t.unbanWindow.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
 		if t.state == userInspectMode {
 			t.userInspect, cmd = t.userInspect.Update(msg)
 			cmds = append(cmds, cmd)
@@ -475,6 +497,25 @@ func (t *tab) View() string {
 	}
 
 	builder := strings.Builder{}
+
+	// In Unban Request Mode only render unban request window + status info
+	if t.state == unbanRequestMode {
+		builder.WriteString(t.unbanWindow.View())
+		statusInfo := t.statusInfo.View()
+		if statusInfo != "" {
+			builder.WriteString("\n")
+			builder.WriteString(statusInfo)
+		}
+
+		return builder.String()
+	}
+
+	// Render Order:
+	// Stream Info
+	// Chat Window
+	// User Inspect Window (if in user inspect mode)
+	// Message Input
+	// Status Info
 
 	si := t.streamInfo.View()
 	if si != "" {
@@ -617,6 +658,12 @@ func (t *tab) handleResize() {
 		}
 
 		t.messageInput.SetWidth(t.width - 2)
+
+		if t.state == unbanRequestMode {
+			log.Logger.Info().Int("height", t.height).Int("heightStatusInfo", heightStatusInfo).Msg("unban request mode")
+			t.unbanWindow.SetWidth(t.width)
+			t.unbanWindow.SetHeight(t.height - heightStatusInfo)
+		}
 	}
 }
 
