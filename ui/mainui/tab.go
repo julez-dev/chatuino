@@ -71,6 +71,8 @@ type moderationAPIClient interface {
 	apiClient
 	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitch.BanUserData) error
 	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
+	FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]twitch.UnbanRequest, error)
+	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 }
 
 type tab struct {
@@ -89,6 +91,7 @@ type tab struct {
 	lastMessageSent   string
 
 	channel    string
+	channelID  string
 	emoteStore EmoteStore
 
 	width, height int
@@ -237,6 +240,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			t.messageInput.SetSuggestions(suggestions)
 		}
 
+		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
 		t.chatWindow = newChatWindow(t.logger, t, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
@@ -340,9 +344,17 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				}
 			}
 
-			if msg.String() == "r" && t.state == inChatWindow {
+			if msg.String() == "r" && t.state == inChatWindow && !t.account.IsAnonymous {
 				t.state = unbanRequestMode
-				t.unbanWindow = unbanrequest.New(&unbanrequest.FakeUnbanRequestService{}, t.height, t.width)
+				t.unbanWindow = unbanrequest.New(
+					t.ttvAPI.(moderationAPIClient),
+					t.keymap,
+					t.channel,
+					t.channelID,
+					t.account.ID,
+					t.height,
+					t.width,
+				)
 				t.handleResize()
 
 				cmds = append(cmds, t.unbanWindow.Init())
@@ -427,6 +439,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			if key.Matches(msg, t.keymap.Escape) {
 				if t.state == userInspectMode {
 					t.state = inChatWindow
+					t.userInspect = nil
 					t.chatWindow.Focus()
 					t.handleResize()
 					t.chatWindow.updatePort()
@@ -438,6 +451,8 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					t.chatWindow.Focus()
 					t.messageInput.Blur()
 				}
+
+				t.unbanWindow = nil
 
 				return t, nil
 			}

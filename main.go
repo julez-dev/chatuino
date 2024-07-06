@@ -139,7 +139,6 @@ func main() {
 				if err == nil {
 					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI, bttvAPI)
 				}
-
 			}
 
 			keys, err := save.CreateReadKeyMap()

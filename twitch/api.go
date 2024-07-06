@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"net/http"
 	"net/url"
@@ -145,6 +146,101 @@ func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID s
 	}
 
 	return nil
+}
+
+func (a *API) FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]UnbanRequest, error) {
+	if a.provider == nil {
+		return nil, ErrNoUserAccess
+	}
+
+	// Fetch all unban requests for the broadcaster
+	// For all statuses, handle each status in a separate goroutine
+	// One status may have multiple pages, so we need to fetch all pages for each status
+	allStatus := [...]string{"pending", "approved", "denied", "acknowledged", "canceled"}
+	respChannel := make(chan UnbanRequest)
+	wg, ctx := errgroup.WithContext(ctx)
+
+	for _, status := range allStatus {
+		// In theory, we don't need to make a local copy of status since loop variable behavior was changed in go 1.22
+		// and the go.mod file requires at least 1.22, so let's find out :)
+		wg.Go(func() error {
+			var after string
+
+			for {
+				values := url.Values{}
+				values.Add("broadcaster_id", broadcasterID)
+				values.Add("moderator_id", moderatorID)
+				values.Add("status", status)
+				values.Add("first", "100")
+				if after != "" {
+					values.Add("after", after)
+				}
+
+				url := fmt.Sprintf("/moderation/unban_requests?%s", values.Encode())
+
+				resp, err := doAuthenticatedUserRequest[GetUnbanRequestsResponse](ctx, a, http.MethodGet, url, nil)
+				if err != nil {
+					return err
+				}
+
+				for _, r := range resp.Data {
+					respChannel <- r
+				}
+
+				if resp.Pagination.Cursor == "" {
+					break
+				}
+
+				after = resp.Pagination.Cursor
+			}
+
+			return nil
+		})
+	}
+
+	// This goroutine will close the channel once all requests are done
+	// When an error occurs, it will close the channel immediately
+	// which will unblock the main routine which then will call .Wait again to get the error
+	// that canceled the goroutines, this way we don't need to pass the error around in the channel
+	go func() {
+		_ = wg.Wait()
+		close(respChannel)
+	}()
+
+	var requests []UnbanRequest
+	for r := range respChannel {
+		requests = append(requests, r)
+	}
+
+	// If the goroutines returned an error, return it now
+	if err := wg.Wait(); err != nil {
+		return nil, err
+	}
+
+	return requests, nil
+}
+
+func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (UnbanRequest, error) {
+	if a.provider == nil {
+		return UnbanRequest{}, ErrNoUserAccess
+	}
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", moderatorID)
+	values.Add("unban_request_id", requestID)
+	values.Add("status", status)
+
+	url := fmt.Sprintf("/moderation/unban_requests?%s", values.Encode())
+
+	resp, err := doAuthenticatedUserRequest[GetUnbanRequestsResponse](ctx, a, http.MethodPatch, url, nil)
+
+	if err != nil {
+		return UnbanRequest{}, err
+	}
+
+	return resp.Data[0], nil
+
 }
 
 func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {

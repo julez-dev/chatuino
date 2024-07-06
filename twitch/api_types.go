@@ -119,3 +119,28 @@ type (
 		Reason            string `json:"reason"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#get-unban-requests
+type (
+	GetUnbanRequestsResponse struct {
+		Data       []UnbanRequest `json:"data"`
+		Pagination Pagination     `json:"pagination"`
+	}
+	UnbanRequest struct {
+		ID               string    `json:"id"`
+		BroadcasterName  string    `json:"broadcaster_name"`
+		BroadcasterLogin string    `json:"broadcaster_login"`
+		BroadcasterID    string    `json:"broadcaster_id"`
+		ModeratorID      string    `json:"moderator_id"`
+		ModeratorLogin   string    `json:"moderator_login"`
+		ModeratorName    string    `json:"moderator_name"`
+		UserID           string    `json:"user_id"`
+		UserLogin        string    `json:"user_login"`
+		UserName         string    `json:"user_name"`
+		Text             string    `json:"text"`
+		Status           string    `json:"status"`
+		CreatedAt        time.Time `json:"created_at"`
+		ResolvedAt       time.Time `json:"resolved_at"`
+		ResolutionText   string    `json:"resolution_text"`
+	}
+)
