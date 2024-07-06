@@ -77,7 +77,7 @@ func (s *streamInfo) View() string {
 	return style.Render(info)
 }
 
-func (s streamInfo) doTick() tea.Msg {
+func (s *streamInfo) doTick() tea.Msg {
 	timer := time.NewTimer(time.Minute * 1)
 	defer timer.Stop()
 
@@ -89,7 +89,7 @@ func (s streamInfo) doTick() tea.Msg {
 	}
 }
 
-func (s streamInfo) refreshStreamInfo() tea.Msg {
+func (s *streamInfo) refreshStreamInfo() tea.Msg {
 	ctx, cancel := context.WithTimeout(s.ctx, time.Second*5)
 	defer cancel()
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/julez-dev/chatuino/bttv"
 	"github.com/rs/zerolog/log"
@@ -69,7 +70,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	logger := zerolog.New(f).With().Timestamp().Logger()
 	log.Logger = logger
@@ -158,7 +161,11 @@ func main() {
 				return fmt.Errorf("error while running TUI: %w", err)
 			}
 
-			if final, ok := final.(mainui.Root); ok {
+			if final, ok := final.(*mainui.Root); ok {
+				if err := final.Close(); err != nil && !errors.Is(err, context.Canceled) {
+					return fmt.Errorf("error while closing TUI: %w", err)
+				}
+
 				state := final.TakeStateSnapshot()
 
 				if err := state.Save(); err != nil {

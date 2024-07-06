@@ -26,22 +26,22 @@ type tabHeader struct {
 	entries []tabHeaderEntry
 }
 
-func newTabHeader() tabHeader {
-	return tabHeader{
+func newTabHeader() *tabHeader {
+	return &tabHeader{
 		width:   10,
 		entries: make([]tabHeaderEntry, 0),
 	}
 }
 
-func (t tabHeader) Init() tea.Cmd {
+func (t *tabHeader) Init() tea.Cmd {
 	return nil
 }
 
-func (t tabHeader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (t *tabHeader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return t, nil
 }
 
-func (t tabHeader) View() string {
+func (t *tabHeader) View() string {
 	var rowIndex int
 	var displayRows [][]string
 

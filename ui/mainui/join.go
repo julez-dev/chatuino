@@ -46,7 +46,7 @@ type join struct {
 	provider      AccountProvider
 }
 
-func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) join {
+func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) *join {
 	input := textinput.New()
 	input.Placeholder = "Channel"
 	input.CharLimit = 25
@@ -61,26 +61,26 @@ func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) jo
 	}
 	input.Prompt = ""
 
-	list := list.New(nil, list.NewDefaultDelegate(), width, height/2)
+	channelList := list.New(nil, list.NewDefaultDelegate(), width, height/2)
 
-	list.Select(0)
-	list.SetShowHelp(false)
-	list.SetShowPagination(false)
-	list.SetShowTitle(false)
-	list.DisableQuitKeybindings()
-	list.SetStatusBarItemName("account", "accounts")
+	channelList.Select(0)
+	channelList.SetShowHelp(false)
+	channelList.SetShowPagination(false)
+	channelList.SetShowTitle(false)
+	channelList.DisableQuitKeybindings()
+	channelList.SetStatusBarItemName("account", "accounts")
 
-	return join{
+	return &join{
 		width:    width,
 		height:   height,
 		input:    input,
 		provider: provider,
-		list:     list,
+		list:     channelList,
 		keymap:   keymap,
 	}
 }
 
-func (j join) Init() tea.Cmd {
+func (j *join) Init() tea.Cmd {
 	return func() tea.Msg {
 		accounts, err := j.provider.GetAllAccounts()
 		if err != nil {
@@ -97,30 +97,32 @@ func (j join) Init() tea.Cmd {
 	}
 }
 
-func (j join) Update(msg tea.Msg) (join, tea.Cmd) {
+func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
 
+	if msg, ok := msg.(setAccountsMessage); ok {
+		j.accounts = msg.accounts
+		listItems := make([]list.Item, 0, len(j.accounts))
+
+		var index int
+		for i, a := range j.accounts {
+			listItems = append(listItems, listItem{title: a.DisplayName})
+
+			if a.IsMain {
+				index = i
+			}
+		}
+
+		j.list.SetItems(listItems)
+		j.list.Select(index)
+		return j, nil
+	}
+
 	if j.focused {
 		switch msg := msg.(type) {
-		case setAccountsMessage:
-			j.accounts = msg.accounts
-			listItems := make([]list.Item, 0, len(j.accounts))
-
-			var index int
-			for i, a := range j.accounts {
-				listItems = append(listItems, listItem{title: a.DisplayName})
-
-				if a.IsMain {
-					index = i
-				}
-			}
-
-			j.list.SetItems(listItems)
-			j.list.Select(index)
-			return j, nil
 		case tea.KeyMsg:
 			if key.Matches(msg, j.keymap.Next) {
 				if j.selectedInput == channelInput {
@@ -152,7 +154,7 @@ func (j join) Update(msg tea.Msg) (join, tea.Cmd) {
 	return j, tea.Batch(cmds...)
 }
 
-func (j join) View() string {
+func (j *join) View() string {
 	style := lipgloss.NewStyle().
 		Width(j.width - 2). // - border width
 		MaxWidth(j.width).

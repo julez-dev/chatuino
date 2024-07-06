@@ -315,7 +315,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			}
 		}
 
-		if err, ok := msg.message.(ircConnectionError); ok {
+		if err, ok := msg.message.(error); ok {
 			// if is error returned from final retry, don't wait again and return early
 			var matchErr twitch.RetryReachedError
 
@@ -328,43 +328,44 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		return t, tea.Batch(cmds...)
 	}
 
-	if t.channelDataLoaded && t.focused {
-		if t.state == insertMode {
-			t.messageInput, cmd = t.messageInput.Update(msg)
-			cmds = append(cmds, cmd)
-		}
+	if t.channelDataLoaded {
+		if t.focused {
+			if t.state == insertMode {
+				t.messageInput, cmd = t.messageInput.Update(msg)
+				cmds = append(cmds, cmd)
+			}
 
-		switch msg := msg.(type) {
-		case tea.KeyMsg:
-			if key.Matches(msg, t.keymap.InsertMode) {
-				if !t.account.IsAnonymous && t.state == inChatWindow {
-					t.state = insertMode
-					t.messageInput.Focus()
-					t.chatWindow.Blur()
+			switch msg := msg.(type) {
+			case tea.KeyMsg:
+				// Focus message input
+				if key.Matches(msg, t.keymap.InsertMode) {
+					if !t.account.IsAnonymous && t.state == inChatWindow {
+						t.state = insertMode
+						t.messageInput.Focus()
+						t.chatWindow.Blur()
+					}
 				}
-			}
 
-			if msg.String() == "r" && t.state == inChatWindow && !t.account.IsAnonymous {
-				t.state = unbanRequestMode
-				t.unbanWindow = unbanrequest.New(
-					t.ttvAPI.(moderationAPIClient),
-					t.keymap,
-					t.channel,
-					t.channelID,
-					t.account.ID,
-					t.height,
-					t.width,
-				)
-				t.handleResize()
+				// Overlay unban request window
+				if msg.String() == "r" && t.state == inChatWindow && !t.account.IsAnonymous {
+					t.state = unbanRequestMode
+					t.unbanWindow = unbanrequest.New(
+						t.ttvAPI.(moderationAPIClient),
+						t.keymap,
+						t.channel,
+						t.channelID,
+						t.account.ID,
+						t.height,
+						t.width,
+					)
+					t.handleResize()
 
-				cmds = append(cmds, t.unbanWindow.Init())
-				return t, tea.Batch(cmds...)
-			}
+					cmds = append(cmds, t.unbanWindow.Init())
+					return t, tea.Batch(cmds...)
+				}
 
-			if key.Matches(msg, t.keymap.InspectMode) {
-				// open up user inspect mode
-				switch t.state {
-				case inChatWindow, userInspectMode:
+				// Open user inspect mode, where only messages from a specific user are shown
+				if key.Matches(msg, t.keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
 					_, e := t.chatWindow.entryForCurrentCursor()
 
 					if e == nil {
@@ -413,12 +414,11 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					cmds = append(cmds, cmd)
 
 					return t, tea.Batch(cmds...)
-				}
-			}
 
-			if key.Matches(msg, t.keymap.ChatPopUp) {
-				switch t.state {
-				case inChatWindow, userInspectMode:
+				}
+
+				// Open chat in browser
+				if key.Matches(msg, t.keymap.ChatPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
 					return t, func() tea.Msg {
 						url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
 
@@ -434,37 +434,37 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						return nil
 					}
 				}
-			}
 
-			if key.Matches(msg, t.keymap.Escape) {
-				if t.state == userInspectMode {
-					t.state = inChatWindow
-					t.userInspect = nil
-					t.chatWindow.Focus()
-					t.handleResize()
-					t.chatWindow.updatePort()
+				// Send message
+				if key.Matches(msg, t.keymap.Confirm) && t.state == insertMode && len(t.messageInput.Value()) > 0 {
+					return t, t.handleMessageSent()
+				}
+
+				// Close overlay windows
+				if key.Matches(msg, t.keymap.Escape) {
+					if t.state == userInspectMode {
+						t.state = inChatWindow
+						t.userInspect = nil
+						t.chatWindow.Focus()
+						t.handleResize()
+						t.chatWindow.updatePort()
+						return t, nil
+					}
+
+					if !t.account.IsAnonymous {
+						t.state = inChatWindow
+						t.chatWindow.Focus()
+						t.messageInput.Blur()
+					}
+
+					t.unbanWindow = nil
+
 					return t, nil
 				}
 
-				if !t.account.IsAnonymous {
-					t.state = inChatWindow
-					t.chatWindow.Focus()
-					t.messageInput.Blur()
-				}
-
-				t.unbanWindow = nil
-
-				return t, nil
 			}
-
-			if key.Matches(msg, t.keymap.Confirm) && t.state == insertMode && len(t.messageInput.Value()) > 0 {
-				return t, t.handleMessageSent()
-			}
-
 		}
-	}
 
-	if t.channelDataLoaded {
 		t.chatWindow, cmd = t.chatWindow.Update(msg)
 		cmds = append(cmds, cmd)
 
@@ -562,9 +562,9 @@ func (t *tab) View() string {
 	return builder.String()
 }
 
-func (r *tab) Close() error {
-	r.cancelFunc()
-	return r.ctx.Err()
+func (t *tab) Close() error {
+	t.cancelFunc()
+	return t.ctx.Err()
 }
 
 func (t *tab) handleMessageSent() tea.Cmd {

@@ -20,11 +20,11 @@ type filter string
 
 const (
 	filterAll          filter = "all"
-	filterPending             = "pending"
-	filterApproved            = "approved"
-	filterDenied              = "denied"
-	filterAcknowledged        = "acknowledged"
-	filterCanceled            = "canceled"
+	filterPending      filter = "pending"
+	filterApproved     filter = "approved"
+	filterDenied       filter = "denied"
+	filterAcknowledged filter = "acknowledged"
+	filterCanceled     filter = "canceled"
 )
 
 func (f filter) String() string {
@@ -398,7 +398,7 @@ func (u *UnbanWindow) renderUnbanRequest(req twitch.UnbanRequest) string {
 	prefix := req.CreatedAt.Format("02.01.2006 15:04:05") + " " + statusDisplay
 	line := prefix + " " + userDisplay + " " + req.Text
 
-	if req.Status == filterDenied || req.Status == filterApproved {
+	if req.Status == string(filterDenied) || req.Status == string(filterApproved) {
 		modMessage := strings.Repeat(" ", len(prefix)+3) + req.ModeratorName + " resolved at: " + req.ResolvedAt.Format("02.01.2006 15:04:05") + " " + req.ResolutionText
 		line += "\n" + modMessage
 	}

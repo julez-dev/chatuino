@@ -2,6 +2,7 @@ package mainui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -95,20 +96,20 @@ type Root struct {
 
 	// components
 	splash    splash
-	header    tabHeader
-	joinInput join
+	header    *tabHeader
+	joinInput *join
 
 	tabCursor int
 	tabs      []*tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client, keymap save.KeyMap) Root {
+func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client, keymap save.KeyMap) *Root {
 	multi := multiplexer.NewMultiplexer(logger, provider)
 
 	in := make(chan multiplexer.InboundMessage)
 	out := multi.ListenAndServe(in)
 
-	return Root{
+	return &Root{
 		clientID: clientID,
 		logger:   logger,
 		width:    10,
@@ -131,7 +132,7 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 	}
 }
 
-func (r Root) Init() tea.Cmd {
+func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
 			state, err := save.AppStateFromDisk()
@@ -151,7 +152,7 @@ func (r Root) Init() tea.Cmd {
 	)
 }
 
-func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -176,40 +177,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				continue
 			}
 
-			tabCmds := make([]tea.Cmd, 0, len(t.IRCMessages)+1) // lengths of messages plus length for init message
-
-			identity := account.DisplayName
-
-			if account.IsAnonymous {
-				identity = "Anonymous"
-			}
-
-			id := r.header.addTab(t.Channel, identity)
-			headerHeight := r.getHeaderHeight()
-
-			if _, ok := r.ttvAPIUserClient[account.ID]; !ok {
-				var api apiClient
-				var err error
-
-				if !account.IsAnonymous {
-					api, err = twitch.NewAPI(
-						r.clientID,
-						twitch.WithUserAuthentication(r.accounts, r.serverAPI, account.ID),
-					)
-
-					// err -should- never happen
-					if err != nil {
-						r.logger.Error().Err(err).Send()
-						continue
-					}
-				} else {
-					api = r.serverAPI
-				}
-
-				r.ttvAPIUserClient[account.ID] = api
-			}
-
-			nTab, err := newTab(id, r.logger, r.ttvAPIUserClient[account.ID], t.Channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, t.IRCMessages, r.keymap)
+			nTab, err := r.createTab(account, t.Channel, t.IRCMessages)
 			if err != nil {
 				r.logger.Error().Err(err).Send()
 				continue
@@ -219,20 +187,38 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				nTab.focus()
 			}
 
-			tabCmds = append(tabCmds, nTab.Init())
-
 			r.tabs = append(r.tabs, nTab)
 
 			if t.IsFocused {
 				r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-				r.header.selectTab(id)
+				r.header.selectTab(nTab.id)
 			}
-
-			cmds = append(cmds, tea.Sequence(tabCmds...))
+			cmds = append(cmds, nTab.Init())
 		}
 
 		r.handleResize()
-		return r, tea.Sequence(cmds...)
+		return r, tea.Batch(cmds...)
+	case joinChannelMessage:
+		r.screenType = mainScreen
+
+		nTab, err := r.createTab(msg.account, msg.channel, nil)
+		if err != nil {
+			r.logger.Error().Err(err).Send()
+			return r, nil
+		}
+
+		nTab.focus()
+
+		r.tabs = append(r.tabs, nTab)
+
+		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
+		r.header.selectTab(nTab.id)
+
+		r.joinInput.blur()
+
+		r.handleResize()
+
+		return r, nTab.Init()
 	case chatEventMessage:
 		for i, t := range r.tabs {
 			if t.account.ID == msg.accountID && (t.channel == msg.channel || msg.channel == "") {
@@ -255,64 +241,8 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.width = msg.Width
 		r.height = msg.Height
 		r.handleResize()
-	// TODO: refactor joinChannelMessage & setStateMessage
-	case joinChannelMessage:
-		r.screenType = mainScreen
-
-		identity := msg.account.DisplayName
-
-		if msg.account.IsAnonymous {
-			identity = "Anonymous"
-		}
-
-		id := r.header.addTab(msg.channel, identity)
-
-		headerHeight := r.getHeaderHeight()
-
-		if _, ok := r.ttvAPIUserClient[msg.account.ID]; !ok {
-			var api apiClient
-			var err error
-
-			if !msg.account.IsAnonymous {
-				api, err = twitch.NewAPI(
-					r.clientID,
-					twitch.WithUserAuthentication(r.accounts, r.serverAPI, msg.account.ID),
-				)
-
-				// err -should- never happen
-				if err != nil {
-					r.logger.Error().Err(err).Send()
-					return r, nil
-				}
-			} else {
-				api = r.serverAPI
-			}
-
-			r.ttvAPIUserClient[msg.account.ID] = api
-		}
-
-		nTab, err := newTab(id, r.logger, r.ttvAPIUserClient[msg.account.ID], msg.channel, r.width, r.height-headerHeight, r.emoteStore, msg.account, r.accounts, nil, r.keymap)
-		if err != nil {
-			r.logger.Error().Err(err).Send()
-			return r, nil
-		}
-
-		nTab.focus()
-
-		r.tabs = append(r.tabs, nTab)
-
-		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-		r.header.selectTab(id)
-
-		r.joinInput.blur()
-
-		r.handleResize()
-
-		return r, nTab.Init()
 	case tea.KeyMsg:
-
 		if key.Matches(msg, r.keymap.Quit) {
-			close(r.in)
 			return r, tea.Quit
 		}
 
@@ -335,7 +265,9 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return r, nil
 			}
 
-			defer f.Close()
+			defer func() {
+				_ = f.Close()
+			}()
 
 			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.View())))
 
@@ -439,7 +371,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, tea.Batch(cmds...)
 }
 
-func (r Root) View() string {
+func (r *Root) View() string {
 	switch r.screenType {
 	case mainScreen:
 		if len(r.tabs) == 0 {
@@ -454,7 +386,7 @@ func (r Root) View() string {
 	return ""
 }
 
-func (r Root) TakeStateSnapshot() save.AppState {
+func (r *Root) TakeStateSnapshot() save.AppState {
 	appState := save.AppState{}
 
 	for _, t := range r.tabs {
@@ -491,6 +423,58 @@ func (r Root) TakeStateSnapshot() save.AppState {
 	}
 
 	return appState
+}
+
+func (r *Root) Close() error {
+	var errs []error
+	for _, t := range r.tabs {
+		errs = append(errs, t.Close())
+	}
+
+	close(r.in)
+	return errors.Join(errs...)
+}
+
+func (r *Root) createTab(account save.Account, channel string, initialMessages []*command.PrivateMessage) (*tab, error) {
+	identity := account.DisplayName
+
+	if account.IsAnonymous {
+		identity = "Anonymous"
+	}
+
+	id := r.header.addTab(channel, identity)
+
+	headerHeight := r.getHeaderHeight()
+
+	if _, ok := r.ttvAPIUserClient[account.ID]; !ok {
+		var api apiClient
+		var err error
+
+		if !account.IsAnonymous {
+			api, err = twitch.NewAPI(
+				r.clientID,
+				twitch.WithUserAuthentication(r.accounts, r.serverAPI, account.ID),
+			)
+
+			// err -should- never happen
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			api = r.serverAPI
+		}
+
+		r.ttvAPIUserClient[account.ID] = api
+	}
+
+	nTab, err := newTab(id, r.logger, r.ttvAPIUserClient[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, initialMessages, r.keymap)
+	if err != nil {
+		return nil, err
+	}
+
+	nTab.focus()
+
+	return nTab, nil
 }
 
 func (r *Root) getHeaderHeight() int {

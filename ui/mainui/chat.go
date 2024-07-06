@@ -128,44 +128,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 			case key.Matches(msg, c.keymap.GoToTop):
 				c.moveToTop()
 			case key.Matches(msg, c.keymap.DumpChat):
-				// chat
-				type state struct {
-					Lines              []string
-					Cursor             int
-					LineStart, LineEnd int
-					View               string
-					Entries            []*chatEntry
-					UserCache          []string
-				}
-
-				dump := state{
-					Lines:     c.lines,
-					Cursor:    c.cursor,
-					LineEnd:   c.lineEnd,
-					LineStart: c.lineStart,
-					View:      c.View(),
-					Entries:   c.entries,
-				}
-
-				dump.UserCache = make([]string, 0, len(c.userColorCache))
-
-				for k := range c.userColorCache {
-					dump.UserCache = append(dump.UserCache, k)
-				}
-
-				f, err := os.Create("chat_dump.json")
-				if err != nil {
-					panic(err)
-				}
-
-				defer f.Close()
-
-				bytes, err := json.Marshal(dump)
-				if err != nil {
-					panic(err)
-				}
-
-				f.Write([]byte(stripAnsi(string(bytes))))
+				c.debugDumpChat()
 			case key.Matches(msg, c.keymap.QuickTimeout):
 				c.handleTimeoutShortcut()
 				return c, nil
@@ -190,6 +153,49 @@ func (c *chatWindow) Focus() {
 
 func (c *chatWindow) Blur() {
 	c.focused = false
+}
+
+func (c *chatWindow) debugDumpChat() {
+	// chat
+	type state struct {
+		Lines              []string
+		Cursor             int
+		LineStart, LineEnd int
+		View               string
+		Entries            []*chatEntry
+		UserCache          []string
+	}
+
+	dump := state{
+		Lines:     c.lines,
+		Cursor:    c.cursor,
+		LineEnd:   c.lineEnd,
+		LineStart: c.lineStart,
+		View:      c.View(),
+		Entries:   c.entries,
+	}
+
+	dump.UserCache = make([]string, 0, len(c.userColorCache))
+
+	for k := range c.userColorCache {
+		dump.UserCache = append(dump.UserCache, k)
+	}
+
+	f, err := os.Create("chat_dump.json")
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		_ = f.Close()
+	}()
+
+	bytes, err := json.Marshal(dump)
+	if err != nil {
+		panic(err)
+	}
+
+	_, _ = f.Write([]byte(stripAnsi(string(bytes))))
 }
 
 func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
