@@ -63,6 +63,9 @@ func (t *transportWithLogger) RoundTrip(req *http.Request) (*http.Response, erro
 	return resp, nil
 }
 
+// //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui/unbanrequest --name=unbanRequestService --testonly --output=./ui/mainui/unbanrequest --outpkg=unbanrequest --structname=unbanRequestServiceMock --with-expecter=true
+//
+//go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --with-expecter=true --all
 func main() {
 	f, err := setupLogFile()
 	if err != nil {

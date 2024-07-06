@@ -20,7 +20,7 @@ type setStatusData struct {
 
 type status struct {
 	logger            zerolog.Logger
-	ttvAPI            apiClient
+	ttvAPI            APIClient
 	tab               *tab
 	width, height     int
 	userID, channelID string
@@ -30,7 +30,7 @@ type status struct {
 	isDataFetched bool
 }
 
-func newStatus(logger zerolog.Logger, ttvAPI apiClient, tab *tab, width, height int, userID, channelID string) *status {
+func newStatus(logger zerolog.Logger, ttvAPI APIClient, tab *tab, width, height int, userID, channelID string) *status {
 	return &status{
 		logger:    logger,
 		ttvAPI:    ttvAPI,
@@ -47,7 +47,7 @@ func (s *status) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		settingsResp, err := s.ttvAPI.GetChatSettings(ctx, s.channelID, s.userID)
+		settingsResp, err := s.ttvAPI.GetChatSettings(ctx, s.channelID, "")
 		if err != nil {
 			return setStatusData{
 				target: s.tab.id,

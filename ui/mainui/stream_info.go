@@ -22,7 +22,7 @@ type setStreamInfo struct {
 type streamInfo struct {
 	id        string
 	channelID string
-	ttvAPI    apiClient
+	ttvAPI    APIClient
 	ctx       context.Context
 	printer   *message.Printer
 
@@ -34,7 +34,7 @@ type streamInfo struct {
 	game   string
 }
 
-func newStreamInfo(ctx context.Context, channelID string, ttvAPI apiClient, width int) *streamInfo {
+func newStreamInfo(ctx context.Context, channelID string, ttvAPI APIClient, width int) *streamInfo {
 	return &streamInfo{
 		id:        uuid.New().String(),
 		ctx:       ctx,

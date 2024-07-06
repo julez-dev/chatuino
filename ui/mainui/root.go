@@ -16,7 +16,6 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
@@ -33,6 +32,19 @@ type EmoteStore interface {
 	RefreshLocal(ctx context.Context, channelID string) error
 	RefreshGlobal(ctx context.Context) error
 	GetAllForUser(id string) emote.EmoteSet
+}
+
+type APIClient interface {
+	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
+	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
+	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
+}
+
+type APIClientWithRefresh interface {
+	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
+	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
+	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
+	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 }
 
 type activeScreen int
@@ -83,12 +95,14 @@ type Root struct {
 	screenType activeScreen
 
 	// dependencies
-	accounts   AccountProvider
-	emoteStore EmoteStore
-	serverAPI  *server.Client
+	accounts       AccountProvider
+	emoteStore     EmoteStore
+	serverAPI      APIClientWithRefresh
+	buildTTVClient func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
+	loadSaveState  func() (save.AppState, error)
 
 	// One API Client per Chatuino User Tab
-	ttvAPIUserClient map[string]apiClient
+	ttvAPIUserClient map[string]APIClient
 
 	// chat multiplexer channels
 	in  chan multiplexer.InboundMessage
@@ -103,7 +117,7 @@ type Root struct {
 	tabs      []*tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient *server.Client, keymap save.KeyMap) *Root {
+func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient APIClientWithRefresh, keymap save.KeyMap) *Root {
 	multi := multiplexer.NewMultiplexer(logger, provider)
 
 	in := make(chan multiplexer.InboundMessage)
@@ -126,16 +140,20 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 		out: out,
 
 		accounts:         provider,
-		ttvAPIUserClient: make(map[string]apiClient),
+		ttvAPIUserClient: make(map[string]APIClient),
 		emoteStore:       emoteStore,
 		serverAPI:        serverClient,
+		buildTTVClient: func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error) {
+			return twitch.NewAPI(clientID, opts...)
+		},
+		loadSaveState: save.AppStateFromDisk,
 	}
 }
 
 func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			state, err := save.AppStateFromDisk()
+			state, err := r.loadSaveState()
 			if err != nil {
 				return nil
 			}
@@ -447,14 +465,11 @@ func (r *Root) createTab(account save.Account, channel string, initialMessages [
 	headerHeight := r.getHeaderHeight()
 
 	if _, ok := r.ttvAPIUserClient[account.ID]; !ok {
-		var api apiClient
+		var api APIClient
 		var err error
 
 		if !account.IsAnonymous {
-			api, err = twitch.NewAPI(
-				r.clientID,
-				twitch.WithUserAuthentication(r.accounts, r.serverAPI, account.ID),
-			)
+			api, err = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, account.ID))
 
 			// err -should- never happen
 			if err != nil {

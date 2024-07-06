@@ -34,11 +34,11 @@ type userInspect struct {
 	channel       string // the streamer
 
 	ivr        *ivr.API
-	ttvAPI     apiClient
+	ttvAPI     APIClient
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI apiClient, tab tab, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tab tab, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
 	return &userInspect{
 		tab:     tab,
 		channel: channel,

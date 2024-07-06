@@ -61,14 +61,8 @@ const (
 	unbanRequestMode
 )
 
-type apiClient interface {
-	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
-	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
-	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
-}
-
 type moderationAPIClient interface {
-	apiClient
+	APIClient
 	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitch.BanUserData) error
 	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
 	FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]twitch.UnbanRequest, error)
@@ -96,7 +90,7 @@ type tab struct {
 
 	width, height int
 
-	ttvAPI apiClient
+	ttvAPI APIClient
 
 	// internal cancellation
 	ctx        context.Context
@@ -116,7 +110,7 @@ type tab struct {
 func newTab(
 	id string,
 	logger zerolog.Logger,
-	ttvAPI apiClient,
+	ttvAPI APIClient,
 	channel string,
 	width, height int,
 	emoteStore EmoteStore,

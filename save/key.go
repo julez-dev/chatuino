@@ -51,7 +51,7 @@ type KeyMap struct {
 	MarkLeader key.Binding
 }
 
-func buildDefaultKeyMap() KeyMap {
+func BuildDefaultKeyMap() KeyMap {
 	return KeyMap{
 		Up: key.NewBinding(
 			key.WithKeys("up", "k"),
@@ -219,7 +219,7 @@ func setIfNotEmpty(b *key.Binding, keys []string) {
 }
 
 func (s saveableKeyMap) keyMap() KeyMap {
-	m := buildDefaultKeyMap() // For loading help texts
+	m := BuildDefaultKeyMap() // For loading help texts
 
 	setIfNotEmpty(&m.Up, s.Up)
 	setIfNotEmpty(&m.Down, s.Down)
@@ -268,7 +268,7 @@ func CreateReadKeyMap() (KeyMap, error) {
 
 	// Config was empty, return default config and write a default one to disk
 	if stat.Size() == 0 {
-		m := buildDefaultKeyMap()
+		m := BuildDefaultKeyMap()
 		saveableMap := m.saveRepresentation()
 
 		b, err := yaml.Marshal(saveableMap)
