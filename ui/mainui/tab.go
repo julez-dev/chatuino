@@ -4,22 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
-	"github.com/rs/zerolog/log"
 	"maps"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
+	"github.com/rs/zerolog/log"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/multiplexer"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/ui/component"
-	"github.com/pkg/browser"
 	"github.com/rs/zerolog"
 )
 

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/julez-dev/chatuino/bttv"
-	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	_ "net/http/pprof"
@@ -15,14 +13,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/julez-dev/chatuino/bttv"
+	"github.com/rs/zerolog/log"
+
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/ui/mainui"
-	"github.com/pkg/browser"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
 )

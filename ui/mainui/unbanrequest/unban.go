@@ -3,15 +3,16 @@ package unbanrequest
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/paginator"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
-	"github.com/pkg/browser"
 	"github.com/rs/zerolog/log"
-	"strings"
 )
 
 const twitchPopoutLogFmt = "https://www.twitch.tv/popout/moderator/%s/unban-requests?id=%s"

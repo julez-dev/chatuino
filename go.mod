@@ -17,7 +17,7 @@ require (
 	golang.org/x/sync v0.7.0
 )
 
-require github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
+require github.com/cli/browser v1.3.0
 
 require nhooyr.io/websocket v1.8.11
 
