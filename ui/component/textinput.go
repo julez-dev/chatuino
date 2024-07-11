@@ -245,7 +245,14 @@ func (s *SuggestionTextInput) updateSuggestions() {
 
 		for user := range s.userCache {
 			if strings.Contains(user, strings.ToLower(currWord[1:])) {
-				matchedUsers = append(matchedUsers, "@"+user)
+				// if the current word is a command, don't add the @ prefix, since commands don't support it
+				// else add mention (@) prefix, so the target user gets a notification
+				if strings.HasPrefix(s.ti.Value(), "/") {
+					matchedUsers = append(matchedUsers, user)
+				} else {
+					matchedUsers = append(matchedUsers, "@"+user)
+				}
+
 			}
 		}
 
