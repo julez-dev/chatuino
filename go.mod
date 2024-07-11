@@ -24,7 +24,6 @@ require nhooyr.io/websocket v1.8.11
 require (
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
-	golang.org/x/exp v0.0.0-20220909182711-5c715a9e8561
 	resenje.org/singleflight v0.4.2
 )
 
