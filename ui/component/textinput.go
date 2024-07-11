@@ -45,6 +45,8 @@ type SuggestionTextInput struct {
 
 	history      []string
 	historyIndex int
+
+	userCache map[string]func(...string) string // [username]render func
 }
 
 func defaultTrie() *trie.Trie {
@@ -56,7 +58,7 @@ func defaultTrie() *trie.Trie {
 }
 
 // NewSuggestionTextInput creates a new model with default settings.
-func NewSuggestionTextInput() *SuggestionTextInput {
+func NewSuggestionTextInput(userCache map[string]func(...string) string) *SuggestionTextInput {
 	input := textinput.New()
 	input.Width = 20
 
@@ -72,10 +74,11 @@ func NewSuggestionTextInput() *SuggestionTextInput {
 	t := defaultTrie()
 
 	return &SuggestionTextInput{
-		trie:    t,
-		KeyMap:  DefaultKeyMap,
-		ti:      input,
-		history: make([]string, 0),
+		trie:      t,
+		KeyMap:    DefaultKeyMap,
+		ti:        input,
+		history:   make([]string, 0),
+		userCache: userCache,
 	}
 }
 
@@ -137,18 +140,27 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			s.nextSuggestion()
 		case key.Matches(msg, s.KeyMap.PrevSuggestion):
 			s.previousSuggestion()
+		default:
+			s.updateSuggestions()
 		}
+
 	}
 
 	s.ti, cmd = s.ti.Update(msg)
-	s.updateSuggestions()
 
 	return s, cmd
 }
 
 func (s *SuggestionTextInput) View() string {
 	if s.canAcceptSuggestion() {
-		return fmt.Sprintf(" %s (%dx)\n%s", s.suggestions[s.suggestionIndex], len(s.suggestions), s.ti.View())
+		suggestion := s.suggestions[s.suggestionIndex]
+
+		// If the suggestion is a username, render it with the users color function
+		if renderFunc, ok := s.userCache[strings.TrimPrefix(suggestion, "@")]; ok {
+			suggestion = renderFunc(suggestion)
+		}
+
+		return fmt.Sprintf(" %s (%dx)\n%s", suggestion, len(s.suggestions), s.ti.View())
 	}
 
 	return "\n" + s.ti.View()
@@ -225,6 +237,36 @@ func (s *SuggestionTextInput) updateSuggestions() {
 				s.suggestions = append(s.suggestions, suggestion)
 			}
 		}
+	}
+
+	// If the current word is a user, add user suggestions to suggestions (with @ prefix)
+	if strings.HasPrefix(currWord, "@") {
+		var matchedUsers []string
+
+		for user := range s.userCache {
+			if strings.Contains(user, strings.ToLower(currWord[1:])) {
+				// if the current word is a command, don't add the @ prefix, since commands don't support it
+				// else add mention (@) prefix, so the target user gets a notification
+				if strings.HasPrefix(s.ti.Value(), "/") {
+					matchedUsers = append(matchedUsers, user)
+				} else {
+					matchedUsers = append(matchedUsers, "@"+user)
+				}
+
+			}
+		}
+
+		slices.SortFunc(matchedUsers, func(a, b string) int {
+			// sorty by length
+			// if same length, sort alphabetically
+			if len(a) == len(b) {
+				return strings.Compare(a, b)
+			}
+
+			return len(a) - len(b)
+		})
+
+		s.suggestions = append(s.suggestions, matchedUsers...)
 	}
 }
 
