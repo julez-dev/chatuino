@@ -122,9 +122,6 @@ func newTab(
 ) (*tab, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	input := component.NewSuggestionTextInput()
-	input.SetWidth(width - 2)
-
 	return &tab{
 		id:              id,
 		logger:          logger,
@@ -138,7 +135,6 @@ func newTab(
 		channel:         channel,
 		emoteStore:      emoteStore,
 		ttvAPI:          ttvAPI,
-		messageInput:    input,
 		initialMessages: initialMessages,
 	}, nil
 }
@@ -223,8 +219,15 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 		t.channelDataLoaded = true
 
+		t.channelID = msg.channelID
+		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
+		t.chatWindow = newChatWindow(t.logger, t, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
+		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
+		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
+
 		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
+			// TODO: This blocks in update function, should be moved to CMD
 			emoteSet := t.emoteStore.GetAllForUser(msg.channelID)
 			suggestions := make([]string, 0, len(emoteSet))
 
@@ -234,11 +237,6 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 			t.messageInput.SetSuggestions(suggestions)
 		}
-
-		t.channelID = msg.channelID
-		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
-		t.chatWindow = newChatWindow(t.logger, t, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
-		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
 		for _, m := range t.initialMessages {
 			t.chatWindow.handleMessage(m)
