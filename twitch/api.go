@@ -6,16 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"net/http"
 	"net/url"
-	"resenje.org/singleflight"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
+	"resenje.org/singleflight"
 
 	"github.com/julez-dev/chatuino/save"
 )
@@ -455,7 +456,9 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 	if err != nil {
 		apiErr := APIError{}
 		// Unauthorized - the access token may be expired
-		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
+		if errors.As(err, &apiErr) &&
+			apiErr.Status == http.StatusUnauthorized &&
+			(apiErr.Message == "Invalid OAuth token" || apiErr.Message == "OAuth token is missing") {
 
 			// Single flight to prevent multiple refreshes at the same time
 			// If multiple requests are made at the same time, only one will refresh the token

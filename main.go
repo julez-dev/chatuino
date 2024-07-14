@@ -59,7 +59,11 @@ func (t *transportWithLogger) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 
 	dur := time.Since(now)
-	t.logger.Info().Str("method", req.Method).Str("url", req.URL.String()).Dur("took", dur).Int("status", resp.StatusCode).Msg("request made")
+	t.logger.Info().
+		Str("method", req.Method).
+		Str("url", req.URL.String()).
+		Dur("took", dur).
+		Int("status", resp.StatusCode).Msg("request made")
 
 	return resp, nil
 }

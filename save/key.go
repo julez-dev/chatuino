@@ -38,6 +38,7 @@ type KeyMap struct {
 	GoToBottom   key.Binding
 	DumpChat     key.Binding
 	QuickTimeout key.Binding
+	CopyMessage  key.Binding
 
 	// Unban Request
 	PrevPage   key.Binding
@@ -133,12 +134,13 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+alt+c"),
 			key.WithHelp("ctrl+alt+c", "dump chat"),
 		),
-		PrevPage:   key.NewBinding(key.WithKeys("pgup", "left", "h")),
-		NextPage:   key.NewBinding(key.WithKeys("pgdown", "right", "l")),
-		Approve:    key.NewBinding(key.WithKeys("a")),
-		Deny:       key.NewBinding(key.WithKeys("d")),
-		NextFilter: key.NewBinding(key.WithKeys("]")),
-		PrevFilter: key.NewBinding(key.WithKeys("[")),
+		PrevPage:    key.NewBinding(key.WithKeys("pgup", "left", "h")),
+		NextPage:    key.NewBinding(key.WithKeys("pgdown", "right", "l")),
+		Approve:     key.NewBinding(key.WithKeys("a")),
+		Deny:        key.NewBinding(key.WithKeys("d")),
+		NextFilter:  key.NewBinding(key.WithKeys("]")),
+		PrevFilter:  key.NewBinding(key.WithKeys("[")),
+		CopyMessage: key.NewBinding(key.WithKeys("alt+c")),
 	}
 }
 
@@ -170,6 +172,7 @@ func (k KeyMap) saveRepresentation() saveableKeyMap {
 		Deny:         k.Deny.Keys(),
 		PrevFilter:   k.PrevFilter.Keys(),
 		NextFilter:   k.NextFilter.Keys(),
+		CopyMessage:  k.CopyMessage.Keys(),
 	}
 }
 
@@ -199,6 +202,7 @@ type saveableKeyMap struct {
 	GoToBottom   []string `yaml:"go_to_bottom"`
 	DumpChat     []string `yaml:"dump_chat"`
 	QuickTimeout []string `yaml:"quick_timeout"`
+	CopyMessage  []string `yaml:"copy_message"`
 
 	// Unban Request
 	PrevPage   []string `yaml:"prev_page"`
@@ -247,6 +251,7 @@ func (s saveableKeyMap) keyMap() KeyMap {
 	setIfNotEmpty(&m.Deny, s.Deny)
 	setIfNotEmpty(&m.PrevFilter, s.PrevFilter)
 	setIfNotEmpty(&m.NextFilter, s.NextFilter)
+	setIfNotEmpty(&m.CopyMessage, s.CopyMessage)
 
 	return m
 }

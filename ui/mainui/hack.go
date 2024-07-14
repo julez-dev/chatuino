@@ -5,10 +5,19 @@ import (
 	"strings"
 )
 
-var ansiRegex = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
+var (
+	duplicateBypass   = rune(917504)
+	ansiRegex         = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
+	accountStartRegex = regexp.MustCompile(`^[^a-zA-Z0-9_-]+`)
+	accountEndRegex   = regexp.MustCompile(`[^a-zA-Z0-9_-]+$`)
+)
 
 func stripAnsi(str string) string {
 	return ansiRegex.ReplaceAllString(str, "")
+}
+
+func stripDisplayNameEdges(str string) string {
+	return accountEndRegex.ReplaceAllString(accountStartRegex.ReplaceAllString(str, ""), "")
 }
 
 func clamp(v, low, high int) int {

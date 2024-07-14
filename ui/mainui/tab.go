@@ -567,6 +567,8 @@ func (t *tab) handleMessageSent() tea.Cmd {
 	if strings.HasPrefix(input, "/") {
 		// Message input is only allowed for authenticated users
 		// so ttvAPI is guaranteed to be a moderationAPIClient
+		// we sadly can't know if the user is actually a moderator in the channel
+		// so operations that require moderation privileges will fail
 		client := t.ttvAPI.(moderationAPIClient)
 
 		// Get command name
@@ -590,11 +592,7 @@ func (t *tab) handleMessageSent() tea.Cmd {
 	// Check if message is the same as the last message sent
 	// If so, append special character to bypass twitch duplicate message filter
 	if strings.EqualFold(input, t.lastMessageSent) {
-		r := []byte{
-			0xF3, 0xA0, 0x80, 0x80,
-		}
-
-		input += string(r)
+		input = input + string(duplicateBypass)
 	}
 
 	t.lastMessageSent = input

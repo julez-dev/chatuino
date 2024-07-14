@@ -282,11 +282,13 @@ func (u *UnbanWindow) View() string {
 		MaxWidth(u.width)
 
 	if !u.dataLoaded {
-		return headerStyle.Render("Loading data...")
+		header := headerStyle.Height(u.height).AlignVertical(lipgloss.Center).Render("Loading data...")
+		return header
 	}
 
 	if u.err != nil {
-		return headerStyle.Render("Error loading unban totalUnbanRequests")
+		header := headerStyle.Height(u.height).AlignVertical(lipgloss.Center).Render("Error loading unban requests")
+		return header
 	}
 
 	return u.renderTableView(headerStyle)

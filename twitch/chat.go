@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	maxMessageSize = 16384
+	maxMessageSize = 32 * 1024 // 32KB
 )
 
 var defaultTransport http.RoundTripper = &http.Transport{

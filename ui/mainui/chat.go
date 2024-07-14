@@ -3,6 +3,10 @@ package mainui
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -13,9 +17,6 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
-	"os"
-	"strings"
-	"time"
 )
 
 const (
@@ -131,6 +132,9 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.debugDumpChat()
 			case key.Matches(msg, c.keymap.QuickTimeout):
 				c.handleTimeoutShortcut()
+				return c, nil
+			case key.Matches(msg, c.keymap.CopyMessage):
+				c.handleCopyMessage()
 				return c, nil
 			}
 		}
@@ -311,6 +315,28 @@ func (c *chatWindow) markSelectedMessage() {
 	}
 }
 
+func (c *chatWindow) handleCopyMessage() {
+	if c.parentTab.account.IsAnonymous {
+		return
+	}
+
+	_, entry := c.entryForCurrentCursor()
+
+	if entry == nil || entry.IsDeleted {
+		return
+	}
+
+	msg, ok := entry.Message.(*command.PrivateMessage)
+
+	if !ok {
+		return
+	}
+
+	c.parentTab.state = insertMode
+	c.parentTab.messageInput.Focus()
+	c.parentTab.messageInput.SetValue(msg.Message)
+}
+
 func (c *chatWindow) handleTimeoutShortcut() {
 	if c.parentTab.account.IsAnonymous {
 		return
@@ -363,7 +389,7 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 			if strings.EqualFold(privMsg.DisplayName, timeoutMsg.UserName) && !e.IsDeleted && !strings.HasPrefix(privMsg.Message, "[deleted by moderator]") {
 				hasDeleted = true
 				e.IsDeleted = true
-				privMsg.Message = fmt.Sprintf("[deleted by moderator] %s", privMsg.Message)
+				privMsg.Message = fmt.Sprintf("[deleted by moderator]\n%s", privMsg.Message)
 			}
 		}
 
@@ -562,7 +588,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	content = strings.Map(func(r rune) rune {
 		// this rune is commonly used to bypass the twitch spam detection
-		if r == rune(917504) {
+		if r == duplicateBypass {
 			return -1
 		}
 
@@ -598,7 +624,7 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 }
 
 func (c *chatWindow) colorMessageEmotes(message string) string {
-	splits := strings.Fields(message)
+	splits := strings.Split(message, " ")
 	for i, split := range splits {
 		if e, ok := c.emoteStore.GetByText(c.channelID, split); ok {
 			switch e.Platform {
@@ -614,32 +640,26 @@ func (c *chatWindow) colorMessageEmotes(message string) string {
 
 			continue
 		}
-
-		splits[i] = split
 	}
 
 	return strings.Join(splits, " ")
 }
 
 func (c *chatWindow) colorMessageMentions(message string) string {
-	splits := strings.Fields(message)
-	for i, split := range splits {
-		if strings.HasPrefix(split, "@") {
-			renderFn, ok := c.userColorCache[strings.ToLower(strings.TrimPrefix(split, "@"))]
+	words := strings.Split(message, " ")
+	for i, word := range words {
+		cleaned := strings.ToLower(stripDisplayNameEdges(word))
 
-			if !ok {
-				continue
-			}
+		renderFn, ok := c.userColorCache[cleaned]
 
-			splits[i] = renderFn(split)
-
+		if !ok {
 			continue
 		}
 
-		splits[i] = split
+		words[i] = renderFn(word)
 	}
 
-	return strings.Join(splits, " ")
+	return strings.Join(words, " ")
 }
 
 func (c *chatWindow) updatePort() {
