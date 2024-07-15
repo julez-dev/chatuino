@@ -23,16 +23,16 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: go
           queries: security-and-quality
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.mod"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
