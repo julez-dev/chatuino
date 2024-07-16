@@ -659,6 +659,10 @@ func (t *tab) handleResize() {
 			t.userInspect.handleResize()
 		} else {
 			t.chatWindow.height = t.height - heightMessageInput - heightStreamInfo - heightStatusInfo
+			if t.chatWindow.height < 0 {
+				t.chatWindow.height = 0
+			}
+
 			t.chatWindow.width = t.width
 			t.chatWindow.recalculateLines()
 		}

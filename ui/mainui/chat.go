@@ -17,6 +17,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -146,7 +147,14 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 }
 
 func (c *chatWindow) View() string {
-	lines := append(c.lines[c.lineStart:c.lineEnd], make([]string, c.height-len(c.lines[c.lineStart:c.lineEnd]))...)
+	if c.height < 1 {
+		return ""
+	}
+
+	log.Logger.Info().Int("height", c.height).Int("len", len(c.lines[c.lineStart:c.lineEnd])).Send()
+
+	spaces := make([]string, c.height-len(c.lines[c.lineStart:c.lineEnd]))
+	lines := append(c.lines[c.lineStart:c.lineEnd], spaces...)
 
 	return strings.Join(lines, "\n")
 }
@@ -711,5 +719,6 @@ func (c *chatWindow) recalculateLines() {
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	}
 
+	c.updatePort()
 	c.markSelectedMessage()
 }

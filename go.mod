@@ -6,7 +6,7 @@ require (
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
 	github.com/charmbracelet/bubbles v0.18.0
 	github.com/charmbracelet/bubbletea v0.26.6
-	github.com/charmbracelet/lipgloss v0.11.0
+	github.com/charmbracelet/lipgloss v0.12.1
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/fatih/color v1.17.0
 	github.com/google/uuid v1.6.0
@@ -29,7 +29,7 @@ require (
 
 require (
 	github.com/aymanbagabas/go-udiff v0.2.0 // indirect
-	github.com/charmbracelet/x/ansi v0.1.2 // indirect
+	github.com/charmbracelet/x/ansi v0.1.4 // indirect
 	github.com/charmbracelet/x/exp/golden v0.0.0-20240617190524-788ec55faed1 // indirect
 	github.com/charmbracelet/x/input v0.1.2 // indirect
 	github.com/charmbracelet/x/term v0.1.1 // indirect

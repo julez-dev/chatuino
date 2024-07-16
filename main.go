@@ -68,20 +68,15 @@ func (t *transportWithLogger) RoundTrip(req *http.Request) (*http.Response, erro
 	return resp, nil
 }
 
+var maybeLogFile *os.File
+
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --with-expecter=true --all
 func main() {
-	f, err := setupLogFile()
-	if err != nil {
-		fmt.Println("error while opening log file: %w", err)
-		os.Exit(1)
-	}
-
 	defer func() {
-		_ = f.Close()
+		if maybeLogFile != nil {
+			maybeLogFile.Close()
+		}
 	}()
-
-	logger := zerolog.New(f).With().Timestamp().Logger()
-	log.Logger = logger
 
 	app := &cli.Command{
 		Name:        "Chatuino",
@@ -97,7 +92,7 @@ func main() {
 		Commands: []*cli.Command{
 			versionCMD,
 			accountCMD,
-			serverCMD(zerolog.New(os.Stdout).With().Timestamp().Logger()),
+			serverCMD,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -120,10 +115,23 @@ func main() {
 				Usage: "Host of the profiling http server",
 				Value: "0.0.0.0:6060",
 			},
+			&cli.BoolFlag{
+				Name:  "log",
+				Usage: "If the application should log",
+			},
+			&cli.BoolFlag{
+				Name:  "log-to-file",
+				Usage: "If the application should log to log file instead of stderr",
+			},
+			&cli.BoolFlag{
+				Name:  "human-readable",
+				Usage: "If the log should be human readable",
+			},
 		},
+		Before: beforeAction,
 		Action: func(ctx context.Context, command *cli.Command) error {
 			if command.Bool("enable-profiling") {
-				runProfilingServer(ctx, logger, command.String("profiling-host"))
+				runProfilingServer(ctx, log.Logger, command.String("profiling-host"))
 			}
 
 			// Override the default http client transport to log requests
@@ -131,7 +139,7 @@ func main() {
 
 			http.DefaultClient.Transport = &transportWithLogger{
 				rt:     transport,
-				logger: logger,
+				logger: log.Logger,
 			}
 
 			accountProvider := save.NewAccountProvider()
@@ -139,14 +147,14 @@ func main() {
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
 
-			emoteStore := emote.NewStore(logger, serverAPI, stvAPI, bttvAPI)
+			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote fetching.
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					emoteStore = emote.NewStore(logger, ttvAPI, stvAPI, bttvAPI)
+					emoteStore = emote.NewStore(log.Logger, ttvAPI, stvAPI, bttvAPI)
 				}
 			}
 
@@ -157,7 +165,7 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keys),
+				mainui.NewUI(log.Logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keys),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 			)
@@ -190,6 +198,42 @@ func main() {
 		fmt.Printf("error while running Chatuino: %v", err)
 		os.Exit(1)
 	}
+}
+
+func beforeAction(ctx context.Context, command *cli.Command) error {
+	// Setup logging
+	//  - If logging not enabled, skip
+	//  - If log-to-file is enabled, log to file, else stderr
+	//  - If human-readable is enabled, log in human readable format (disable colors if log-to-file is enabled)
+	// This action runs before any command is executed, including sub commands, but will run for all sub commands
+
+	if !command.Bool("log") {
+		log.Logger = zerolog.Nop()
+		return nil
+	}
+
+	shouldLogToFile := command.Bool("log-to-file")
+
+	var logFile *os.File
+	if shouldLogToFile {
+		f, err := setupLogFile()
+		if err != nil {
+			return fmt.Errorf("error while opening log file: %w", err)
+		}
+
+		maybeLogFile = f
+		logFile = f
+	} else {
+		logFile = os.Stderr
+	}
+
+	if command.Bool("human-readable") {
+		log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: logFile, NoColor: shouldLogToFile}).With().Timestamp().Logger()
+	} else {
+		log.Logger = zerolog.New(logFile).With().Timestamp().Logger()
+	}
+
+	return nil
 }
 
 func runProfilingServer(ctx context.Context, logger zerolog.Logger, host string) {
