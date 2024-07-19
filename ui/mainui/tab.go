@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
-	"github.com/rs/zerolog/log"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -400,7 +398,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 					t.handleResize()
 					t.chatWindow.Blur()
-					t.userInspect.chatWindow.userColorCache = maps.Clone(t.chatWindow.userColorCache)
+					t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
 					t.userInspect.chatWindow.Focus()
 
 					t.chatWindow, cmd = t.chatWindow.Update(msg)
@@ -628,6 +626,9 @@ func (t *tab) renderMessageInput() string {
 
 func (t *tab) handleResize() {
 	if t.channelDataLoaded {
+		t.statusInfo.width = t.width
+		t.streamInfo.width = t.width
+
 		messageInput := t.renderMessageInput()
 		heightMessageInput := lipgloss.Height(messageInput)
 
@@ -648,8 +649,6 @@ func (t *tab) handleResize() {
 			heightStreamInfo = 0
 		}
 
-		t.statusInfo.width = t.width
-		t.streamInfo.width = t.width
 		if t.state == userInspectMode {
 			t.chatWindow.height = (t.height - heightStreamInfo - heightStatusInfo) / 2
 			t.chatWindow.width = t.width
@@ -657,8 +656,10 @@ func (t *tab) handleResize() {
 			t.userInspect.height = t.height - heightStreamInfo - t.chatWindow.height - heightStatusInfo
 			t.userInspect.width = t.width
 			t.userInspect.handleResize()
+			t.chatWindow.recalculateLines()
 		} else {
 			t.chatWindow.height = t.height - heightMessageInput - heightStreamInfo - heightStatusInfo
+
 			if t.chatWindow.height < 0 {
 				t.chatWindow.height = 0
 			}
@@ -670,7 +671,6 @@ func (t *tab) handleResize() {
 		t.messageInput.SetWidth(t.width - 2)
 
 		if t.state == unbanRequestMode {
-			log.Logger.Info().Int("height", t.height).Int("heightStatusInfo", heightStatusInfo).Msg("unban request mode")
 			t.unbanWindow.SetWidth(t.width)
 			t.unbanWindow.SetHeight(t.height - heightStatusInfo)
 		}

@@ -17,7 +17,6 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -150,8 +149,6 @@ func (c *chatWindow) View() string {
 	if c.height < 1 {
 		return ""
 	}
-
-	log.Logger.Info().Int("height", c.height).Int("len", len(c.lines[c.lineStart:c.lineEnd])).Send()
 
 	spaces := make([]string, c.height-len(c.lines[c.lineStart:c.lineEnd]))
 	lines := append(c.lines[c.lineStart:c.lineEnd], spaces...)
@@ -674,6 +671,12 @@ func (c *chatWindow) updatePort() {
 	// validate cursors position
 	c.cursor = clamp(c.cursor, 0, len(c.lines))
 
+	if c.height < 0 {
+		c.lineStart = 0
+		c.lineEnd = 0
+		return
+	}
+
 	switch {
 	case c.cursor <= c.lineStart: // cursor is before the selection
 		c.lineStart = c.cursor
@@ -682,7 +685,7 @@ func (c *chatWindow) updatePort() {
 		c.lineEnd = c.cursor + 1
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
+		// c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
 	}
 }
 
