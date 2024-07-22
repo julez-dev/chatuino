@@ -168,6 +168,7 @@ func main() {
 				mainui.NewUI(log.Logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keys),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
+				tea.WithFPS(120),
 			)
 
 			final, err := p.Run()

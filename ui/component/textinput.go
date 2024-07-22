@@ -197,6 +197,7 @@ func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
 
 func (s *SuggestionTextInput) SetValue(val string) {
 	s.ti.SetValue(val)
+	s.ti.CursorEnd()
 	s.suggestionIndex = 0
 	s.updateSuggestions()
 }

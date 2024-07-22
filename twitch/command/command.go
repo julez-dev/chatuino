@@ -2,12 +2,26 @@ package command
 
 import (
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
 )
 
 type Badge struct {
 	Name    string
 	Version int
+}
+
+func (b Badge) String() string {
+	splits := strings.Split(b.Name, "-")
+
+	for i, split := range splits {
+		r := []rune(split)
+		r[0] = unicode.ToUpper(r[0])
+		splits[i] = string(r)
+	}
+
+	return strings.Join(splits, "-")
 }
 
 type Emote struct {

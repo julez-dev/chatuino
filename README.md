@@ -4,7 +4,7 @@ Cha*tui*no is a TUI utilizing bubbletea to bring a feature rich Twitch Chat Clie
 
 > **Note**: This project is still in early development
 
-![Screenshot of chatuino showing chatuino.](doc/chat.png)
+![Demo of chatuino.](doc/demo.gif)
 
 ## Table of Contents
 
@@ -72,7 +72,7 @@ Here is a short overview of the default key-binds:
 | down arrow | Insert mode | Previous suggestion                          |
 | tab        | Insert mode | Accept suggestion                            |
 | esc        | Insert mode | Quit Insert mode                             |
-| u          | Chat window message | Open user inspect window                     
+| u          | Chat window message | Open user inspect window
 | esc        | User inspect window | Quit user inspect window                     |
 | ctrl+c     | Everywhere | Quit                                         |
 

@@ -79,8 +79,8 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+c", "quit"),
 		),
 		Create: key.NewBinding(
-			key.WithKeys("f1"),
-			key.WithHelp("f1", "create"),
+			key.WithKeys("ctrl+n"),
+			key.WithHelp("ctrl+n", "create"),
 		),
 		Remove: key.NewBinding(
 			key.WithKeys("r"),

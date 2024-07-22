@@ -390,7 +390,13 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						}
 
 						if strings.EqualFold(entryUsername, t.userInspect.user) {
-							t.userInspect.chatWindow.handleMessage(e.Message)
+							t.userInspect, cmd = t.userInspect.Update(chatEventMessage{
+								channel:   t.channel,
+								message:   e.Message,
+								accountID: t.account.ID,
+							})
+
+							cmds = append(cmds, cmd)
 						}
 					}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/julez-dev/chatuino/ivr"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 )
 
@@ -32,6 +33,7 @@ type userInspect struct {
 	tab           tab    // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
 	user          string // the chatter
 	channel       string // the streamer
+	badges        []command.Badge
 
 	ivr        *ivr.API
 	ttvAPI     APIClient
@@ -115,6 +117,13 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		return u, nil
 	}
 
+	// Set badges, update for each message
+	if event, ok := msg.(chatEventMessage); ok {
+		if msg, ok := event.message.(*command.PrivateMessage); ok {
+			u.badges = msg.Badges
+		}
+	}
+
 	u.chatWindow, cmd = u.chatWindow.Update(msg)
 	cmds = append(cmds, cmd)
 
@@ -167,8 +176,19 @@ func (u *userInspect) renderUserInfo() string {
 		return styleCentered.Render(fmt.Sprintf("Error while fetching data: %s", u.err.Error()))
 	}
 
+	bades := make([]string, 0, len(u.badges))
+	for _, badge := range u.badges {
+		bades = append(bades, badge.String())
+	}
+
 	b := &strings.Builder{}
-	_, _ = fmt.Fprintf(b, "User %s (%s)\n", u.subAge.User.DisplayName, u.subAge.User.ID)
+	_, _ = fmt.Fprintf(b, "User %s (%s)", u.subAge.User.DisplayName, u.subAge.User.ID)
+	if len(bades) > 0 {
+		_, _ = fmt.Fprintf(b, " - (%s)\n", strings.Join(bades, ", "))
+	} else {
+		_, _ = fmt.Fprintf(b, "\n")
+	}
+
 	_, _ = fmt.Fprintf(b, "Account created at: %s", u.userData.CreatedAt.Format("02.01.2006 15:04:05"))
 
 	if !u.subAge.FollowedAt.IsZero() {

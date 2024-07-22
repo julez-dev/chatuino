@@ -22,7 +22,8 @@ import (
 const (
 	cleanupAfterMessage float64 = 1500.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
-	prefixPadding               = 41
+	// prefixPadding               = 41
+	prefixPadding = 0
 )
 
 var badgeMap = map[string]string{
@@ -678,6 +679,9 @@ func (c *chatWindow) updatePort() {
 	}
 
 	switch {
+	case len(c.lines) < c.height: // all lines fit in the height
+		c.lineStart = 0
+		c.lineEnd = len(c.lines)
 	case c.cursor <= c.lineStart: // cursor is before the selection
 		c.lineStart = c.cursor
 		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
@@ -685,7 +689,7 @@ func (c *chatWindow) updatePort() {
 		c.lineEnd = c.cursor + 1
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
-		// c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
+		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
 	}
 }
 

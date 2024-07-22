@@ -131,7 +131,9 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 		keymap:   keymap,
 
 		// components
-		splash:    splash{},
+		splash: splash{
+			keymap: keymap,
+		},
 		header:    newTabHeader(),
 		joinInput: newJoin(provider, 10, 10, keymap),
 
