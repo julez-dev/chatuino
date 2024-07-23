@@ -20,7 +20,7 @@ var serverCMD = &cli.Command{
 			Name:    "addr",
 			Usage:   "The address the server should listen at",
 			Value:   ":8080",
-			Sources: cli.EnvVars("TUI_ADDR"),
+			Sources: cli.EnvVars("CHATUINO_ADDR"),
 		},
 		&cli.StringFlag{
 			Name:  "redirect-url",

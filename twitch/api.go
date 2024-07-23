@@ -523,8 +523,7 @@ func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method,
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
-		return data,
-			nil
+		return data, nil
 	}
 
 	respBody, err := io.ReadAll(resp.Body)

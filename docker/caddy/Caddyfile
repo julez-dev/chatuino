@@ -1,0 +1,19 @@
+{
+	email julez-dev@pm.me
+}
+
+chatuino.net {
+	@blocked {
+		path /internal /internal/*
+	}
+
+	respond @blocked 403 {
+		body "Access denied"
+	}
+
+	reverse_proxy chatuino:3000
+}
+
+www.chatuino.net {
+	redir https://chatuino.net{uri}
+}

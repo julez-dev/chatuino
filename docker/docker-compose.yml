@@ -1,0 +1,44 @@
+services:
+  caddy:
+    image: caddy:2.8.4
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - /var/lib/caddy/data:/data
+    networks:
+      - proxy
+
+  chatuino:
+    image: chatuino:latest
+    restart: unless-stopped
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "export TWITCH_CLIENT_SECRET=$$(cat /var/run/secrets/twitch_client_secret) ; chatuino --log server --redirect-url=https://chatuino.net/auth/redirect",
+      ]
+    secrets:
+      - twitch_client_secret
+    environment:
+      - "TWITCH_CLIENT_ID=jliqj1q6nmp0uh5ofangdx4iac7yd9"
+      - "CHATUINO_ADDR=:3000"
+    healthcheck:
+      test:
+        ["CMD", "curl", "-f", "http://localhost:3000/internal/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - proxy
+
+secrets:
+  twitch_client_secret:
+    environment: "TWITCH_CLIENT_SECRET"
+
+networks:
+  proxy:
+    driver: bridge

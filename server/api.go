@@ -52,7 +52,10 @@ func (a *API) Launch(ctx context.Context) error {
 	wg, ctx := errgroup.WithContext(ctx)
 
 	wg.Go(func() error {
-		a.logger.Info().Str("addr", httpSrv.Addr).Msg("starting http server")
+		a.logger.Info().
+			Str("addr", httpSrv.Addr).
+			Str("redirect-url", a.conf.RedirectURL).
+			Msg("starting http server")
 
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err

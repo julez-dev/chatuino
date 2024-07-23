@@ -380,6 +380,13 @@ func (a *API) handleGetStreamUser() http.HandlerFunc {
 	})
 }
 
+func (a *API) handleGetHealth() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "UP")
+	})
+}
+
 func randomString(n int) (string, error) {
 	b := make([]byte, n)
 
