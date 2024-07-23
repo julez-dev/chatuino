@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 
 	"github.com/julez-dev/chatuino/twitch/command"
 )
 
 const (
-	stateFileName = "state.json"
+	chatuinoConfigDir = "chatuino"
+	stateFileName     = "state.json"
 )
 
 type AppState struct {
@@ -77,4 +81,37 @@ func AppStateFromDisk() (AppState, error) {
 	}
 
 	return state, nil
+}
+
+func openCreateConfigFile(file string) (*os.File, error) {
+	configDir, err := os.UserConfigDir() // get users config directory, depending on OS
+	if err != nil {
+		return nil, err
+	}
+
+	// ensure dir config dir exists
+	configDirChatuino := filepath.Join(configDir, chatuinoConfigDir)
+	err = os.Mkdir(configDirChatuino, 0o755)
+	var alreadyExistsError bool
+
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			alreadyExistsError = true
+		} else {
+			return nil, err
+		}
+	}
+
+	if err != nil && !alreadyExistsError {
+		return nil, err
+	}
+
+	path := filepath.Join(configDirChatuino, file)
+
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+
+	return f, nil
 }

@@ -24,13 +24,17 @@ The name and idea to create a Twitch Chat Client is inspired by [Chatterino](htt
 
 - Multi Account support
 - Multi Tab support/Can join multiple channels and switch between them
-- Join Chat as anonymous User
+- Join Chat as Anonymous User
 - Auto resize when window size changes
 - You can host the server component for authentication/anonymous usage yourself
-- Emote Suggestions
+- Emote and User Suggestions
 - Local save state to persist sessions
 - Simple emote support for Twitch(purple), BTTV(red) and SevenTV(blue) emotes (Emotes are colored), graphic display planned
 - Advanced moderation tools planned
+- Manage ban requests
+- Quick ban users with ctrl+shift+t
+- Copy and Paste messages with alt+c
+- Simple Twitch duplicate message bypass
 - More twitch integration planned (Announcements etc.)
 
 ## Installation
@@ -78,7 +82,7 @@ Here is a short overview of the default key-binds:
 
 ### server sub-command and hosting you own server
 
-The server is responsible for dealing with authentication flows and proxying requests to the Twitch API that require an App Access Token when using an anonymous User. My hosted version is available under `https://chatuino-server.onrender.com` but you can just run your own version as well.
+The server is responsible for dealing with authentication flows and proxying requests to the Twitch API that require an App Access Token when using an anonymous User. My hosted version is available under `https://chatuino.net` but you can just run your own version as well. This server is running on the lowest tier possible on hetzner cloud, so don't expect too much performance.
 
 For this you need to register a new application in the [twitch dev console](https://dev.twitch.tv/console) which will give you an Client ID and Client Secret. The server command requires both as environment variables (Launch `chatuino server help` for more information).
 

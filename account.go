@@ -18,7 +18,7 @@ var accountCMD = &cli.Command{
 		&cli.StringFlag{
 			Name:  "api-host",
 			Usage: "Host of the Chatuino API",
-			Value: "https://chatuino-server.onrender.com",
+			Value: "https://chatuino.net",
 		},
 		&cli.StringFlag{
 			Name:  "client-id",
@@ -34,7 +34,7 @@ var accountCMD = &cli.Command{
 		}
 
 		p := tea.NewProgram(
-			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(), keys),
+			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(save.KeyringWrapper{}), keys),
 			tea.WithContext(ctx),
 			tea.WithAltScreen(),
 		)

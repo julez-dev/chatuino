@@ -5,3 +5,6 @@ profile*.svg
 dist/
 .idea
 idea.txt
+.env
+
+secrets

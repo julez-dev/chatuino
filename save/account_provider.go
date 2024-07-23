@@ -4,17 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/zalando/go-keyring"
 )
 
 const (
-	chatuinoConfigDir = "chatuino"
-	accountFileName   = "accounts.json"
+	keychainService = "chatuino"
+	keychainAccount = "account-save"
 )
 
 var ErrAccountNotFound = errors.New("account not found")
@@ -42,10 +40,12 @@ type accountFile struct {
 	Accounts []Account `json:"accounts"`
 }
 
-type AccountProvider struct{}
+type AccountProvider struct {
+	keychain keyring.Keyring
+}
 
-func NewAccountProvider() AccountProvider {
-	return AccountProvider{}
+func NewAccountProvider(keychain keyring.Keyring) AccountProvider {
+	return AccountProvider{keychain: keychain}
 }
 
 func (a AccountProvider) GetAccountBy(id string) (Account, error) {
@@ -197,23 +197,23 @@ func (a AccountProvider) MarkAccountAsMain(id string) error {
 func (a AccountProvider) loadAccounts() ([]Account, error) {
 	var fileData accountFile
 
-	f, err := openCreateConfigFile(accountFileName)
+	data, err := a.keychain.Get(keychainService, keychainAccount)
+
 	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			fileData.Accounts = append(fileData.Accounts, anonymousAccount)
+			return fileData.Accounts, nil
+		}
+
 		return nil, err
 	}
 
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(data, &fileData)
+	err = json.Unmarshal([]byte(data), &fileData)
 
 	if err != nil {
 		syntaxErr := &json.SyntaxError{}
 		if errors.As(err, &syntaxErr) {
+			fileData.Accounts = append(fileData.Accounts, anonymousAccount)
 			return fileData.Accounts, nil
 		}
 
@@ -221,7 +221,6 @@ func (a AccountProvider) loadAccounts() ([]Account, error) {
 	}
 
 	fileData.Accounts = append(fileData.Accounts, anonymousAccount)
-
 	return fileData.Accounts, nil
 }
 
@@ -233,13 +232,6 @@ func (a AccountProvider) saveAccounts(accounts []Account) error {
 		return a.IsAnonymous
 	})
 
-	f, err := openCreateConfigFile(accountFileName)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
 	data := accountFile{
 		Accounts: accountsCopy,
 	}
@@ -249,47 +241,9 @@ func (a AccountProvider) saveAccounts(accounts []Account) error {
 		return err
 	}
 
-	err = f.Truncate(0)
-	if err != nil {
-		return err
-	}
-
-	if _, err := f.Write(bytes); err != nil {
+	if err := a.keychain.Set(keychainService, keychainAccount, string(bytes)); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func openCreateConfigFile(file string) (*os.File, error) {
-	configDir, err := os.UserConfigDir() // get users config directory, depending on OS
-	if err != nil {
-		return nil, err
-	}
-
-	// ensure dir config dir exists
-	configDirChatuino := filepath.Join(configDir, chatuinoConfigDir)
-	err = os.Mkdir(configDirChatuino, 0o755)
-	var alreadyExistsError bool
-
-	if err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			alreadyExistsError = true
-		} else {
-			return nil, err
-		}
-	}
-
-	if err != nil && !alreadyExistsError {
-		return nil, err
-	}
-
-	path := filepath.Join(configDirChatuino, file)
-
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil, err
-	}
-
-	return f, nil
 }

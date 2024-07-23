@@ -15,6 +15,7 @@ import (
 
 	"github.com/julez-dev/chatuino/bttv"
 	"github.com/rs/zerolog/log"
+	"github.com/zalando/go-keyring"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/browser"
@@ -38,17 +39,20 @@ const (
 	logFileName     = "log.txt"
 )
 
-type transportWithLogger struct {
+type customRoundTrip struct {
 	rt     http.RoundTripper
 	logger zerolog.Logger
 }
 
-func (t *transportWithLogger) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *customRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt := t.rt
 
 	if rt == nil {
 		rt = http.DefaultTransport
 	}
+
+	req = req.Clone(req.Context())
+	req.Header.Set("User-Agent", fmt.Sprintf("Chatuino/%s", Version))
 
 	now := time.Now()
 	resp, err := rt.RoundTrip(req)
@@ -72,6 +76,11 @@ var maybeLogFile *os.File
 
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --with-expecter=true --all
 func main() {
+
+	if err := keyring.Set("test-service", "test-user", "test-password"); err != nil {
+		log.Fatal().Err(err).Msg("could not set keyring")
+	}
+
 	defer func() {
 		if maybeLogFile != nil {
 			maybeLogFile.Close()
@@ -103,7 +112,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "api-host",
 				Usage: "Host of the Chatuino API",
-				Value: "https://chatuino-server.onrender.com",
+				Value: "https://chatuino.net",
 			},
 			&cli.BoolFlag{
 				Name:  "enable-profiling",
@@ -137,12 +146,12 @@ func main() {
 			// Override the default http client transport to log requests
 			transport := http.DefaultClient.Transport
 
-			http.DefaultClient.Transport = &transportWithLogger{
+			http.DefaultClient.Transport = &customRoundTrip{
 				rt:     transport,
 				logger: log.Logger,
 			}
 
-			accountProvider := save.NewAccountProvider()
+			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
