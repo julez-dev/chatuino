@@ -51,11 +51,8 @@ jobs:
           DEPLOY_SSH_SERVER: ${{ secrets.DEPLOY_SSH_SERVER }}
 
       - name: Deploy
-        env:
-          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
-          DEPLOY_SSH_SERVER: ${{ secrets.DEPLOY_SSH_SERVER }}
         run: |
-          ssh ${{ DEPLOY_SSH_USER }}@${{ DEPLOY_SSH_SERVER }} << EOF
+          ssh ${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_SERVER }} << EOF
             cd ~/chatuino
             git fetch --all
             git checkout ${{ github.ref_name }}
