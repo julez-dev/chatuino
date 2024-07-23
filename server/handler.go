@@ -145,6 +145,11 @@ func (a *API) handleAuthRedirect() http.HandlerFunc {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 
+		if resp.StatusCode != http.StatusOK {
+			logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("got non-200 status code while requesting token pair")
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
 		var tokenData tokenPair
 		if err := json.Unmarshal(bodyBytes, &tokenData); err != nil {
 			logger.Err(err).Msg("could not json unmarshal response body")

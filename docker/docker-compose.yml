@@ -37,6 +37,7 @@ services:
 
 secrets:
   twitch_client_secret:
+    external: "true"
     environment: "TWITCH_CLIENT_SECRET"
 
 networks:
