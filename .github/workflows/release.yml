@@ -52,12 +52,13 @@ jobs:
 
       - name: Deploy
         run: |
-          ssh ${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_SERVER }} << EOF
+          ssh -i ~/.ssh/id_rsa ${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_SERVER }} << EOF
+            export TWITCH_CLIENT_SECRET=$TWITCH_CLIENT_SECRET
             cd ~/chatuino
             git fetch --all
             git checkout ${{ github.ref_name }}
-            git pull
             cd docker
             docker compose pull
             docker compose up -d
+            exit
           EOF
