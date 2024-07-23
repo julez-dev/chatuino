@@ -39,3 +39,28 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$DEPLOY_SSH_SERVER" >> ~/.ssh/known_hosts
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_SERVER: ${{ secrets.DEPLOY_SSH_SERVER }}
+
+      - name: Deploy
+        run: |
+          ssh ${{ DEPLOY_SSH_USER }}@${{ DEPLOY_SSH_SERVER }} << EOF
+            cd ~/chatuino
+            git fetch --all
+            git checkout ${{ github.ref_name }}
+            git pull
+            cd docker
+            docker compose pull
+            docker compose up -d
+          EOF
+        env:
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_SERVER: ${{ secrets.DEPLOY_SSH_SERVER }}
