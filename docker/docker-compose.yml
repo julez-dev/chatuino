@@ -13,7 +13,7 @@ services:
       - proxy
 
   chatuino:
-    image: chatuino:latest
+    image: ghcr.io/julez-dev/chatuino:latest
     restart: unless-stopped
     entrypoint:
       [
