@@ -45,7 +45,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$DEPLOY_SSH_SERVER" >> ~/.ssh/known_hosts
+          ssh-keyscan -t rsa -T 10 -H "$DEPLOY_SSH_SERVER" >> ~/.ssh/known_hosts
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_SSH_SERVER: ${{ secrets.DEPLOY_SSH_SERVER }}
