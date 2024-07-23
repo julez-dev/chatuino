@@ -7,7 +7,17 @@ before:
 
 dockers:
   - image_templates:
-      - "ghcr.io/julez-dev/chatuino"
+      - "ghcr.io/julez-dev/chatuino:latest"
+      - "ghcr.io/julez-dev/chatuino:{{ .Tag }}"
+    goos: linux
+    goarch: amd64
+    dockerfile: docker/Dockerfile
+    build_flag_templates:
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--platform=linux/amd64"
 
 builds:
   - env:
