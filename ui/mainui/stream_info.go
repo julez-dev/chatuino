@@ -2,12 +2,13 @@ package mainui
 
 import (
 	"context"
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
+	"strings"
 	"time"
 
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
+
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
 	"github.com/muesli/reflow/wordwrap"
 )
@@ -72,9 +73,14 @@ func (s *streamInfo) View() string {
 		return ""
 	}
 
-	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).Width(s.width).MaxWidth(s.width)
-	info := wordwrap.String(s.printer.Sprintf("%s - %s (%d Viewer)", s.game, s.title, s.viewer), s.width-10)
-	return style.Render(info)
+	info := wordwrap.String(s.printer.Sprintf("%s - %s (%d Viewer)\n", s.game, s.title, s.viewer), s.width-10)
+	infoSplit := strings.Split(info, "\n")
+
+	for i, v := range infoSplit {
+		infoSplit[i] = centerTextGraphemeAware(s.width, v)
+	}
+
+	return strings.Join(infoSplit, "\n")
 }
 
 func (s *streamInfo) doTick() tea.Msg {

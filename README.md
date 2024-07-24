@@ -39,7 +39,7 @@ The name and idea to create a Twitch Chat Client is inspired by [Chatterino](htt
 
 ## Installation
 
-You can use go install to install the program (`go install github.com/julez-dev/chatuino@latest`) or grab a binary from the [releases](https://github.com/julez-dev/chatuino/releases) page.
+You can use go install to install the program (`go install github.com/julez-dev/chatuino`) or grab a binary from the [releases](https://github.com/julez-dev/chatuino/releases) page.
 
 ## Usage
 
@@ -51,34 +51,13 @@ You can use the --help flag to get help.
 
 You can use the account sub-command to link your twitch account to Chatuino. The command will launch a TUI to help you manage your accounts.
 
-If want to link a new account you need to provide a user token to Chatuino which you can generate with the server component. You can start the auth flow here: `https://chatuino-server.onrender.com/auth/start` or your own server if you want to.
+If want to link a new account you need to provide a user token to Chatuino which you can generate with the server component. You can start the auth flow here: `https://chatuino.net/auth/start` or your own server if you want to.
 
 ### key-binds
 
 Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file (config directory may be different depending on OS).
 
-Here is a short overview of the default key-binds:
-
-| key-bind   | where | description                                  |
-|------------| ----- |----------------------------------------------|
-| F1         | Home/In channel | Join a new channel                           |
-| Tab        | Join channel prompt | Switch between input fields                  |
-| Enter      | Inputs | Confirm                                      |
-| j          | In lists/Chat window | Down                                         |
-| k          | In lists/Chat window | Up                                           |
-| t          | In lists/Chat window | Go to top message                            |
-| b          | In lists/Chat window | Go to most recent message                    |
-| c          | In lists/Chat window | Open twitch channel page of joined channel   |
-| p          | In lists/Chat window | Open popup web chat                          |
-| q          | In window(tab) | Quit channel                                 |
-| i          | In window(tab) | Insert mode for writing/sending chat message |
-| up arrow   | Insert mode | Next suggestion                              |
-| down arrow | Insert mode | Previous suggestion                          |
-| tab        | Insert mode | Accept suggestion                            |
-| esc        | Insert mode | Quit Insert mode                             |
-| u          | Chat window message | Open user inspect window
-| esc        | User inspect window | Quit user inspect window                     |
-| ctrl+c     | Everywhere | Quit                                         |
+An overview of the keybinds can be opened with `?` inside Chatuino.
 
 ### server sub-command and hosting you own server
 

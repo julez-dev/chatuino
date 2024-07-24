@@ -20,6 +20,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -669,6 +670,8 @@ func (t *tab) handleResize() {
 			if t.chatWindow.height < 0 {
 				t.chatWindow.height = 0
 			}
+
+			log.Logger.Info().Int("t.chatWindow.height", t.chatWindow.height).Int("height", t.height).Int("heightStreamInfo", heightStreamInfo).Int("heightStatusInfo", heightStatusInfo).Msg("handleResize")
 
 			t.chatWindow.width = t.width
 			t.chatWindow.recalculateLines()
