@@ -1,4 +1,4 @@
-package multiplexer
+package multiplex
 
 import (
 	"context"
@@ -7,6 +7,10 @@ import (
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 )
+
+type Chat interface {
+	ConnectWithRetry(ctx context.Context, messages <-chan twitch.IRCer) (<-chan twitch.IRCer, <-chan error)
+}
 
 type OutboundMessage struct {
 	ID  string
@@ -24,14 +28,18 @@ type IncrementTabCounter struct{}
 type DecrementTabCounter struct{}
 
 type Multiplexer struct {
-	logger   zerolog.Logger
-	provider twitch.AccountProvider
+	logger          zerolog.Logger
+	provider        twitch.AccountProvider
+	BuildChatClient func(logger zerolog.Logger, provider twitch.AccountProvider, accountID string) Chat
 }
 
 func NewMultiplexer(logger zerolog.Logger, provider twitch.AccountProvider) *Multiplexer {
 	return &Multiplexer{
 		logger:   logger,
 		provider: provider,
+		BuildChatClient: func(logger zerolog.Logger, provider twitch.AccountProvider, accountID string) Chat {
+			return twitch.NewChat(logger, provider, accountID)
+		},
 	}
 }
 
@@ -54,7 +62,7 @@ func (m *Multiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan Outbo
 			// if not exists, create new chat for the ID
 			if !ok {
 				m.logger.Warn().Msgf("received message for unknown channel %s joining channel", accountID)
-				chat := twitch.NewChat(m.logger, m.provider, accountID)
+				chat := m.BuildChatClient(m.logger, m.provider, accountID)
 				ctx, cancel := context.WithCancel(context.Background())
 
 				cancels[accountID] = cancel

@@ -1,0 +1,51 @@
+package httputil
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/rs/zerolog"
+)
+
+type ChatuinoRoundTrip struct {
+	rt      http.RoundTripper
+	logger  zerolog.Logger
+	version string
+}
+
+func NewChatuinoRoundTrip(rt http.RoundTripper, logger zerolog.Logger, userAgentVersion string) *ChatuinoRoundTrip {
+	return &ChatuinoRoundTrip{
+		rt:      rt,
+		logger:  logger,
+		version: userAgentVersion,
+	}
+}
+
+func (t *ChatuinoRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt := t.rt
+
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+
+	req = req.Clone(req.Context())
+	req.Header.Set("User-Agent", fmt.Sprintf("Chatuino/%s", t.version))
+
+	now := time.Now()
+	resp, err := rt.RoundTrip(req)
+
+	if err != nil {
+		t.logger.Error().Err(err).Msg("error while making request")
+		return nil, err
+	}
+
+	dur := time.Since(now)
+	t.logger.Info().
+		Str("method", req.Method).
+		Str("url", req.URL.String()).
+		Dur("took", dur).
+		Int("status", resp.StatusCode).Msg("request made")
+
+	return resp, nil
+}

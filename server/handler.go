@@ -157,7 +157,7 @@ func (a *API) handleAuthRedirect() http.HandlerFunc {
 		}
 
 		w.WriteHeader(resp.StatusCode)
-		fmt.Fprintf(w, "Paste this in Chatuinos account prompt: %s%%%s", tokenData.AccessToken, tokenData.RefreshToken)
+		fmt.Fprintf(w, "Paste this in Chatuinos account prompt:\n%s%%%s", tokenData.AccessToken, tokenData.RefreshToken)
 	})
 }
 

@@ -116,7 +116,7 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		MarkLeader: key.NewBinding(
 			key.WithKeys("m"),
-			key.WithHelp("m", "mark account as leader"),
+			key.WithHelp("m", "mark account as main account"),
 		),
 		GoToTop: key.NewBinding(
 			key.WithKeys("t"),

@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/julez-dev/chatuino/bttv"
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/julez-dev/chatuino/bttv"
 
 	"golang.org/x/sync/errgroup"
 
@@ -42,8 +43,8 @@ type Store struct {
 	bttvEmotes    BTTVEmoteFetcher
 }
 
-func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher) Store {
-	return Store{
+func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher) *Store {
+	return &Store{
 		logger:        logger,
 		m:             &sync.RWMutex{},
 		channel:       map[string]EmoteSet{},

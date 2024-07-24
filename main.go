@@ -11,11 +11,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/julez-dev/chatuino/bttv"
+	"github.com/julez-dev/chatuino/httputil"
+	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/rs/zerolog/log"
-	"github.com/zalando/go-keyring"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/browser"
@@ -39,48 +39,10 @@ const (
 	logFileName     = "log.txt"
 )
 
-type customRoundTrip struct {
-	rt     http.RoundTripper
-	logger zerolog.Logger
-}
-
-func (t *customRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
-	rt := t.rt
-
-	if rt == nil {
-		rt = http.DefaultTransport
-	}
-
-	req = req.Clone(req.Context())
-	req.Header.Set("User-Agent", fmt.Sprintf("Chatuino/%s", Version))
-
-	now := time.Now()
-	resp, err := rt.RoundTrip(req)
-
-	if err != nil {
-		t.logger.Error().Err(err).Msg("error while making request")
-		return nil, err
-	}
-
-	dur := time.Since(now)
-	t.logger.Info().
-		Str("method", req.Method).
-		Str("url", req.URL.String()).
-		Dur("took", dur).
-		Int("status", resp.StatusCode).Msg("request made")
-
-	return resp, nil
-}
-
 var maybeLogFile *os.File
 
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --with-expecter=true --all
 func main() {
-
-	if err := keyring.Set("test-service", "test-user", "test-password"); err != nil {
-		log.Fatal().Err(err).Msg("could not set keyring")
-	}
-
 	defer func() {
 		if maybeLogFile != nil {
 			maybeLogFile.Close()
@@ -89,7 +51,7 @@ func main() {
 
 	app := &cli.Command{
 		Name:        "Chatuino",
-		Description: "Chatuino twitch IRC Client",
+		Description: "Chatuino twitch IRC Client. Before using Chatuino you may want to manage your accounts using the account command.",
 		Usage:       "A client for twitch's IRC service",
 		// HideVersion: true,
 		Authors: []any{
@@ -105,14 +67,16 @@ func main() {
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "client-id",
-				Usage: "OAuth Client-ID",
-				Value: defaultClientID,
+				Name:    "client-id",
+				Usage:   "OAuth Client-ID",
+				Value:   defaultClientID,
+				Sources: cli.EnvVars("CHATUINO_CLIENT_ID"),
 			},
 			&cli.StringFlag{
-				Name:  "api-host",
-				Usage: "Host of the Chatuino API",
-				Value: "https://chatuino.net",
+				Name:    "api-host",
+				Usage:   "Host of the Chatuino API",
+				Value:   "https://chatuino.net",
+				Sources: cli.EnvVars("CHATUINO_API_HOST"),
 			},
 			&cli.BoolFlag{
 				Name:  "enable-profiling",
@@ -145,16 +109,13 @@ func main() {
 
 			// Override the default http client transport to log requests
 			transport := http.DefaultClient.Transport
-
-			http.DefaultClient.Transport = &customRoundTrip{
-				rt:     transport,
-				logger: log.Logger,
-			}
+			http.DefaultClient.Transport = httputil.NewChatuinoRoundTrip(transport, log.Logger, Version)
 
 			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
+			multiplexer := multiplex.NewMultiplexer(log.Logger, accountProvider)
 
 			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
 
@@ -174,7 +135,7 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger, accountProvider, &emoteStore, command.String("client-id"), serverAPI, keys),
+				mainui.NewUI(log.Logger, accountProvider, multiplexer, emoteStore, command.String("client-id"), serverAPI, keys),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
@@ -182,12 +143,12 @@ func main() {
 
 			final, err := p.Run()
 			if err != nil {
-				return fmt.Errorf("error while running TUI: %w", err)
+				return err
 			}
 
 			if final, ok := final.(*mainui.Root); ok {
 				if err := final.Close(); err != nil && !errors.Is(err, context.Canceled) {
-					return fmt.Errorf("error while closing TUI: %w", err)
+					return err
 				}
 
 				state := final.TakeStateSnapshot()

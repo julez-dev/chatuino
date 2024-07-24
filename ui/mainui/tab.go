@@ -14,7 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cli/browser"
-	"github.com/julez-dev/chatuino/multiplexer"
+	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
@@ -250,16 +250,16 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 		ircCmds = append(ircCmds, func() tea.Msg {
 			return forwardChatMessage{
-				msg: multiplexer.InboundMessage{
+				msg: multiplex.InboundMessage{
 					AccountID: t.account.ID,
-					Msg:       multiplexer.IncrementTabCounter{},
+					Msg:       multiplex.IncrementTabCounter{},
 				},
 			}
 		})
 
 		ircCmds = append(ircCmds, func() tea.Msg {
 			return forwardChatMessage{
-				msg: multiplexer.InboundMessage{
+				msg: multiplex.InboundMessage{
 					AccountID: t.account.ID,
 					Msg: command.JoinMessage{
 						Channel: msg.channel,
@@ -614,7 +614,7 @@ func (t *tab) handleMessageSent() tea.Cmd {
 
 	return func() tea.Msg {
 		return forwardChatMessage{
-			msg: multiplexer.InboundMessage{
+			msg: multiplex.InboundMessage{
 				AccountID: t.account.ID,
 				Msg:       msg,
 			},

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -21,20 +20,8 @@ import (
 
 const (
 	maxMessageSize = 32 * 1024 // 32KB
+	ircWSURL       = "wss://irc-ws.chat.twitch.tv:443"
 )
-
-var defaultTransport http.RoundTripper = &http.Transport{
-	Proxy: http.ProxyFromEnvironment,
-	DialContext: (&net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 15 * time.Second,
-	}).DialContext,
-	ForceAttemptHTTP2:     true,
-	MaxIdleConns:          100,
-	IdleConnTimeout:       90 * time.Second,
-	TLSHandshakeTimeout:   10 * time.Second,
-	ExpectContinueTimeout: 1 * time.Second,
-}
 
 // IRCer are types that can be turned into an IRC command
 type IRCer interface {
@@ -84,9 +71,9 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 			ctxWS, cancel := context.WithTimeout(outerCtx, time.Second*5)
 			defer cancel()
 
-			ws, _, err := websocket.Dial(ctxWS, "wss://irc-ws.chat.twitch.tv:443", &websocket.DialOptions{
+			ws, _, err := websocket.Dial(ctxWS, ircWSURL, &websocket.DialOptions{
 				HTTPClient: &http.Client{
-					Transport: defaultTransport,
+					Transport: http.DefaultClient.Transport,
 					Timeout:   time.Second * 10,
 				},
 			})

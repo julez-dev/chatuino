@@ -2,6 +2,10 @@ package mainui
 
 import (
 	"bytes"
+	"io"
+	"testing"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/julez-dev/chatuino/mocks"
@@ -9,9 +13,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
-	"io"
-	"testing"
-	"time"
 )
 
 func TestUISingleChannelAnonymous(t *testing.T) {
@@ -63,12 +64,13 @@ func TestUISingleChannelAnonymous(t *testing.T) {
 	}, nil)
 
 	ttv := mocks.NewAPIClient(t)
+	chatPool := mocks.NewChatPool(t)
 
 	clientID := "test-xxx"
 
 	defaultBinds := save.BuildDefaultKeyMap()
 
-	initialModel := NewUI(zerolog.Nop(), provider, emoteStore, clientID, serverClient, defaultBinds)
+	initialModel := NewUI(zerolog.Nop(), provider, chatPool, emoteStore, clientID, serverClient, defaultBinds)
 	initialModel.buildTTVClient = func(clientID string, opt ...twitch.APIOptionFunc) (APIClient, error) {
 		return ttv, nil
 	}

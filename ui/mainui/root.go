@@ -14,7 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/multiplexer"
+	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
@@ -41,10 +41,12 @@ type APIClient interface {
 }
 
 type APIClientWithRefresh interface {
-	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
-	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
-	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
+	APIClient
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+}
+
+type ChatPool interface {
+	ListenAndServe(inbound <-chan multiplex.InboundMessage) <-chan multiplex.OutboundMessage
 }
 
 type activeScreen int
@@ -82,7 +84,7 @@ type chatEventMessage struct {
 }
 
 type forwardChatMessage struct {
-	msg multiplexer.InboundMessage
+	msg multiplex.InboundMessage
 }
 
 type Root struct {
@@ -105,8 +107,8 @@ type Root struct {
 	ttvAPIUserClient map[string]APIClient
 
 	// chat multiplexer channels
-	in  chan multiplexer.InboundMessage
-	out <-chan multiplexer.OutboundMessage
+	in  chan multiplex.InboundMessage
+	out <-chan multiplex.OutboundMessage
 
 	// components
 	splash    splash
@@ -117,11 +119,9 @@ type Root struct {
 	tabs      []*tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStore, clientID string, serverClient APIClientWithRefresh, keymap save.KeyMap) *Root {
-	multi := multiplexer.NewMultiplexer(logger, provider)
-
-	in := make(chan multiplexer.InboundMessage)
-	out := multi.ListenAndServe(in)
+func NewUI(logger zerolog.Logger, provider AccountProvider, chatPool ChatPool, emoteStore EmoteStore, clientID string, serverClient APIClientWithRefresh, keymap save.KeyMap) *Root {
+	in := make(chan multiplex.InboundMessage)
+	out := chatPool.ListenAndServe(in)
 
 	return &Root{
 		clientID: clientID,
@@ -137,7 +137,7 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, emoteStore EmoteStor
 		header:    newTabHeader(),
 		joinInput: newJoin(provider, 10, 10, keymap),
 
-		// chat multiplexer channels
+		// chat multiplex channels
 		in:  in,
 		out: out,
 
@@ -351,7 +351,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							// send part message
 							r.logger.Info().Str("channel", currentTab.channel).Str("id", currentTab.account.ID).Msg("sending part message")
 							cmds = append(cmds, func() tea.Msg {
-								r.in <- multiplexer.InboundMessage{
+								r.in <- multiplex.InboundMessage{
 									AccountID: currentTab.account.ID,
 									Msg: command.PartMessage{
 										Channel: currentTab.channel,
@@ -362,9 +362,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 
 						cmds = append(cmds, func() tea.Msg {
-							r.in <- multiplexer.InboundMessage{
+							r.in <- multiplex.InboundMessage{
 								AccountID: currentTab.account.ID,
-								Msg:       multiplexer.DecrementTabCounter{},
+								Msg:       multiplex.DecrementTabCounter{},
 							}
 							return nil
 						})

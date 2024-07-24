@@ -1,8 +1,8 @@
 # Chatuino
 
-Cha*tui*no is a TUI utilizing bubbletea to bring a feature rich Twitch Chat Client to your terminal.
+Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich Twitch Chat Client to your terminal.
 
-> **Note**: This project is still in early development
+> **Note**: This project is still in early development (colors may be weird, terminals may not work, panics may happen and resizing may cause issues/become glitchy etc.)
 
 ![Demo of chatuino.](doc/demo.gif)
 
@@ -39,7 +39,7 @@ The name and idea to create a Twitch Chat Client is inspired by [Chatterino](htt
 
 ## Installation
 
-You can use go install to install the program (`go install github.com/julez-dev/chatuino@latest`)
+You can use go install to install the program (`go install github.com/julez-dev/chatuino@latest`) or grab a binary from the [releases](https://github.com/julez-dev/chatuino/releases) page.
 
 ## Usage
 
@@ -55,7 +55,7 @@ If want to link a new account you need to provide a user token to Chatuino which
 
 ### key-binds
 
-Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file.
+Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file (config directory may be different depending on OS).
 
 Here is a short overview of the default key-binds:
 
@@ -82,11 +82,9 @@ Here is a short overview of the default key-binds:
 
 ### server sub-command and hosting you own server
 
-The server is responsible for dealing with authentication flows and proxying requests to the Twitch API that require an App Access Token when using an anonymous User. My hosted version is available under `https://chatuino.net` but you can just run your own version as well. This server is running on the lowest tier possible on hetzner cloud, so don't expect too much performance.
+The server is responsible for dealing with authentication flows and proxying requests to the Twitch API that require an App Access Token when using an anonymous user. My hosted version is available under `https://chatuino.net` but you can just run your own version as well. This server is running on the lowest tier possible on hetzner cloud, so don't expect too much performance.
 
-For this you need to register a new application in the [twitch dev console](https://dev.twitch.tv/console) which will give you an Client ID and Client Secret. The server command requires both as environment variables (Launch `chatuino server help` for more information).
-
-Then you need to configure Chatuino to use your Client ID and API Host (Can be localhost too!)
+For a guide on how to host your own server see the [self-host guide](doc/SELF_HOST.md).
 
 ## License
 
