@@ -54,6 +54,7 @@ type activeScreen int
 const (
 	mainScreen activeScreen = iota
 	inputScreen
+	helpScreen
 )
 
 type ircConnectionError struct {
@@ -114,6 +115,7 @@ type Root struct {
 	splash    splash
 	header    *tabHeader
 	joinInput *join
+	help      *help
 
 	tabCursor int
 	tabs      []*tab
@@ -136,6 +138,7 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, chatPool ChatPool, e
 		},
 		header:    newTabHeader(),
 		joinInput: newJoin(provider, 10, 10, keymap),
+		help:      newHelp(10, 10, keymap),
 
 		// chat multiplex channels
 		in:  in,
@@ -266,8 +269,24 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, tea.Quit
 		}
 
+		if key.Matches(msg, r.keymap.Help) {
+			var isInsertMode bool
+			if len(r.tabs) > r.tabCursor {
+				isInsertMode = r.tabs[r.tabCursor].state == insertMode
+			}
+
+			if !isInsertMode {
+				r.screenType = helpScreen
+				r.joinInput.blur()
+				if len(r.tabs) > r.tabCursor {
+					r.tabs[r.tabCursor].blur()
+				}
+				return r, nil
+			}
+		}
+
 		if key.Matches(msg, r.keymap.Escape) {
-			if r.screenType == inputScreen {
+			if r.screenType == inputScreen || r.screenType == helpScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].focus()
 				}
@@ -388,6 +407,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	if r.screenType == helpScreen {
+		r.help, cmd = r.help.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	return r, tea.Batch(cmds...)
 }
 
@@ -401,6 +425,8 @@ func (r *Root) View() string {
 		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
 	case inputScreen:
 		return r.joinInput.View()
+	case helpScreen:
+		return r.help.View()
 	}
 
 	return ""
@@ -511,6 +537,9 @@ func (r *Root) handleResize() {
 	r.joinInput.width = r.width
 	r.joinInput.height = r.height
 	r.joinInput.list.SetHeight(r.height / 2)
+
+	// help
+	r.help.handleResize(r.width, r.height)
 
 	// tab
 	headerHeight := r.getHeaderHeight()

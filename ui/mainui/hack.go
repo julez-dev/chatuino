@@ -1,8 +1,12 @@
 package mainui
 
 import (
+	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/rivo/uniseg"
 )
 
 var (
@@ -48,4 +52,18 @@ func selectWordAtIndex(sentence string, index int) string {
 	}
 
 	return sentence[spaceIndexBefore:spaceIndexAfter]
+}
+
+// centerTextGraphemeAware centers text in a string, grapheme clusters aware.
+// certain emojis break lipgloss's centering, this function works around that.
+func centerTextGraphemeAware(width int, s string) string {
+	var b bytes.Buffer
+	n := (width - uniseg.StringWidth(s)) / 2
+	if n < 0 {
+		_, _ = b.WriteString(s)
+		return b.String()
+	}
+
+	fmt.Fprintf(&b, "%s%s", strings.Repeat("\u0020", n), s)
+	return b.String()
 }

@@ -88,7 +88,7 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		CloseTab: key.NewBinding(
 			key.WithKeys("q", "ctrl+w"),
-			key.WithHelp("q/ctrl+w", "Close Tab"),
+			key.WithHelp("q/ctrl+w", "close Tab"),
 		),
 		DumpScreen: key.NewBinding(
 			key.WithKeys("ctrl+alt+d"),
@@ -134,13 +134,34 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+alt+c"),
 			key.WithHelp("ctrl+alt+c", "dump chat"),
 		),
-		PrevPage:    key.NewBinding(key.WithKeys("pgup", "left", "h")),
-		NextPage:    key.NewBinding(key.WithKeys("pgdown", "right", "l")),
-		Approve:     key.NewBinding(key.WithKeys("a")),
-		Deny:        key.NewBinding(key.WithKeys("d")),
-		NextFilter:  key.NewBinding(key.WithKeys("]")),
-		PrevFilter:  key.NewBinding(key.WithKeys("[")),
-		CopyMessage: key.NewBinding(key.WithKeys("alt+c")),
+		PrevPage: key.NewBinding(
+			key.WithKeys("pgup", "left", "h"),
+			key.WithHelp("pgup/left/h", "previous page"),
+		),
+		NextPage: key.NewBinding(
+			key.WithKeys("pgdown", "right", "l"),
+			key.WithHelp("pgdown/right/l", "next page"),
+		),
+		Approve: key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "approve"),
+		),
+		Deny: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "deny"),
+		),
+		NextFilter: key.NewBinding(
+			key.WithKeys("]"),
+			key.WithHelp("]", "next filter"),
+		),
+		PrevFilter: key.NewBinding(
+			key.WithKeys("["),
+			key.WithHelp("[", "previous filter"),
+		),
+		CopyMessage: key.NewBinding(
+			key.WithKeys("alt+c"),
+			key.WithHelp("alt+c", "copy message"),
+		),
 	}
 }
 
