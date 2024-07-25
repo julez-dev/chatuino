@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/rs/zerolog/log"
 )
 
 type setStreamInfo struct {
@@ -24,8 +25,8 @@ type streamInfo struct {
 	id        string
 	channelID string
 	ttvAPI    APIClient
-	ctx       context.Context
 	printer   *message.Printer
+	done      chan struct{}
 
 	width int
 
@@ -35,12 +36,12 @@ type streamInfo struct {
 	game   string
 }
 
-func newStreamInfo(ctx context.Context, channelID string, ttvAPI APIClient, width int) *streamInfo {
+func newStreamInfo(channelID string, ttvAPI APIClient, width int) *streamInfo {
 	return &streamInfo{
 		id:        uuid.New().String(),
-		ctx:       ctx,
 		width:     width,
 		channelID: channelID,
+		done:      make(chan struct{}, 1),
 		ttvAPI:    ttvAPI,
 		printer:   message.NewPrinter(language.English),
 	}
@@ -55,6 +56,7 @@ func (s *streamInfo) Init() tea.Cmd {
 func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 	switch msg := msg.(type) {
 	case setStreamInfo:
+		log.Logger.Info().Msg("updating stream info")
 		if msg.target != s.id {
 			return s, nil
 		}
@@ -84,19 +86,26 @@ func (s *streamInfo) View() string {
 }
 
 func (s *streamInfo) doTick() tea.Msg {
-	timer := time.NewTimer(time.Minute * 1)
-	defer timer.Stop()
+	timer := time.NewTimer(time.Second * 10)
+
+	defer func() {
+		timer.Stop()
+		select {
+		case <-timer.C:
+		default:
+		}
+	}()
 
 	select {
 	case <-timer.C:
 		return s.refreshStreamInfo()
-	case <-s.ctx.Done():
+	case <-s.done:
 		return nil
 	}
 }
 
 func (s *streamInfo) refreshStreamInfo() tea.Msg {
-	ctx, cancel := context.WithTimeout(s.ctx, time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	info, err := s.ttvAPI.GetStreamInfo(ctx, []string{s.channelID})

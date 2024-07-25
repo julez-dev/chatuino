@@ -515,8 +515,6 @@ func (r *Root) createTab(account save.Account, channel string, initialMessages [
 		return nil, err
 	}
 
-	nTab.focus()
-
 	return nTab, nil
 }
 

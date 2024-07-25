@@ -544,6 +544,14 @@ func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method,
 			diff := time.Until(time.Unix(int64(waitUntil), 0)) + time.Second*1
 			timer := time.NewTimer(diff)
 
+			defer func() {
+				timer.Stop()
+				select {
+				case <-timer.C:
+				default:
+				}
+			}()
+
 			select {
 			case <-timer.C: // reset time is reached, try again
 				return doAuthenticatedRequest[T](ctx, api, token, method, url, body)

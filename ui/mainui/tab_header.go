@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	tabHeaderStyle       = lipgloss.NewStyle().Padding(0, 2).Background(lipgloss.Color("#556")).Margin(1)
+	tabHeaderStyle       = lipgloss.NewStyle().Background(lipgloss.Color("#556")).Margin(1).UnsetMarginTop()
 	tabHeaderActiveStyle = tabHeaderStyle.Background(lipgloss.Color("135"))
 )
 

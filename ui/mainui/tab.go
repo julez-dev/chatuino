@@ -92,10 +92,6 @@ type tab struct {
 
 	ttvAPI APIClient
 
-	// internal cancellation
-	ctx        context.Context
-	cancelFunc context.CancelFunc
-
 	// components
 	streamInfo   *streamInfo
 	chatWindow   *chatWindow
@@ -119,7 +115,6 @@ func newTab(
 	initialMessages []*command.PrivateMessage,
 	keymap save.KeyMap,
 ) (*tab, error) {
-	ctx, cancel := context.WithCancel(context.Background())
 
 	return &tab{
 		id:              id,
@@ -129,8 +124,6 @@ func newTab(
 		height:          height,
 		account:         account,
 		provider:        accountProvider,
-		ctx:             ctx,
-		cancelFunc:      cancel,
 		channel:         channel,
 		emoteStore:      emoteStore,
 		ttvAPI:          ttvAPI,
@@ -140,11 +133,14 @@ func newTab(
 
 func (t *tab) Init() tea.Cmd {
 	cmd := func() tea.Msg {
-		userData, err := t.ttvAPI.GetUsers(t.ctx, []string{t.channel}, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+
+		userData, err := t.ttvAPI.GetUsers(ctx, []string{t.channel}, nil)
 		if err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      fmt.Errorf("error while fetching ttv user %s: %w", t.channel, err),
+				err:      fmt.Errorf("could not fetch ttv user %s: %w", t.channel, err),
 			}
 		}
 
@@ -156,17 +152,17 @@ func (t *tab) Init() tea.Cmd {
 		}
 
 		// refresh emote set for joined channel
-		if err := t.emoteStore.RefreshLocal(t.ctx, userData.Data[0].ID); err != nil {
+		if err := t.emoteStore.RefreshLocal(ctx, userData.Data[0].ID); err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      fmt.Errorf("error while refreshing emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
+				err:      fmt.Errorf("could not refresh emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
 			}
 		}
 
-		if err := t.emoteStore.RefreshGlobal(t.ctx); err != nil {
+		if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      fmt.Errorf("error while refreshing global emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
+				err:      fmt.Errorf("could not refresh global emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
 			}
 		}
 
@@ -219,7 +215,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		t.channelDataLoaded = true
 
 		t.channelID = msg.channelID
-		t.streamInfo = newStreamInfo(t.ctx, msg.channelID, t.ttvAPI, t.width)
+		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.chatWindow = newChatWindow(t.logger, t, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
@@ -561,8 +557,13 @@ func (t *tab) View() string {
 }
 
 func (t *tab) Close() error {
-	t.cancelFunc()
-	return t.ctx.Err()
+	if !t.channelDataLoaded {
+		return nil
+	}
+
+	t.streamInfo.done <- struct{}{}
+	close(t.streamInfo.done)
+	return nil
 }
 
 func (t *tab) handleMessageSent() tea.Cmd {
@@ -591,7 +592,7 @@ func (t *tab) handleMessageSent() tea.Cmd {
 		accountID := t.account.ID
 		t.messageInput.SetValue("")
 
-		return handleCommand(t.ctx, commandName, args, channelID, channel, accountID, client)
+		return handleCommand(commandName, args, channelID, channel, accountID, client)
 	}
 
 	// Check if message is the same as the last message sent

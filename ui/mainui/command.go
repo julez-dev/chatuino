@@ -3,26 +3,28 @@ package mainui
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
-	"strconv"
 )
 
-func handleCommand(ctx context.Context, name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
 	switch name {
 	case "timeout":
-		return handleTimeout(ctx, name, args, channelID, channel, userAccountID, ttv)
+		return handleTimeout(name, args, channelID, channel, userAccountID, ttv)
 	case "ban":
-		return handleTimeout(ctx, name, args, channelID, channel, userAccountID, ttv)
+		return handleTimeout(name, args, channelID, channel, userAccountID, ttv)
 	case "unban":
-		return handleUnban(ctx, args, channel, channelID, userAccountID, ttv)
+		return handleUnban(args, channel, channelID, userAccountID, ttv)
 	}
 
 	return nil
 }
 
-func handleUnban(ctx context.Context, args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+func handleUnban(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
 	respMsg := chatEventMessage{
 		accountID: userAccountID,
 		channel:   channel,
@@ -37,6 +39,9 @@ func handleUnban(ctx context.Context, args []string, channel string, channelID s
 	}
 
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
 		users, err := ttv.GetUsers(ctx, []string{args[0]}, nil)
 
 		if err != nil {
@@ -61,7 +66,7 @@ func handleUnban(ctx context.Context, args []string, channel string, channelID s
 	}
 }
 
-func handleTimeout(ctx context.Context, name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+func handleTimeout(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
 	respMsg := chatEventMessage{
 		accountID: userAccountID,
 		channel:   channel,
@@ -89,6 +94,9 @@ func handleTimeout(ctx context.Context, name string, args []string, channelID st
 	}
 
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
 		users, err := ttv.GetUsers(ctx, []string{args[0]}, nil)
 
 		if err != nil {
