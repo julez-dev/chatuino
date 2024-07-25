@@ -86,7 +86,7 @@ func (s *streamInfo) View() string {
 }
 
 func (s *streamInfo) doTick() tea.Msg {
-	timer := time.NewTimer(time.Second * 10)
+	timer := time.NewTimer(time.Second * 45)
 
 	defer func() {
 		timer.Stop()

@@ -331,6 +331,9 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 						t.state = insertMode
 						t.messageInput.Focus()
 						t.chatWindow.Blur()
+
+						cmds = append(cmds, t.messageInput.InputModel.Cursor.BlinkCmd())
+						return t, tea.Batch(cmds...)
 					}
 				}
 
@@ -569,6 +572,12 @@ func (t *tab) Close() error {
 func (t *tab) handleMessageSent() tea.Cmd {
 	input := t.messageInput.Value()
 
+	// reset state
+	t.state = inChatWindow
+	t.chatWindow.Focus()
+	t.messageInput.Blur()
+	t.messageInput.SetValue("")
+
 	// Check if input is a command
 	if strings.HasPrefix(input, "/") {
 		// Message input is only allowed for authenticated users
@@ -590,7 +599,6 @@ func (t *tab) handleMessageSent() tea.Cmd {
 		channelID := t.chatWindow.channelID
 		channel := t.channel
 		accountID := t.account.ID
-		t.messageInput.SetValue("")
 
 		return handleCommand(commandName, args, channelID, channel, accountID, client)
 	}
@@ -612,7 +620,6 @@ func (t *tab) handleMessageSent() tea.Cmd {
 	}
 
 	t.chatWindow.handleMessage(msg)
-	t.messageInput.SetValue("")
 
 	return func() tea.Msg {
 		return forwardChatMessage{

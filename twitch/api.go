@@ -149,6 +149,44 @@ func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID s
 	return nil
 }
 
+func (a *API) FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]FollowedChannel, error) {
+	if a.provider == nil {
+		return nil, ErrNoUserAccess
+	}
+
+	channels := []FollowedChannel{}
+	var after string
+
+	for {
+		values := url.Values{}
+		if broadcasterID != "" {
+			values.Add("broadcaster_id", broadcasterID)
+		}
+		values.Add("user_id", userID)
+		values.Add("first", "100")
+		if after != "" {
+			values.Add("after", after)
+		}
+
+		url := fmt.Sprintf("/channels/followed?%s", values.Encode())
+
+		resp, err := doAuthenticatedUserRequest[GetFollowedChannelsResponse](ctx, a, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		channels = append(channels, resp.Data...)
+
+		if resp.Pagination.Cursor == "" {
+			break
+		}
+
+		after = resp.Pagination.Cursor
+	}
+
+	return channels, nil
+}
+
 func (a *API) FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]UnbanRequest, error) {
 	if a.provider == nil {
 		return nil, ErrNoUserAccess
