@@ -175,9 +175,7 @@ func (a *API) FetchUserFollowedChannels(ctx context.Context, userID string, broa
 			return nil, err
 		}
 
-		for _, r := range resp.Data {
-			channels = append(channels, r)
-		}
+		channels = append(channels, resp.Data...)
 
 		if resp.Pagination.Cursor == "" {
 			break
