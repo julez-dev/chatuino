@@ -37,14 +37,15 @@ var DefaultKeyMap = KeyMap{
 type SuggestionTextInput struct {
 	trie *trie.Trie
 
-	ti textinput.Model
+	InputModel textinput.Model
 
 	KeyMap          KeyMap
 	suggestionIndex int
 	suggestions     []string
 
-	history      []string
-	historyIndex int
+	history                   []string
+	historyIndex              int
+	IncludeCommandSuggestions bool
 
 	userCache map[string]func(...string) string // [username]render func
 }
@@ -74,16 +75,17 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string) *Sugges
 	t := defaultTrie()
 
 	return &SuggestionTextInput{
-		trie:      t,
-		KeyMap:    DefaultKeyMap,
-		ti:        input,
-		history:   make([]string, 0),
-		userCache: userCache,
+		trie:                      t,
+		KeyMap:                    DefaultKeyMap,
+		InputModel:                input,
+		history:                   make([]string, 0),
+		userCache:                 userCache,
+		IncludeCommandSuggestions: true,
 	}
 }
 
 func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd) {
-	if !s.ti.Focused() {
+	if !s.InputModel.Focused() {
 		return s, nil
 	}
 
@@ -93,10 +95,10 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	case tea.KeyMsg:
 		switch {
 		case msg.String() == "enter":
-			s.history = append(s.history, s.ti.Value())
+			s.history = append(s.history, s.InputModel.Value())
 			s.historyIndex = len(s.history)
 			return s, nil
-		case key.Matches(msg, s.KeyMap.PrevSuggestion) && (slices.Contains(s.history, s.ti.Value()) || s.ti.Value() == ""):
+		case key.Matches(msg, s.KeyMap.PrevSuggestion) && (slices.Contains(s.history, s.InputModel.Value()) || s.InputModel.Value() == ""):
 			s.historyIndex--
 
 			if s.historyIndex < 0 {
@@ -109,11 +111,11 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 			if len(s.history) > s.historyIndex {
 				s.SetValue(s.history[s.historyIndex])
-				s.ti.CursorEnd()
+				s.InputModel.CursorEnd()
 			}
 
 			return s, nil
-		case key.Matches(msg, s.KeyMap.NextSuggestion) && (slices.Contains(s.history, s.ti.Value()) || s.ti.Value() == ""):
+		case key.Matches(msg, s.KeyMap.NextSuggestion) && (slices.Contains(s.history, s.InputModel.Value()) || s.InputModel.Value() == ""):
 			s.historyIndex++
 
 			if s.historyIndex >= len(s.history) {
@@ -122,18 +124,18 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 			if len(s.history) > s.historyIndex {
 				s.SetValue(s.history[s.historyIndex])
-				s.ti.CursorEnd()
+				s.InputModel.CursorEnd()
 			}
 
 			return s, nil
 		case key.Matches(msg, s.KeyMap.AcceptSuggestion) && s.canAcceptSuggestion():
-			_, startIndex, endIndex := selectWordAtIndex(s.ti.Value(), s.ti.Position())
-			before := s.ti.Value()[:startIndex]
-			after := s.ti.Value()[endIndex:]
+			_, startIndex, endIndex := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
+			before := s.InputModel.Value()[:startIndex]
+			after := s.InputModel.Value()[endIndex:]
 			suggestion := s.suggestions[s.suggestionIndex]
 
-			s.ti.SetValue(before + suggestion + " " + after)
-			s.ti.SetCursor(len(before) + len(suggestion) + 1) // set cursor to end of suggestion + 1 for space
+			s.InputModel.SetValue(before + suggestion + after)
+			s.InputModel.SetCursor(len(before) + len(suggestion) + 1) // set cursor to end of suggestion + 1 for space
 
 			return s, nil
 		case key.Matches(msg, s.KeyMap.NextSuggestion):
@@ -146,7 +148,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 	}
 
-	s.ti, cmd = s.ti.Update(msg)
+	s.InputModel, cmd = s.InputModel.Update(msg)
 
 	return s, cmd
 }
@@ -160,26 +162,26 @@ func (s *SuggestionTextInput) View() string {
 			suggestion = renderFunc(suggestion)
 		}
 
-		return fmt.Sprintf(" %s (%dx)\n%s", suggestion, len(s.suggestions), s.ti.View())
+		return fmt.Sprintf(" %s (%dx)\n%s", suggestion, len(s.suggestions), s.InputModel.View())
 	}
 
-	return "\n" + s.ti.View()
+	return "\n" + s.InputModel.View()
 }
 
 func (s *SuggestionTextInput) Blur() {
-	s.ti.Blur()
+	s.InputModel.Blur()
 }
 
 func (s *SuggestionTextInput) Focus() {
-	s.ti.Focus()
+	s.InputModel.Focus()
 }
 
 func (s *SuggestionTextInput) SetWidth(width int) {
-	s.ti.Width = width - 3 // -3 for prompt
+	s.InputModel.Width = width - 3 // -3 for prompt
 }
 
 func (s *SuggestionTextInput) Value() string {
-	return s.ti.Value()
+	return s.InputModel.Value()
 }
 
 func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
@@ -196,27 +198,27 @@ func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
 }
 
 func (s *SuggestionTextInput) SetValue(val string) {
-	s.ti.SetValue(val)
-	s.ti.CursorEnd()
+	s.InputModel.SetValue(val)
+	s.InputModel.CursorEnd()
 	s.suggestionIndex = 0
 	s.updateSuggestions()
 }
 
 func (s *SuggestionTextInput) canAcceptSuggestion() bool {
-	tiVal := s.ti.Value()
-	word, _, _ := selectWordAtIndex(tiVal, s.ti.Position())
+	tiVal := s.InputModel.Value()
+	word, _, _ := selectWordAtIndex(tiVal, s.InputModel.Position())
 
 	// only show if the current word is longer than 2 characters and the suggestion is different from the current word
 	return len(word) > 2 && len(s.suggestions) > 0 && s.suggestions[s.suggestionIndex] != word
 }
 
 func (s *SuggestionTextInput) updateSuggestions() {
-	if len(s.ti.Value()) <= 0 {
+	if len(s.InputModel.Value()) <= 0 {
 		s.suggestions = nil
 		return
 	}
 
-	currWord, startIndex, _ := selectWordAtIndex(s.ti.Value(), s.ti.Position())
+	currWord, startIndex, _ := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
 
 	if currWord == "" {
 		s.suggestions = nil
@@ -232,7 +234,7 @@ func (s *SuggestionTextInput) updateSuggestions() {
 	s.suggestions = matches
 
 	// If the current word is a command and is at the start of the message, add command help to suggestions
-	if strings.HasPrefix(currWord, "/") && startIndex == 0 {
+	if s.IncludeCommandSuggestions && strings.HasPrefix(currWord, "/") && startIndex == 0 {
 		for _, suggestion := range commandSuggestions {
 			if strings.Contains(suggestion, currWord) {
 				s.suggestions = append(s.suggestions, suggestion)
@@ -248,7 +250,7 @@ func (s *SuggestionTextInput) updateSuggestions() {
 			if strings.Contains(user, strings.ToLower(currWord[1:])) {
 				// if the current word is a command, don't add the @ prefix, since commands don't support it
 				// else add mention (@) prefix, so the target user gets a notification
-				if strings.HasPrefix(s.ti.Value(), "/") {
+				if strings.HasPrefix(s.InputModel.Value(), "/") {
 					matchedUsers = append(matchedUsers, user)
 				} else {
 					matchedUsers = append(matchedUsers, "@"+user)

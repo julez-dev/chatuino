@@ -144,3 +144,18 @@ type (
 		ResolutionText   string    `json:"resolution_text"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#get-followed-channels
+type (
+	GetFollowedChannelsResponse struct {
+		Total      int               `json:"total"`
+		Data       []FollowedChannel `json:"data"`
+		Pagination Pagination        `json:"pagination"`
+	}
+	FollowedChannel struct {
+		BroadcasterID    string    `json:"broadcaster_id"`
+		BroadcasterLogin string    `json:"broadcaster_login"`
+		BroadcasterName  string    `json:"broadcaster_name"`
+		FollowedAt       time.Time `json:"followed_at"`
+	}
+)

@@ -1,16 +1,24 @@
 package mainui
 
 import (
+	"context"
 	"fmt"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/rs/zerolog/log"
 )
+
+type followedFetcher interface {
+	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitch.FollowedChannel, error)
+}
 
 type currentJoinInput int
 
@@ -33,25 +41,31 @@ type joinChannelMessage struct {
 }
 
 type setAccountsMessage struct {
-	accounts []save.Account
-}
-type join struct {
-	focused       bool
-	width, height int
-	input         textinput.Model
-	list          list.Model
-	selectedInput currentJoinInput
-	accounts      []save.Account
-	keymap        save.KeyMap
-	provider      AccountProvider
+	accounts    []save.Account
+	suggestions []string
 }
 
-func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) *join {
-	input := textinput.New()
-	input.Placeholder = "Channel"
-	input.CharLimit = 25
-	input.Focus()
-	input.Validate = func(s string) error {
+type join struct {
+	focused          bool
+	width, height    int
+	input            *component.SuggestionTextInput
+	list             list.Model
+	selectedInput    currentJoinInput
+	accounts         []save.Account
+	keymap           save.KeyMap
+	provider         AccountProvider
+	followedFetchers map[string]followedFetcher
+	hasLoaded        bool
+}
+
+func newJoin(provider AccountProvider, clients map[string]APIClient, width, height int, keymap save.KeyMap) *join {
+	emptyUserMap := map[string]func(...string) string{}
+
+	input := component.NewSuggestionTextInput(emptyUserMap)
+	input.InputModel.CharLimit = 25
+	input.InputModel.Prompt = " "
+	input.InputModel.Placeholder = "Channel"
+	input.InputModel.Validate = func(s string) error {
 		for _, r := range s {
 			if unicode.IsSpace(r) {
 				return fmt.Errorf("white space not allowed")
@@ -59,7 +73,9 @@ func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) *j
 		}
 		return nil
 	}
-	input.Prompt = ""
+	input.IncludeCommandSuggestions = false
+	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
+	input.SetWidth(width)
 
 	channelList := list.New(nil, list.NewDefaultDelegate(), width, height/2)
 
@@ -68,20 +84,29 @@ func newJoin(provider AccountProvider, width, height int, keymap save.KeyMap) *j
 	channelList.SetShowPagination(false)
 	channelList.SetShowTitle(false)
 	channelList.DisableQuitKeybindings()
+	channelList.SetShowStatusBar(false)
 	channelList.SetStatusBarItemName("account", "accounts")
 
+	followedFetchers := map[string]followedFetcher{}
+	for id, client := range clients {
+		if c, ok := client.(followedFetcher); ok {
+			followedFetchers[id] = c
+		}
+	}
+
 	return &join{
-		width:    width,
-		height:   height,
-		input:    input,
-		provider: provider,
-		list:     channelList,
-		keymap:   keymap,
+		width:            width,
+		height:           height,
+		input:            input,
+		provider:         provider,
+		list:             channelList,
+		keymap:           keymap,
+		followedFetchers: followedFetchers,
 	}
 }
 
 func (j *join) Init() tea.Cmd {
-	return func() tea.Msg {
+	return tea.Batch(func() tea.Msg {
 		accounts, err := j.provider.GetAllAccounts()
 		if err != nil {
 			return nil
@@ -93,8 +118,32 @@ func (j *join) Init() tea.Cmd {
 			}
 		}
 
-		return setAccountsMessage{accounts: accounts}
-	}
+		uniqueChannels := map[string]struct{}{}
+		for id, fetcher := range j.followedFetchers {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			followed, err := fetcher.FetchUserFollowedChannels(ctx, id, "")
+
+			// suggestions are not important enough to fail the whole join command
+			// just skip if the call fails
+			if err != nil {
+				log.Logger.Err(err).Str("account-id", id).Msg("could not fetch followed channels")
+				continue
+			}
+
+			for _, f := range followed {
+				uniqueChannels[f.BroadcasterLogin] = struct{}{}
+			}
+		}
+
+		channelSuggestions := make([]string, 0, len(uniqueChannels))
+		for c := range uniqueChannels {
+			channelSuggestions = append(channelSuggestions, c)
+		}
+
+		return setAccountsMessage{accounts: accounts, suggestions: channelSuggestions}
+	}, j.input.InputModel.Cursor.BlinkCmd())
 }
 
 func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
@@ -118,21 +167,32 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 		j.list.SetItems(listItems)
 		j.list.Select(index)
+
+		j.input.SetSuggestions(msg.suggestions)
+		j.hasLoaded = true
+
 		return j, nil
 	}
 
 	if j.focused {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
-			if key.Matches(msg, j.keymap.Next) {
+			if !j.hasLoaded {
+				return j, nil
+			}
+
+			if key.Matches(msg, j.keymap.NextFilter, j.keymap.PrevFilter) {
 				if j.selectedInput == channelInput {
 					j.selectedInput = accountSelect
 				} else {
 					j.selectedInput = channelInput
+					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				}
+
+				return j, cmd
 			}
 
-			if key.Matches(msg, j.keymap.Confirm) {
+			if key.Matches(msg, j.keymap.Confirm) && j.input.Value() != "" {
 				return j, func() tea.Msg {
 					return joinChannelMessage{
 						channel: j.input.Value(),
@@ -180,6 +240,7 @@ func (j *join) View() string {
 		labelIdentity = labelIdentityStyle("> Choose an identity")
 	}
 
+	log.Logger.Info().Str("input", stripAnsi(j.input.View())).Send()
 	return style.Render(label + "\n" + j.input.View() + "\n" + labelIdentity + "\n" + j.list.View())
 }
 

@@ -89,12 +89,14 @@ func (s *status) Update(msg tea.Msg) (*status, tea.Cmd) {
 }
 
 func (s *status) View() string {
+	padded := lipgloss.NewStyle().Padding(0, 1).MaxWidth(s.width).Render
+
 	if !s.isDataFetched {
-		return "Fetching chat settings..."
+		return padded("Fetching chat settings...")
 	}
 
 	if s.err != nil {
-		return fmt.Sprintf("Error while fetching chat settings: %v", s.err)
+		return padded(fmt.Sprintf("Error while fetching chat settings: %v", s.err))
 	}
 
 	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(s.tab.state.String()))
@@ -138,6 +140,5 @@ func (s *status) View() string {
 		settingsBuilder.WriteString("Unique Only")
 	}
 
-	padded := lipgloss.NewStyle().Padding(0, 1).MaxWidth(s.width).Render
 	return padded(stateStr + lipgloss.NewStyle().AlignHorizontal(lipgloss.Right).Width(s.width-lipgloss.Width(stateStr)-2).Render(settingsBuilder.String()))
 }

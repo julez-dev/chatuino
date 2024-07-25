@@ -105,7 +105,7 @@ type Root struct {
 	loadSaveState  func() (save.AppState, error)
 
 	// One API Client per Chatuino User Tab
-	ttvAPIUserClient map[string]APIClient
+	ttvAPIUserClients map[string]APIClient
 
 	// chat multiplexer channels
 	in  chan multiplex.InboundMessage
@@ -125,6 +125,7 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, chatPool ChatPool, e
 	in := make(chan multiplex.InboundMessage)
 	out := chatPool.ListenAndServe(in)
 
+	clients := map[string]APIClient{}
 	return &Root{
 		clientID: clientID,
 		logger:   logger,
@@ -137,17 +138,17 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, chatPool ChatPool, e
 			keymap: keymap,
 		},
 		header:    newTabHeader(),
-		joinInput: newJoin(provider, 10, 10, keymap),
 		help:      newHelp(10, 10, keymap),
+		joinInput: newJoin(provider, clients, 10, 10, keymap),
 
 		// chat multiplex channels
 		in:  in,
 		out: out,
 
-		accounts:         provider,
-		ttvAPIUserClient: make(map[string]APIClient),
-		emoteStore:       emoteStore,
-		serverAPI:        serverClient,
+		accounts:          provider,
+		ttvAPIUserClients: clients,
+		emoteStore:        emoteStore,
+		serverAPI:         serverClient,
 		buildTTVClient: func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error) {
 			return twitch.NewAPI(clientID, opts...)
 		},
@@ -170,7 +171,6 @@ func (r *Root) Init() tea.Cmd {
 
 			return setStateMessage{state: state, accounts: accounts}
 		},
-		r.joinInput.Init(),
 		r.waitChatEvents(),
 	)
 }
@@ -184,6 +184,19 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case setStateMessage:
 		cmds = make([]tea.Cmd, 0, len(msg.state.Tabs))
+
+		// pre populate the API clients for each account
+		for _, acc := range msg.accounts {
+			var api APIClient
+
+			if !acc.IsAnonymous {
+				api, _ = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
+			} else {
+				api = r.serverAPI
+			}
+
+			r.ttvAPIUserClients[acc.ID] = api
+		}
 
 		for _, t := range msg.state.Tabs {
 			r.screenType = mainScreen
@@ -321,7 +334,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.screenType = inputScreen
-				r.joinInput = newJoin(r.accounts, r.width, r.height, r.keymap)
+				r.joinInput = newJoin(r.accounts, r.ttvAPIUserClients, r.width, r.height, r.keymap)
 				r.joinInput.focus()
 				return r, r.joinInput.Init()
 			case inputScreen:
@@ -492,25 +505,7 @@ func (r *Root) createTab(account save.Account, channel string, initialMessages [
 
 	headerHeight := r.getHeaderHeight()
 
-	if _, ok := r.ttvAPIUserClient[account.ID]; !ok {
-		var api APIClient
-		var err error
-
-		if !account.IsAnonymous {
-			api, err = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, account.ID))
-
-			// err -should- never happen
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			api = r.serverAPI
-		}
-
-		r.ttvAPIUserClient[account.ID] = api
-	}
-
-	nTab, err := newTab(id, r.logger, r.ttvAPIUserClient[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, initialMessages, r.keymap)
+	nTab, err := newTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, initialMessages, r.keymap)
 	if err != nil {
 		return nil, err
 	}
