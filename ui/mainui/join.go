@@ -240,7 +240,6 @@ func (j *join) View() string {
 		labelIdentity = labelIdentityStyle("> Choose an identity")
 	}
 
-	log.Logger.Info().Str("input", stripAnsi(j.input.View())).Send()
 	return style.Render(label + "\n" + j.input.View() + "\n" + labelIdentity + "\n" + j.list.View())
 }
 
