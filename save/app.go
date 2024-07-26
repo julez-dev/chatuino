@@ -8,8 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-
-	"github.com/julez-dev/chatuino/twitch/command"
 )
 
 const (
@@ -22,11 +20,9 @@ type AppState struct {
 }
 
 type TabState struct {
-	Channel       string                    `json:"channel"`
-	IsFocused     bool                      `json:"is_focused"`
-	IdentityID    string                    `json:"identity_id"`
-	SelectedIndex int                       `json:"selected_index"`
-	IRCMessages   []*command.PrivateMessage `json:"irc_messages"`
+	Channel    string `json:"channel"`
+	IsFocused  bool   `json:"is_focused"`
+	IdentityID string `json:"identity_id"`
 }
 
 func (a *AppState) Save() error {

@@ -34,9 +34,10 @@ type setErrorMessage struct {
 }
 
 type setChannelDataMessage struct {
-	targetID  string
-	channel   string
-	channelID string
+	targetID        string
+	channel         string
+	channelID       string
+	initialMessages []twitch.IRCer
 }
 
 type tabState int
@@ -81,7 +82,6 @@ type tab struct {
 	focused  bool
 
 	channelDataLoaded bool
-	initialMessages   []*command.PrivateMessage
 	lastMessageSent   string
 
 	channel    string
@@ -90,7 +90,8 @@ type tab struct {
 
 	width, height int
 
-	ttvAPI APIClient
+	ttvAPI               APIClient
+	recentMessageService RecentMessageService
 
 	// components
 	streamInfo   *streamInfo
@@ -112,28 +113,28 @@ func newTab(
 	emoteStore EmoteStore,
 	account save.Account,
 	accountProvider AccountProvider,
-	initialMessages []*command.PrivateMessage,
+	recentMessageService RecentMessageService,
 	keymap save.KeyMap,
 ) (*tab, error) {
 
 	return &tab{
-		id:              id,
-		logger:          logger,
-		keymap:          keymap,
-		width:           width,
-		height:          height,
-		account:         account,
-		provider:        accountProvider,
-		channel:         channel,
-		emoteStore:      emoteStore,
-		ttvAPI:          ttvAPI,
-		initialMessages: initialMessages,
+		id:                   id,
+		logger:               logger,
+		keymap:               keymap,
+		width:                width,
+		height:               height,
+		account:              account,
+		provider:             accountProvider,
+		channel:              channel,
+		emoteStore:           emoteStore,
+		ttvAPI:               ttvAPI,
+		recentMessageService: recentMessageService,
 	}, nil
 }
 
 func (t *tab) Init() tea.Cmd {
 	cmd := func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
 		userData, err := t.ttvAPI.GetUsers(ctx, []string{t.channel}, nil)
@@ -166,10 +167,20 @@ func (t *tab) Init() tea.Cmd {
 			}
 		}
 
+		// fetch recent messages
+		recentMessages, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
+		if err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      err,
+			}
+		}
+
 		return setChannelDataMessage{
-			targetID:  t.id,
-			channelID: userData.Data[0].ID,
-			channel:   userData.Data[0].DisplayName,
+			targetID:        t.id,
+			channelID:       userData.Data[0].ID,
+			channel:         userData.Data[0].DisplayName,
+			initialMessages: recentMessages,
 		}
 	}
 
@@ -233,14 +244,22 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			t.messageInput.SetSuggestions(suggestions)
 		}
 
-		for _, m := range t.initialMessages {
-			t.chatWindow.handleMessage(m)
-		}
-
-		t.initialMessages = nil
-
 		if t.focused {
 			t.chatWindow.Focus()
+		}
+
+		// pass recent messages, recorded before the application was started, to chat window
+		for _, ircMessage := range msg.initialMessages {
+			t.chatWindow.handleMessage(ircMessage)
+		}
+
+		// notify user about loaded messages
+		if len(msg.initialMessages) > 0 {
+			t.chatWindow.handleMessage(&command.Notice{
+				ChannelUserName: t.channel,
+				MsgID:           command.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("-- Loaded %d recent messages; powered by https://recent-messages.robotty.de --", len(msg.initialMessages)),
+			})
 		}
 
 		ircCmds := make([]tea.Cmd, 0, 2)
