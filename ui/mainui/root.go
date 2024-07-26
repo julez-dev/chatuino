@@ -49,6 +49,10 @@ type ChatPool interface {
 	ListenAndServe(inbound <-chan multiplex.InboundMessage) <-chan multiplex.OutboundMessage
 }
 
+type RecentMessageService interface {
+	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error)
+}
+
 type activeScreen int
 
 const (
@@ -98,11 +102,12 @@ type Root struct {
 	screenType activeScreen
 
 	// dependencies
-	accounts       AccountProvider
-	emoteStore     EmoteStore
-	serverAPI      APIClientWithRefresh
-	buildTTVClient func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
-	loadSaveState  func() (save.AppState, error)
+	accounts             AccountProvider
+	emoteStore           EmoteStore
+	serverAPI            APIClientWithRefresh
+	recentMessageService RecentMessageService
+	buildTTVClient       func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
+	loadSaveState        func() (save.AppState, error)
 
 	// One API Client per Chatuino User Tab
 	ttvAPIUserClients map[string]APIClient
@@ -121,7 +126,16 @@ type Root struct {
 	tabs      []*tab
 }
 
-func NewUI(logger zerolog.Logger, provider AccountProvider, chatPool ChatPool, emoteStore EmoteStore, clientID string, serverClient APIClientWithRefresh, keymap save.KeyMap) *Root {
+func NewUI(
+	logger zerolog.Logger,
+	provider AccountProvider,
+	chatPool ChatPool,
+	emoteStore EmoteStore,
+	clientID string,
+	serverClient APIClientWithRefresh,
+	keymap save.KeyMap,
+	recentMessageService RecentMessageService,
+) *Root {
 	in := make(chan multiplex.InboundMessage)
 	out := chatPool.ListenAndServe(in)
 
@@ -145,10 +159,11 @@ func NewUI(logger zerolog.Logger, provider AccountProvider, chatPool ChatPool, e
 		in:  in,
 		out: out,
 
-		accounts:          provider,
-		ttvAPIUserClients: clients,
-		emoteStore:        emoteStore,
-		serverAPI:         serverClient,
+		accounts:             provider,
+		ttvAPIUserClients:    clients,
+		emoteStore:           emoteStore,
+		serverAPI:            serverClient,
+		recentMessageService: recentMessageService,
 		buildTTVClient: func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error) {
 			return twitch.NewAPI(clientID, opts...)
 		},
@@ -213,7 +228,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				continue
 			}
 
-			nTab, err := r.createTab(account, t.Channel, t.IRCMessages)
+			nTab, err := r.createTab(account, t.Channel)
 			if err != nil {
 				r.logger.Error().Err(err).Send()
 				continue
@@ -237,7 +252,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case joinChannelMessage:
 		r.screenType = mainScreen
 
-		nTab, err := r.createTab(msg.account, msg.channel, nil)
+		nTab, err := r.createTab(msg.account, msg.channel)
 		if err != nil {
 			r.logger.Error().Err(err).Send()
 			return r, nil
@@ -454,28 +469,9 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 		}
 
 		tabState := save.TabState{
-			IsFocused:   t.focused,
-			Channel:     t.channel,
-			IdentityID:  t.account.ID,
-			IRCMessages: make([]*command.PrivateMessage, 0, len(t.chatWindow.entries)),
-		}
-
-		relevantEntries := t.chatWindow.entries
-
-		// If the chat holds more than 10 times, only persist the latest 10 to save space
-		if len(relevantEntries) > 10 {
-			relevantEntries = relevantEntries[len(relevantEntries)-10:]
-		}
-
-		tabState.SelectedIndex = len(relevantEntries) - 1 // fallback to last entry if known of the filtered were selected
-		for i, e := range relevantEntries {
-			if msg, ok := e.Message.(*command.PrivateMessage); ok {
-				if e.Selected {
-					tabState.SelectedIndex = i
-				}
-
-				tabState.IRCMessages = append(tabState.IRCMessages, msg)
-			}
+			IsFocused:  t.focused,
+			Channel:    t.channel,
+			IdentityID: t.account.ID,
 		}
 
 		appState.Tabs = append(appState.Tabs, tabState)
@@ -494,7 +490,7 @@ func (r *Root) Close() error {
 	return errors.Join(errs...)
 }
 
-func (r *Root) createTab(account save.Account, channel string, initialMessages []*command.PrivateMessage) (*tab, error) {
+func (r *Root) createTab(account save.Account, channel string) (*tab, error) {
 	identity := account.DisplayName
 
 	if account.IsAnonymous {
@@ -505,7 +501,7 @@ func (r *Root) createTab(account save.Account, channel string, initialMessages [
 
 	headerHeight := r.getHeaderHeight()
 
-	nTab, err := newTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, initialMessages, r.keymap)
+	nTab, err := newTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
 	if err != nil {
 		return nil, err
 	}

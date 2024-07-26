@@ -12,9 +12,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/julez-dev/chatuino/bttv"
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/multiplex"
+	"github.com/julez-dev/chatuino/twitch/bttv"
+	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,8 +23,8 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
-	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
@@ -115,6 +116,7 @@ func main() {
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
+			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			multiplexer := multiplex.NewMultiplexer(log.Logger, accountProvider)
 
 			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
@@ -135,7 +137,7 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger, accountProvider, multiplexer, emoteStore, command.String("client-id"), serverAPI, keys),
+				mainui.NewUI(log.Logger, accountProvider, multiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
@@ -151,6 +153,7 @@ func main() {
 					return err
 				}
 
+				// persist open tabs on disk
 				state := final.TakeStateSnapshot()
 
 				if err := state.Save(); err != nil {

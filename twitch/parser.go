@@ -70,7 +70,7 @@ var tagDecodeSlashMap = map[rune]rune{
 	'n':  '\n',
 }
 
-func parseIRC(message string) (IRCer, error) {
+func ParseIRC(message string) (IRCer, error) {
 	// Trim the line and make sure we have data
 	message = strings.TrimRight(message, "\r\n")
 	if len(message) == 0 {

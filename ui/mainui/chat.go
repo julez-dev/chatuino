@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	cleanupAfterMessage float64 = 1500.0
+	cleanupAfterMessage float64 = 1000.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 	// prefixPadding               = 41
 	prefixPadding = 0

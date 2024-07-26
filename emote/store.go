@@ -8,12 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/julez-dev/chatuino/bttv"
+	"github.com/julez-dev/chatuino/twitch/bttv"
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/julez-dev/chatuino/seventv"
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/rs/zerolog"
 )
 
