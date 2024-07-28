@@ -137,6 +137,14 @@ func (j *join) Init() tea.Cmd {
 			}
 		}
 
+		for _, a := range accounts {
+			if a.IsAnonymous {
+				continue
+			}
+
+			uniqueChannels[a.DisplayName] = struct{}{}
+		}
+
 		channelSuggestions := make([]string, 0, len(uniqueChannels))
 		for c := range uniqueChannels {
 			channelSuggestions = append(channelSuggestions, c)

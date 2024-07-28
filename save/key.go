@@ -13,18 +13,19 @@ const (
 
 type KeyMap struct {
 	// General
-	Up      key.Binding
-	Down    key.Binding
-	Escape  key.Binding
-	Confirm key.Binding
-	Help    key.Binding
+	Up         key.Binding
+	Down       key.Binding
+	Escape     key.Binding
+	Confirm    key.Binding
+	Help       key.Binding
+	NextFilter key.Binding
 
 	// App Binds
 	Quit       key.Binding
 	Create     key.Binding
 	Remove     key.Binding
 	CloseTab   key.Binding
-	DumpScreen key.Binding
+	DumpScreen key.Binding // used by lists, and join input type switch
 
 	// Tab Binds
 	Next     key.Binding
@@ -41,12 +42,12 @@ type KeyMap struct {
 	CopyMessage  key.Binding
 
 	// Unban Request
-	PrevPage   key.Binding
-	NextPage   key.Binding
-	PrevFilter key.Binding
-	NextFilter key.Binding
-	Deny       key.Binding
-	Approve    key.Binding
+	UnbanRequestMode key.Binding
+	PrevPage         key.Binding
+	NextPage         key.Binding
+	PrevFilter       key.Binding
+	Deny             key.Binding
+	Approve          key.Binding
 
 	// Account Binds
 	MarkLeader key.Binding
@@ -87,8 +88,8 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithHelp("r", "remove"),
 		),
 		CloseTab: key.NewBinding(
-			key.WithKeys("q", "ctrl+w"),
-			key.WithHelp("q/ctrl+w", "close Tab"),
+			key.WithKeys("ctrl+q", "ctrl+w"),
+			key.WithHelp("ctrl+q/ctrl+w", "close current tab"),
 		),
 		DumpScreen: key.NewBinding(
 			key.WithKeys("ctrl+alt+d"),
@@ -107,12 +108,12 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithHelp("i", "insert mode"),
 		),
 		InspectMode: key.NewBinding(
-			key.WithKeys("u"),
-			key.WithHelp("u", "inspect mode"),
+			key.WithKeys("ctrl+l"),
+			key.WithHelp("ctrl+l", "user inspect mode"),
 		),
 		ChatPopUp: key.NewBinding(
-			key.WithKeys("p", "c"),
-			key.WithHelp("p/c", "twitch chat browser pop up/channel"),
+			key.WithKeys("ctrl+p", "ctrl+t"),
+			key.WithHelp("ctrl+p/t", "twitch chat browser pop up/channel"),
 		),
 		MarkLeader: key.NewBinding(
 			key.WithKeys("m"),
@@ -127,8 +128,8 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithHelp("b", "go to bottom"),
 		),
 		QuickTimeout: key.NewBinding(
-			key.WithKeys("ctrl+t"),
-			key.WithHelp("ctrl+t", "quick timeout"),
+			key.WithKeys("alt+t"),
+			key.WithHelp("alt+t", "quick timeout"),
 		),
 		DumpChat: key.NewBinding(
 			key.WithKeys("ctrl+alt+c"),
@@ -144,15 +145,15 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		Approve: key.NewBinding(
 			key.WithKeys("a"),
-			key.WithHelp("a", "approve"),
+			key.WithHelp("a", "approve unban request"),
 		),
 		Deny: key.NewBinding(
 			key.WithKeys("d"),
-			key.WithHelp("d", "deny"),
+			key.WithHelp("d", "deny unban request"),
 		),
 		NextFilter: key.NewBinding(
 			key.WithKeys("]"),
-			key.WithHelp("]", "next filter"),
+			key.WithHelp("]", "next filter/next input type in join screen"),
 		),
 		PrevFilter: key.NewBinding(
 			key.WithKeys("["),
@@ -160,40 +161,45 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		CopyMessage: key.NewBinding(
 			key.WithKeys("alt+c"),
-			key.WithHelp("alt+c", "copy message"),
+			key.WithHelp("alt+c", "copy selected message"),
+		),
+		UnbanRequestMode: key.NewBinding(
+			key.WithKeys("ctrl+u"),
+			key.WithHelp("ctrl+u", "open unban request mode in current channel"),
 		),
 	}
 }
 
 func (k KeyMap) saveRepresentation() saveableKeyMap {
 	return saveableKeyMap{
-		Up:           k.Up.Keys(),
-		Down:         k.Down.Keys(),
-		Escape:       k.Escape.Keys(),
-		Confirm:      k.Confirm.Keys(),
-		Help:         k.Help.Keys(),
-		Quit:         k.Quit.Keys(),
-		Create:       k.Create.Keys(),
-		Remove:       k.Remove.Keys(),
-		CloseTab:     k.CloseTab.Keys(),
-		DumpScreen:   k.DumpScreen.Keys(),
-		Next:         k.Next.Keys(),
-		Previous:     k.Previous.Keys(),
-		InsertMode:   k.InsertMode.Keys(),
-		InspectMode:  k.InspectMode.Keys(),
-		ChatPopUp:    k.ChatPopUp.Keys(),
-		GoToTop:      k.GoToTop.Keys(),
-		GoToBottom:   k.GoToBottom.Keys(),
-		DumpChat:     k.DumpChat.Keys(),
-		MarkLeader:   k.MarkLeader.Keys(),
-		QuickTimeout: k.QuickTimeout.Keys(),
-		PrevPage:     k.PrevPage.Keys(),
-		NextPage:     k.NextPage.Keys(),
-		Accept:       k.Approve.Keys(),
-		Deny:         k.Deny.Keys(),
-		PrevFilter:   k.PrevFilter.Keys(),
-		NextFilter:   k.NextFilter.Keys(),
-		CopyMessage:  k.CopyMessage.Keys(),
+		Up:               k.Up.Keys(),
+		Down:             k.Down.Keys(),
+		Escape:           k.Escape.Keys(),
+		Confirm:          k.Confirm.Keys(),
+		Help:             k.Help.Keys(),
+		Quit:             k.Quit.Keys(),
+		Create:           k.Create.Keys(),
+		Remove:           k.Remove.Keys(),
+		CloseTab:         k.CloseTab.Keys(),
+		DumpScreen:       k.DumpScreen.Keys(),
+		Next:             k.Next.Keys(),
+		Previous:         k.Previous.Keys(),
+		InsertMode:       k.InsertMode.Keys(),
+		InspectMode:      k.InspectMode.Keys(),
+		ChatPopUp:        k.ChatPopUp.Keys(),
+		GoToTop:          k.GoToTop.Keys(),
+		GoToBottom:       k.GoToBottom.Keys(),
+		DumpChat:         k.DumpChat.Keys(),
+		MarkLeader:       k.MarkLeader.Keys(),
+		QuickTimeout:     k.QuickTimeout.Keys(),
+		PrevPage:         k.PrevPage.Keys(),
+		NextPage:         k.NextPage.Keys(),
+		Accept:           k.Approve.Keys(),
+		Deny:             k.Deny.Keys(),
+		PrevFilter:       k.PrevFilter.Keys(),
+		NextFilter:       k.NextFilter.Keys(),
+		CopyMessage:      k.CopyMessage.Keys(),
+		UnbanRequestMode: k.UnbanRequestMode.Keys(),
 	}
 }
 
@@ -226,12 +232,13 @@ type saveableKeyMap struct {
 	CopyMessage  []string `yaml:"copy_message"`
 
 	// Unban Request
-	PrevPage   []string `yaml:"prev_page"`
-	NextPage   []string `yaml:"next_page"`
-	Deny       []string `yaml:"deny_request"`
-	Accept     []string `yaml:"approve_request"`
-	PrevFilter []string `yaml:"prev_filter"`
-	NextFilter []string `yaml:"next_filter"`
+	UnbanRequestMode []string `yaml:"unban_request_mode"`
+	PrevPage         []string `yaml:"prev_page"`
+	NextPage         []string `yaml:"next_page"`
+	Deny             []string `yaml:"deny_request"`
+	Accept           []string `yaml:"approve_request"`
+	PrevFilter       []string `yaml:"prev_filter"`
+	NextFilter       []string `yaml:"next_filter"`
 
 	// Account Binds
 	MarkLeader []string `yaml:"mark_leader"`
@@ -273,6 +280,7 @@ func (s saveableKeyMap) keyMap() KeyMap {
 	setIfNotEmpty(&m.PrevFilter, s.PrevFilter)
 	setIfNotEmpty(&m.NextFilter, s.NextFilter)
 	setIfNotEmpty(&m.CopyMessage, s.CopyMessage)
+	setIfNotEmpty(&m.UnbanRequestMode, s.UnbanRequestMode)
 
 	return m
 }

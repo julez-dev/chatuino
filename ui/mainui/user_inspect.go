@@ -14,6 +14,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type setUserInspectData struct {
@@ -30,7 +31,7 @@ type userInspect struct {
 	isDataFetched bool
 
 	width, height int
-	tab           tab    // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
+	tabID         string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
 	user          string // the chatter
 	channel       string // the streamer
 	badges        []command.Badge
@@ -40,15 +41,15 @@ type userInspect struct {
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tab tab, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
 	return &userInspect{
-		tab:     tab,
+		tabID:   tabID,
 		channel: channel,
 		user:    user,
 		ivr:     ivr.NewAPI(http.DefaultClient),
 		ttvAPI:  ttvAPI,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow: newChatWindow(logger, &tab, width, height, channel, channelID, emoteStore, keymap),
+		chatWindow: newChatWindow(logger, width, height, channel, channelID, emoteStore, keymap),
 	}
 }
 
@@ -63,7 +64,7 @@ func (u *userInspect) Init() tea.Cmd {
 		ivrResp, err := u.ivr.GetSubAge(ctx, u.user, u.channel)
 		if err != nil {
 			return setUserInspectData{
-				target: u.tab.id,
+				target: u.tabID,
 				err:    err,
 			}
 		}
@@ -74,20 +75,20 @@ func (u *userInspect) Init() tea.Cmd {
 		ttvResp, err := u.ttvAPI.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
-				target: u.tab.id,
+				target: u.tabID,
 				err:    err,
 			}
 		}
 
 		if len(ttvResp.Data) != 1 {
 			return setUserInspectData{
-				target: u.tab.id,
+				target: u.tabID,
 				err:    fmt.Errorf("could not return user data for: %s", ivrResp.User.ID),
 			}
 		}
 
 		return setUserInspectData{
-			target:   u.tab.id,
+			target:   u.tabID,
 			err:      err,
 			ivrResp:  ivrResp,
 			userData: ttvResp.Data[0],
@@ -104,7 +105,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case setUserInspectData:
-		if msg.target != u.tab.id {
+		if msg.target != u.tabID {
 			return u, nil
 		}
 
@@ -117,11 +118,47 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		return u, nil
 	}
 
-	// Set badges, update for each message
-	if event, ok := msg.(chatEventMessage); ok {
-		if msg, ok := event.message.(*command.PrivateMessage); ok {
-			u.badges = msg.Badges
+	chatEvent, ok := msg.(chatEventMessage)
+
+	// we don't need to intervene if the message is not a chat event, the window can handle it
+	if !ok {
+		u.chatWindow, cmd = u.chatWindow.Update(msg)
+		cmds = append(cmds, cmd)
+		return u, tea.Batch(cmds...)
+	}
+
+	switch msg := chatEvent.message.(type) {
+	case *command.PrivateMessage:
+		log.Logger.Info().Str("content", msg.Message).Bool("1st", !strings.EqualFold(msg.DisplayName, u.user)).Bool("2nd", !messageContainsCaseInsensitive(msg, u.user)).Send()
+
+		// user inspect user is not sender and message does not contain current user
+		if !strings.EqualFold(msg.DisplayName, u.user) && !messageContainsCaseInsensitive(msg, u.user) {
+			return u, nil
 		}
+	case *command.ClearChat:
+		// let all clear chat messages through if affect user inspect user or sender
+		// of message in user inspect chat window
+		var affectsUserInChat bool
+
+		for _, e := range u.chatWindow.entries {
+			if priv, ok := e.Message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, msg.UserName) {
+				affectsUserInChat = true
+				break
+			}
+		}
+
+		if !strings.EqualFold(msg.UserName, u.user) && !affectsUserInChat {
+			return u, nil
+		}
+
+	default: // exit early if not a private message or clear chat message (timeout/ban)
+		return u, nil
+	}
+
+	// set badges, update for each message
+	// update bades if user inspect user is sender
+	if msg, ok := chatEvent.message.(*command.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
+		u.badges = msg.Badges
 	}
 
 	u.chatWindow, cmd = u.chatWindow.Update(msg)
