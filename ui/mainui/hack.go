@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rivo/uniseg"
 )
 
@@ -66,4 +67,8 @@ func centerTextGraphemeAware(width int, s string) string {
 
 	fmt.Fprintf(&b, "%s%s", strings.Repeat("\u0020", n), s)
 	return b.String()
+}
+
+func messageContainsCaseInsensitive(msg *command.PrivateMessage, sub string) bool {
+	return strings.Contains(strings.ToLower(msg.Message), strings.ToLower(sub))
 }

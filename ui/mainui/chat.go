@@ -66,7 +66,6 @@ type position struct {
 }
 
 type chatWindow struct {
-	parentTab *tab
 	channel   string
 	channelID string
 
@@ -91,11 +90,10 @@ type chatWindow struct {
 	userColorCache map[string]func(...string) string
 }
 
-func newChatWindow(logger zerolog.Logger, tab *tab, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
+func newChatWindow(logger zerolog.Logger, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
 	c := chatWindow{
 		keymap:         keymap,
 		logger:         logger,
-		parentTab:      tab,
 		channel:        channel,
 		width:          width,
 		height:         height,
@@ -131,12 +129,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.moveToTop()
 			case key.Matches(msg, c.keymap.DumpChat):
 				c.debugDumpChat()
-			case key.Matches(msg, c.keymap.QuickTimeout):
-				c.handleTimeoutShortcut()
-				return c, nil
-			case key.Matches(msg, c.keymap.CopyMessage):
-				c.handleCopyMessage()
-				return c, nil
 			}
 		}
 	}
@@ -321,50 +313,6 @@ func (c *chatWindow) markSelectedMessage() {
 	}
 }
 
-func (c *chatWindow) handleCopyMessage() {
-	if c.parentTab.account.IsAnonymous {
-		return
-	}
-
-	_, entry := c.entryForCurrentCursor()
-
-	if entry == nil || entry.IsDeleted {
-		return
-	}
-
-	msg, ok := entry.Message.(*command.PrivateMessage)
-
-	if !ok {
-		return
-	}
-
-	c.parentTab.state = insertMode
-	c.parentTab.messageInput.Focus()
-	c.parentTab.messageInput.SetValue(msg.Message)
-}
-
-func (c *chatWindow) handleTimeoutShortcut() {
-	if c.parentTab.account.IsAnonymous {
-		return
-	}
-
-	_, entry := c.entryForCurrentCursor()
-
-	if entry == nil {
-		return
-	}
-
-	msg, ok := entry.Message.(*command.PrivateMessage)
-
-	if !ok {
-		return
-	}
-
-	c.parentTab.state = insertMode
-	c.parentTab.messageInput.Focus()
-	c.parentTab.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
-}
-
 func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	switch msg.(type) {
 	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage: // supported Message types
@@ -439,7 +387,7 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	switch msg := msg.(type) {
 	case error:
-		prefix := "  " + time.Now().Format("15:04:05") + " [" + errorAlertStyle.Render("Error") + "]: "
+		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, text)
 	case *command.PrivateMessage:
@@ -450,18 +398,6 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			if b, ok := badgeMap[badge.Name]; ok {
 				badges = append(badges, b)
 			}
-			// else {
-			// TODO: Make this optional
-			// example map badge gold-pixel-heart -> Gold Pixel Heart
-			//splits := strings.Split(badge.Name, "-")
-			//for i, split := range splits {
-			//	r := []rune(split)
-			//	r[0] = unicode.ToUpper(r[0])
-			//	splits[i] = string(r)
-			//}
-			//
-			//badges = append(badges, strings.Join(splits, " "))
-			// }
 		}
 
 		// if render function not in cache yet, compute now
@@ -490,12 +426,12 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		return c.wordwrapMessage(prefix, msg.Message)
 	case *command.Notice:
-		prefix := "  " + time.Now().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
+		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, styled)
 	case *command.ClearChat:
-		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + clearChatAlertStyle.Render("Clear Chat") + "]: "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + clearChatAlertStyle.Render("Clear Chat") + "]: "
 
 		userRenderFunc, ok := c.userColorCache[msg.UserName]
 
@@ -516,7 +452,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		return c.wordwrapMessage(prefix, text)
 	case *command.SubMessage:
-		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
 
 		subResubText := "subscribed"
 		if msg.MsgID == "resub" {
@@ -545,7 +481,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		return c.wordwrapMessage(prefix, text)
 	case *command.SubGiftMessage:
-		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
 
 		gifterRenderFunc, ok := c.userColorCache[msg.Login]
 
@@ -571,7 +507,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	case *command.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 
-		prefix := "  " + msg.TMISentTS.Format("15:04:05") + " [" + style.Render("Announcement") + "] "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + style.Render("Announcement") + "] "
 
 		userRenderFn, ok := c.userColorCache[msg.Login]
 

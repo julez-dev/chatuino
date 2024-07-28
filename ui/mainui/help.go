@@ -29,6 +29,7 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.Down,
 				keymap.Escape,
 				keymap.Confirm,
+				keymap.NextFilter,
 				keymap.Help,
 			},
 		},
@@ -54,6 +55,7 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 			[]key.Binding{
 				keymap.InsertMode,
 				keymap.InspectMode,
+				keymap.UnbanRequestMode,
 				keymap.ChatPopUp,
 				keymap.GoToTop,
 				keymap.GoToBottom,

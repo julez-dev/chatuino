@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -113,8 +114,9 @@ type Root struct {
 	ttvAPIUserClients map[string]APIClient
 
 	// chat multiplexer channels
-	in  chan multiplex.InboundMessage
-	out <-chan multiplex.OutboundMessage
+	inWG *sync.WaitGroup
+	in   chan multiplex.InboundMessage
+	out  <-chan multiplex.OutboundMessage
 
 	// components
 	splash    splash
@@ -156,8 +158,9 @@ func NewUI(
 		joinInput: newJoin(provider, clients, 10, 10, keymap),
 
 		// chat multiplex channels
-		in:  in,
-		out: out,
+		inWG: &sync.WaitGroup{},
+		in:   in,
+		out:  out,
 
 		accounts:             provider,
 		ttvAPIUserClients:    clients,
@@ -228,11 +231,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				continue
 			}
 
-			nTab, err := r.createTab(account, t.Channel)
-			if err != nil {
-				r.logger.Error().Err(err).Send()
-				continue
-			}
+			nTab := r.createTab(account, t.Channel)
 
 			if t.IsFocused {
 				nTab.focus()
@@ -252,12 +251,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case joinChannelMessage:
 		r.screenType = mainScreen
 
-		nTab, err := r.createTab(msg.account, msg.channel)
-		if err != nil {
-			r.logger.Error().Err(err).Send()
-			return r, nil
-		}
-
+		nTab := r.createTab(msg.account, msg.channel)
 		nTab.focus()
 
 		r.tabs = append(r.tabs, nTab)
@@ -300,7 +294,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.keymap.Help) {
 			var isInsertMode bool
 			if len(r.tabs) > r.tabCursor {
-				isInsertMode = r.tabs[r.tabCursor].state == insertMode
+				isInsertMode = (r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode)
 			}
 
 			if !isInsertMode {
@@ -365,8 +359,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if r.screenType == mainScreen {
+
 			if key.Matches(msg, r.keymap.Next) {
-				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state == insertMode {
+				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode) {
 					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
 					return r, cmd
 				}
@@ -375,11 +370,16 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.Previous) {
+				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode) {
+					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
+					return r, cmd
+				}
+
 				r.prevTab()
 			}
 
 			if key.Matches(msg, r.keymap.CloseTab) {
-				if len(r.tabs) > r.tabCursor && r.tabs[r.tabCursor].state != insertMode {
+				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode) {
 					currentTab := r.tabs[r.tabCursor]
 					r.closeTab()
 
@@ -408,7 +408,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							})
 						}
 
+						r.inWG.Add(1)
 						cmds = append(cmds, func() tea.Msg {
+							defer r.inWG.Done()
 							r.in <- multiplex.InboundMessage{
 								AccountID: currentTab.account.ID,
 								Msg:       multiplex.DecrementTabCounter{},
@@ -486,11 +488,12 @@ func (r *Root) Close() error {
 		errs = append(errs, t.Close())
 	}
 
+	r.inWG.Wait() // wait for all inbound messages to be processed
 	close(r.in)
 	return errors.Join(errs...)
 }
 
-func (r *Root) createTab(account save.Account, channel string) (*tab, error) {
+func (r *Root) createTab(account save.Account, channel string) *tab {
 	identity := account.DisplayName
 
 	if account.IsAnonymous {
@@ -501,12 +504,8 @@ func (r *Root) createTab(account save.Account, channel string) (*tab, error) {
 
 	headerHeight := r.getHeaderHeight()
 
-	nTab, err := newTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
-	if err != nil {
-		return nil, err
-	}
-
-	return nTab, nil
+	nTab := newTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
+	return nTab
 }
 
 func (r *Root) getHeaderHeight() int {
@@ -621,6 +620,8 @@ func (r *Root) waitChatEvents() tea.Cmd {
 			channel = msg.Msg.(*command.SubGiftMessage).ChannelUserName
 		case *command.RitualMessage:
 			channel = msg.Msg.(*command.RitualMessage).ChannelUserName
+		case *command.AnnouncementMessage:
+			channel = msg.Msg.(*command.AnnouncementMessage).ChannelUserName
 		}
 
 		return chatEventMessage{

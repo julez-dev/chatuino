@@ -49,6 +49,8 @@ func (t tabState) String() string {
 	case 2:
 		return "Inspect"
 	case 3:
+		return "Inspect / Insert"
+	case 4:
 		return "Unban"
 	}
 
@@ -59,6 +61,7 @@ const (
 	inChatWindow tabState = iota
 	insertMode
 	userInspectMode
+	userInspectInsertMode
 	unbanRequestMode
 )
 
@@ -115,8 +118,7 @@ func newTab(
 	accountProvider AccountProvider,
 	recentMessageService RecentMessageService,
 	keymap save.KeyMap,
-) (*tab, error) {
-
+) *tab {
 	return &tab{
 		id:                   id,
 		logger:               logger,
@@ -129,7 +131,7 @@ func newTab(
 		emoteStore:           emoteStore,
 		ttvAPI:               ttvAPI,
 		recentMessageService: recentMessageService,
-	}, nil
+	}
 }
 
 func (t *tab) Init() tea.Cmd {
@@ -207,12 +209,13 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				return t, nil
 			}
 
-			beforeView := t.streamInfo.View()
+			beforeHeight := lipgloss.Height(t.streamInfo.View())
 
 			t.streamInfo, cmd = t.streamInfo.Update(msg)
+			afterHeight := lipgloss.Height(t.streamInfo.View())
 
-			// only do expensive resize if view has changed
-			if beforeView != t.streamInfo.View() {
+			// only do expensive resize if view height has changed
+			if beforeHeight != afterHeight {
 				t.handleResize()
 			}
 
@@ -227,7 +230,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
-		t.chatWindow = newChatWindow(t.logger, t, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
+		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
@@ -302,21 +305,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				cmds = append(cmds, t.statusInfo.Init()) // resend init command
 			}
 
-			// if in inspect mode, update user inspect window only on private messages or timeouts
 			if t.state == userInspectMode {
-				switch msg := msg.message.(type) {
-				case *command.PrivateMessage:
-					if msg.DisplayName != t.userInspect.user {
-						return t, tea.Batch(cmds...)
-					}
-				case *command.ClearChat:
-					if msg.UserName != t.userInspect.user {
-						return t, tea.Batch(cmds...)
-					}
-				default:
-					return t, tea.Batch(cmds...)
-				}
-
 				t.userInspect, cmd = t.userInspect.Update(msg)
 				cmds = append(cmds, cmd)
 			}
@@ -337,147 +326,61 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 	if t.channelDataLoaded {
 		if t.focused {
-			if t.state == insertMode {
-				t.messageInput, cmd = t.messageInput.Update(msg)
-				cmds = append(cmds, cmd)
-			}
-
 			switch msg := msg.(type) {
 			case tea.KeyMsg:
 				// Focus message input
 				if key.Matches(msg, t.keymap.InsertMode) {
-					if !t.account.IsAnonymous && t.state == inChatWindow {
-						t.state = insertMode
-						t.messageInput.Focus()
-						t.chatWindow.Blur()
-
-						cmds = append(cmds, t.messageInput.InputModel.Cursor.BlinkCmd())
-						return t, tea.Batch(cmds...)
-					}
+					cmd := t.handleStartInsertMode()
+					cmds = append(cmds, cmd)
+					return t, tea.Batch(cmds...)
 				}
 
 				// Overlay unban request window
-				if msg.String() == "r" && t.state == inChatWindow && !t.account.IsAnonymous {
-					t.state = unbanRequestMode
-					t.unbanWindow = unbanrequest.New(
-						t.ttvAPI.(moderationAPIClient),
-						t.keymap,
-						t.channel,
-						t.channelID,
-						t.account.ID,
-						t.height,
-						t.width,
-					)
-					t.handleResize()
-
-					cmds = append(cmds, t.unbanWindow.Init())
+				if key.Matches(msg, t.keymap.UnbanRequestMode) && t.state == inChatWindow && !t.account.IsAnonymous {
+					cmd := t.handleOpenBanRequest()
+					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
 				}
 
 				// Open user inspect mode, where only messages from a specific user are shown
 				if key.Matches(msg, t.keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
-					_, e := t.chatWindow.entryForCurrentCursor()
-
-					if e == nil {
-						return t, nil
-					}
-
-					var username string
-					switch msg := e.Message.(type) {
-					case *command.PrivateMessage:
-						username = msg.DisplayName
-					case *command.ClearChat:
-						username = msg.UserName
-					default:
-						return t, nil
-					}
-
-					t.state = userInspectMode
-					t.userInspect = newUserInspect(t.logger, t.ttvAPI, *t, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore, t.keymap)
-					cmds = append(cmds, t.userInspect.Init())
-
-					for _, e := range t.chatWindow.entries {
-
-						var entryUsername string
-						switch msg := e.Message.(type) {
-						case *command.PrivateMessage:
-							entryUsername = msg.DisplayName
-						case *command.ClearChat:
-							entryUsername = msg.UserName
-						default:
-							continue
-						}
-
-						if strings.EqualFold(entryUsername, t.userInspect.user) {
-							t.userInspect, cmd = t.userInspect.Update(chatEventMessage{
-								channel:   t.channel,
-								message:   e.Message,
-								accountID: t.account.ID,
-							})
-
-							cmds = append(cmds, cmd)
-						}
-					}
-
-					t.userInspect.chatWindow.moveToBottom()
-
-					t.handleResize()
-					t.chatWindow.Blur()
-					t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
-					t.userInspect.chatWindow.Focus()
-
-					t.chatWindow, cmd = t.chatWindow.Update(msg)
+					cmd := t.handleOpenUserInspect()
 					cmds = append(cmds, cmd)
-
 					return t, tea.Batch(cmds...)
-
 				}
 
 				// Open chat in browser
 				if key.Matches(msg, t.keymap.ChatPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
-					return t, func() tea.Msg {
-						url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
-
-						// open popout chat if modifier is pressed
-						if msg.String() == "p" {
-							url = fmt.Sprintf(popupFmt, t.channel)
-						}
-
-						if err := browser.OpenURL(url); err != nil {
-							t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
-						}
-
-						return nil
-					}
+					return t, t.handleOpenBrowser(msg)
 				}
 
 				// Send message
-				if key.Matches(msg, t.keymap.Confirm) && t.state == insertMode && len(t.messageInput.Value()) > 0 {
+				if key.Matches(msg, t.keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
 					return t, t.handleMessageSent()
+				}
+
+				// Set quick time out message to message input
+				if key.Matches(msg, t.keymap.QuickTimeout) {
+					t.handleTimeoutShortcut()
+					return t, nil
+				}
+
+				// Copy selected message to message input
+				if key.Matches(msg, t.keymap.CopyMessage) {
+					t.handleCopyMessage()
+					return t, nil
 				}
 
 				// Close overlay windows
 				if key.Matches(msg, t.keymap.Escape) {
-					if t.state == userInspectMode {
-						t.state = inChatWindow
-						t.userInspect = nil
-						t.chatWindow.Focus()
-						t.handleResize()
-						t.chatWindow.updatePort()
-						return t, nil
-					}
-
-					if !t.account.IsAnonymous {
-						t.state = inChatWindow
-						t.chatWindow.Focus()
-						t.messageInput.Blur()
-					}
-
-					t.unbanWindow = nil
-
+					t.handleEscapePressed()
 					return t, nil
 				}
+			}
 
+			if t.state == insertMode || t.state == userInspectInsertMode {
+				t.messageInput, cmd = t.messageInput.Update(msg)
+				cmds = append(cmds, cmd)
 			}
 		}
 
@@ -557,7 +460,7 @@ func (t *tab) View() string {
 	cw := t.chatWindow.View()
 	builder.WriteString(cw)
 
-	if t.state == userInspectMode {
+	if t.state == userInspectMode || t.state == userInspectInsertMode {
 		uiView := t.userInspect.View()
 		builder.WriteString("\n")
 		builder.WriteString(uiView)
@@ -588,12 +491,96 @@ func (t *tab) Close() error {
 	return nil
 }
 
+func (t *tab) handleEscapePressed() {
+	if t.state == userInspectMode {
+		t.state = inChatWindow
+		t.userInspect = nil
+		t.chatWindow.Focus()
+		t.handleResize()
+		t.chatWindow.updatePort()
+		return
+	}
+
+	if t.state == userInspectInsertMode {
+		t.state = userInspectMode
+		t.userInspect.chatWindow.Focus()
+		t.messageInput.Blur()
+		return
+	}
+
+	if !t.account.IsAnonymous {
+		t.state = inChatWindow
+		t.chatWindow.Focus()
+		t.messageInput.Blur()
+	}
+
+	t.unbanWindow = nil
+}
+
+func (t *tab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
+
+		// open popout chat if modifier is pressed
+		if msg.String() == "p" {
+			url = fmt.Sprintf(popupFmt, t.channel)
+		}
+
+		if err := browser.OpenURL(url); err != nil {
+			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
+		}
+
+		return nil
+	}
+}
+
+func (t *tab) handleStartInsertMode() tea.Cmd {
+	if !t.account.IsAnonymous && (t.state == inChatWindow || t.state == userInspectMode) {
+		if t.state == inChatWindow {
+			t.state = insertMode
+		} else {
+			t.state = userInspectInsertMode
+			t.userInspect.chatWindow.Blur()
+		}
+
+		t.messageInput.Focus()
+		t.chatWindow.Blur()
+
+		return t.messageInput.InputModel.Cursor.BlinkCmd()
+	}
+
+	return nil
+}
+
+func (t *tab) handleOpenBanRequest() tea.Cmd {
+	t.state = unbanRequestMode
+	t.unbanWindow = unbanrequest.New(
+		t.ttvAPI.(moderationAPIClient),
+		t.keymap,
+		t.channel,
+		t.channelID,
+		t.account.ID,
+		t.height,
+		t.width,
+	)
+
+	t.handleResize()
+
+	return t.unbanWindow.Init()
+}
+
 func (t *tab) handleMessageSent() tea.Cmd {
 	input := t.messageInput.Value()
 
 	// reset state
-	t.state = inChatWindow
-	t.chatWindow.Focus()
+	if t.state == userInspectInsertMode {
+		t.state = userInspectMode
+		t.userInspect.chatWindow.Focus()
+	} else {
+		t.state = inChatWindow
+		t.chatWindow.Focus()
+	}
+
 	t.messageInput.Blur()
 	t.messageInput.SetValue("")
 
@@ -640,6 +627,10 @@ func (t *tab) handleMessageSent() tea.Cmd {
 
 	t.chatWindow.handleMessage(msg)
 
+	if t.state == userInspectMode {
+		t.userInspect.chatWindow.handleMessage(msg)
+	}
+
 	return func() tea.Msg {
 		return forwardChatMessage{
 			msg: multiplex.InboundMessage{
@@ -650,8 +641,126 @@ func (t *tab) handleMessageSent() tea.Cmd {
 	}
 }
 
+func (t *tab) handleCopyMessage() {
+	if t.account.IsAnonymous {
+		return
+	}
+
+	var entry *chatEntry
+
+	if t.state == inChatWindow {
+		_, entry = t.chatWindow.entryForCurrentCursor()
+	} else {
+		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
+	}
+
+	if entry == nil || entry.IsDeleted {
+		return
+	}
+
+	msg, ok := entry.Message.(*command.PrivateMessage)
+
+	if !ok {
+		return
+	}
+
+	if t.state == userInspectMode {
+		t.state = userInspectInsertMode
+	} else {
+		t.state = insertMode
+	}
+	t.messageInput.Focus()
+	t.messageInput.SetValue(msg.Message)
+}
+
+func (t *tab) handleOpenUserInspect() tea.Cmd {
+	var (
+		cmds []tea.Cmd
+		cmd  tea.Cmd
+		e    *chatEntry
+	)
+
+	if t.state == inChatWindow {
+		_, e = t.chatWindow.entryForCurrentCursor()
+	} else {
+		_, e = t.userInspect.chatWindow.entryForCurrentCursor()
+	}
+
+	if e == nil {
+		return nil
+	}
+
+	var username string
+	switch msg := e.Message.(type) {
+	case *command.PrivateMessage:
+		username = msg.DisplayName
+	case *command.ClearChat:
+		username = msg.UserName
+	default:
+		return nil
+	}
+
+	t.state = userInspectMode
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore, t.keymap)
+	cmds = append(cmds, t.userInspect.Init())
+
+	for _, e := range t.chatWindow.entries {
+		t.userInspect, cmd = t.userInspect.Update(chatEventMessage{
+			accountID: t.account.ID,
+			channel:   t.channel,
+			message:   e.Message,
+		})
+		cmds = append(cmds, cmd)
+	}
+
+	t.userInspect.chatWindow.moveToBottom()
+
+	t.handleResize()
+	t.chatWindow.Blur()
+	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
+	t.userInspect.chatWindow.Focus()
+
+	// t.chatWindow, cmd = t.chatWindow.Update(msg)
+	// cmds = append(cmds, cmd)
+
+	return tea.Batch(cmds...)
+}
+
+func (t *tab) handleTimeoutShortcut() {
+	if t.account.IsAnonymous {
+		return
+	}
+
+	var entry *chatEntry
+
+	if t.state == inChatWindow {
+		_, entry = t.chatWindow.entryForCurrentCursor()
+	} else if t.state == userInspectMode {
+		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
+	}
+
+	if entry == nil {
+		return
+	}
+
+	msg, ok := entry.Message.(*command.PrivateMessage)
+
+	if !ok {
+		return
+	}
+
+	if t.state == userInspectMode {
+		t.state = userInspectInsertMode
+	} else {
+		t.state = insertMode
+	}
+
+	t.messageInput.Focus()
+	t.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
+}
+
 func (t *tab) renderMessageInput() string {
-	if t.account.IsAnonymous || t.state == userInspectMode {
+	if t.account.IsAnonymous {
 		return ""
 	}
 
@@ -683,11 +792,11 @@ func (t *tab) handleResize() {
 			heightStreamInfo = 0
 		}
 
-		if t.state == userInspectMode {
+		if t.state == userInspectMode || t.state == userInspectInsertMode {
 			t.chatWindow.height = (t.height - heightStreamInfo - heightStatusInfo) / 2
 			t.chatWindow.width = t.width
 
-			t.userInspect.height = t.height - heightStreamInfo - t.chatWindow.height - heightStatusInfo
+			t.userInspect.height = t.height - heightStreamInfo - t.chatWindow.height - heightStatusInfo - heightMessageInput
 			t.userInspect.width = t.width
 			t.userInspect.handleResize()
 			t.chatWindow.recalculateLines()
@@ -704,7 +813,7 @@ func (t *tab) handleResize() {
 			t.chatWindow.recalculateLines()
 		}
 
-		t.messageInput.SetWidth(t.width - 2)
+		t.messageInput.SetWidth(t.width)
 
 		if t.state == unbanRequestMode {
 			t.unbanWindow.SetWidth(t.width)
@@ -717,7 +826,14 @@ func (t *tab) focus() {
 	t.focused = true
 
 	if t.channelDataLoaded {
-		t.chatWindow.Focus()
+		switch t.state {
+		case inChatWindow:
+			t.chatWindow.Focus()
+		case userInspectMode:
+			t.userInspect.chatWindow.Focus()
+		case userInspectInsertMode, insertMode:
+			t.messageInput.Focus()
+		}
 	}
 }
 
@@ -726,5 +842,10 @@ func (t *tab) blur() {
 
 	if t.channelDataLoaded {
 		t.chatWindow.Blur()
+		t.messageInput.Blur()
+
+		if t.userInspect != nil {
+			t.userInspect.chatWindow.Blur()
+		}
 	}
 }
