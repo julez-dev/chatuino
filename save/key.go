@@ -2,6 +2,8 @@ package save
 
 import (
 	"io"
+	"reflect"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"gopkg.in/yaml.v3"
@@ -11,46 +13,100 @@ const (
 	keyMapFileName = "keymap.yaml"
 )
 
+var (
+	_ yaml.Marshaler   = (*KeyMap)(nil)
+	_ yaml.Unmarshaler = (*KeyMap)(nil)
+)
+
 type KeyMap struct {
 	// General
-	Up         key.Binding
-	Down       key.Binding
-	Escape     key.Binding
-	Confirm    key.Binding
-	Help       key.Binding
-	NextFilter key.Binding
+	Up         key.Binding `yaml:"up"`
+	Down       key.Binding `yaml:"down"`
+	Escape     key.Binding `yaml:"escape"`
+	Confirm    key.Binding `yaml:"confirm"`
+	Help       key.Binding `yaml:"help"`
+	NextFilter key.Binding `yaml:"next_filter"`
 
 	// App Binds
-	Quit       key.Binding
-	Create     key.Binding
-	Remove     key.Binding
-	CloseTab   key.Binding
-	DumpScreen key.Binding // used by lists, and join input type switch
+	Quit       key.Binding `yaml:"quit"`
+	Create     key.Binding `yaml:"create"`
+	Remove     key.Binding `yaml:"remove"`
+	CloseTab   key.Binding `yaml:"close_tab"`
+	DumpScreen key.Binding `yaml:"dump_screen"` // used by lists, and join input type switch
 
 	// Tab Binds
-	Next     key.Binding
-	Previous key.Binding
+	Next     key.Binding `yaml:"next"`
+	Previous key.Binding `yaml:"previous"`
 
 	// Chat Binds
-	InsertMode   key.Binding
-	InspectMode  key.Binding
-	ChatPopUp    key.Binding
-	GoToTop      key.Binding
-	GoToBottom   key.Binding
-	DumpChat     key.Binding
-	QuickTimeout key.Binding
-	CopyMessage  key.Binding
+	InsertMode   key.Binding `yaml:"insert_mode"`
+	InspectMode  key.Binding `yaml:"inspect_mode"`
+	ChatPopUp    key.Binding `yaml:"chat_pop_up"`
+	GoToTop      key.Binding `yaml:"go_to_top"`
+	GoToBottom   key.Binding `yaml:"go_to_bottom"`
+	DumpChat     key.Binding `yaml:"dump_chat"`
+	QuickTimeout key.Binding `yaml:"quick_timeout"`
+	CopyMessage  key.Binding `yaml:"copy_message"`
 
 	// Unban Request
-	UnbanRequestMode key.Binding
-	PrevPage         key.Binding
-	NextPage         key.Binding
-	PrevFilter       key.Binding
-	Deny             key.Binding
-	Approve          key.Binding
+	UnbanRequestMode key.Binding `yaml:"unban_request_mode"`
+	PrevPage         key.Binding `yaml:"prev_page"`
+	NextPage         key.Binding `yaml:"next_page"`
+	PrevFilter       key.Binding `yaml:"prev_filter"`
+	Deny             key.Binding `yaml:"deny"`
+	Approve          key.Binding `yaml:"approve"`
 
 	// Account Binds
-	MarkLeader key.Binding
+	MarkLeader key.Binding `yaml:"mark_leader"`
+}
+
+func (c *KeyMap) MarshalYAML() (interface{}, error) {
+	data := map[string][]string{}
+
+	for i := 0; i < reflect.ValueOf(c).Elem().NumField(); i++ {
+		field := reflect.TypeOf(c).Elem().Field(i)
+		value := reflect.ValueOf(c).Elem().Field(i)
+
+		if value.IsZero() {
+			continue
+		}
+
+		fieldName := field.Tag.Get("yaml")
+		if fieldName == "" {
+			fieldName = field.Name
+		}
+
+		data[fieldName] = value.Interface().(key.Binding).Keys()
+	}
+
+	return data, nil
+}
+
+func (c *KeyMap) UnmarshalYAML(value *yaml.Node) error {
+	target := map[string][]string{}
+	if err := value.Decode(&target); err != nil {
+		return err
+	}
+
+	val := reflect.ValueOf(c).Elem()
+
+	for targetField, binds := range target {
+		for i := 0; i < val.NumField(); i++ {
+			fieldName := val.Type().Field(i).Tag.Get("yaml")
+			if fieldName == "" {
+				fieldName = val.Type().Field(i).Name
+			}
+
+			if fieldName == targetField {
+				keyBind := reflect.ValueOf(c).Elem().Field(i).Interface().(key.Binding)
+				keyBind.SetKeys(binds...)
+				keyBind.SetHelp(strings.Join(binds, "/"), keyBind.Help().Desc) // overwrite help with old description but new keys
+				reflect.ValueOf(c).Elem().Field(i).Set(reflect.ValueOf(keyBind))
+			}
+		}
+	}
+
+	return nil
 }
 
 func BuildDefaultKeyMap() KeyMap {
@@ -170,121 +226,6 @@ func BuildDefaultKeyMap() KeyMap {
 	}
 }
 
-func (k KeyMap) saveRepresentation() saveableKeyMap {
-	return saveableKeyMap{
-		Up:               k.Up.Keys(),
-		Down:             k.Down.Keys(),
-		Escape:           k.Escape.Keys(),
-		Confirm:          k.Confirm.Keys(),
-		Help:             k.Help.Keys(),
-		Quit:             k.Quit.Keys(),
-		Create:           k.Create.Keys(),
-		Remove:           k.Remove.Keys(),
-		CloseTab:         k.CloseTab.Keys(),
-		DumpScreen:       k.DumpScreen.Keys(),
-		Next:             k.Next.Keys(),
-		Previous:         k.Previous.Keys(),
-		InsertMode:       k.InsertMode.Keys(),
-		InspectMode:      k.InspectMode.Keys(),
-		ChatPopUp:        k.ChatPopUp.Keys(),
-		GoToTop:          k.GoToTop.Keys(),
-		GoToBottom:       k.GoToBottom.Keys(),
-		DumpChat:         k.DumpChat.Keys(),
-		MarkLeader:       k.MarkLeader.Keys(),
-		QuickTimeout:     k.QuickTimeout.Keys(),
-		PrevPage:         k.PrevPage.Keys(),
-		NextPage:         k.NextPage.Keys(),
-		Accept:           k.Approve.Keys(),
-		Deny:             k.Deny.Keys(),
-		PrevFilter:       k.PrevFilter.Keys(),
-		NextFilter:       k.NextFilter.Keys(),
-		CopyMessage:      k.CopyMessage.Keys(),
-		UnbanRequestMode: k.UnbanRequestMode.Keys(),
-	}
-}
-
-type saveableKeyMap struct {
-	Up      []string `yaml:"up"`
-	Down    []string `yaml:"down"`
-	Escape  []string `yaml:"escape"`
-	Confirm []string `yaml:"confirm"`
-	Help    []string `yaml:"help"`
-
-	// App Binds
-	Quit       []string `yaml:"quit"`
-	Create     []string `yaml:"create"`
-	Remove     []string `yaml:"remove"`
-	CloseTab   []string `yaml:"close_tab"`
-	DumpScreen []string `yaml:"dump_screen"`
-
-	// Tab Binds
-	Next     []string `yaml:"next"`
-	Previous []string `yaml:"previous"`
-
-	// Chat Binds
-	InsertMode   []string `yaml:"insert_mode"`
-	InspectMode  []string `yaml:"inspect_mode"`
-	ChatPopUp    []string `yaml:"chat_pop_up"`
-	GoToTop      []string `yaml:"go_to_top"`
-	GoToBottom   []string `yaml:"go_to_bottom"`
-	DumpChat     []string `yaml:"dump_chat"`
-	QuickTimeout []string `yaml:"quick_timeout"`
-	CopyMessage  []string `yaml:"copy_message"`
-
-	// Unban Request
-	UnbanRequestMode []string `yaml:"unban_request_mode"`
-	PrevPage         []string `yaml:"prev_page"`
-	NextPage         []string `yaml:"next_page"`
-	Deny             []string `yaml:"deny_request"`
-	Accept           []string `yaml:"approve_request"`
-	PrevFilter       []string `yaml:"prev_filter"`
-	NextFilter       []string `yaml:"next_filter"`
-
-	// Account Binds
-	MarkLeader []string `yaml:"mark_leader"`
-}
-
-func setIfNotEmpty(b *key.Binding, keys []string) {
-	if len(keys) > 0 {
-		b.SetKeys(keys...)
-	}
-}
-
-func (s saveableKeyMap) keyMap() KeyMap {
-	m := BuildDefaultKeyMap() // For loading help texts
-
-	setIfNotEmpty(&m.Up, s.Up)
-	setIfNotEmpty(&m.Down, s.Down)
-	setIfNotEmpty(&m.Escape, s.Escape)
-	setIfNotEmpty(&m.Confirm, s.Confirm)
-	setIfNotEmpty(&m.Help, s.Help)
-	setIfNotEmpty(&m.Quit, s.Quit)
-	setIfNotEmpty(&m.Create, s.Create)
-	setIfNotEmpty(&m.Remove, s.Remove)
-	setIfNotEmpty(&m.CloseTab, s.CloseTab)
-	setIfNotEmpty(&m.DumpScreen, s.DumpScreen)
-	setIfNotEmpty(&m.Next, s.Next)
-	setIfNotEmpty(&m.Previous, s.Previous)
-	setIfNotEmpty(&m.InsertMode, s.InsertMode)
-	setIfNotEmpty(&m.InspectMode, s.InspectMode)
-	setIfNotEmpty(&m.ChatPopUp, s.ChatPopUp)
-	setIfNotEmpty(&m.GoToTop, s.GoToTop)
-	setIfNotEmpty(&m.GoToBottom, s.GoToBottom)
-	setIfNotEmpty(&m.DumpChat, s.DumpChat)
-	setIfNotEmpty(&m.MarkLeader, s.MarkLeader)
-	setIfNotEmpty(&m.QuickTimeout, s.QuickTimeout)
-	setIfNotEmpty(&m.PrevPage, s.PrevPage)
-	setIfNotEmpty(&m.NextPage, s.NextPage)
-	setIfNotEmpty(&m.Approve, s.Accept)
-	setIfNotEmpty(&m.Deny, s.Deny)
-	setIfNotEmpty(&m.PrevFilter, s.PrevFilter)
-	setIfNotEmpty(&m.NextFilter, s.NextFilter)
-	setIfNotEmpty(&m.CopyMessage, s.CopyMessage)
-	setIfNotEmpty(&m.UnbanRequestMode, s.UnbanRequestMode)
-
-	return m
-}
-
 func CreateReadKeyMap() (KeyMap, error) {
 	f, err := openCreateConfigFile(keyMapFileName)
 
@@ -303,9 +244,7 @@ func CreateReadKeyMap() (KeyMap, error) {
 	// Config was empty, return default config and write a default one to disk
 	if stat.Size() == 0 {
 		m := BuildDefaultKeyMap()
-		saveableMap := m.saveRepresentation()
-
-		b, err := yaml.Marshal(saveableMap)
+		b, err := yaml.Marshal(&m)
 
 		if err != nil {
 			return KeyMap{}, err
@@ -325,10 +264,10 @@ func CreateReadKeyMap() (KeyMap, error) {
 	}
 
 	// Config was not empty, read it and return it
-	var readableMap saveableKeyMap
+	readableMap := BuildDefaultKeyMap()
 	if err := yaml.Unmarshal(b, &readableMap); err != nil {
 		return KeyMap{}, err
 	}
 
-	return readableMap.keyMap(), nil
+	return readableMap, nil
 }
