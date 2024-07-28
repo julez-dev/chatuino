@@ -58,6 +58,28 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (string,
 	return tokenPair.AccessToken, tokenPair.RefreshToken, nil
 }
 
+func (c *Client) RevokeToken(ctx context.Context, token string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/revoke", nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Authorization", "Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("non 200 response code (%d)", resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (c *Client) GetGlobalEmotes(ctx context.Context) (twitch.EmoteResponse, error) {
 	return do[twitch.EmoteResponse](ctx, c, c.baseURL+"/ttv/emotes/global")
 }
