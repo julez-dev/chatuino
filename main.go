@@ -108,10 +108,6 @@ func main() {
 				runProfilingServer(ctx, log.Logger, command.String("profiling-host"))
 			}
 
-			// Override the default http client transport to log requests
-			transport := http.DefaultClient.Transport
-			http.DefaultClient.Transport = httputil.NewChatuinoRoundTrip(transport, log.Logger, Version)
-
 			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
@@ -180,6 +176,13 @@ func beforeAction(ctx context.Context, command *cli.Command) error {
 	//  - If log-to-file is enabled, log to file, else stderr
 	//  - If human-readable is enabled, log in human readable format (disable colors if log-to-file is enabled)
 	// This action runs before any command is executed, including sub commands, but will run for all sub commands
+	// Override the default http client transport to log requests
+
+	// at the end of this function, set roundtripper logger to whatever logger was setup
+	defer func() {
+		transport := http.DefaultClient.Transport
+		http.DefaultClient.Transport = httputil.NewChatuinoRoundTrip(transport, log.Logger, Version)
+	}()
 
 	if !command.Bool("log") {
 		log.Logger = zerolog.Nop()

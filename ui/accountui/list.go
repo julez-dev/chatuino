@@ -1,8 +1,10 @@
 package accountui
 
 import (
+	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -10,10 +12,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/server"
 )
 
 type AccountProvider interface {
 	GetAllAccounts() ([]save.Account, error)
+	GetAccountBy(id string) (save.Account, error)
 	UpdateTokensFor(id, accessToken, refreshToken string) error
 	MarkAccountAsMain(id string) error
 	Remove(id string) error
@@ -67,9 +71,9 @@ type List struct {
 func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap save.KeyMap) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
-		{Title: "Is main", Width: 10},
-		{Title: "User", Width: 20},
-		{Title: "Created", Width: 20},
+		{Title: "Main Account", Width: 10},
+		{Title: "Login", Width: 20},
+		{Title: "Date added", Width: 20},
 	}
 
 	t := table.New(
@@ -237,7 +241,28 @@ func (l List) markAccountMain(id string) tea.Cmd {
 
 func (l List) removeAccountRefresh(id string) tea.Cmd {
 	return func() tea.Msg {
-		if err := l.accountProvider.Remove(id); err != nil {
+		acc, err := l.accountProvider.GetAccountBy(id)
+		if err != nil {
+			return setAccountsMessage{
+				err: err,
+			}
+		}
+
+		if acc.IsAnonymous {
+			return nil
+		}
+
+		srv := server.NewClient(l.apiHost, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+
+		if err := srv.RevokeToken(ctx, acc.AccessToken); err != nil {
+			return setAccountsMessage{
+				err: err,
+			}
+		}
+
+		if err := l.accountProvider.Remove(acc.ID); err != nil {
 			return setAccountsMessage{
 				err: err,
 			}
