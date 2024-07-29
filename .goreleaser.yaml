@@ -2,7 +2,7 @@ version: 2
 
 before:
   hooks:
-    - go mod tidy
+    - go mod verify
     - go generate ./...
 
 dockers:
@@ -53,4 +53,16 @@ changelog:
     exclude:
       - "^doc:"
       - "^test:"
+      - "^chore:"
       - "^testdata:"
+      - "^wip:"
+      - "^build(deps):"
+  groups:
+    - title: Features
+      regexp: '^.*?feature(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Misc
+      order: 999
