@@ -57,6 +57,7 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.InspectMode,
 				keymap.UnbanRequestMode,
 				keymap.ChatPopUp,
+				keymap.ChannelPopUp,
 				keymap.GoToTop,
 				keymap.GoToBottom,
 				keymap.DumpChat,

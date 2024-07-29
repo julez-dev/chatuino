@@ -42,6 +42,7 @@ type KeyMap struct {
 	InsertMode   key.Binding `yaml:"insert_mode"`
 	InspectMode  key.Binding `yaml:"inspect_mode"`
 	ChatPopUp    key.Binding `yaml:"chat_pop_up"`
+	ChannelPopUp key.Binding `yaml:"channel_pop_up"`
 	GoToTop      key.Binding `yaml:"go_to_top"`
 	GoToBottom   key.Binding `yaml:"go_to_bottom"`
 	DumpChat     key.Binding `yaml:"dump_chat"`
@@ -168,8 +169,12 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+l", "user inspect mode"),
 		),
 		ChatPopUp: key.NewBinding(
-			key.WithKeys("ctrl+p", "ctrl+t"),
-			key.WithHelp("ctrl+p/t", "twitch chat browser pop up/channel"),
+			key.WithKeys("ctrl+p"),
+			key.WithHelp("ctrl+p/t", "twitch chat browser pop up"),
+		),
+		ChannelPopUp: key.NewBinding(
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+p", "twitch channel pop up"),
 		),
 		MarkLeader: key.NewBinding(
 			key.WithKeys("m"),

@@ -350,7 +350,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				}
 
 				// Open chat in browser
-				if key.Matches(msg, t.keymap.ChatPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
+				if key.Matches(msg, t.keymap.ChatPopUp, t.keymap.ChannelPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
 					return t, t.handleOpenBrowser(msg)
 				}
 
@@ -522,7 +522,7 @@ func (t *tab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 		url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
 
 		// open popout chat if modifier is pressed
-		if msg.String() == "p" {
+		if key.Matches(msg, t.keymap.ChatPopUp) {
 			url = fmt.Sprintf(popupFmt, t.channel)
 		}
 
