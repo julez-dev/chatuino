@@ -30,6 +30,13 @@ func (t *ChatuinoRoundTrip) RoundTrip(req *http.Request) (*http.Response, error)
 	}
 
 	req = req.Clone(req.Context())
+
+	// if strings.Contains(req.URL.Path, "/eventsub/subscriptions") {
+	// 	req.URL.Scheme = "http"
+	// 	req.URL.Host = "127.0.0.1:8080"
+	// 	req.URL.Path = strings.TrimPrefix(req.URL.Path, "/helix")
+	// }
+
 	req.Header.Set("User-Agent", fmt.Sprintf("Chatuino/%s", t.version))
 
 	now := time.Now()

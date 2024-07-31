@@ -15,6 +15,7 @@ import (
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/twitch/bttv"
+	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
 
@@ -113,7 +114,8 @@ func main() {
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
-			multiplexer := multiplex.NewMultiplexer(log.Logger, accountProvider)
+			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
+			eventSubMultiplexer := multiplex.NewEventMultiplexer()
 
 			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
 
@@ -133,11 +135,28 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger, accountProvider, multiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService),
+				mainui.NewUI(log.Logger, accountProvider, chatMultiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService, eventSubMultiplexer),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
 			)
+
+			eventSubMultiplexer.BuildEventSub = func() multiplex.EventSub {
+				eventSub := eventsub.NewConn()
+				eventSub.HandleMessage = func(msg eventsub.Message[eventsub.NotificationPayload]) {
+					p.Send(mainui.EventSubMessage{Payload: msg})
+				}
+				eventSub.HandleError = func(err error) {
+					var twitchApiErr twitch.APIError
+					if errors.As(err, &twitchApiErr) {
+						log.Logger.Info().Any("twitch-error", twitchApiErr).Send()
+					}
+
+					log.Logger.Err(err).Msg("error in eventsub connection error handler")
+				}
+
+				return eventSub
+			}
 
 			final, err := p.Run()
 			if err != nil {
@@ -177,8 +196,8 @@ func beforeAction(ctx context.Context, command *cli.Command) error {
 	//  - If human-readable is enabled, log in human readable format (disable colors if log-to-file is enabled)
 	// This action runs before any command is executed, including sub commands, but will run for all sub commands
 	// Override the default http client transport to log requests
-
 	// at the end of this function, set roundtripper logger to whatever logger was setup
+
 	defer func() {
 		transport := http.DefaultClient.Transport
 		http.DefaultClient.Transport = httputil.NewChatuinoRoundTrip(transport, log.Logger, Version)

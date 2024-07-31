@@ -28,7 +28,9 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 	respMsg := chatEventMessage{
 		accountID: userAccountID,
 		channel:   channel,
-		message:   &command.Notice{},
+		message: &command.Notice{
+			FakeTimestamp: time.Now(),
+		},
 	}
 
 	if len(args) < 1 {

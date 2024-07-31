@@ -18,6 +18,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -98,6 +99,7 @@ type tab struct {
 
 	// components
 	streamInfo   *streamInfo
+	poll         *poll
 	chatWindow   *chatWindow
 	userInspect  *userInspect
 	messageInput *component.SuggestionTextInput
@@ -230,6 +232,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
+		t.poll = newPoll(t.width)
 		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
@@ -259,6 +262,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		// notify user about loaded messages
 		if len(msg.initialMessages) > 0 {
 			t.chatWindow.handleMessage(&command.Notice{
+				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channel,
 				MsgID:           command.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("-- Loaded %d recent messages; powered by https://recent-messages.robotty.de --", len(msg.initialMessages)),
@@ -287,10 +291,38 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			}
 		})
 
+		// subscribe to channel events
+		//  - if authenticated user
+		//  - if channel belongs to user
+		// sadly due to cost limits, we only allow this events users channel not other channels
+		if eventSubAPI, ok := t.ttvAPI.(eventsub.EventSubService); ok && t.account.ID == msg.channelID {
+			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end"} {
+				cmds = append(cmds, func() tea.Msg {
+					return forwardEventSubMessage{
+						accountID: t.account.ID,
+						msg: eventsub.InboundMessage{
+							Service: eventSubAPI,
+							Req: twitch.CreateEventSubSubscriptionRequest{
+								Type:    subType,
+								Version: "1",
+								Condition: map[string]string{
+									"broadcaster_user_id": msg.channelID,
+								},
+							},
+						},
+					}
+				})
+			}
+		}
+
 		t.handleResize()
 
-		return t, tea.Batch(t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
+		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
+		return t, tea.Batch(cmds...)
 
+	case EventSubMessage:
+		t.handleEventSubMessage(msg.Payload)
+		return t, nil
 	case chatEventMessage: // delegate message event to chat window
 		if msg.channel != "" && msg.channel != t.channel {
 			return t, nil
@@ -446,6 +478,7 @@ func (t *tab) View() string {
 
 	// Render Order:
 	// Stream Info
+	// Poll
 	// Chat Window
 	// User Inspect Window (if in user inspect mode)
 	// Message Input
@@ -454,6 +487,12 @@ func (t *tab) View() string {
 	si := t.streamInfo.View()
 	if si != "" {
 		builder.WriteString(si)
+		builder.WriteString("\n")
+	}
+
+	pollView := t.poll.View()
+	if pollView != "" {
+		builder.WriteString(pollView)
 		builder.WriteString("\n")
 	}
 
@@ -771,6 +810,7 @@ func (t *tab) handleResize() {
 	if t.channelDataLoaded {
 		t.statusInfo.width = t.width
 		t.streamInfo.width = t.width
+		t.poll.setWidth(t.width)
 
 		messageInput := t.renderMessageInput()
 		heightMessageInput := lipgloss.Height(messageInput)
@@ -792,16 +832,22 @@ func (t *tab) handleResize() {
 			heightStreamInfo = 0
 		}
 
+		pollView := t.poll.View()
+		pollHeight := lipgloss.Height(pollView)
+		if pollView == "" {
+			pollHeight = 0
+		}
+
 		if t.state == userInspectMode || t.state == userInspectInsertMode {
-			t.chatWindow.height = (t.height - heightStreamInfo - heightStatusInfo) / 2
+			t.chatWindow.height = (t.height - heightStreamInfo - pollHeight - heightStatusInfo) / 2
 			t.chatWindow.width = t.width
 
-			t.userInspect.height = t.height - heightStreamInfo - t.chatWindow.height - heightStatusInfo - heightMessageInput
+			t.userInspect.height = t.height - heightStreamInfo - pollHeight - t.chatWindow.height - heightStatusInfo - heightMessageInput
 			t.userInspect.width = t.width
 			t.userInspect.handleResize()
 			t.chatWindow.recalculateLines()
 		} else {
-			t.chatWindow.height = t.height - heightMessageInput - heightStreamInfo - heightStatusInfo
+			t.chatWindow.height = t.height - pollHeight - heightMessageInput - heightStreamInfo - heightStatusInfo
 
 			if t.chatWindow.height < 0 {
 				t.chatWindow.height = 0
@@ -820,6 +866,54 @@ func (t *tab) handleResize() {
 			t.unbanWindow.SetHeight(t.height - heightStatusInfo)
 		}
 	}
+}
+
+func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) {
+	if msg.Payload.Subscription.Condition["broadcaster_user_id"] != t.channelID {
+		return
+	}
+
+	switch msg.Payload.Subscription.Type {
+	case "channel.poll.begin":
+		t.chatWindow.handleMessage(&command.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channel,
+			MsgID:           command.MsgID(uuid.NewString()),
+			Message:         fmt.Sprintf("-- Poll %q has started! --", msg.Payload.Event.Title),
+		})
+		t.poll.setPollData(msg)
+		t.poll.enabled = true
+		t.handleResize()
+	case "channel.poll.progress":
+		heightBefore := lipgloss.Height(t.poll.View())
+		t.poll.setPollData(msg)
+		t.poll.enabled = true
+		heightAfter := lipgloss.Height(t.poll.View())
+
+		if heightAfter != heightBefore {
+			t.handleResize()
+		}
+	case "channel.poll.end":
+		winner := msg.Payload.Event.Choices[0]
+
+		for _, choice := range msg.Payload.Event.Choices {
+			if choice.Votes > winner.Votes {
+				winner = choice
+			}
+		}
+
+		t.chatWindow.handleMessage(&command.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channel,
+			MsgID:           command.MsgID(uuid.NewString()),
+			Message:         fmt.Sprintf("-- Poll %q has ended, %q has won with %d votes! --", msg.Payload.Event.Title, winner.Title, winner.Votes),
+		})
+
+		t.poll.enabled = false
+		t.handleResize()
+	}
+
+	return
 }
 
 func (t *tab) focus() {

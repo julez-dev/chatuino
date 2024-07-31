@@ -315,6 +315,8 @@ type Notice struct {
 	ChannelUserName string
 	Message         string
 	MsgID           MsgID
+
+	FakeTimestamp time.Time
 }
 
 func (n *Notice) IRC() string {
