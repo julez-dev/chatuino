@@ -9,7 +9,6 @@ import (
 	"golang.org/x/text/message"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/google/uuid"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/rs/zerolog/log"
 )
@@ -22,7 +21,6 @@ type setStreamInfo struct {
 }
 
 type streamInfo struct {
-	id        string
 	channelID string
 	ttvAPI    APIClient
 	printer   *message.Printer
@@ -38,7 +36,6 @@ type streamInfo struct {
 
 func newStreamInfo(channelID string, ttvAPI APIClient, width int) *streamInfo {
 	return &streamInfo{
-		id:        uuid.New().String(),
 		width:     width,
 		channelID: channelID,
 		done:      make(chan struct{}, 1),
@@ -56,16 +53,16 @@ func (s *streamInfo) Init() tea.Cmd {
 func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 	switch msg := msg.(type) {
 	case setStreamInfo:
-		log.Logger.Info().Msg("updating stream info")
-		if msg.target != s.id {
+		if msg.target != s.channelID {
 			return s, nil
 		}
+		log.Logger.Info().Msg("updating stream info")
 
 		s.game = msg.game
 		s.title = msg.title
 		s.viewer = msg.viewer
 
-		return s, s.doTick
+		return s, nil
 	}
 	return s, nil
 }
@@ -86,7 +83,7 @@ func (s *streamInfo) View() string {
 }
 
 func (s *streamInfo) doTick() tea.Msg {
-	timer := time.NewTimer(time.Second * 45)
+	timer := time.NewTimer(time.Second * 90)
 
 	defer func() {
 		timer.Stop()
@@ -115,12 +112,12 @@ func (s *streamInfo) refreshStreamInfo() tea.Msg {
 
 	if len(info.Data) < 1 {
 		return setStreamInfo{
-			target: s.id,
+			target: s.channelID,
 		}
 	}
 
 	return setStreamInfo{
-		target: s.id,
+		target: s.channelID,
 		viewer: info.Data[0].ViewerCount,
 		title:  info.Data[0].Title,
 		game:   info.Data[0].GameName,

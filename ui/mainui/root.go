@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -84,8 +85,10 @@ func (e ircConnectionError) IRC() string {
 }
 
 type persistedDataLoadedMessage struct {
+	ttvUsers map[string]twitch.UserData
 	state    save.AppState
 	accounts []save.Account
+	clients  map[string]APIClient
 }
 
 type chatEventMessage struct {
@@ -107,6 +110,10 @@ type EventSubMessage struct {
 	Payload eventsub.Message[eventsub.NotificationPayload]
 }
 
+type polledStreamInfo struct {
+	streamInfos []setStreamInfo
+}
+
 type Root struct {
 	logger   zerolog.Logger
 	clientID string
@@ -114,7 +121,8 @@ type Root struct {
 	width, height int
 	keymap        save.KeyMap
 
-	screenType activeScreen
+	hasLoadedSession bool
+	screenType       activeScreen
 
 	// dependencies
 	accounts             AccountProvider
@@ -224,9 +232,57 @@ func (r *Root) Init() tea.Cmd {
 				return nil
 			}
 
-			return persistedDataLoadedMessage{state: state, accounts: accounts}
+			// pre populate the API clients for each account
+			clients := make(map[string]APIClient, len(accounts))
+			for _, acc := range accounts {
+				var api APIClient
+
+				if !acc.IsAnonymous {
+					api, _ = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
+				} else {
+					api = r.serverAPI
+				}
+
+				clients[acc.ID] = api
+			}
+
+			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
+			ttvUsers := make(map[string]twitch.UserData, len(state.Tabs))
+			loginsUnique := make(map[string]struct{}, len(state.Tabs))
+			logins := make([]string, 0, len(state.Tabs))
+
+			for _, tab := range state.Tabs {
+				loginsUnique[tab.Channel] = struct{}{}
+			}
+
+			for login := range loginsUnique {
+				logins = append(logins, login)
+			}
+
+			if len(logins) > 0 {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+				defer cancel()
+
+				resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
+				if err != nil {
+					r.logger.Err(err).Msg("failed to connect to load users")
+					return nil
+				}
+
+				for _, data := range resp.Data {
+					ttvUsers[data.Login] = data
+				}
+			}
+
+			return persistedDataLoadedMessage{
+				state:    state,
+				accounts: accounts,
+				clients:  clients,
+				ttvUsers: ttvUsers,
+			}
 		},
 		r.waitChatEvents(),
+		r.tickPollStreamInfos(),
 	)
 }
 
@@ -285,6 +341,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return r, cmd
+	case polledStreamInfo:
+		return r, r.handlePolledStreamInfo(msg)
 	case tea.WindowSizeMsg:
 		r.width = msg.Width
 		r.height = msg.Height
@@ -292,6 +350,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if key.Matches(msg, r.keymap.Quit) {
 			return r, tea.Quit
+		}
+
+		if !r.hasLoadedSession {
+			return r, tea.Batch(cmds...)
 		}
 
 		if key.Matches(msg, r.keymap.Help) {
@@ -449,6 +511,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (r *Root) View() string {
+	if !r.hasLoadedSession {
+		return r.splash.ViewLoading()
+	}
+
 	switch r.screenType {
 	case mainScreen:
 		if len(r.tabs) == 0 {
@@ -501,6 +567,96 @@ func (r *Root) Close() error {
 	close(r.in)
 
 	return errors.Join(errs...)
+}
+
+func (r *Root) tickPollStreamInfos() tea.Cmd {
+	clients := maps.Clone(r.ttvAPIUserClients)
+
+	// collect all open broadcasters
+	openBroadcasts := map[string]struct{}{}
+
+	for _, tab := range r.tabs {
+		openBroadcasts[tab.channelID] = struct{}{}
+	}
+
+	broadcastIDs := []string{}
+	for broadcast := range openBroadcasts {
+		broadcastIDs = append(broadcastIDs, broadcast)
+	}
+
+	return func() tea.Msg {
+		accounts, err := r.accounts.GetAllAccounts()
+
+		if err != nil {
+			return polledStreamInfo{}
+		}
+
+		var mainAccountID string
+
+		for _, account := range accounts {
+			if account.IsMain {
+				mainAccountID = account.ID
+			}
+		}
+
+		var fetcher APIClient
+		if _, has := clients[mainAccountID]; has {
+			fetcher = clients[mainAccountID]
+		} else {
+			fetcher = r.serverAPI
+		}
+
+		timer := time.NewTimer(time.Second * 10)
+
+		defer func() {
+			timer.Stop()
+		}()
+
+		<-timer.C
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		resp, err := fetcher.GetStreamInfo(ctx, broadcastIDs)
+
+		if err != nil {
+			r.logger.Err(err).Msg("failed polling streamer info")
+			return polledStreamInfo{}
+		}
+
+		polled := polledStreamInfo{
+			streamInfos: make([]setStreamInfo, 0, len(resp.Data)),
+		}
+
+		for _, data := range resp.Data {
+			polled.streamInfos = append(polled.streamInfos, setStreamInfo{
+				target: data.UserID,
+				viewer: data.ViewerCount,
+				title:  data.Title,
+				game:   data.GameName,
+			})
+		}
+
+		return polled
+	}
+}
+
+func (r *Root) handlePolledStreamInfo(polled polledStreamInfo) tea.Cmd {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
+	for _, info := range polled.streamInfos {
+		for it, tab := range r.tabs {
+			if tab.channelDataLoaded {
+				r.tabs[it], cmd = tab.Update(info)
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
+	cmds = append(cmds, r.tickPollStreamInfos())
+	return tea.Batch(cmds...)
 }
 
 func (r *Root) createTab(account save.Account, channel string) *tab {
@@ -593,21 +749,11 @@ func (r *Root) prevTab() {
 
 func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd {
 	cmds := make([]tea.Cmd, 0, len(msg.state.Tabs))
-
-	// pre populate the API clients for each account
-	for _, acc := range msg.accounts {
-		var api APIClient
-
-		if !acc.IsAnonymous {
-			api, _ = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
-		} else {
-			api = r.serverAPI
-		}
-
-		r.ttvAPIUserClients[acc.ID] = api
-	}
+	r.ttvAPIUserClients = msg.clients
+	r.hasLoadedSession = true
 
 	// restore tabs
+	var hasActiveTab bool
 	for _, t := range msg.state.Tabs {
 		r.screenType = mainScreen
 
@@ -632,10 +778,19 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		r.tabs = append(r.tabs, nTab)
 
 		if t.IsFocused {
+			hasActiveTab = true
 			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
 			r.header.selectTab(nTab.id)
 		}
-		cmds = append(cmds, nTab.Init())
+		cmds = append(cmds, nTab.InitWithUserData(msg.ttvUsers[t.Channel]))
+	}
+
+	// if for some reason there were tabs persisted but non tab has the focus flag set
+	// focus the first tab
+	if len(r.tabs) > 0 && !hasActiveTab {
+		r.header.selectTab(r.tabs[0].id)
+		r.tabCursor = 0
+		r.tabs[0].focus()
 	}
 
 	r.handleResize()

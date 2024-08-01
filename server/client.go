@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/julez-dev/chatuino/twitch"
 )
@@ -93,7 +94,16 @@ func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitc
 		return twitch.GetStreamsResponse{}, fmt.Errorf("expected at least one broadcast id")
 	}
 
-	return do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
+	if len(broadcastID) == 1 {
+		return do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
+	}
+
+	userValues := url.Values{}
+	for _, login := range broadcastID {
+		userValues.Add("user_id", login)
+	}
+
+	return do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channels/info?"+userValues.Encode())
 }
 
 func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error) {
@@ -101,7 +111,16 @@ func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (t
 		return twitch.UserResponse{}, fmt.Errorf("expected at least one login")
 	}
 
-	return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
+	if len(logins) == 1 {
+		return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
+	}
+
+	userValues := url.Values{}
+	for _, login := range logins {
+		userValues.Add("logins", login)
+	}
+
+	return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channels?"+userValues.Encode())
 }
 
 func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error) {

@@ -31,6 +31,10 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 	c.Route("/ttv", func(r chi.Router) {
 		r.Get("/emotes/global", api.handleGetGlobalEmotes())
 
+		// batched endoints
+		r.Get("/channels", api.handleGetStreamUser())
+		r.Get("/channels/info", api.handleGetStreamInfo())
+
 		r.Get("/channel/{channelID}/emotes", api.handleGetChannelEmotes())
 		r.Get("/channel/{channelID}/info", api.handleGetStreamInfo())
 		r.Get("/channel/{channelID}/chat/settings", api.handleGetChatSettings())

@@ -191,6 +191,47 @@ func (t *tab) Init() tea.Cmd {
 	return cmd
 }
 
+func (t *tab) InitWithUserData(userData twitch.UserData) tea.Cmd {
+	cmd := func() tea.Msg {
+		log.Logger.Info().Any("data", userData).Msg("login with pre fetched data")
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		defer cancel()
+
+		// refresh emote set for joined channel
+		if err := t.emoteStore.RefreshLocal(ctx, userData.ID); err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("could not refresh emote cache for %s (%s): %w", t.channel, userData.ID, err),
+			}
+		}
+
+		if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("could not refresh global emote cache for %s (%s): %w", t.channel, userData.ID, err),
+			}
+		}
+
+		// fetch recent messages
+		recentMessages, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
+		if err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      err,
+			}
+		}
+
+		return setChannelDataMessage{
+			targetID:        t.id,
+			channelID:       userData.ID,
+			channel:         userData.DisplayName,
+			initialMessages: recentMessages,
+		}
+	}
+
+	return cmd
+}
+
 func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
@@ -207,7 +248,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		return t, nil
 	case setStreamInfo:
 		if t.channelDataLoaded {
-			if msg.target != t.streamInfo.id {
+			if msg.target != t.channelID {
 				return t, nil
 			}
 
