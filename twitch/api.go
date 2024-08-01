@@ -339,6 +339,82 @@ func (a *API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStrea
 	return resp, nil
 }
 
+func (a *API) CreateEventSubSubscription(ctx context.Context, reqData CreateEventSubSubscriptionRequest) (CreateEventSubSubscriptionResponse, error) {
+	if a.provider == nil {
+		return CreateEventSubSubscriptionResponse{}, ErrNoUserAccess
+	}
+
+	reqBytes, err := json.Marshal(reqData)
+
+	if err != nil {
+		return CreateEventSubSubscriptionResponse{}, err
+	}
+
+	resp, err := doAuthenticatedUserRequest[CreateEventSubSubscriptionResponse](ctx, a, http.MethodPost, "/eventsub/subscriptions", reqBytes)
+
+	if err != nil {
+		return CreateEventSubSubscriptionResponse{}, err
+	}
+
+	return resp, nil
+}
+
+// https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
+func (a *API) FetchEventSubSubscriptions(ctx context.Context, status, subType, userID string) ([]EventSubData, error) {
+	if a.provider == nil {
+		return nil, ErrNoUserAccess
+	}
+
+	subs := []EventSubData{}
+	var after string
+
+	for {
+		values := url.Values{}
+		values.Add("status", status)
+		if subType != "" {
+			values.Add("type", subType)
+		}
+		if userID != "" {
+			values.Add("user_id", userID)
+		}
+		if after != "" {
+			values.Add("after", after)
+		}
+
+		url := fmt.Sprintf("/eventsub/subscriptions?%s", values.Encode())
+
+		resp, err := doAuthenticatedUserRequest[GetEventSubSubscriptionsResponse](ctx, a, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		subs = append(subs, resp.Data...)
+
+		if resp.Pagination.Cursor == "" {
+			break
+		}
+
+		after = resp.Pagination.Cursor
+	}
+
+	return subs, nil
+}
+
+func (a *API) DeleteSubSubscriptions(ctx context.Context, id string) error {
+	if a.provider == nil {
+		return ErrNoUserAccess
+	}
+
+	values := url.Values{}
+	values.Add("id", id)
+
+	if _, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, "/eventsub/subscriptions", nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (a *API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 	var (
 		resp EmoteResponse
@@ -537,10 +613,10 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 	return resp, nil
 }
 
-func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method, url string, body []byte) (T, error) {
+func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method, endpoint string, body []byte) (T, error) {
 	var data T
 
-	url = fmt.Sprintf("%s%s", baseURL, url)
+	url := fmt.Sprintf("%s%s", baseURL, endpoint)
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return data, err
@@ -573,6 +649,9 @@ func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method,
 		// Is rate-limit reached?
 		// Then wait
 		if resp.StatusCode == http.StatusTooManyRequests && resp.Header.Get("Ratelimit-Reset") != "" {
+			if endpoint == "/eventsub/subscriptions" {
+				return data, fmt.Errorf("reached event sub cost limit")
+			}
 
 			waitUntil, err := strconv.Atoi(resp.Header.Get("Ratelimit-Reset"))
 			if err != nil {
@@ -592,7 +671,7 @@ func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method,
 
 			select {
 			case <-timer.C: // reset time is reached, try again
-				return doAuthenticatedRequest[T](ctx, api, token, method, url, body)
+				return doAuthenticatedRequest[T](ctx, api, token, method, endpoint, body)
 			case <-ctx.Done():
 				timer.Stop()
 				return data, ctx.Err()

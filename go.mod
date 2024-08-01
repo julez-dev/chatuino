@@ -24,6 +24,7 @@ require nhooyr.io/websocket v1.8.11
 require (
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
+	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/zalando/go-keyring v0.2.5
 	resenje.org/singleflight v0.4.2
 )
@@ -31,6 +32,7 @@ require (
 require (
 	github.com/alessio/shellescape v1.4.2 // indirect
 	github.com/aymanbagabas/go-udiff v0.2.0 // indirect
+	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.1.4 // indirect
 	github.com/charmbracelet/x/exp/golden v0.0.0-20240617190524-788ec55faed1 // indirect
 	github.com/charmbracelet/x/input v0.1.3 // indirect

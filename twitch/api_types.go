@@ -159,3 +159,52 @@ type (
 		FollowedAt       time.Time `json:"followed_at"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
+type (
+	GetEventSubSubscriptionsResponse struct {
+		Total        int            `json:"total"`
+		TotalCost    int            `json:"total_cost"`
+		MaxTotalCost int            `json:"max_total_cost"`
+		Pagination   Pagination     `json:"pagination"`
+		Data         []EventSubData `json:"data"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#create-eventsub-subscription
+type (
+	CreateEventSubSubscriptionRequest struct {
+		Type      string                   `json:"type"`
+		Version   string                   `json:"version"`
+		Condition map[string]string        `json:"condition"`
+		Transport EventSubTransportRequest `json:"transport"`
+	}
+	EventSubTransportRequest struct {
+		Method    string `json:"method"`
+		Callback  string `json:"callback"`
+		ConduitID string `json:"conduit_id"`
+		Secret    string `json:"secret"`
+		SessionID string `json:"session_id"`
+	}
+
+	CreateEventSubSubscriptionResponse struct {
+		Data         []EventSubData `json:"data"`
+		Total        int            `json:"total"`
+		TotalCost    int            `json:"total_cost"`
+		MaxTotalCost int            `json:"max_total_cost"`
+	}
+	EventSubTransport struct {
+		Method    string `json:"method"`
+		ConduitID string `json:"conduit_id"`
+	}
+	EventSubData struct {
+		ID        string            `json:"id"`
+		Status    string            `json:"status"`
+		Type      string            `json:"type"`
+		Version   string            `json:"version"`
+		Condition map[string]string `json:"condition"`
+		CreatedAt time.Time         `json:"created_at"`
+		Transport EventSubTransport `json:"transport"`
+		Cost      int               `json:"cost"`
+	}
+)

@@ -426,7 +426,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 
 		return c.wordwrapMessage(prefix, msg.Message)
 	case *command.Notice:
-		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + noticeAlertStyle.Render("Notice") + "]: "
+		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, styled)

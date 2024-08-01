@@ -27,14 +27,14 @@ type IncrementTabCounter struct{}
 
 type DecrementTabCounter struct{}
 
-type Multiplexer struct {
+type ChatMultiplexer struct {
 	logger          zerolog.Logger
 	provider        twitch.AccountProvider
 	BuildChatClient func(logger zerolog.Logger, provider twitch.AccountProvider, accountID string) Chat
 }
 
-func NewMultiplexer(logger zerolog.Logger, provider twitch.AccountProvider) *Multiplexer {
-	return &Multiplexer{
+func NewChatMultiplexer(logger zerolog.Logger, provider twitch.AccountProvider) *ChatMultiplexer {
+	return &ChatMultiplexer{
 		logger:   logger,
 		provider: provider,
 		BuildChatClient: func(logger zerolog.Logger, provider twitch.AccountProvider, accountID string) Chat {
@@ -43,7 +43,7 @@ func NewMultiplexer(logger zerolog.Logger, provider twitch.AccountProvider) *Mul
 	}
 }
 
-func (m *Multiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan OutboundMessage {
+func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan OutboundMessage {
 	out := make(chan OutboundMessage, 10)
 
 	go func() {

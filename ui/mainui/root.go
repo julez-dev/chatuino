@@ -19,6 +19,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/rs/zerolog"
 )
 
@@ -50,6 +51,10 @@ type ChatPool interface {
 	ListenAndServe(inbound <-chan multiplex.InboundMessage) <-chan multiplex.OutboundMessage
 }
 
+type EventSubPool interface {
+	ListenAndServe(inbound <-chan multiplex.EventSubInboundMessage) error
+}
+
 type RecentMessageService interface {
 	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error)
 }
@@ -78,7 +83,7 @@ func (e ircConnectionError) IRC() string {
 	return e.Error()
 }
 
-type setStateMessage struct {
+type persistedDataLoadedMessage struct {
 	state    save.AppState
 	accounts []save.Account
 }
@@ -91,6 +96,15 @@ type chatEventMessage struct {
 
 type forwardChatMessage struct {
 	msg multiplex.InboundMessage
+}
+
+type forwardEventSubMessage struct {
+	accountID string
+	msg       eventsub.InboundMessage
+}
+
+type EventSubMessage struct {
+	Payload eventsub.Message[eventsub.NotificationPayload]
 }
 
 type Root struct {
@@ -114,9 +128,14 @@ type Root struct {
 	ttvAPIUserClients map[string]APIClient
 
 	// chat multiplexer channels
-	inWG *sync.WaitGroup
-	in   chan multiplex.InboundMessage
-	out  <-chan multiplex.OutboundMessage
+	closerWG *sync.WaitGroup
+	in       chan multiplex.InboundMessage
+	out      <-chan multiplex.OutboundMessage
+
+	// event sub
+	eventSub           EventSubPool
+	eventSubInInFlight *sync.WaitGroup
+	eventSubIn         chan multiplex.EventSubInboundMessage
 
 	// components
 	splash    splash
@@ -137,9 +156,11 @@ func NewUI(
 	serverClient APIClientWithRefresh,
 	keymap save.KeyMap,
 	recentMessageService RecentMessageService,
+	eventSub EventSubPool,
 ) *Root {
-	in := make(chan multiplex.InboundMessage)
-	out := chatPool.ListenAndServe(in)
+	inChat := make(chan multiplex.InboundMessage)
+	outChat := chatPool.ListenAndServe(inChat)
+	inEventSub := make(chan multiplex.EventSubInboundMessage)
 
 	clients := map[string]APIClient{}
 	return &Root{
@@ -158,9 +179,14 @@ func NewUI(
 		joinInput: newJoin(provider, clients, 10, 10, keymap),
 
 		// chat multiplex channels
-		inWG: &sync.WaitGroup{},
-		in:   in,
-		out:  out,
+		closerWG: &sync.WaitGroup{},
+		in:       inChat,
+		out:      outChat,
+
+		// event sub
+		eventSubInInFlight: &sync.WaitGroup{},
+		eventSub:           eventSub,
+		eventSubIn:         inEventSub,
 
 		accounts:             provider,
 		ttvAPIUserClients:    clients,
@@ -177,6 +203,17 @@ func NewUI(
 func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
+			r.closerWG.Add(1)
+			go func() {
+				defer r.closerWG.Done()
+				if err := r.eventSub.ListenAndServe(r.eventSubIn); err != nil {
+					r.logger.Err(err).Msg("failed to connect to eventsub")
+					return
+				}
+
+				r.logger.Info().Msg("init event sub routine done")
+			}()
+
 			state, err := r.loadSaveState()
 			if err != nil {
 				return nil
@@ -187,7 +224,7 @@ func (r *Root) Init() tea.Cmd {
 				return nil
 			}
 
-			return setStateMessage{state: state, accounts: accounts}
+			return persistedDataLoadedMessage{state: state, accounts: accounts}
 		},
 		r.waitChatEvents(),
 	)
@@ -200,54 +237,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
-	case setStateMessage:
-		cmds = make([]tea.Cmd, 0, len(msg.state.Tabs))
-
-		// pre populate the API clients for each account
-		for _, acc := range msg.accounts {
-			var api APIClient
-
-			if !acc.IsAnonymous {
-				api, _ = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
-			} else {
-				api = r.serverAPI
-			}
-
-			r.ttvAPIUserClients[acc.ID] = api
-		}
-
-		for _, t := range msg.state.Tabs {
-			r.screenType = mainScreen
-
-			var account save.Account
-
-			for _, a := range msg.accounts {
-				if a.ID == t.IdentityID {
-					account = a
-				}
-			}
-
-			if account.ID == "" {
-				continue
-			}
-
-			nTab := r.createTab(account, t.Channel)
-
-			if t.IsFocused {
-				nTab.focus()
-			}
-
-			r.tabs = append(r.tabs, nTab)
-
-			if t.IsFocused {
-				r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-				r.header.selectTab(nTab.id)
-			}
-			cmds = append(cmds, nTab.Init())
-		}
-
-		r.handleResize()
-		return r, tea.Batch(cmds...)
+	case persistedDataLoadedMessage:
+		return r, r.handlePersistedDataLoaded(msg)
 	case joinChannelMessage:
 		r.screenType = mainScreen
 
@@ -264,6 +255,17 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.handleResize()
 
 		return r, nTab.Init()
+	case forwardEventSubMessage:
+		r.eventSubInInFlight.Add(1)
+		cmd := func() tea.Msg {
+			defer r.eventSubInInFlight.Done()
+			r.eventSubIn <- multiplex.EventSubInboundMessage{
+				AccountID: msg.accountID,
+				Msg:       msg.msg,
+			}
+			return nil
+		}
+		return r, cmd
 	case chatEventMessage:
 		for i, t := range r.tabs {
 			if t.account.ID == msg.accountID && (t.channel == msg.channel || msg.channel == "") {
@@ -273,10 +275,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		cmds = append(cmds, r.waitChatEvents())
-
 		return r, tea.Batch(cmds...)
 	case forwardChatMessage:
+		r.eventSubInInFlight.Add(1)
 		cmd := func() tea.Msg {
+			defer r.eventSubInInFlight.Done()
 			r.in <- msg.msg
 			return nil
 		}
@@ -408,9 +411,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							})
 						}
 
-						r.inWG.Add(1)
+						r.closerWG.Add(1)
 						cmds = append(cmds, func() tea.Msg {
-							defer r.inWG.Done()
+							defer r.closerWG.Done()
 							r.in <- multiplex.InboundMessage{
 								AccountID: currentTab.account.ID,
 								Msg:       multiplex.DecrementTabCounter{},
@@ -488,8 +491,15 @@ func (r *Root) Close() error {
 		errs = append(errs, t.Close())
 	}
 
-	r.inWG.Wait() // wait for all inbound messages to be processed
+	if r.eventSubIn != nil {
+		r.eventSubInInFlight.Wait()
+		close(r.eventSubIn)
+	}
+
+	r.closerWG.Wait() // wait for all inbound messages to be processed
+
 	close(r.in)
+
 	return errors.Join(errs...)
 }
 
@@ -579,6 +589,57 @@ func (r *Root) prevTab() {
 		r.header.selectTab(r.tabs[r.tabCursor].id)
 		r.tabs[r.tabCursor].focus()
 	}
+}
+
+func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd {
+	cmds := make([]tea.Cmd, 0, len(msg.state.Tabs))
+
+	// pre populate the API clients for each account
+	for _, acc := range msg.accounts {
+		var api APIClient
+
+		if !acc.IsAnonymous {
+			api, _ = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
+		} else {
+			api = r.serverAPI
+		}
+
+		r.ttvAPIUserClients[acc.ID] = api
+	}
+
+	// restore tabs
+	for _, t := range msg.state.Tabs {
+		r.screenType = mainScreen
+
+		var account save.Account
+
+		for _, a := range msg.accounts {
+			if a.ID == t.IdentityID {
+				account = a
+			}
+		}
+
+		if account.ID == "" {
+			continue
+		}
+
+		nTab := r.createTab(account, t.Channel)
+
+		if t.IsFocused {
+			nTab.focus()
+		}
+
+		r.tabs = append(r.tabs, nTab)
+
+		if t.IsFocused {
+			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
+			r.header.selectTab(nTab.id)
+		}
+		cmds = append(cmds, nTab.Init())
+	}
+
+	r.handleResize()
+	return tea.Batch(cmds...)
 }
 
 func (r *Root) waitChatEvents() tea.Cmd {
