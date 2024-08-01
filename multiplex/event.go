@@ -2,7 +2,7 @@ package multiplex
 
 import (
 	"github.com/julez-dev/chatuino/twitch/eventsub"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -11,6 +11,7 @@ type EventSub interface {
 }
 
 type EventMultiplexer struct {
+	logger        zerolog.Logger
 	BuildEventSub func() EventSub
 }
 
@@ -20,10 +21,11 @@ type EventSubInboundMessage struct {
 	Msg       eventsub.InboundMessage
 }
 
-func NewEventMultiplexer() *EventMultiplexer {
+func NewEventMultiplexer(logger zerolog.Logger) *EventMultiplexer {
 	return &EventMultiplexer{
+		logger: logger,
 		BuildEventSub: func() EventSub {
-			return eventsub.NewConn(nil)
+			return eventsub.NewConn(logger, nil)
 		},
 	}
 }
@@ -39,10 +41,10 @@ SELECT:
 		case accountID := <-doneAgg:
 			close(internalInbounds[accountID])
 			delete(internalInbounds, accountID)
-			log.Logger.Info().Str("account-id", accountID).Msg("removing event sub connection early")
+			e.logger.Info().Str("account-id", accountID).Msg("removing event sub connection early")
 		case msg, ok := <-inbound:
 			if !ok {
-				log.Logger.Info().Msg("event multiplex inbound channel closed")
+				e.logger.Info().Msg("event multiplex inbound channel closed")
 				break SELECT
 			}
 			var internalInbound chan<- eventsub.InboundMessage
@@ -50,7 +52,7 @@ SELECT:
 
 			// ws connection for accountID does not exist
 			if !ok {
-				log.Logger.Info().Str("account-id", msg.AccountID).Msg("creating new event sub connection")
+				e.logger.Info().Str("account-id", msg.AccountID).Msg("creating new event sub connection")
 				var doneChan <-chan struct{}
 				internalInbound, doneChan = e.startEventSub(connWG)
 				internalInbounds[msg.AccountID] = internalInbound
@@ -70,9 +72,9 @@ SELECT:
 
 	// close all ws connections
 	for id, internalInbound := range internalInbounds {
-		log.Logger.Info().Str("account-id", id).Msg("closing internal inbound event sub channel")
+		e.logger.Info().Str("account-id", id).Msg("closing internal inbound event sub channel")
 		close(internalInbound)
-		log.Logger.Info().Str("account-id", id).Msg("closed internal inbound event sub channel")
+		e.logger.Info().Str("account-id", id).Msg("closed internal inbound event sub channel")
 	}
 
 	// drain dones
@@ -97,7 +99,7 @@ SELECT:
 }
 
 func (e *EventMultiplexer) startEventSub(wg *errgroup.Group) (chan<- eventsub.InboundMessage, <-chan struct{}) {
-	internalInbound := make(chan eventsub.InboundMessage, 0)
+	internalInbound := make(chan eventsub.InboundMessage)
 	done := make(chan struct{})
 	wg.Go(func() error {
 		defer close(done)

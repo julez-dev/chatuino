@@ -11,7 +11,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/julez-dev/chatuino/twitch"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"nhooyr.io/websocket"
 )
 
@@ -33,6 +33,7 @@ type InboundMessage struct {
 type Conn struct {
 	inboundWasClosed bool
 	httpClient       *http.Client
+	logger           zerolog.Logger
 	m                *sync.Mutex
 
 	// twitch may send duplicate messages (detectable by id), we need to filter them out
@@ -43,7 +44,7 @@ type Conn struct {
 	HandleError   func(err error)
 }
 
-func NewConn(httpClient *http.Client) *Conn {
+func NewConn(logger zerolog.Logger, httpClient *http.Client) *Conn {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -126,7 +127,7 @@ func (c *Conn) Connect(inbound <-chan InboundMessage) error {
 				continue
 			}
 
-			log.Logger.Err(err).Msg("failed during startListeningWS")
+			c.logger.Err(err).Msg("failed during startListeningWS")
 		}
 	}
 }
@@ -193,7 +194,7 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 
 			return twitchForcedReconnect{NewWSURL: reconnect.Payload.Session.ReconnectURL}
 		case "session_keepalive":
-			log.Logger.Info().Any("event-message", untypedData).Msg("session_keepalive")
+			c.logger.Info().Any("event-message", untypedData).Msg("session_keepalive")
 			continue
 		case "notification":
 			// skip if duplicate
@@ -212,7 +213,7 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 
 			c.HandleMessage(typedData)
 		default:
-			log.Logger.Info().Any("event-message", untypedData).Msg("unhandled message type")
+			c.logger.Info().Any("event-message", untypedData).Msg("unhandled message type")
 		}
 	}
 }
@@ -234,9 +235,9 @@ func (c *Conn) listenInboundMessages(wg *sync.WaitGroup, done <-chan struct{}, m
 			resp, err := inboundReq.Service.CreateEventSubSubscription(context.Background(), addTransportFunc(inboundReq.Req, sessionID))
 			if err != nil {
 				c.HandleError(err)
-				log.Logger.Error().Err(err).Msg("failed to create subscription")
+				c.logger.Error().Err(err).Msg("failed to create subscription")
 			} else {
-				log.Logger.Info().Any("resp-event", resp).Msg("subscription created")
+				c.logger.Info().Any("resp-event", resp).Msg("subscription created")
 			}
 		}
 	}

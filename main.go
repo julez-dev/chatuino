@@ -47,7 +47,8 @@ var maybeLogFile *os.File
 func main() {
 	defer func() {
 		if maybeLogFile != nil {
-			maybeLogFile.Close()
+			_ = maybeLogFile.Sync()
+			_ = maybeLogFile.Close()
 		}
 	}()
 
@@ -115,7 +116,7 @@ func main() {
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
-			eventSubMultiplexer := multiplex.NewEventMultiplexer()
+			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
 
 			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
 
@@ -142,7 +143,7 @@ func main() {
 			)
 
 			eventSubMultiplexer.BuildEventSub = func() multiplex.EventSub {
-				eventSub := eventsub.NewConn(http.DefaultClient)
+				eventSub := eventsub.NewConn(log.Logger, http.DefaultClient)
 				eventSub.HandleMessage = func(msg eventsub.Message[eventsub.NotificationPayload]) {
 					p.Send(mainui.EventSubMessage{Payload: msg})
 				}

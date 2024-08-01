@@ -968,8 +968,6 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 
 		return
 	}
-
-	return
 }
 
 func (t *tab) focus() {
