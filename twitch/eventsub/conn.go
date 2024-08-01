@@ -32,6 +32,7 @@ type InboundMessage struct {
 
 type Conn struct {
 	inboundWasClosed bool
+	httpClient       *http.Client
 	m                *sync.Mutex
 
 	// twitch may send duplicate messages (detectable by id), we need to filter them out
@@ -42,8 +43,13 @@ type Conn struct {
 	HandleError   func(err error)
 }
 
-func NewConn() *Conn {
+func NewConn(httpClient *http.Client) *Conn {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
 	return &Conn{
+		httpClient:    httpClient,
 		m:             &sync.Mutex{},
 		HandleMessage: func(msg Message[NotificationPayload]) {},
 		HandleError:   func(err error) {},
@@ -130,7 +136,7 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 	defer cancel()
 
 	ws, _, err := websocket.Dial(ctx, eventSubURL, &websocket.DialOptions{
-		HTTPClient: http.DefaultClient,
+		HTTPClient: c.httpClient,
 	})
 
 	if err != nil {

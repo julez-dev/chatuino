@@ -142,7 +142,7 @@ func main() {
 			)
 
 			eventSubMultiplexer.BuildEventSub = func() multiplex.EventSub {
-				eventSub := eventsub.NewConn()
+				eventSub := eventsub.NewConn(http.DefaultClient)
 				eventSub.HandleMessage = func(msg eventsub.Message[eventsub.NotificationPayload]) {
 					p.Send(mainui.EventSubMessage{Payload: msg})
 				}

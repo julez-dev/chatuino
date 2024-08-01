@@ -75,6 +75,17 @@ type Event struct {
 	EndsAt              time.Time `json:"ends_at"`  // empty if done
 	EndedAt             time.Time `json:"ended_at"` // empty until done
 	Status              string    `json:"status"`   // completed when done, else empty
+
+	// Raid related
+	FromBroadcasterUserID    string `json:"from_broadcaster_user_id"`
+	FromBroadcasterUserLogin string `json:"from_broadcaster_user_login"`
+	FromBroadcasterUserName  string `json:"from_broadcaster_user_name"`
+
+	ToBroadcasterUserID    string `json:"to_broadcaster_user_id"`
+	ToBroadcasterUserLogin string `json:"to_broadcaster_user_login"`
+	ToBroadcasterUserName  string `json:"to_broadcaster_user_name"`
+
+	Viewers int `json:"viewers"`
 }
 
 type Voting struct {

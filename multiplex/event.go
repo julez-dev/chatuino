@@ -23,13 +23,12 @@ type EventSubInboundMessage struct {
 func NewEventMultiplexer() *EventMultiplexer {
 	return &EventMultiplexer{
 		BuildEventSub: func() EventSub {
-			return eventsub.NewConn()
+			return eventsub.NewConn(nil)
 		},
 	}
 }
 
 func (e *EventMultiplexer) ListenAndServe(inbound <-chan EventSubInboundMessage) error {
-	defer log.Logger.Info().Msg("event sub multiplexer done")
 	internalInbounds := map[string]chan<- eventsub.InboundMessage{}
 	doneAgg := make(chan string) // signals when a ws connection is done (value is account ID) / mostly for errors
 	connWG := &errgroup.Group{}

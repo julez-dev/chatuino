@@ -313,6 +313,38 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 					}
 				})
 			}
+
+			cmds = append(cmds, func() tea.Msg {
+				return forwardEventSubMessage{
+					accountID: t.account.ID,
+					msg: eventsub.InboundMessage{
+						Service: eventSubAPI,
+						Req: twitch.CreateEventSubSubscriptionRequest{
+							Type:    "channel.raid",
+							Version: "1",
+							Condition: map[string]string{
+								"to_broadcaster_user_id": msg.channelID, // broadcaster gets raided
+							},
+						},
+					},
+				}
+			})
+
+			cmds = append(cmds, func() tea.Msg {
+				return forwardEventSubMessage{
+					accountID: t.account.ID,
+					msg: eventsub.InboundMessage{
+						Service: eventSubAPI,
+						Req: twitch.CreateEventSubSubscriptionRequest{
+							Type:    "channel.raid",
+							Version: "1",
+							Condition: map[string]string{
+								"from_broadcaster_user_id": msg.channelID, // another channel gets raided from broadcaster
+							},
+						},
+					},
+				}
+			})
 		}
 
 		t.handleResize()
@@ -869,7 +901,9 @@ func (t *tab) handleResize() {
 }
 
 func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) {
-	if msg.Payload.Subscription.Condition["broadcaster_user_id"] != t.channelID {
+	if msg.Payload.Subscription.Condition["broadcaster_user_id"] != t.channelID &&
+		msg.Payload.Subscription.Condition["from_broadcaster_user_id"] != t.channelID &&
+		msg.Payload.Subscription.Condition["to_broadcaster_user_id"] != t.channelID {
 		return
 	}
 
@@ -911,6 +945,28 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 
 		t.poll.enabled = false
 		t.handleResize()
+	case "channel.raid":
+		// broadcaster raided another channel
+		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {
+			t.chatWindow.handleMessage(&command.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channel,
+				MsgID:           command.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("-- Raiding %s with %d Viewers! --", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
+			})
+
+			return
+		}
+
+		// broadcaster gets raided
+		t.chatWindow.handleMessage(&command.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channel,
+			MsgID:           command.MsgID(uuid.NewString()),
+			Message:         fmt.Sprintf("-- You are getting raided by %s with %d Viewers! --", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
+		})
+
+		return
 	}
 
 	return
