@@ -317,7 +317,14 @@ func (a *API) handleGetStreamInfo() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := a.getLoggerFrom(r.Context())
 
-		info, err := a.ttvAPI.GetStreamInfo(r.Context(), []string{chi.URLParam(r, "channelID")})
+		reqUserIDs := []string{}
+		if logins := r.URL.Query()["user_id"]; (len(logins)) > 0 {
+			reqUserIDs = append(reqUserIDs, logins...)
+		} else {
+			reqUserIDs = append(reqUserIDs, chi.URLParam(r, "channelID"))
+		}
+
+		info, err := a.ttvAPI.GetStreamInfo(r.Context(), reqUserIDs)
 		if err != nil {
 			logger.Err(err).Str("channel", chi.URLParam(r, "channelID")).Msg("could not get stream info")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -365,7 +372,14 @@ func (a *API) handleGetStreamUser() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := a.getLoggerFrom(r.Context())
 
-		users, err := a.ttvAPI.GetUsers(r.Context(), []string{chi.URLParam(r, "login")}, nil)
+		reqLogins := []string{}
+		if logins := r.URL.Query()["logins"]; (len(logins)) > 0 {
+			reqLogins = append(reqLogins, logins...)
+		} else {
+			reqLogins = append(reqLogins, chi.URLParam(r, "login"))
+		}
+
+		users, err := a.ttvAPI.GetUsers(r.Context(), reqLogins, nil)
 		if err != nil {
 			logger.Err(err).Str("login", chi.URLParam(r, "login")).Msg("could not get stream user")
 			w.WriteHeader(http.StatusInternalServerError)

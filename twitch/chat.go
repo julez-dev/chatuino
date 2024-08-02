@@ -140,8 +140,11 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 
 						parsed, err := ParseIRC(string(message))
 						if err != nil {
+							messageStr := string(message)
 							if errors.Is(err, ErrUnhandledCommand) {
-								if !strings.Contains(string(message), "PART") && !strings.Contains(string(message), "JOIN") {
+								if !strings.Contains(messageStr, "PART") &&
+									!strings.Contains(messageStr, "JOIN") &&
+									!strings.HasPrefix(messageStr, ":tmi.twitch.tv") {
 									c.logger.Info().Str("unhandled", string(message)).Send()
 								}
 

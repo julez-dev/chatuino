@@ -67,12 +67,13 @@ func doRequest[T any](ctx context.Context, api API, method, url string, body io.
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var errResp APIError
-		if err := json.Unmarshal(respBody, &errResp); err != nil {
-			return data, err
-		}
 
 		errResp.StatusCode = resp.StatusCode
 		errResp.Status = resp.Status
+
+		if err := json.Unmarshal(respBody, &errResp); err != nil {
+			return data, err
+		}
 
 		return data, errResp
 	}

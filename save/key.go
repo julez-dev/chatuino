@@ -20,12 +20,12 @@ var (
 
 type KeyMap struct {
 	// General
-	Up         key.Binding `yaml:"up"`
-	Down       key.Binding `yaml:"down"`
-	Escape     key.Binding `yaml:"escape"`
-	Confirm    key.Binding `yaml:"confirm"`
-	Help       key.Binding `yaml:"help"`
-	NextFilter key.Binding `yaml:"next_filter"`
+	Up        key.Binding `yaml:"up"`
+	Down      key.Binding `yaml:"down"`
+	Escape    key.Binding `yaml:"escape"`
+	Confirm   key.Binding `yaml:"confirm"`
+	Help      key.Binding `yaml:"help"`
+	NextInput key.Binding `yaml:"next_input"`
 
 	// App Binds
 	Quit       key.Binding `yaml:"quit"`
@@ -54,6 +54,7 @@ type KeyMap struct {
 	PrevPage         key.Binding `yaml:"prev_page"`
 	NextPage         key.Binding `yaml:"next_page"`
 	PrevFilter       key.Binding `yaml:"prev_filter"`
+	NextFilter       key.Binding `yaml:"next_filter"`
 	Deny             key.Binding `yaml:"deny"`
 	Approve          key.Binding `yaml:"approve"`
 
@@ -136,9 +137,13 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+c"),
 			key.WithHelp("ctrl+c", "quit"),
 		),
+		NextInput: key.NewBinding(
+			key.WithKeys("alt+n"),
+			key.WithHelp("alt+n", "cycle items in forms"),
+		),
 		Create: key.NewBinding(
-			key.WithKeys("ctrl+n"),
-			key.WithHelp("ctrl+n", "create"),
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+t", "open new tab"),
 		),
 		Remove: key.NewBinding(
 			key.WithKeys("r"),
@@ -170,11 +175,11 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		ChatPopUp: key.NewBinding(
 			key.WithKeys("ctrl+p"),
-			key.WithHelp("ctrl+p/t", "twitch chat browser pop up"),
+			key.WithHelp("ctrl+p", "twitch chat browser pop up"),
 		),
 		ChannelPopUp: key.NewBinding(
-			key.WithKeys("ctrl+t"),
-			key.WithHelp("ctrl+p", "twitch channel pop up"),
+			key.WithKeys("ctrl+b"),
+			key.WithHelp("ctrl+b", "twitch channel pop up"),
 		),
 		MarkLeader: key.NewBinding(
 			key.WithKeys("m"),
@@ -214,7 +219,7 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		NextFilter: key.NewBinding(
 			key.WithKeys("]"),
-			key.WithHelp("]", "next filter/next input type in join screen"),
+			key.WithHelp("]", "next filter"),
 		),
 		PrevFilter: key.NewBinding(
 			key.WithKeys("["),

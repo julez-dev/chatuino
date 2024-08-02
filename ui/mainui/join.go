@@ -40,8 +40,11 @@ type joinChannelMessage struct {
 	account save.Account
 }
 
-type setAccountsMessage struct {
-	accounts    []save.Account
+type setJoinAccountsMessage struct {
+	accounts []save.Account
+}
+
+type setJoinSuggestionMessage struct {
 	suggestions []string
 }
 
@@ -105,6 +108,12 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	}
 }
 
+// Init loads initial data in batch
+// - The accounts for the account selection
+// - The suggestions for the text input
+// - Text blinking
+// All done concurrently because fetching suggestions will most likely take the most time
+// So the user does not have to wait if they can type faster
 func (j *join) Init() tea.Cmd {
 	return tea.Batch(func() tea.Msg {
 		accounts, err := j.provider.GetAllAccounts()
@@ -118,40 +127,50 @@ func (j *join) Init() tea.Cmd {
 			}
 		}
 
-		uniqueChannels := map[string]struct{}{}
-		for id, fetcher := range j.followedFetchers {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			followed, err := fetcher.FetchUserFollowedChannels(ctx, id, "")
-
-			// suggestions are not important enough to fail the whole join command
-			// just skip if the call fails
+		return setJoinAccountsMessage{accounts: accounts}
+	},
+		func() tea.Msg {
+			accounts, err := j.provider.GetAllAccounts()
 			if err != nil {
-				log.Logger.Err(err).Str("account-id", id).Msg("could not fetch followed channels")
-				continue
+				return nil
 			}
 
-			for _, f := range followed {
-				uniqueChannels[f.BroadcasterLogin] = struct{}{}
+			uniqueChannels := map[string]struct{}{}
+			for id, fetcher := range j.followedFetchers {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+
+				followed, err := fetcher.FetchUserFollowedChannels(ctx, id, "")
+
+				// suggestions are not important enough to fail the whole join command
+				// just skip if the call fails
+				if err != nil {
+					log.Logger.Err(err).Str("account-id", id).Msg("could not fetch followed channels")
+					continue
+				}
+
+				for _, f := range followed {
+					uniqueChannels[f.BroadcasterLogin] = struct{}{}
+				}
 			}
-		}
 
-		for _, a := range accounts {
-			if a.IsAnonymous {
-				continue
+			for _, a := range accounts {
+				if a.IsAnonymous {
+					continue
+				}
+
+				uniqueChannels[a.DisplayName] = struct{}{}
 			}
 
-			uniqueChannels[a.DisplayName] = struct{}{}
-		}
+			channelSuggestions := make([]string, 0, len(uniqueChannels))
+			for c := range uniqueChannels {
+				channelSuggestions = append(channelSuggestions, c)
+			}
 
-		channelSuggestions := make([]string, 0, len(uniqueChannels))
-		for c := range uniqueChannels {
-			channelSuggestions = append(channelSuggestions, c)
-		}
-
-		return setAccountsMessage{accounts: accounts, suggestions: channelSuggestions}
-	}, j.input.InputModel.Cursor.BlinkCmd())
+			return setJoinSuggestionMessage{suggestions: channelSuggestions}
+		},
+		j.input.InputModel.Cursor.BlinkCmd(),
+	)
 }
 
 func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
@@ -160,7 +179,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
-	if msg, ok := msg.(setAccountsMessage); ok {
+	if msg, ok := msg.(setJoinAccountsMessage); ok {
 		j.accounts = msg.accounts
 		listItems := make([]list.Item, 0, len(j.accounts))
 
@@ -176,9 +195,13 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		j.list.SetItems(listItems)
 		j.list.Select(index)
 
-		j.input.SetSuggestions(msg.suggestions)
 		j.hasLoaded = true
 
+		return j, nil
+	}
+
+	if msg, ok := msg.(setJoinSuggestionMessage); ok {
+		j.input.SetSuggestions(msg.suggestions)
 		return j, nil
 	}
 
@@ -189,7 +212,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, nil
 			}
 
-			if key.Matches(msg, j.keymap.NextFilter, j.keymap.PrevFilter) {
+			if key.Matches(msg, j.keymap.NextInput) {
 				if j.selectedInput == channelInput {
 					j.selectedInput = accountSelect
 				} else {

@@ -43,7 +43,7 @@ const (
 
 var maybeLogFile *os.File
 
-//go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --with-expecter=true --all
+//go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --with-expecter=true --all
 func main() {
 	defer func() {
 		if maybeLogFile != nil {
