@@ -23,7 +23,7 @@ func (s splash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return s, nil
 }
 
-func (s splash) view(loading bool) string {
+func (s splash) view(loading bool, err error) string {
 	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Width(s.width).Height(s.height)
 
 	keyDisplay := strings.Join(s.keymap.Create.Keys(), ", ")
@@ -32,6 +32,9 @@ func (s splash) view(loading bool) string {
 	var help string
 	if loading {
 		help = "Loading state from disk..."
+	} else if err != nil {
+		help = err.Error() + "\n"
+		help += "Use " + color.New(color.FgHiMagenta).Sprint(keyDisplay) + " to create a new tab and join a channel"
 	} else {
 		help = "Use " + color.New(color.FgHiMagenta).Sprint(keyDisplay) + " to create a new tab and join a channel"
 	}
@@ -42,9 +45,13 @@ func (s splash) view(loading bool) string {
 }
 
 func (s splash) View() string {
-	return s.view(false)
+	return s.view(false, nil)
 }
 
 func (s splash) ViewLoading() string {
-	return s.view(true)
+	return s.view(true, nil)
+}
+
+func (s splash) ViewError(err error) string {
+	return s.view(false, err)
 }

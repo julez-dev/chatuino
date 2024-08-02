@@ -10,7 +10,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/muesli/reflow/wordwrap"
-	"github.com/rs/zerolog/log"
 )
 
 type setStreamInfo struct {
@@ -24,9 +23,9 @@ type streamInfo struct {
 	channelID string
 	ttvAPI    APIClient
 	printer   *message.Printer
-	done      chan struct{}
 
-	width int
+	width  int
+	loaded bool
 
 	// data
 	viewer int
@@ -38,7 +37,6 @@ func newStreamInfo(channelID string, ttvAPI APIClient, width int) *streamInfo {
 	return &streamInfo{
 		width:     width,
 		channelID: channelID,
-		done:      make(chan struct{}, 1),
 		ttvAPI:    ttvAPI,
 		printer:   message.NewPrinter(language.English),
 	}
@@ -56,8 +54,7 @@ func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 		if msg.target != s.channelID {
 			return s, nil
 		}
-		log.Logger.Info().Msg("updating stream info")
-
+		s.loaded = true
 		s.game = msg.game
 		s.title = msg.title
 		s.viewer = msg.viewer
@@ -68,6 +65,10 @@ func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 }
 
 func (s *streamInfo) View() string {
+	if !s.loaded {
+		return centerTextGraphemeAware(s.width, "loading stream info\n")
+	}
+
 	if s.game == "" && s.viewer == 0 && s.title == "" {
 		return ""
 	}
@@ -80,25 +81,6 @@ func (s *streamInfo) View() string {
 	}
 
 	return strings.Join(infoSplit, "\n")
-}
-
-func (s *streamInfo) doTick() tea.Msg {
-	timer := time.NewTimer(time.Second * 90)
-
-	defer func() {
-		timer.Stop()
-		select {
-		case <-timer.C:
-		default:
-		}
-	}()
-
-	select {
-	case <-timer.C:
-		return s.refreshStreamInfo()
-	case <-s.done:
-		return nil
-	}
 }
 
 func (s *streamInfo) refreshStreamInfo() tea.Msg {

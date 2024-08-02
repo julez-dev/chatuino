@@ -252,16 +252,8 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				return t, nil
 			}
 
-			beforeHeight := lipgloss.Height(t.streamInfo.View())
-
 			t.streamInfo, cmd = t.streamInfo.Update(msg)
-			afterHeight := lipgloss.Height(t.streamInfo.View())
-
-			// only do expensive resize if view height has changed
-			if beforeHeight != afterHeight {
-				t.handleResize()
-			}
-
+			t.handleResize()
 			return t, cmd
 		}
 	case setChannelDataMessage:
@@ -598,8 +590,6 @@ func (t *tab) Close() error {
 		return nil
 	}
 
-	t.streamInfo.done <- struct{}{}
-	close(t.streamInfo.done)
 	return nil
 }
 

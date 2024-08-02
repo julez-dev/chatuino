@@ -212,7 +212,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, nil
 			}
 
-			if key.Matches(msg, j.keymap.NextFilter, j.keymap.PrevFilter) {
+			if key.Matches(msg, j.keymap.NextInput) {
 				if j.selectedInput == channelInput {
 					j.selectedInput = accountSelect
 				} else {

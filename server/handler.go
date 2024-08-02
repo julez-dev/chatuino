@@ -319,9 +319,7 @@ func (a *API) handleGetStreamInfo() http.HandlerFunc {
 
 		reqUserIDs := []string{}
 		if logins := r.URL.Query()["user_id"]; (len(logins)) > 0 {
-			for _, login := range logins {
-				reqUserIDs = append(reqUserIDs, login)
-			}
+			reqUserIDs = append(reqUserIDs, logins...)
 		} else {
 			reqUserIDs = append(reqUserIDs, chi.URLParam(r, "channelID"))
 		}
@@ -376,9 +374,7 @@ func (a *API) handleGetStreamUser() http.HandlerFunc {
 
 		reqLogins := []string{}
 		if logins := r.URL.Query()["logins"]; (len(logins)) > 0 {
-			for _, login := range logins {
-				reqLogins = append(reqLogins, login)
-			}
+			reqLogins = append(reqLogins, logins...)
 		} else {
 			reqLogins = append(reqLogins, chi.URLParam(r, "login"))
 		}

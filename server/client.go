@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -148,7 +149,7 @@ func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return respData, fmt.Errorf("non 200 response code (%d): %s", resp.StatusCode, string(bodyBytes))
+		return respData, fmt.Errorf("non 200 response code (%d): %s", resp.StatusCode, string(bytes.Trim(bodyBytes, "\n")))
 	}
 
 	if err := json.Unmarshal(bodyBytes, &respData); err != nil {

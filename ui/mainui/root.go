@@ -85,6 +85,7 @@ func (e ircConnectionError) IRC() string {
 }
 
 type persistedDataLoadedMessage struct {
+	err      error
 	ttvUsers map[string]twitch.UserData
 	state    save.AppState
 	accounts []save.Account
@@ -141,6 +142,7 @@ type Root struct {
 	out      <-chan multiplex.OutboundMessage
 
 	// event sub
+	initErr            error
 	eventSub           EventSubPool
 	eventSubInInFlight *sync.WaitGroup
 	eventSubIn         chan multiplex.EventSubInboundMessage
@@ -222,14 +224,11 @@ func (r *Root) Init() tea.Cmd {
 				r.logger.Info().Msg("init event sub routine done")
 			}()
 
-			state, err := r.loadSaveState()
-			if err != nil {
-				return nil
-			}
-
 			accounts, err := r.accounts.GetAllAccounts()
 			if err != nil {
-				return nil
+				return persistedDataLoadedMessage{
+					err: fmt.Errorf("failed to load accounts: %w", err),
+				}
 			}
 
 			// pre populate the API clients for each account
@@ -244,6 +243,15 @@ func (r *Root) Init() tea.Cmd {
 				}
 
 				clients[acc.ID] = api
+			}
+
+			state, err := r.loadSaveState()
+			if err != nil {
+				return persistedDataLoadedMessage{
+					accounts: accounts,
+					clients:  clients,
+					err:      fmt.Errorf("failed to load save state: %w", err),
+				}
 			}
 
 			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
@@ -266,7 +274,11 @@ func (r *Root) Init() tea.Cmd {
 				resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
 				if err != nil {
 					r.logger.Err(err).Msg("failed to connect to load users")
-					return nil
+					return persistedDataLoadedMessage{
+						accounts: accounts,
+						clients:  clients,
+						err:      fmt.Errorf("failed to fetch users: %w", err),
+					}
 				}
 
 				for _, data := range resp.Data {
@@ -297,6 +309,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, r.handlePersistedDataLoaded(msg)
 	case joinChannelMessage:
 		r.screenType = mainScreen
+		r.initErr = nil
 
 		nTab := r.createTab(msg.account, msg.channel)
 		nTab.focus()
@@ -518,6 +531,10 @@ func (r *Root) View() string {
 	switch r.screenType {
 	case mainScreen:
 		if len(r.tabs) == 0 {
+			if r.initErr != nil {
+				return r.splash.ViewError(r.initErr)
+			}
+
 			return r.splash.View()
 		}
 
@@ -579,6 +596,13 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		openBroadcasts[tab.channelID] = struct{}{}
 	}
 
+	if len(openBroadcasts) == 0 {
+		return func() tea.Msg {
+			time.Sleep(time.Second * 90)
+			return polledStreamInfo{}
+		}
+	}
+
 	broadcastIDs := []string{}
 	for broadcast := range openBroadcasts {
 		broadcastIDs = append(broadcastIDs, broadcast)
@@ -606,7 +630,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 			fetcher = r.serverAPI
 		}
 
-		timer := time.NewTimer(time.Second * 10)
+		timer := time.NewTimer(time.Second * 90)
 
 		defer func() {
 			timer.Stop()
@@ -751,6 +775,11 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	cmds := make([]tea.Cmd, 0, len(msg.state.Tabs))
 	r.ttvAPIUserClients = msg.clients
 	r.hasLoadedSession = true
+
+	if msg.err != nil {
+		r.initErr = msg.err
+		return nil
+	}
 
 	// restore tabs
 	var hasActiveTab bool
