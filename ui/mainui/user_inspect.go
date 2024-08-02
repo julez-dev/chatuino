@@ -14,7 +14,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type setUserInspectData struct {
@@ -129,8 +128,6 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 
 	switch msg := chatEvent.message.(type) {
 	case *command.PrivateMessage:
-		log.Logger.Info().Str("content", msg.Message).Bool("1st", !strings.EqualFold(msg.DisplayName, u.user)).Bool("2nd", !messageContainsCaseInsensitive(msg, u.user)).Send()
-
 		// user inspect user is not sender and message does not contain current user
 		if !strings.EqualFold(msg.DisplayName, u.user) && !messageContainsCaseInsensitive(msg, u.user) {
 			return u, nil
