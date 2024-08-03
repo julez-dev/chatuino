@@ -23,6 +23,7 @@ type TabState struct {
 	Channel    string `json:"channel"`
 	IsFocused  bool   `json:"is_focused"`
 	IdentityID string `json:"identity_id"`
+	Kind       int    `json:"kind"`
 }
 
 func (a *AppState) Save() error {

@@ -3,6 +3,7 @@ package mainui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 	"unicode"
 
@@ -25,10 +26,12 @@ type currentJoinInput int
 const (
 	channelInput currentJoinInput = iota
 	accountSelect
+	tabSelect
 )
 
 type listItem struct {
 	title string
+	kind  tabKind
 }
 
 func (i listItem) Title() string       { return i.title }
@@ -36,6 +39,7 @@ func (i listItem) Description() string { return "" }
 func (i listItem) FilterValue() string { return i.title }
 
 type joinChannelMessage struct {
+	tabKind tabKind
 	channel string
 	account save.Account
 }
@@ -52,13 +56,34 @@ type join struct {
 	focused          bool
 	width, height    int
 	input            *component.SuggestionTextInput
-	list             list.Model
+	tabKindList      list.Model
+	accountList      list.Model
 	selectedInput    currentJoinInput
 	accounts         []save.Account
 	keymap           save.KeyMap
 	provider         AccountProvider
 	followedFetchers map[string]followedFetcher
 	hasLoaded        bool
+}
+
+func createDefaultList(width, height int) list.Model {
+	delegate := list.NewDefaultDelegate()
+	delegate.Styles.NormalTitle = lipgloss.NewStyle().AlignHorizontal(lipgloss.Center)
+	delegate.Styles.SelectedTitle = delegate.Styles.NormalTitle.Foreground(lipgloss.Color("135"))
+	delegate.ShowDescription = false
+	delegate.SetSpacing(0)
+
+	newList := list.New(nil, delegate, 20, height/2)
+
+	newList.Select(0)
+	newList.SetShowHelp(false)
+	newList.SetShowPagination(false)
+	newList.SetShowTitle(false)
+	newList.DisableQuitKeybindings()
+	newList.SetShowStatusBar(false)
+	newList.Styles = list.Styles{}
+
+	return newList
 }
 
 func newJoin(provider AccountProvider, clients map[string]APIClient, width, height int, keymap save.KeyMap) *join {
@@ -80,14 +105,22 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.SetWidth(width)
 
-	channelList := list.New(nil, list.NewDefaultDelegate(), width, height/2)
+	tabKindList := createDefaultList(width, height)
+	tabKindList.SetStatusBarItemName("kind", "kinds")
+	tabKindList.SetItems([]list.Item{
+		listItem{
+			title: broadcastTabKind.String(),
+			kind:  broadcastTabKind,
+		},
+		listItem{
+			title: mentionTabKind.String(),
+			kind:  mentionTabKind,
+		},
+	})
+	tabKindList.Select(0)
+	tabKindList.SetHeight(3)
 
-	channelList.Select(0)
-	channelList.SetShowHelp(false)
-	channelList.SetShowPagination(false)
-	channelList.SetShowTitle(false)
-	channelList.DisableQuitKeybindings()
-	channelList.SetShowStatusBar(false)
+	channelList := createDefaultList(width, height)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]followedFetcher{}
@@ -102,7 +135,8 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 		height:           height,
 		input:            input,
 		provider:         provider,
-		list:             channelList,
+		accountList:      channelList,
+		tabKindList:      tabKindList,
 		keymap:           keymap,
 		followedFetchers: followedFetchers,
 	}
@@ -192,8 +226,8 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			}
 		}
 
-		j.list.SetItems(listItems)
-		j.list.Select(index)
+		j.accountList.SetItems(listItems)
+		j.accountList.Select(index)
 
 		j.hasLoaded = true
 
@@ -213,21 +247,30 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			}
 
 			if key.Matches(msg, j.keymap.NextInput) {
-				if j.selectedInput == channelInput {
-					j.selectedInput = accountSelect
-				} else {
+				// don't allow next input when mention selected
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && i.title == mentionTabKind.String() {
+					j.selectedInput = tabSelect
+					return j, nil
+				}
+
+				if j.selectedInput == tabSelect {
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
+				} else if j.selectedInput == channelInput {
+					j.selectedInput = accountSelect
+				} else if j.selectedInput == accountSelect {
+					j.selectedInput = tabSelect
 				}
 
 				return j, cmd
 			}
 
-			if key.Matches(msg, j.keymap.Confirm) && j.input.Value() != "" {
+			if key.Matches(msg, j.keymap.Confirm) && (j.input.Value() != "" || j.tabKindList.SelectedItem().(listItem).kind != broadcastTabKind) {
 				return j, func() tea.Msg {
 					return joinChannelMessage{
+						tabKind: j.tabKindList.SelectedItem().(listItem).kind,
 						channel: j.input.Value(),
-						account: j.accounts[j.list.Cursor()],
+						account: j.accounts[j.accountList.Cursor()],
 					}
 				}
 			}
@@ -237,8 +280,11 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 	if j.selectedInput == channelInput {
 		j.input, cmd = j.input.Update(msg)
 		cmds = append(cmds, cmd)
+	} else if j.selectedInput == tabSelect {
+		j.tabKindList, cmd = j.tabKindList.Update(msg)
+		cmds = append(cmds, cmd)
 	} else {
-		j.list, cmd = j.list.Update(msg)
+		j.accountList, cmd = j.accountList.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -255,23 +301,39 @@ func (j *join) View() string {
 		AlignHorizontal(lipgloss.Center)
 	// AlignVertical(lipgloss.Center)
 
-	labelStyle := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render
-	labelIdentityStyle := lipgloss.NewStyle().MarginBottom(2).MarginTop(2).Foreground(lipgloss.Color("135")).Render
+	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color("135")).Render
 
 	var (
-		label         string
+		labelTab      string
+		labelChannel  string
 		labelIdentity string
 	)
 
-	if j.selectedInput == channelInput {
-		label = labelStyle("> Enter a channel to join")
-		labelIdentity = labelIdentityStyle("Choose an identity")
-	} else {
-		label = labelStyle("Enter a channel to join")
-		labelIdentity = labelIdentityStyle("> Choose an identity")
+	// If mention tab is selected, only display kind select input, because other values are not needed
+	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && i.title == mentionTabKind.String() {
+		return style.Render(fmt.Sprintf("%s\n%s\n", labelStyle("> Tab type"), j.tabKindList.View()))
 	}
 
-	return style.Render(label + "\n" + j.input.View() + "\n" + labelIdentity + "\n" + j.list.View())
+	if j.selectedInput == channelInput {
+		labelTab = labelStyle("Tab type")
+		labelChannel = labelStyle("> Channel")
+		labelIdentity = labelStyle("Identity")
+	} else if j.selectedInput == accountSelect {
+		labelTab = labelStyle("Tab type")
+		labelChannel = labelStyle("Channel")
+		labelIdentity = labelStyle("> Identity")
+	} else {
+		labelTab = labelStyle("> Tab type")
+		labelChannel = labelStyle("Channel")
+		labelIdentity = labelStyle("Identity")
+	}
+
+	b := strings.Builder{}
+	_, _ = b.WriteString(labelTab + "\n" + j.tabKindList.View() + "\n")
+	_, _ = b.WriteString(labelChannel + "\n" + j.input.View() + "\n")
+	_, _ = b.WriteString(labelIdentity + "\n" + j.accountList.View() + "\n")
+
+	return style.Render(b.String())
 }
 
 func (c *join) focus() {
