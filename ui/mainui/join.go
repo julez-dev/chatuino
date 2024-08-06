@@ -116,9 +116,13 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 			title: mentionTabKind.String(),
 			kind:  mentionTabKind,
 		},
+		listItem{
+			title: liveNotificationTabKind.String(),
+			kind:  liveNotificationTabKind,
+		},
 	})
 	tabKindList.Select(0)
-	tabKindList.SetHeight(3)
+	tabKindList.SetHeight(4)
 
 	channelList := createDefaultList(width, height)
 	channelList.SetStatusBarItemName("account", "accounts")
@@ -175,7 +179,6 @@ func (j *join) Init() tea.Cmd {
 				defer cancel()
 
 				followed, err := fetcher.FetchUserFollowedChannels(ctx, id, "")
-
 				// suggestions are not important enough to fail the whole join command
 				// just skip if the call fails
 				if err != nil {
@@ -247,8 +250,8 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			}
 
 			if key.Matches(msg, j.keymap.NextInput) {
-				// don't allow next input when mention selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && i.title == mentionTabKind.String() {
+				// don't allow next input when mention or live noti tab selected
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
 					j.selectedInput = tabSelect
 					return j, nil
 				}
@@ -265,7 +268,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
-			if key.Matches(msg, j.keymap.Confirm) && (j.input.Value() != "" || j.tabKindList.SelectedItem().(listItem).kind != broadcastTabKind) {
+			if key.Matches(msg, j.keymap.Confirm) && (j.input.Value() != "" || j.tabKindList.SelectedItem().(listItem).kind != broadcastTabKind || j.tabKindList.SelectedItem().(listItem).kind != liveNotificationTabKind) {
 				return j, func() tea.Msg {
 					return joinChannelMessage{
 						tabKind: j.tabKindList.SelectedItem().(listItem).kind,
@@ -277,13 +280,14 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		}
 	}
 
-	if j.selectedInput == channelInput {
+	switch j.selectedInput {
+	case channelInput:
 		j.input, cmd = j.input.Update(msg)
 		cmds = append(cmds, cmd)
-	} else if j.selectedInput == tabSelect {
+	case tabSelect:
 		j.tabKindList, cmd = j.tabKindList.Update(msg)
 		cmds = append(cmds, cmd)
-	} else {
+	default:
 		j.accountList, cmd = j.accountList.Update(msg)
 		cmds = append(cmds, cmd)
 	}
@@ -310,7 +314,7 @@ func (j *join) View() string {
 	)
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
-	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && i.title == mentionTabKind.String() {
+	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
 		return style.Render(fmt.Sprintf("%s\n%s\n", labelStyle("> Tab type"), j.tabKindList.View()))
 	}
 
@@ -344,4 +348,19 @@ func (c *join) focus() {
 func (c *join) blur() {
 	c.focused = false
 	c.input.Blur()
+}
+
+func (c *join) setTabOptions(kinds ...tabKind) {
+	var items []list.Item
+
+	for _, kind := range kinds {
+		items = append(items, listItem{
+			title: kind.String(),
+			kind:  kind,
+		})
+	}
+
+	c.tabKindList.SetItems(
+		items,
+	)
 }

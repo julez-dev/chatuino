@@ -107,6 +107,7 @@ func (c *chatWindow) Init() tea.Cmd {
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
 	case chatEventMessage:
+
 		c.handleMessage(msg.message)
 		return c, nil
 	case tea.KeyMsg:

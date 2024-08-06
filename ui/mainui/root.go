@@ -64,6 +64,7 @@ type tabKind int
 const (
 	broadcastTabKind tabKind = iota
 	mentionTabKind
+	liveNotificationTabKind
 )
 
 func (t tabKind) String() string {
@@ -72,6 +73,8 @@ func (t tabKind) String() string {
 		return "Channel (Default)"
 	case mentionTabKind:
 		return "Mention"
+	case liveNotificationTabKind:
+		return "Live Notifications"
 	}
 
 	return "<not implemented>"
@@ -412,6 +415,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				isInsertMode = (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode)
 			}
 
+			if !isInsertMode && r.screenType == inputScreen && r.joinInput.input.InputModel.Focused() {
+				isInsertMode = true
+			}
+
 			if !isInsertMode {
 				r.screenType = helpScreen
 				r.joinInput.blur()
@@ -459,6 +466,26 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				r.screenType = inputScreen
 				r.joinInput = newJoin(r.accounts, r.ttvAPIUserClients, r.width, r.height, r.keymap)
+				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
+					return t.Kind() == mentionTabKind
+				})
+
+				hasNotificationTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
+					return t.Kind() == liveNotificationTabKind
+				})
+
+				var validTabKinds []tabKind
+				validTabKinds = append(validTabKinds, broadcastTabKind)
+
+				if !hasMentionTab {
+					validTabKinds = append(validTabKinds, mentionTabKind)
+				}
+
+				if !hasNotificationTab {
+					validTabKinds = append(validTabKinds, liveNotificationTabKind)
+				}
+
+				r.joinInput.setTabOptions(validTabKinds...)
 				r.joinInput.focus()
 				return r, r.joinInput.Init()
 			case inputScreen:
@@ -542,6 +569,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	r.header, cmd = r.header.Update(msg)
+	cmds = append(cmds, cmd)
+
 	for i, tab := range r.tabs {
 		r.tabs[i], cmd = tab.Update(msg)
 		cmds = append(cmds, cmd)
@@ -620,12 +650,14 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 
 	// collect all open broadcasters
 	openBroadcasts := map[string]struct{}{}
+	channelIDNames := map[string]string{}
 
 	for _, tab := range r.tabs {
 		if tab.Kind() != broadcastTabKind {
 			continue
 		}
 		openBroadcasts[tab.ChannelID()] = struct{}{}
+		channelIDNames[tab.ChannelID()] = tab.Channel()
 	}
 
 	if len(openBroadcasts) == 0 {
@@ -642,7 +674,6 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 
 	return func() tea.Msg {
 		accounts, err := r.accounts.GetAllAccounts()
-
 		if err != nil {
 			return polledStreamInfo{}
 		}
@@ -673,23 +704,38 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 		resp, err := fetcher.GetStreamInfo(ctx, broadcastIDs)
-
 		if err != nil {
 			r.logger.Err(err).Msg("failed polling streamer info")
 			return polledStreamInfo{}
 		}
 
 		polled := polledStreamInfo{
-			streamInfos: make([]setStreamInfo, 0, len(resp.Data)),
+			streamInfos: make([]setStreamInfo, 0, len(broadcastIDs)),
 		}
 
-		for _, data := range resp.Data {
-			polled.streamInfos = append(polled.streamInfos, setStreamInfo{
-				target: data.UserID,
-				viewer: data.ViewerCount,
-				title:  data.Title,
-				game:   data.GameName,
-			})
+		// Update status for all streams
+		// If a stream is offline the twitch API does not return any item for this broadcaster_id
+		// To still update the title etc. to empty value, send an empty info to component.
+		for ib := range broadcastIDs {
+			info := setStreamInfo{
+				target:   broadcastIDs[ib],
+				username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
+			}
+
+			for id := range resp.Data {
+				// data's user does not match broadcaster
+				if resp.Data[id].UserID != broadcastIDs[ib] {
+					continue
+				}
+
+				info.viewer = resp.Data[id].ViewerCount
+				info.username = resp.Data[id].UserName
+				info.title = resp.Data[id].Title
+				info.game = resp.Data[id].GameName
+				info.isLive = !resp.Data[id].StartedAt.IsZero()
+			}
+
+			polled.streamInfos = append(polled.streamInfos, info)
 		}
 
 		return polled
@@ -733,6 +779,11 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab
 		id := r.header.addTab("mentioned", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteStore, r.width, r.height-headerHeight)
+		return nTab
+	case liveNotificationTabKind:
+		id := r.header.addTab("live notifications", "all")
+		headerHeight := r.getHeaderHeight()
+		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteStore, r.width, r.height-headerHeight)
 		return nTab
 	}
 
@@ -844,6 +895,8 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			newTab = r.createTab(account, t.Channel, broadcastTabKind)
 		case mentionTabKind:
 			newTab = r.createTab(save.Account{}, "", mentionTabKind)
+		case liveNotificationTabKind:
+			newTab = r.createTab(save.Account{}, "", liveNotificationTabKind)
 		}
 
 		if t.IsFocused {

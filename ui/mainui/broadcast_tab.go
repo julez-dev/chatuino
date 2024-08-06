@@ -193,7 +193,6 @@ func (t *broadcastTab) Init() tea.Cmd {
 
 func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 	cmd := func() tea.Msg {
-		log.Logger.Info().Any("data", userData).Msg("login with pre fetched data")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
@@ -298,7 +297,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channel,
 				MsgID:           command.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("-- Loaded %d recent messages; powered by https://recent-messages.robotty.de --", len(msg.initialMessages)),
+				Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
 			})
 		}
 
@@ -329,7 +328,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		//  - if channel belongs to user
 		// sadly due to cost limits, we only allow this events users channel not other channels
 		if eventSubAPI, ok := t.ttvAPI.(eventsub.EventSubService); ok && t.account.ID == msg.channelID {
-			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end"} {
+			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end", "channel.ad_break.begin"} {
 				cmds = append(cmds, func() tea.Msg {
 					return forwardEventSubMessage{
 						accountID: t.account.ID,
@@ -973,7 +972,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channel,
 			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("-- Poll %q has started! --", msg.Payload.Event.Title),
+			Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
 		})
 		t.poll.setPollData(msg)
 		t.poll.enabled = true
@@ -1000,7 +999,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channel,
 			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("-- Poll %q has ended, %q has won with %d votes! --", msg.Payload.Event.Title, winner.Title, winner.Votes),
+			Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
 		})
 
 		t.poll.enabled = false
@@ -1012,7 +1011,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channel,
 				MsgID:           command.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("-- Raiding %s with %d Viewers! --", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
+				Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
 			})
 
 			return
@@ -1023,10 +1022,23 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channel,
 			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("-- You are getting raided by %s with %d Viewers! --", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
+			Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
 		})
+	case "channel.ad_break.begin":
+		var chatMsg string
 
-		return
+		if msg.Payload.Event.IsAutomatic {
+			chatMsg = fmt.Sprintf("A automatic %d second ad just started!", msg.Payload.Event.DurationInSeconds)
+		} else {
+			chatMsg = fmt.Sprintf("A %d second ad, requested by %s, just started!", msg.Payload.Event.DurationInSeconds, msg.Payload.Event.RequesterUserName)
+		}
+
+		t.chatWindow.handleMessage(&command.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channel,
+			MsgID:           command.MsgID(uuid.NewString()),
+			Message:         chatMsg,
+		})
 	}
 }
 

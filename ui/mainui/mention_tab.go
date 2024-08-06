@@ -2,6 +2,7 @@ package mainui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -75,7 +76,7 @@ func (m *mentionTab) Init() tea.Cmd {
 }
 
 func (m *mentionTab) InitWithUserData(twitch.UserData) tea.Cmd {
-	return nil
+	return m.Init()
 }
 
 func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
@@ -90,10 +91,18 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			m.chatWindow.handleMessage(&command.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         command.MsgID(uuid.NewString()),
-				Message:       fmt.Sprintf("-- Failed to load user accounts: %s --", msg.err.Error()),
+				Message:       fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error()),
 			},
 			)
+
+			return m, nil
 		}
+
+		m.chatWindow.handleMessage(&command.Notice{
+			FakeTimestamp: time.Now(),
+			MsgID:         command.MsgID(uuid.NewString()),
+			Message:       fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", ")),
+		})
 
 		return m, nil
 	}
@@ -114,8 +123,16 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				return m, nil
 			}
 
+			var cmds []tea.Cmd
 			m.chatWindow, cmd = m.chatWindow.Update(msg)
-			return m, cmd
+			cmds = append(cmds, cmd)
+			cmds = append(cmds, func() tea.Msg {
+				return requestNotificationIconMessage{
+					tabID: m.id,
+				}
+			})
+
+			return m, tea.Batch(cmds...)
 		}
 
 		return m, nil

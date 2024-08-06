@@ -86,6 +86,14 @@ type Event struct {
 	ToBroadcasterUserName  string `json:"to_broadcaster_user_name"`
 
 	Viewers int `json:"viewers"`
+
+	// Ad related
+	IsAutomatic       bool `json:"is_automatic"`
+	DurationInSeconds int  `json:"duration_seconds"`
+
+	RequesterUserID    string `json:"requester_user_id"`
+	RequesterUserLogin string `json:"requester_user_login"`
+	RequesterUserName  string `json:"requester_user_name"`
 }
 
 type Voting struct {
