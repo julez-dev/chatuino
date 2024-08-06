@@ -74,7 +74,7 @@ type moderationAPIClient interface {
 	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 }
 
-type tab struct {
+type broadcastTab struct {
 	id     string
 	logger zerolog.Logger
 	keymap save.KeyMap
@@ -109,7 +109,7 @@ type tab struct {
 	err error
 }
 
-func newTab(
+func newBroadcastTab(
 	id string,
 	logger zerolog.Logger,
 	ttvAPI APIClient,
@@ -120,8 +120,8 @@ func newTab(
 	accountProvider AccountProvider,
 	recentMessageService RecentMessageService,
 	keymap save.KeyMap,
-) *tab {
-	return &tab{
+) *broadcastTab {
+	return &broadcastTab{
 		id:                   id,
 		logger:               logger,
 		keymap:               keymap,
@@ -136,7 +136,7 @@ func newTab(
 	}
 }
 
-func (t *tab) Init() tea.Cmd {
+func (t *broadcastTab) Init() tea.Cmd {
 	cmd := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
@@ -191,9 +191,8 @@ func (t *tab) Init() tea.Cmd {
 	return cmd
 }
 
-func (t *tab) InitWithUserData(userData twitch.UserData) tea.Cmd {
+func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 	cmd := func() tea.Msg {
-		log.Logger.Info().Any("data", userData).Msg("login with pre fetched data")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
@@ -232,7 +231,7 @@ func (t *tab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 	return cmd
 }
 
-func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
+func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -253,7 +252,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			}
 
 			t.streamInfo, cmd = t.streamInfo.Update(msg)
-			t.handleResize()
+			t.HandleResize()
 			return t, cmd
 		}
 	case setChannelDataMessage:
@@ -266,7 +265,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
-		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.channel, msg.channelID, t.emoteStore, t.keymap)
+		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.emoteStore, t.keymap)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
 		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
@@ -298,7 +297,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channel,
 				MsgID:           command.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("-- Loaded %d recent messages; powered by https://recent-messages.robotty.de --", len(msg.initialMessages)),
+				Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
 			})
 		}
 
@@ -329,7 +328,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		//  - if channel belongs to user
 		// sadly due to cost limits, we only allow this events users channel not other channels
 		if eventSubAPI, ok := t.ttvAPI.(eventsub.EventSubService); ok && t.account.ID == msg.channelID {
-			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end"} {
+			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end", "channel.ad_break.begin"} {
 				cmds = append(cmds, func() tea.Msg {
 					return forwardEventSubMessage{
 						accountID: t.account.ID,
@@ -380,8 +379,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 			})
 		}
 
-		t.handleResize()
-
+		t.HandleResize()
 		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 		return t, tea.Batch(cmds...)
 
@@ -389,7 +387,8 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 		t.handleEventSubMessage(msg.Payload)
 		return t, nil
 	case chatEventMessage: // delegate message event to chat window
-		if msg.channel != "" && msg.channel != t.channel {
+		// ignore all messages that don't target this account and channel
+		if !(t.AccountID() == msg.accountID && (t.Channel() == msg.channel || msg.channel == "")) {
 			return t, nil
 		}
 
@@ -504,7 +503,7 @@ func (t *tab) Update(msg tea.Msg) (*tab, tea.Cmd) {
 	return t, tea.Batch(cmds...)
 }
 
-func (t *tab) View() string {
+func (t *broadcastTab) View() string {
 	if t.err != nil {
 		return lipgloss.NewStyle().
 			Width(t.width).
@@ -585,20 +584,49 @@ func (t *tab) View() string {
 	return builder.String()
 }
 
-func (t *tab) Close() error {
-	if !t.channelDataLoaded {
-		return nil
-	}
-
-	return nil
+func (t *broadcastTab) Focused() bool {
+	return t.focused
 }
 
-func (t *tab) handleEscapePressed() {
+func (t *broadcastTab) AccountID() string {
+	return t.account.ID
+}
+
+func (t *broadcastTab) Channel() string {
+	return t.channel
+}
+
+func (t *broadcastTab) ChannelID() string {
+	return t.channelID
+}
+
+func (t *broadcastTab) State() tabState {
+	return t.state
+}
+
+func (t *broadcastTab) IsDataLoaded() bool {
+	return t.channelDataLoaded
+}
+
+func (t *broadcastTab) ID() string {
+	return t.id
+}
+
+func (t *broadcastTab) Kind() tabKind {
+	return broadcastTabKind
+}
+
+func (t *broadcastTab) SetSize(width, height int) {
+	t.width = width
+	t.height = height
+}
+
+func (t *broadcastTab) handleEscapePressed() {
 	if t.state == userInspectMode {
 		t.state = inChatWindow
 		t.userInspect = nil
 		t.chatWindow.Focus()
-		t.handleResize()
+		t.HandleResize()
 		t.chatWindow.updatePort()
 		return
 	}
@@ -619,7 +647,7 @@ func (t *tab) handleEscapePressed() {
 	t.unbanWindow = nil
 }
 
-func (t *tab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
+func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 	return func() tea.Msg {
 		url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
 
@@ -636,7 +664,7 @@ func (t *tab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
-func (t *tab) handleStartInsertMode() tea.Cmd {
+func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 	if !t.account.IsAnonymous && (t.state == inChatWindow || t.state == userInspectMode) {
 		if t.state == inChatWindow {
 			t.state = insertMode
@@ -654,7 +682,7 @@ func (t *tab) handleStartInsertMode() tea.Cmd {
 	return nil
 }
 
-func (t *tab) handleOpenBanRequest() tea.Cmd {
+func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
 	t.state = unbanRequestMode
 	t.unbanWindow = unbanrequest.New(
 		t.ttvAPI.(moderationAPIClient),
@@ -666,12 +694,12 @@ func (t *tab) handleOpenBanRequest() tea.Cmd {
 		t.width,
 	)
 
-	t.handleResize()
+	t.HandleResize()
 
 	return t.unbanWindow.Init()
 }
 
-func (t *tab) handleMessageSent() tea.Cmd {
+func (t *broadcastTab) handleMessageSent() tea.Cmd {
 	input := t.messageInput.Value()
 
 	// reset state
@@ -704,7 +732,7 @@ func (t *tab) handleMessageSent() tea.Cmd {
 
 		argStr := strings.TrimSpace(input[end:])
 		args := strings.SplitN(argStr, " ", 3)
-		channelID := t.chatWindow.channelID
+		channelID := t.channelID
 		channel := t.channel
 		accountID := t.account.ID
 
@@ -743,7 +771,7 @@ func (t *tab) handleMessageSent() tea.Cmd {
 	}
 }
 
-func (t *tab) handleCopyMessage() {
+func (t *broadcastTab) handleCopyMessage() {
 	if t.account.IsAnonymous {
 		return
 	}
@@ -775,7 +803,7 @@ func (t *tab) handleCopyMessage() {
 	t.messageInput.SetValue(msg.Message)
 }
 
-func (t *tab) handleOpenUserInspect() tea.Cmd {
+func (t *broadcastTab) handleOpenUserInspect() tea.Cmd {
 	var (
 		cmds []tea.Cmd
 		cmd  tea.Cmd
@@ -803,7 +831,7 @@ func (t *tab) handleOpenUserInspect() tea.Cmd {
 	}
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.chatWindow.channelID, t.emoteStore, t.keymap)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap)
 	cmds = append(cmds, t.userInspect.Init())
 
 	for _, e := range t.chatWindow.entries {
@@ -817,7 +845,7 @@ func (t *tab) handleOpenUserInspect() tea.Cmd {
 
 	t.userInspect.chatWindow.moveToBottom()
 
-	t.handleResize()
+	t.HandleResize()
 	t.chatWindow.Blur()
 	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
 	t.userInspect.chatWindow.Focus()
@@ -828,7 +856,7 @@ func (t *tab) handleOpenUserInspect() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (t *tab) handleTimeoutShortcut() {
+func (t *broadcastTab) handleTimeoutShortcut() {
 	if t.account.IsAnonymous {
 		return
 	}
@@ -861,7 +889,7 @@ func (t *tab) handleTimeoutShortcut() {
 	t.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
 }
 
-func (t *tab) renderMessageInput() string {
+func (t *broadcastTab) renderMessageInput() string {
 	if t.account.IsAnonymous {
 		return ""
 	}
@@ -869,7 +897,7 @@ func (t *tab) renderMessageInput() string {
 	return t.messageInput.View()
 }
 
-func (t *tab) handleResize() {
+func (t *broadcastTab) HandleResize() {
 	if t.channelDataLoaded {
 		t.statusInfo.width = t.width
 		t.streamInfo.width = t.width
@@ -931,7 +959,7 @@ func (t *tab) handleResize() {
 	}
 }
 
-func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) {
+func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) {
 	if msg.Payload.Subscription.Condition["broadcaster_user_id"] != t.channelID &&
 		msg.Payload.Subscription.Condition["from_broadcaster_user_id"] != t.channelID &&
 		msg.Payload.Subscription.Condition["to_broadcaster_user_id"] != t.channelID {
@@ -944,11 +972,11 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channel,
 			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("-- Poll %q has started! --", msg.Payload.Event.Title),
+			Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
 		})
 		t.poll.setPollData(msg)
 		t.poll.enabled = true
-		t.handleResize()
+		t.HandleResize()
 	case "channel.poll.progress":
 		heightBefore := lipgloss.Height(t.poll.View())
 		t.poll.setPollData(msg)
@@ -956,7 +984,7 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 		heightAfter := lipgloss.Height(t.poll.View())
 
 		if heightAfter != heightBefore {
-			t.handleResize()
+			t.HandleResize()
 		}
 	case "channel.poll.end":
 		winner := msg.Payload.Event.Choices[0]
@@ -971,11 +999,11 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channel,
 			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("-- Poll %q has ended, %q has won with %d votes! --", msg.Payload.Event.Title, winner.Title, winner.Votes),
+			Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
 		})
 
 		t.poll.enabled = false
-		t.handleResize()
+		t.HandleResize()
 	case "channel.raid":
 		// broadcaster raided another channel
 		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {
@@ -983,7 +1011,7 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channel,
 				MsgID:           command.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("-- Raiding %s with %d Viewers! --", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
+				Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
 			})
 
 			return
@@ -994,14 +1022,27 @@ func (t *tab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPa
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channel,
 			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("-- You are getting raided by %s with %d Viewers! --", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
+			Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
 		})
+	case "channel.ad_break.begin":
+		var chatMsg string
 
-		return
+		if msg.Payload.Event.IsAutomatic {
+			chatMsg = fmt.Sprintf("A automatic %d second ad just started!", msg.Payload.Event.DurationInSeconds)
+		} else {
+			chatMsg = fmt.Sprintf("A %d second ad, requested by %s, just started!", msg.Payload.Event.DurationInSeconds, msg.Payload.Event.RequesterUserName)
+		}
+
+		t.chatWindow.handleMessage(&command.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channel,
+			MsgID:           command.MsgID(uuid.NewString()),
+			Message:         chatMsg,
+		})
 	}
 }
 
-func (t *tab) focus() {
+func (t *broadcastTab) Focus() {
 	t.focused = true
 
 	if t.channelDataLoaded {
@@ -1016,7 +1057,7 @@ func (t *tab) focus() {
 	}
 }
 
-func (t *tab) blur() {
+func (t *broadcastTab) Blur() {
 	t.focused = false
 
 	if t.channelDataLoaded {

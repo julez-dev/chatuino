@@ -13,10 +13,12 @@ import (
 )
 
 type setStreamInfo struct {
-	target string
-	viewer int
-	title  string
-	game   string
+	target   string
+	username string // is broadcasters display name
+	viewer   int
+	title    string
+	game     string
+	isLive   bool
 }
 
 type streamInfo struct {
@@ -99,9 +101,11 @@ func (s *streamInfo) refreshStreamInfo() tea.Msg {
 	}
 
 	return setStreamInfo{
-		target: s.channelID,
-		viewer: info.Data[0].ViewerCount,
-		title:  info.Data[0].Title,
-		game:   info.Data[0].GameName,
+		target:   s.channelID,
+		viewer:   info.Data[0].ViewerCount,
+		title:    info.Data[0].Title,
+		game:     info.Data[0].GameName,
+		username: info.Data[0].UserName,
+		isLive:   !info.Data[0].StartedAt.IsZero(),
 	}
 }

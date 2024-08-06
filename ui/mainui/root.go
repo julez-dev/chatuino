@@ -2,7 +2,6 @@ package mainui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -58,6 +57,46 @@ type EventSubPool interface {
 
 type RecentMessageService interface {
 	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error)
+}
+
+type tabKind int
+
+const (
+	broadcastTabKind tabKind = iota
+	mentionTabKind
+	liveNotificationTabKind
+)
+
+func (t tabKind) String() string {
+	switch t {
+	case broadcastTabKind:
+		return "Channel (Default)"
+	case mentionTabKind:
+		return "Mention"
+	case liveNotificationTabKind:
+		return "Live Notifications"
+	}
+
+	return "<not implemented>"
+}
+
+type tab interface {
+	Init() tea.Cmd
+	InitWithUserData(twitch.UserData) tea.Cmd
+	Update(tea.Msg) (tab, tea.Cmd)
+	View() string
+	Focus()
+	Blur()
+	AccountID() string
+	Channel() string
+	State() tabState
+	IsDataLoaded() bool
+	ID() string
+	Focused() bool
+	ChannelID() string
+	HandleResize()
+	SetSize(width, height int)
+	Kind() tabKind
 }
 
 type activeScreen int
@@ -154,7 +193,7 @@ type Root struct {
 	help      *help
 
 	tabCursor int
-	tabs      []*tab
+	tabs      []tab
 }
 
 func NewUI(
@@ -260,6 +299,9 @@ func (r *Root) Init() tea.Cmd {
 			logins := make([]string, 0, len(state.Tabs))
 
 			for _, tab := range state.Tabs {
+				if tab.Kind != int(broadcastTabKind) {
+					continue
+				}
 				loginsUnique[tab.Channel] = struct{}{}
 			}
 
@@ -311,13 +353,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.screenType = mainScreen
 		r.initErr = nil
 
-		nTab := r.createTab(msg.account, msg.channel)
-		nTab.focus()
+		nTab := r.createTab(msg.account, msg.channel, msg.tabKind)
+		nTab.Focus()
 
 		r.tabs = append(r.tabs, nTab)
 
 		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-		r.header.selectTab(nTab.id)
+		r.header.selectTab(nTab.ID())
 
 		r.joinInput.blur()
 
@@ -336,11 +378,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return r, cmd
 	case chatEventMessage:
-		for i, t := range r.tabs {
-			if t.account.ID == msg.accountID && (t.channel == msg.channel || msg.channel == "") {
-				r.tabs[i], cmd = r.tabs[i].Update(msg)
-				cmds = append(cmds, cmd)
-			}
+		for i := range r.tabs {
+			r.tabs[i], cmd = r.tabs[i].Update(msg)
+			cmds = append(cmds, cmd)
 		}
 
 		cmds = append(cmds, r.waitChatEvents())
@@ -372,14 +412,18 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.keymap.Help) {
 			var isInsertMode bool
 			if len(r.tabs) > r.tabCursor {
-				isInsertMode = (r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode)
+				isInsertMode = (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode)
+			}
+
+			if !isInsertMode && r.screenType == inputScreen && r.joinInput.input.InputModel.Focused() {
+				isInsertMode = true
 			}
 
 			if !isInsertMode {
 				r.screenType = helpScreen
 				r.joinInput.blur()
 				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].blur()
+					r.tabs[r.tabCursor].Blur()
 				}
 				return r, nil
 			}
@@ -388,7 +432,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.keymap.Escape) {
 			if r.screenType == inputScreen || r.screenType == helpScreen {
 				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].focus()
+					r.tabs[r.tabCursor].Focus()
 				}
 
 				r.joinInput.blur()
@@ -417,16 +461,36 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch r.screenType {
 			case mainScreen:
 				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].blur()
+					r.tabs[r.tabCursor].Blur()
 				}
 
 				r.screenType = inputScreen
 				r.joinInput = newJoin(r.accounts, r.ttvAPIUserClients, r.width, r.height, r.keymap)
+				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
+					return t.Kind() == mentionTabKind
+				})
+
+				hasNotificationTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
+					return t.Kind() == liveNotificationTabKind
+				})
+
+				var validTabKinds []tabKind
+				validTabKinds = append(validTabKinds, broadcastTabKind)
+
+				if !hasMentionTab {
+					validTabKinds = append(validTabKinds, mentionTabKind)
+				}
+
+				if !hasNotificationTab {
+					validTabKinds = append(validTabKinds, liveNotificationTabKind)
+				}
+
+				r.joinInput.setTabOptions(validTabKinds...)
 				r.joinInput.focus()
 				return r, r.joinInput.Init()
 			case inputScreen:
 				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].focus()
+					r.tabs[r.tabCursor].Focus()
 				}
 
 				r.joinInput.blur()
@@ -439,7 +503,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if r.screenType == mainScreen {
 
 			if key.Matches(msg, r.keymap.Next) {
-				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode) {
+				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
 					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
 					return r, cmd
 				}
@@ -448,7 +512,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.Previous) {
-				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode) {
+				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
 					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
 					return r, cmd
 				}
@@ -457,29 +521,29 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.CloseTab) {
-				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].state == insertMode || r.tabs[r.tabCursor].state == userInspectInsertMode) {
+				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
 					currentTab := r.tabs[r.tabCursor]
 					r.closeTab()
 
 					// if tab was connected to IRC, disconnect it
-					if currentTab.channelDataLoaded {
+					if currentTab.IsDataLoaded() && currentTab.Kind() == broadcastTabKind {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
-						hasOther := slices.ContainsFunc(r.tabs, func(t *tab) bool {
-							return t.id != currentTab.id &&
-								t.account.ID == currentTab.account.ID &&
-								t.channel == currentTab.channel
+						hasOther := slices.ContainsFunc(r.tabs, func(t tab) bool {
+							return t.ID() != currentTab.ID() &&
+								t.AccountID() == currentTab.AccountID() &&
+								t.Channel() == currentTab.Channel()
 						})
 
 						if !hasOther {
 							// send part message
-							r.logger.Info().Str("channel", currentTab.channel).Str("id", currentTab.account.ID).Msg("sending part message")
+							r.logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
 							cmds = append(cmds, func() tea.Msg {
 								r.in <- multiplex.InboundMessage{
-									AccountID: currentTab.account.ID,
+									AccountID: currentTab.AccountID(),
 									Msg: command.PartMessage{
-										Channel: currentTab.channel,
+										Channel: currentTab.Channel(),
 									},
 								}
 								return nil
@@ -490,7 +554,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds = append(cmds, func() tea.Msg {
 							defer r.closerWG.Done()
 							r.in <- multiplex.InboundMessage{
-								AccountID: currentTab.account.ID,
+								AccountID: currentTab.AccountID(),
 								Msg:       multiplex.DecrementTabCounter{},
 							}
 							return nil
@@ -504,6 +568,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+
+	r.header, cmd = r.header.Update(msg)
+	cmds = append(cmds, cmd)
 
 	for i, tab := range r.tabs {
 		r.tabs[i], cmd = tab.Update(msg)
@@ -552,14 +619,11 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 	appState := save.AppState{}
 
 	for _, t := range r.tabs {
-		if t.chatWindow == nil {
-			continue
-		}
-
 		tabState := save.TabState{
-			IsFocused:  t.focused,
-			Channel:    t.channel,
-			IdentityID: t.account.ID,
+			IsFocused:  t.Focused(),
+			Channel:    t.Channel(),
+			IdentityID: t.AccountID(),
+			Kind:       int(t.Kind()),
 		}
 
 		appState.Tabs = append(appState.Tabs, tabState)
@@ -569,11 +633,6 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 }
 
 func (r *Root) Close() error {
-	var errs []error
-	for _, t := range r.tabs {
-		errs = append(errs, t.Close())
-	}
-
 	if r.eventSubIn != nil {
 		r.eventSubInInFlight.Wait()
 		close(r.eventSubIn)
@@ -583,7 +642,7 @@ func (r *Root) Close() error {
 
 	close(r.in)
 
-	return errors.Join(errs...)
+	return nil
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
@@ -591,9 +650,14 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 
 	// collect all open broadcasters
 	openBroadcasts := map[string]struct{}{}
+	channelIDNames := map[string]string{}
 
 	for _, tab := range r.tabs {
-		openBroadcasts[tab.channelID] = struct{}{}
+		if tab.Kind() != broadcastTabKind {
+			continue
+		}
+		openBroadcasts[tab.ChannelID()] = struct{}{}
+		channelIDNames[tab.ChannelID()] = tab.Channel()
 	}
 
 	if len(openBroadcasts) == 0 {
@@ -610,7 +674,6 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 
 	return func() tea.Msg {
 		accounts, err := r.accounts.GetAllAccounts()
-
 		if err != nil {
 			return polledStreamInfo{}
 		}
@@ -641,23 +704,38 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 		resp, err := fetcher.GetStreamInfo(ctx, broadcastIDs)
-
 		if err != nil {
 			r.logger.Err(err).Msg("failed polling streamer info")
 			return polledStreamInfo{}
 		}
 
 		polled := polledStreamInfo{
-			streamInfos: make([]setStreamInfo, 0, len(resp.Data)),
+			streamInfos: make([]setStreamInfo, 0, len(broadcastIDs)),
 		}
 
-		for _, data := range resp.Data {
-			polled.streamInfos = append(polled.streamInfos, setStreamInfo{
-				target: data.UserID,
-				viewer: data.ViewerCount,
-				title:  data.Title,
-				game:   data.GameName,
-			})
+		// Update status for all streams
+		// If a stream is offline the twitch API does not return any item for this broadcaster_id
+		// To still update the title etc. to empty value, send an empty info to component.
+		for ib := range broadcastIDs {
+			info := setStreamInfo{
+				target:   broadcastIDs[ib],
+				username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
+			}
+
+			for id := range resp.Data {
+				// data's user does not match broadcaster
+				if resp.Data[id].UserID != broadcastIDs[ib] {
+					continue
+				}
+
+				info.viewer = resp.Data[id].ViewerCount
+				info.username = resp.Data[id].UserName
+				info.title = resp.Data[id].Title
+				info.game = resp.Data[id].GameName
+				info.isLive = !resp.Data[id].StartedAt.IsZero()
+			}
+
+			polled.streamInfos = append(polled.streamInfos, info)
 		}
 
 		return polled
@@ -672,7 +750,7 @@ func (r *Root) handlePolledStreamInfo(polled polledStreamInfo) tea.Cmd {
 
 	for _, info := range polled.streamInfos {
 		for it, tab := range r.tabs {
-			if tab.channelDataLoaded {
+			if tab.IsDataLoaded() {
 				r.tabs[it], cmd = tab.Update(info)
 				cmds = append(cmds, cmd)
 			}
@@ -683,19 +761,33 @@ func (r *Root) handlePolledStreamInfo(polled polledStreamInfo) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) createTab(account save.Account, channel string) *tab {
-	identity := account.DisplayName
+func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab {
+	switch kind {
+	case broadcastTabKind:
+		identity := account.DisplayName
 
-	if account.IsAnonymous {
-		identity = "Anonymous"
+		if account.IsAnonymous {
+			identity = "Anonymous"
+		}
+
+		id := r.header.addTab(channel, identity)
+
+		headerHeight := r.getHeaderHeight()
+		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
+		return nTab
+	case mentionTabKind:
+		id := r.header.addTab("mentioned", "all")
+		headerHeight := r.getHeaderHeight()
+		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteStore, r.width, r.height-headerHeight)
+		return nTab
+	case liveNotificationTabKind:
+		id := r.header.addTab("live notifications", "all")
+		headerHeight := r.getHeaderHeight()
+		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteStore, r.width, r.height-headerHeight)
+		return nTab
 	}
 
-	id := r.header.addTab(channel, identity)
-
-	headerHeight := r.getHeaderHeight()
-
-	nTab := newTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
-	return nTab
+	return nil
 }
 
 func (r *Root) getHeaderHeight() int {
@@ -714,7 +806,7 @@ func (r *Root) handleResize() {
 	// channel join input
 	r.joinInput.width = r.width
 	r.joinInput.height = r.height
-	r.joinInput.list.SetHeight(r.height / 2)
+	r.joinInput.accountList.SetHeight(r.height / 2)
 
 	// help
 	r.help.handleResize(r.width, r.height)
@@ -723,15 +815,14 @@ func (r *Root) handleResize() {
 	headerHeight := r.getHeaderHeight()
 
 	for i := range r.tabs {
-		r.tabs[i].height = r.height - headerHeight
-		r.tabs[i].width = r.width
-		r.tabs[i].handleResize()
+		r.tabs[i].SetSize(r.width, r.height-headerHeight)
+		r.tabs[i].HandleResize()
 	}
 }
 
 func (r *Root) nextTab() {
 	if len(r.tabs) > r.tabCursor {
-		r.tabs[r.tabCursor].blur()
+		r.tabs[r.tabCursor].Blur()
 	}
 
 	newIndex := r.tabCursor + 1
@@ -743,14 +834,14 @@ func (r *Root) nextTab() {
 	r.tabCursor = newIndex
 
 	if len(r.tabs) > r.tabCursor {
-		r.header.selectTab(r.tabs[r.tabCursor].id)
-		r.tabs[r.tabCursor].focus()
+		r.header.selectTab(r.tabs[r.tabCursor].ID())
+		r.tabs[r.tabCursor].Focus()
 	}
 }
 
 func (r *Root) prevTab() {
 	if len(r.tabs) > r.tabCursor {
-		r.tabs[r.tabCursor].blur()
+		r.tabs[r.tabCursor].Blur()
 	}
 
 	newIndex := r.tabCursor - 1
@@ -766,8 +857,8 @@ func (r *Root) prevTab() {
 	r.tabCursor = newIndex
 
 	if len(r.tabs) > r.tabCursor {
-		r.header.selectTab(r.tabs[r.tabCursor].id)
-		r.tabs[r.tabCursor].focus()
+		r.header.selectTab(r.tabs[r.tabCursor].ID())
+		r.tabs[r.tabCursor].Focus()
 	}
 }
 
@@ -786,40 +877,48 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	for _, t := range msg.state.Tabs {
 		r.screenType = mainScreen
 
-		var account save.Account
+		var newTab tab
+		switch tabKind(t.Kind) {
+		case broadcastTabKind:
+			var account save.Account
 
-		for _, a := range msg.accounts {
-			if a.ID == t.IdentityID {
-				account = a
+			for _, a := range msg.accounts {
+				if a.ID == t.IdentityID {
+					account = a
+				}
 			}
-		}
 
-		if account.ID == "" {
-			continue
-		}
+			if account.ID == "" {
+				continue
+			}
 
-		nTab := r.createTab(account, t.Channel)
+			newTab = r.createTab(account, t.Channel, broadcastTabKind)
+		case mentionTabKind:
+			newTab = r.createTab(save.Account{}, "", mentionTabKind)
+		case liveNotificationTabKind:
+			newTab = r.createTab(save.Account{}, "", liveNotificationTabKind)
+		}
 
 		if t.IsFocused {
-			nTab.focus()
+			newTab.Focus()
 		}
 
-		r.tabs = append(r.tabs, nTab)
+		r.tabs = append(r.tabs, newTab)
 
 		if t.IsFocused {
 			hasActiveTab = true
 			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-			r.header.selectTab(nTab.id)
+			r.header.selectTab(newTab.ID())
 		}
-		cmds = append(cmds, nTab.InitWithUserData(msg.ttvUsers[t.Channel]))
+		cmds = append(cmds, newTab.InitWithUserData(msg.ttvUsers[t.Channel]))
 	}
 
 	// if for some reason there were tabs persisted but non tab has the focus flag set
 	// focus the first tab
 	if len(r.tabs) > 0 && !hasActiveTab {
-		r.header.selectTab(r.tabs[0].id)
+		r.header.selectTab(r.tabs[0].ID())
 		r.tabCursor = 0
-		r.tabs[0].focus()
+		r.tabs[0].Focus()
 	}
 
 	r.handleResize()
@@ -879,11 +978,10 @@ func (r *Root) waitChatEvents() tea.Cmd {
 
 func (r *Root) closeTab() {
 	if len(r.tabs) > r.tabCursor {
-		tabID := r.tabs[r.tabCursor].id
+		tabID := r.tabs[r.tabCursor].ID()
 		r.header.removeTab(tabID)
-		r.tabs[r.tabCursor].Close()
-		r.tabs = slices.DeleteFunc(r.tabs, func(t *tab) bool {
-			return t.id == tabID
+		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
+			return t.ID() == tabID
 		})
 		r.prevTab()
 		r.handleResize()

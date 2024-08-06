@@ -66,9 +66,6 @@ type position struct {
 }
 
 type chatWindow struct {
-	channel   string
-	channelID string
-
 	logger        zerolog.Logger
 	keymap        save.KeyMap
 	width, height int
@@ -90,14 +87,12 @@ type chatWindow struct {
 	userColorCache map[string]func(...string) string
 }
 
-func newChatWindow(logger zerolog.Logger, width, height int, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
+func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
 	c := chatWindow{
 		keymap:         keymap,
 		logger:         logger,
-		channel:        channel,
 		width:          width,
 		height:         height,
-		channelID:      channelID,
 		emoteStore:     emoteStore,
 		userColorCache: map[string]func(...string) string{},
 	}
@@ -112,10 +107,9 @@ func (c *chatWindow) Init() tea.Cmd {
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
 	case chatEventMessage:
-		if msg.channel == c.channel || msg.channel == "" {
-			c.handleMessage(msg.message)
-			return c, nil
-		}
+
+		c.handleMessage(msg.message)
+		return c, nil
 	case tea.KeyMsg:
 		if c.focused {
 			switch {
@@ -389,7 +383,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 	case error:
 		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
-		return c.wordwrapMessage(prefix, text)
+		return c.wordwrapMessage(prefix, c.colorMessage("", text))
 	case *command.PrivateMessage:
 		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
@@ -424,12 +418,12 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			)
 		}
 
-		return c.wordwrapMessage(prefix, msg.Message)
+		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, msg.Message))
 	case *command.Notice:
 		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
-		return c.wordwrapMessage(prefix, styled)
+		return c.wordwrapMessage(prefix, c.colorMessage("", styled))
 	case *command.ClearChat:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + clearChatAlertStyle.Render("Clear Chat") + "]: "
 
@@ -450,7 +444,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			text += " was timed out for " + dur.String()
 		}
 
-		return c.wordwrapMessage(prefix, text)
+		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
 	case *command.SubMessage:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
 
@@ -479,7 +473,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			text += ": " + msg.Message
 		}
 
-		return c.wordwrapMessage(prefix, text)
+		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
 	case *command.SubGiftMessage:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
 
@@ -503,7 +497,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			msg.Months,
 		)
 
-		return c.wordwrapMessage(prefix, text)
+		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
 	case *command.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 
@@ -521,10 +515,16 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			msg.Message,
 		)
 
-		return c.wordwrapMessage(prefix, text)
+		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
 	}
 
 	return []string{}
+}
+
+func (c *chatWindow) colorMessage(channelID, content string) string {
+	content = c.colorMessageEmotes(channelID, content)
+	content = c.colorMessageMentions(content)
+	return content
 }
 
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
@@ -536,9 +536,6 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 
 		return r
 	}, content)
-
-	content = c.colorMessageEmotes(content)
-	content = c.colorMessageMentions(content)
 
 	prefixWidth := lipgloss.Width(prefix)
 
@@ -565,10 +562,10 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	return lines
 }
 
-func (c *chatWindow) colorMessageEmotes(message string) string {
+func (c *chatWindow) colorMessageEmotes(channelID string, message string) string {
 	splits := strings.Split(message, " ")
 	for i, split := range splits {
-		if e, ok := c.emoteStore.GetByText(c.channelID, split); ok {
+		if e, ok := c.emoteStore.GetByText(channelID, split); ok {
 			switch e.Platform {
 			case emote.Twitch:
 				splits[i] = ttvStyle.Render(split)

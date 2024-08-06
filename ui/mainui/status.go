@@ -21,7 +21,7 @@ type setStatusData struct {
 type status struct {
 	logger            zerolog.Logger
 	ttvAPI            APIClient
-	tab               *tab
+	tab               *broadcastTab
 	width, height     int
 	userID, channelID string
 
@@ -30,7 +30,7 @@ type status struct {
 	isDataFetched bool
 }
 
-func newStatus(logger zerolog.Logger, ttvAPI APIClient, tab *tab, width, height int, userID, channelID string) *status {
+func newStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width, height int, userID, channelID string) *status {
 	return &status{
 		logger:    logger,
 		ttvAPI:    ttvAPI,

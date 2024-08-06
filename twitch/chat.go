@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	maxMessageSize = 32 * 1024 // 32KB
+	maxMessageSize = 1 * 1024 * 1024 // 1MiB
 	ircWSURL       = "wss://irc-ws.chat.twitch.tv:443"
 )
 

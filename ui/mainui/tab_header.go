@@ -3,20 +3,28 @@ package mainui
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
+const bellEmojiPrefix = string(rune(128276)) + " "
+
 var (
-	tabHeaderStyle       = lipgloss.NewStyle().Background(lipgloss.Color("#556")).Margin(1).UnsetMarginTop()
+	tabHeaderStyle       = lipgloss.NewStyle().Background(lipgloss.Color("#556")).MarginBottom(1).MarginLeft(1).UnsetMarginTop()
 	tabHeaderActiveStyle = tabHeaderStyle.Background(lipgloss.Color("135"))
 )
 
+type requestNotificationIconMessage struct {
+	tabID string
+}
+
 type tabHeaderEntry struct {
 	id       string
-	channel  string
+	name     string
 	identity string
 	selected bool
 }
@@ -37,7 +45,20 @@ func (t *tabHeader) Init() tea.Cmd {
 	return nil
 }
 
-func (t *tabHeader) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (t *tabHeader) Update(msg tea.Msg) (*tabHeader, tea.Cmd) {
+	if req, ok := msg.(requestNotificationIconMessage); ok {
+		log.Logger.Info().Str("id", req.tabID).Msg("got noti request")
+		for i := range t.entries {
+			// add bell prefix if tab id matched, and tab is not already active
+			if t.entries[i].id == req.tabID && !t.entries[i].selected {
+				if !strings.HasPrefix(t.entries[i].name, bellEmojiPrefix) {
+					t.entries[i].name = bellEmojiPrefix + t.entries[i].name
+					return t, nil
+				}
+			}
+		}
+	}
+
 	return t, nil
 }
 
@@ -53,7 +74,7 @@ func (t *tabHeader) View() string {
 			style = tabHeaderActiveStyle
 		}
 
-		displayEntry := style.Render(fmt.Sprintf("%s [%s]", e.channel, e.identity))
+		displayEntry := style.Render(fmt.Sprintf("%s [%s]", e.name, e.identity))
 
 		widthEntry := lipgloss.Width(displayEntry)
 
@@ -89,6 +110,7 @@ func (t *tabHeader) View() string {
 func (t *tabHeader) selectTab(id string) {
 	for i, e := range t.entries {
 		if e.id == id {
+			t.entries[i].name = strings.TrimPrefix(t.entries[i].name, bellEmojiPrefix)
 			t.entries[i].selected = true
 		} else {
 			t.entries[i].selected = false
@@ -105,7 +127,7 @@ func (t *tabHeader) removeTab(id string) {
 func (t *tabHeader) addTab(channel, identity string) string {
 	entry := tabHeaderEntry{
 		id:       uuid.New().String(),
-		channel:  channel,
+		name:     channel,
 		identity: identity,
 	}
 

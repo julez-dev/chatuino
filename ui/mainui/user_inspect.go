@@ -40,7 +40,7 @@ type userInspect struct {
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, channelID string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
 	return &userInspect{
 		tabID:   tabID,
 		channel: channel,
@@ -48,7 +48,7 @@ func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width
 		ivr:     ivr.NewAPI(http.DefaultClient),
 		ttvAPI:  ttvAPI,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow: newChatWindow(logger, width, height, channel, channelID, emoteStore, keymap),
+		chatWindow: newChatWindow(logger, width, height, emoteStore, keymap),
 	}
 }
 
