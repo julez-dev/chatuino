@@ -6,7 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/common-nighthawk/go-figure"
-	"github.com/fatih/color"
 	"github.com/julez-dev/chatuino/save"
 )
 
@@ -27,21 +26,23 @@ func (s splash) view(loading bool, err error) string {
 	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Width(s.width).Height(s.height)
 
 	keyDisplay := strings.Join(s.keymap.Create.Keys(), ", ")
-	name := color.New(color.FgHiMagenta).Sprint("Chatuino")
+
+	name := lipgloss.NewStyle().Foreground(lipgloss.Color("#8bd5ca")).Render("Chatuino")
 
 	var help string
 	if loading {
 		help = "Loading state from disk..."
 	} else if err != nil {
 		help = err.Error() + "\n"
-		help += "Use " + color.New(color.FgHiMagenta).Sprint(keyDisplay) + " to create a new tab and join a channel"
+		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color("#8bd5ca")).Render(keyDisplay) + " to create a new tab and join a channel"
 	} else {
-		help = "Use " + color.New(color.FgHiMagenta).Sprint(keyDisplay) + " to create a new tab and join a channel"
+		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color("#8bd5ca")).Render(keyDisplay) + " to create a new tab and join a channel"
 	}
 
-	logo := style.Render(figure.NewFigure("CHATUINO", "isometric1", true).String() + "\n" + "Welcome to " + name + "!\n" + help)
+	logo := lipgloss.NewStyle().Foreground(lipgloss.Color("#c6a0f6")).Render(figure.NewFigure("CHATUINO", "isometric1", true).String())
+	splash := style.Render(logo + "\n" + "Welcome to " + name + "!\n" + help)
 
-	return logo
+	return splash
 }
 
 func (s splash) View() string {
