@@ -13,6 +13,7 @@ import (
 const (
 	chatuinoConfigDir = "chatuino"
 	stateFileName     = "state.json"
+	messageDBFileName = "messages.db"
 )
 
 type AppState struct {
@@ -80,15 +81,10 @@ func AppStateFromDisk() (AppState, error) {
 	return state, nil
 }
 
-func openCreateConfigFile(file string) (*os.File, error) {
-	configDir, err := os.UserConfigDir() // get users config directory, depending on OS
-	if err != nil {
-		return nil, err
-	}
-
+func openCreateFile(base string, file string) (*os.File, error) {
 	// ensure dir config dir exists
-	configDirChatuino := filepath.Join(configDir, chatuinoConfigDir)
-	err = os.Mkdir(configDirChatuino, 0o755)
+	configDirChatuino := filepath.Join(base, chatuinoConfigDir)
+	err := os.Mkdir(configDirChatuino, 0o755)
 	var alreadyExistsError bool
 
 	if err != nil {
@@ -111,4 +107,34 @@ func openCreateConfigFile(file string) (*os.File, error) {
 	}
 
 	return f, nil
+}
+
+func openCreateConfigFile(file string) (*os.File, error) {
+	configDir, err := os.UserConfigDir() // get users config directory, depending on OS
+	if err != nil {
+		return nil, err
+	}
+
+	return openCreateFile(configDir, file)
+}
+
+func openCreateDataFile(file string) (*os.File, error) {
+	configDir, err := os.UserHomeDir() // get users home dir
+	if err != nil {
+		return nil, err
+	}
+
+	return openCreateFile(configDir, file)
+}
+
+func CreateDBFile() (string, error) {
+	f, err := openCreateDataFile(messageDBFileName)
+
+	if err != nil {
+		return "", err
+	}
+
+	defer f.Close()
+
+	return f.Name(), nil
 }
