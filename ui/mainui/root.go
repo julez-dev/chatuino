@@ -186,6 +186,9 @@ type Root struct {
 	eventSubInInFlight *sync.WaitGroup
 	eventSubIn         chan multiplex.EventSubInboundMessage
 
+	// message logge
+	messageLoggerChan chan<- *command.PrivateMessage
+
 	// components
 	splash    splash
 	header    *tabHeader
@@ -206,6 +209,7 @@ func NewUI(
 	keymap save.KeyMap,
 	recentMessageService RecentMessageService,
 	eventSub EventSubPool,
+	messageLoggerChan chan<- *command.PrivateMessage,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -237,6 +241,7 @@ func NewUI(
 		eventSub:           eventSub,
 		eventSubIn:         inEventSub,
 
+		messageLoggerChan:    messageLoggerChan,
 		accounts:             provider,
 		ttvAPIUserClients:    clients,
 		emoteStore:           emoteStore,
@@ -251,6 +256,7 @@ func NewUI(
 
 func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
+		tea.SetWindowTitle("Chatuino"),
 		func() tea.Msg {
 			r.closerWG.Add(1)
 			go func() {
@@ -966,6 +972,10 @@ func (r *Root) waitChatEvents() tea.Cmd {
 			channel = msg.Msg.(*command.RitualMessage).ChannelUserName
 		case *command.AnnouncementMessage:
 			channel = msg.Msg.(*command.AnnouncementMessage).ChannelUserName
+		}
+
+		if privateMsg, ok := msg.Msg.(*command.PrivateMessage); ok {
+			r.messageLoggerChan <- privateMsg
 		}
 
 		return chatEventMessage{

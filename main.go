@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/multiplex"
+	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
@@ -21,14 +23,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/browser"
+
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch"
+	ttvCommand "github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
+
+	_ "modernc.org/sqlite"
 )
 
 func init() {
@@ -43,7 +49,7 @@ const (
 
 var maybeLogFile *os.File
 
-//go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --with-expecter=true --all
+//go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
 func main() {
 	defer func() {
 		if maybeLogFile != nil {
@@ -110,6 +116,11 @@ func main() {
 				runProfilingServer(ctx, log.Logger, command.String("profiling-host"))
 			}
 
+			settings, err := save.SettingsFromDisk()
+			if err != nil {
+				return fmt.Errorf("failed to read settings file: %w", err)
+			}
+
 			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
@@ -117,8 +128,12 @@ func main() {
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
-
 			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
+
+			messageLoggerChan := make(chan *ttvCommand.PrivateMessage)
+			loggerWaitSync := make(chan struct{})
+
+			go runChatLogger(messageLoggerChan, loggerWaitSync, settings.Moderation)
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote fetching.
@@ -136,7 +151,7 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger, accountProvider, chatMultiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService, eventSubMultiplexer),
+				mainui.NewUI(log.Logger, accountProvider, chatMultiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService, eventSubMultiplexer, messageLoggerChan),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
@@ -177,6 +192,9 @@ func main() {
 				}
 			}
 
+			close(messageLoggerChan)
+			<-loggerWaitSync
+
 			return nil
 		},
 	}
@@ -187,6 +205,52 @@ func main() {
 	if err := app.Run(ctx, os.Args); err != nil {
 		fmt.Printf("error while running Chatuino: %v", err)
 		os.Exit(1)
+	}
+}
+
+func runChatLogger(messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWaitSync chan struct{}, settings save.ModerationSettings) {
+	defer func() {
+		for range messageLoggerChan {
+		}
+		close(loggerWaitSync)
+	}()
+
+	if !settings.StoreChatLogs {
+		log.Logger.Debug().Msg("storing chat logs disabled")
+		return
+	}
+
+	dbPath, err := save.CreateDBFile()
+
+	if err != nil {
+		log.Logger.Err(err).Msg("failed to create db file")
+		return
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+
+	if err != nil {
+		log.Logger.Err(err).Msg("failed to create sqlite connection")
+		return
+	}
+
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Logger.Err(err).Msg("failed to close db connection")
+		}
+	}()
+
+	db.SetMaxOpenConns(1)
+	messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db, settings.LogsChannelInclude, settings.LogsChannelExclude)
+
+	if err := messageLogger.PrepareDatabase(); err != nil {
+		log.Logger.Err(err).Msg("failed to run prepare queries")
+		return
+	}
+
+	if err := messageLogger.LogMessages(messageLoggerChan); err != nil {
+		log.Logger.Err(err).Send()
+		return
 	}
 }
 
