@@ -436,7 +436,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if key.Matches(msg, r.keymap.Escape) {
-			if r.screenType == inputScreen || r.screenType == helpScreen {
+			if (r.screenType == inputScreen && r.joinInput.state == joinViewMode) || r.screenType == helpScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].Focus()
 				}
