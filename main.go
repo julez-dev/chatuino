@@ -234,6 +234,12 @@ func runChatLogger(messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWait
 		return
 	}
 
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Logger.Err(err).Msg("failed to close db connection")
+		}
+	}()
+
 	db.SetMaxOpenConns(1)
 	messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db, settings.LogsChannelInclude, settings.LogsChannelExclude)
 
