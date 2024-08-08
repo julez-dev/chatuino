@@ -372,6 +372,10 @@ func (j *join) View() string {
 	// show status at bottom
 	heightUntilNow := lipgloss.Height(b.String())
 	spacerHeight := j.height - heightUntilNow - 2 // one for border, one for status
+	if spacerHeight < 0 {
+		spacerHeight = 0
+	}
+
 	b.WriteString(strings.Repeat("\n", spacerHeight))
 
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(j.state.String()))
