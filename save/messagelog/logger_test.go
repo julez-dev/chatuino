@@ -22,7 +22,7 @@ func (f fakeDB) Exec(query string, args ...any) (sql.Result, error) {
 
 func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 	t.Run("max-batch-size", func(t *testing.T) {
-		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), fakeDB{})
+		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), fakeDB{}, nil, nil)
 		in := make(chan *command.PrivateMessage, maxBatchItems)
 		for i := range maxBatchItems {
 			msg := &command.PrivateMessage{
@@ -49,7 +49,7 @@ func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 		}
 		defer db.Close()
 
-		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db)
+		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db, nil, nil)
 
 		in := make(chan *command.PrivateMessage, 1)
 		msg := &command.PrivateMessage{
@@ -120,7 +120,7 @@ func TestBatchedMessageLogger_createLogEntries(t *testing.T) {
 			msgs[1].UserID,
 		).Return(nil, nil)
 
-		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db)
+		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db, nil, nil)
 		err := messageLogger.createLogEntries(msgs)
 		assert.Nil(t, err)
 	})

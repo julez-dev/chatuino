@@ -133,44 +133,7 @@ func main() {
 			messageLoggerChan := make(chan *ttvCommand.PrivateMessage)
 			loggerWaitSync := make(chan struct{})
 
-			go func() {
-				defer func() {
-					for range messageLoggerChan {
-					}
-					close(loggerWaitSync)
-				}()
-
-				if !settings.Moderation.StoreChatLogs {
-					return
-				}
-
-				dbPath, err := save.CreateDBFile()
-
-				if err != nil {
-					log.Logger.Err(err).Msg("failed to create db file")
-					return
-				}
-
-				db, err := sql.Open("sqlite", dbPath)
-
-				if err != nil {
-					log.Logger.Err(err).Msg("failed to create sqlite connection")
-					return
-				}
-
-				db.SetMaxOpenConns(1)
-				messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db)
-
-				if err := messageLogger.MigrateDatabase(); err != nil {
-					log.Logger.Err(err).Msg("failed to create sqlite migration")
-					return
-				}
-
-				if err := messageLogger.LogMessages(messageLoggerChan); err != nil {
-					log.Logger.Err(err).Send()
-					return
-				}
-			}()
+			go runChatLogger(messageLoggerChan, loggerWaitSync, settings.Moderation)
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote fetching.
@@ -242,6 +205,46 @@ func main() {
 	if err := app.Run(ctx, os.Args); err != nil {
 		fmt.Printf("error while running Chatuino: %v", err)
 		os.Exit(1)
+	}
+}
+
+func runChatLogger(messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWaitSync chan struct{}, settings save.ModerationSettings) {
+	defer func() {
+		for range messageLoggerChan {
+		}
+		close(loggerWaitSync)
+	}()
+
+	if !settings.StoreChatLogs {
+		log.Logger.Debug().Msg("storing chat logs disabled")
+		return
+	}
+
+	dbPath, err := save.CreateDBFile()
+
+	if err != nil {
+		log.Logger.Err(err).Msg("failed to create db file")
+		return
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+
+	if err != nil {
+		log.Logger.Err(err).Msg("failed to create sqlite connection")
+		return
+	}
+
+	db.SetMaxOpenConns(1)
+	messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db, settings.LogsChannelInclude, settings.LogsChannelExclude)
+
+	if err := messageLogger.PrepareDatabase(); err != nil {
+		log.Logger.Err(err).Msg("failed to run prepare queries")
+		return
+	}
+
+	if err := messageLogger.LogMessages(messageLoggerChan); err != nil {
+		log.Logger.Err(err).Send()
+		return
 	}
 }
 

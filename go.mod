@@ -26,7 +26,7 @@ require (
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
 	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/zalando/go-keyring v0.2.5
-	modernc.org/sqlite v1.31.1
+	modernc.org/sqlite v1.32.0
 	resenje.org/singleflight v0.4.2
 )
 
@@ -73,7 +73,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
-	golang.org/x/sys v0.23.0 // indirect
+	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.17.0
 	gopkg.in/yaml.v3 v3.0.1
 )

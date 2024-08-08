@@ -38,16 +38,33 @@ const (
 type BatchedMessageLogger struct {
 	logger zerolog.Logger
 	db     DB
+
+	includeChannels []string
+	excludeChannels []string
 }
 
-func NewBatchedMessageLogger(logger zerolog.Logger, db DB) *BatchedMessageLogger {
+func NewBatchedMessageLogger(logger zerolog.Logger, db DB, includeChannels []string, excludeChannels []string) *BatchedMessageLogger {
 	return &BatchedMessageLogger{
-		logger: logger,
-		db:     db,
+		logger:          logger,
+		db:              db,
+		includeChannels: includeChannels,
+		excludeChannels: excludeChannels,
 	}
 }
 
-func (b *BatchedMessageLogger) MigrateDatabase() error {
+func (b *BatchedMessageLogger) PrepareDatabase() error {
+	queries := [...]string{
+		"pragma journal_mode = WAL;",
+		"pragma synchronous = normal;",
+		"pragma temp_store = memory;",
+	}
+
+	for _, query := range queries {
+		if _, err := b.db.Exec(query); err != nil {
+			return fmt.Errorf("failed running prepare query: %w", err)
+		}
+	}
+
 	if _, err := b.db.Exec(sqlMigration); err != nil {
 		return fmt.Errorf("failed running migration: %w", err)
 	}
@@ -85,6 +102,10 @@ SELECT_LOOP:
 				}
 
 				break SELECT_LOOP
+			}
+
+			if !b.isChannelRelevant(twitchMsg.ChannelUserName) {
+				continue SELECT_LOOP
 			}
 
 			batch = append(batch, twitchMsg)
@@ -162,4 +183,24 @@ func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*command.PrivateMes
 	}
 
 	return nil
+}
+
+func (b *BatchedMessageLogger) isChannelRelevant(channel string) bool {
+	if len(b.includeChannels) == 0 && len(b.excludeChannels) == 0 {
+		return true
+	}
+
+	// When include channels set, only save messages when channel is in list
+	if len(b.includeChannels) > 0 {
+		inList := slices.ContainsFunc(b.includeChannels, func(s string) bool { return strings.EqualFold(s, channel) })
+		return inList
+	}
+
+	// When exclude channels set, don't save messages, when channel in list
+	if len(b.excludeChannels) > 0 {
+		inList := slices.ContainsFunc(b.excludeChannels, func(s string) bool { return strings.EqualFold(s, channel) })
+		return !inList
+	}
+
+	return false
 }

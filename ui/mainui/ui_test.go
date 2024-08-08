@@ -72,7 +72,7 @@ func TestUISingleChannelAnonymous(t *testing.T) {
 
 	defaultBinds := save.BuildDefaultKeyMap()
 
-	initialModel := NewUI(zerolog.Nop(), provider, chatPool, emoteStore, clientID, serverClient, defaultBinds, recentMessages, eventSub)
+	initialModel := NewUI(zerolog.Nop(), provider, chatPool, emoteStore, clientID, serverClient, defaultBinds, recentMessages, eventSub, nil)
 	initialModel.buildTTVClient = func(clientID string, opt ...twitch.APIOptionFunc) (APIClient, error) {
 		return ttv, nil
 	}

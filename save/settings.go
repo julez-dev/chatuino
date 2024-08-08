@@ -1,6 +1,7 @@
 package save
 
 import (
+	"fmt"
 	"io"
 
 	"gopkg.in/yaml.v3"
@@ -15,7 +16,9 @@ type Settings struct {
 }
 
 type ModerationSettings struct {
-	StoreChatLogs bool `yaml:"store_chat_logs"`
+	StoreChatLogs      bool     `yaml:"store_chat_logs"`
+	LogsChannelInclude []string `yaml:"logs_channel_include"`
+	LogsChannelExclude []string `yaml:"logs_channel_exclude"`
 }
 
 func BuildDefaultSettings() Settings {
@@ -24,6 +27,14 @@ func BuildDefaultSettings() Settings {
 			StoreChatLogs: true,
 		},
 	}
+}
+
+func (s Settings) validate() error {
+	if len(s.Moderation.LogsChannelExclude) > 0 && len(s.Moderation.LogsChannelInclude) > 0 {
+		return fmt.Errorf("cant't have both of logs_channel_include and logs_channel_exclude in settings.moderation")
+	}
+
+	return nil
 }
 
 func SettingsFromDisk() (Settings, error) {
@@ -52,6 +63,10 @@ func SettingsFromDisk() (Settings, error) {
 	settings := BuildDefaultSettings()
 
 	if err := yaml.Unmarshal(b, &settings); err != nil {
+		return Settings{}, err
+	}
+
+	if err := settings.validate(); err != nil {
 		return Settings{}, err
 	}
 
