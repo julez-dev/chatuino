@@ -30,7 +30,6 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.Escape,
 				keymap.Confirm,
 				keymap.Help,
-				keymap.NextInput,
 			},
 		},
 		{
