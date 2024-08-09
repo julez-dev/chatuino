@@ -20,12 +20,11 @@ var (
 
 type KeyMap struct {
 	// General
-	Up        key.Binding `yaml:"up"`
-	Down      key.Binding `yaml:"down"`
-	Escape    key.Binding `yaml:"escape"`
-	Confirm   key.Binding `yaml:"confirm"`
-	Help      key.Binding `yaml:"help"`
-	NextInput key.Binding `yaml:"next_input"`
+	Up      key.Binding `yaml:"up"`
+	Down    key.Binding `yaml:"down"`
+	Escape  key.Binding `yaml:"escape"`
+	Confirm key.Binding `yaml:"confirm"`
+	Help    key.Binding `yaml:"help"`
 
 	// App Binds
 	Quit       key.Binding `yaml:"quit"`
@@ -136,10 +135,6 @@ func BuildDefaultKeyMap() KeyMap {
 		Quit: key.NewBinding(
 			key.WithKeys("ctrl+c"),
 			key.WithHelp("ctrl+c", "quit"),
-		),
-		NextInput: key.NewBinding(
-			key.WithKeys("alt+n"),
-			key.WithHelp("alt+n", "cycle items in forms"),
 		),
 		Create: key.NewBinding(
 			key.WithKeys("ctrl+t"),

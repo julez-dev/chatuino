@@ -21,6 +21,21 @@ type followedFetcher interface {
 	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitch.FollowedChannel, error)
 }
 
+type joinState int
+
+const (
+	joinViewMode joinState = iota
+	joinInsertMode
+)
+
+func (j joinState) String() string {
+	if j == joinViewMode {
+		return "View/Select Input"
+	} else {
+		return "Insert"
+	}
+}
+
 type currentJoinInput int
 
 const (
@@ -64,6 +79,8 @@ type join struct {
 	provider         AccountProvider
 	followedFetchers map[string]followedFetcher
 	hasLoaded        bool
+
+	state joinState
 }
 
 func createDefaultList(width, height int) list.Model {
@@ -143,6 +160,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 		tabKindList:      tabKindList,
 		keymap:           keymap,
 		followedFetchers: followedFetchers,
+		state:            joinInsertMode,
 	}
 }
 
@@ -231,6 +249,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 		j.accountList.SetItems(listItems)
 		j.accountList.Select(index)
+		j.accountList.SetHeight(len(j.accounts) + 1)
 
 		j.hasLoaded = true
 
@@ -249,7 +268,17 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, nil
 			}
 
-			if key.Matches(msg, j.keymap.NextInput) {
+			if j.state == joinViewMode && key.Matches(msg, j.keymap.InsertMode) {
+				j.state = joinInsertMode
+				return j, nil
+			}
+
+			if j.state == joinInsertMode && key.Matches(msg, j.keymap.Escape) {
+				j.state = joinViewMode
+				return j, nil
+			}
+
+			if j.state == joinViewMode && key.Matches(msg, j.keymap.Up) {
 				// don't allow next input when mention or live noti tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
 					j.selectedInput = tabSelect
@@ -280,16 +309,18 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		}
 	}
 
-	switch j.selectedInput {
-	case channelInput:
-		j.input, cmd = j.input.Update(msg)
-		cmds = append(cmds, cmd)
-	case tabSelect:
-		j.tabKindList, cmd = j.tabKindList.Update(msg)
-		cmds = append(cmds, cmd)
-	default:
-		j.accountList, cmd = j.accountList.Update(msg)
-		cmds = append(cmds, cmd)
+	if j.state == joinInsertMode {
+		switch j.selectedInput {
+		case channelInput:
+			j.input, cmd = j.input.Update(msg)
+			cmds = append(cmds, cmd)
+		case tabSelect:
+			j.tabKindList, cmd = j.tabKindList.Update(msg)
+			cmds = append(cmds, cmd)
+		default:
+			j.accountList, cmd = j.accountList.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	return j, tea.Batch(cmds...)
@@ -301,9 +332,9 @@ func (j *join) View() string {
 		MaxWidth(j.width).
 		Height(j.height - 2). // - border height
 		MaxHeight(j.height).
-		Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("135")).
-		AlignHorizontal(lipgloss.Center)
-	// AlignVertical(lipgloss.Center)
+		Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("135"))
+
+	styleCenter := lipgloss.NewStyle().Width(j.width - 2).AlignHorizontal(lipgloss.Center)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color("135")).Render
 
@@ -312,11 +343,6 @@ func (j *join) View() string {
 		labelChannel  string
 		labelIdentity string
 	)
-
-	// If mention tab is selected, only display kind select input, because other values are not needed
-	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-		return style.Render(fmt.Sprintf("%s\n%s\n", labelStyle("> Tab type"), j.tabKindList.View()))
-	}
 
 	if j.selectedInput == channelInput {
 		labelTab = labelStyle("Tab type")
@@ -333,9 +359,25 @@ func (j *join) View() string {
 	}
 
 	b := strings.Builder{}
-	_, _ = b.WriteString(labelTab + "\n" + j.tabKindList.View() + "\n")
-	_, _ = b.WriteString(labelChannel + "\n" + j.input.View() + "\n")
-	_, _ = b.WriteString(labelIdentity + "\n" + j.accountList.View() + "\n")
+
+	// If mention tab is selected, only display kind select input, because other values are not needed
+	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
+		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
+	} else {
+		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
+		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
+		_, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
+	}
+
+	// show status at bottom
+	heightUntilNow := lipgloss.Height(b.String())
+	spacerHeight := j.height - heightUntilNow - 2 // one for border, one for status
+	if spacerHeight > 0 {
+		_, _ = b.WriteString(strings.Repeat("\n", spacerHeight))
+	}
+
+	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(j.state.String()))
+	_, _ = b.WriteString(stateStr)
 
 	return style.Render(b.String())
 }
