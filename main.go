@@ -20,6 +20,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sys/unix"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/browser"
@@ -121,6 +122,14 @@ func main() {
 				return fmt.Errorf("failed to read settings file: %w", err)
 			}
 
+			termSize, err := getTermSize()
+			if err != nil {
+				return fmt.Errorf("failed to get terminal size: %w", err)
+			}
+
+			cellWidth := float32(termSize.Xpixel) / float32(termSize.Col)
+			cellHeight := float32(termSize.Ypixel) / float32(termSize.Row)
+
 			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
@@ -144,6 +153,7 @@ func main() {
 				}
 			}
 
+			emoteInjector := emote.NewInjector(http.DefaultClient, emoteStore, cellWidth, cellHeight)
 			keys, err := save.CreateReadKeyMap()
 
 			if err != nil {
@@ -151,7 +161,18 @@ func main() {
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger, accountProvider, chatMultiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService, eventSubMultiplexer, messageLoggerChan),
+				mainui.NewUI(log.Logger,
+					accountProvider,
+					chatMultiplexer,
+					emoteStore,
+					command.String("client-id"),
+					serverAPI,
+					keys,
+					recentMessageService,
+					eventSubMultiplexer,
+					messageLoggerChan,
+					emoteInjector,
+				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
@@ -331,4 +352,20 @@ func setupLogFile() (*os.File, error) {
 	}
 
 	return f, nil
+}
+
+func getTermSize() (*unix.Winsize, error) {
+	// f, err := os.OpenFile("/dev/tty", unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NDELAY|unix.O_RDWR, 0666)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	var sz *unix.Winsize
+	sz, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return sz, nil
 }

@@ -36,6 +36,10 @@ type EmoteStore interface {
 	GetAllForUser(id string) emote.EmoteSet
 }
 
+type EmoteInjector interface {
+	Parse(msg *command.PrivateMessage) (string, string, error)
+}
+
 type APIClient interface {
 	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
 	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
@@ -132,9 +136,10 @@ type persistedDataLoadedMessage struct {
 }
 
 type chatEventMessage struct {
-	accountID string
-	channel   string
-	message   twitch.IRCer
+	accountID                         string
+	channel                           string
+	message                           twitch.IRCer
+	messageContentPlaceholderOverride string // the original twitch.IRC message with it's content overwritten by emote unicodes
 }
 
 type forwardChatMessage struct {
@@ -167,6 +172,7 @@ type Root struct {
 	// dependencies
 	accounts             AccountProvider
 	emoteStore           EmoteStore
+	emoteInjector        EmoteInjector
 	serverAPI            APIClientWithRefresh
 	recentMessageService RecentMessageService
 	buildTTVClient       func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
@@ -210,6 +216,7 @@ func NewUI(
 	recentMessageService RecentMessageService,
 	eventSub EventSubPool,
 	messageLoggerChan chan<- *command.PrivateMessage,
+	emoteInjector EmoteInjector,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -241,6 +248,7 @@ func NewUI(
 		eventSub:           eventSub,
 		eventSubIn:         inEventSub,
 
+		emoteInjector:        emoteInjector,
 		messageLoggerChan:    messageLoggerChan,
 		accounts:             provider,
 		ttvAPIUserClients:    clients,
@@ -974,14 +982,26 @@ func (r *Root) waitChatEvents() tea.Cmd {
 			channel = msg.Msg.(*command.AnnouncementMessage).ChannelUserName
 		}
 
+		var prepare string
+		var overwrite string
 		if privateMsg, ok := msg.Msg.(*command.PrivateMessage); ok {
 			r.messageLoggerChan <- privateMsg
+
+			var err error
+			prepare, overwrite, err = r.emoteInjector.Parse(privateMsg)
+			if err != nil {
+				panic(err)
+			}
+
+			privateMsg.Message = overwrite
+			io.WriteString(os.Stdout, prepare)
 		}
 
 		return chatEventMessage{
-			accountID: msg.ID,
-			channel:   channel,
-			message:   msg.Msg,
+			accountID:                         msg.ID,
+			channel:                           channel,
+			message:                           msg.Msg,
+			messageContentPlaceholderOverride: overwrite,
 		}
 	}
 }
