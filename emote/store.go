@@ -149,23 +149,31 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 
 		for _, bttvEmote := range bttvResp.ChannelEmotes {
 			emoteSet = append(emoteSet, Emote{
-				ID:       bttvEmote.ID,
-				Text:     bttvEmote.Code,
-				Platform: BTTV,
-				URL:      fmt.Sprintf("https://betterttv.com/emotes/%s", bttvEmote.ID),
+				ID:         bttvEmote.ID,
+				Text:       bttvEmote.Code,
+				IsAnimated: bttvEmote.Animated,
+				Format:     bttvEmote.ImageType,
+				Platform:   BTTV,
+				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
 			})
 		}
 
 		for _, stvEmote := range stvResp.EmoteSet.Emotes {
-			url := fmt.Sprintf("%s/%s", stvEmote.Data.Host.URL, stvEmote.Data.Host.Files[0].Name)
+			var url string
+			if stvEmote.Data.Animated {
+				url = fmt.Sprintf("%s/1x.avif", stvEmote.Data.Host.URL)
+			} else {
+				url = fmt.Sprintf("%s/1x.webp", stvEmote.Data.Host.URL)
+			}
 			url, _ = strings.CutPrefix(url, "//")
 			url = "https://" + url
 
 			emoteSet = append(emoteSet, Emote{
-				ID:       stvEmote.ID,
-				Text:     stvEmote.Name,
-				Platform: SevenTV,
-				URL:      url,
+				ID:         stvEmote.ID,
+				Text:       stvEmote.Name,
+				Platform:   SevenTV,
+				IsAnimated: stvEmote.Data.Animated,
+				URL:        url,
 			})
 		}
 
@@ -251,23 +259,31 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 
 		for _, bttvEmote := range bttvResp {
 			emoteSet = append(emoteSet, Emote{
-				ID:       bttvEmote.ID,
-				Text:     bttvEmote.Code,
-				Platform: BTTV,
-				URL:      fmt.Sprintf("https://betterttv.com/emotes/%s", bttvEmote.ID),
+				ID:         bttvEmote.ID,
+				Text:       bttvEmote.Code,
+				Platform:   BTTV,
+				IsAnimated: bttvEmote.Animated,
+				Format:     bttvEmote.ImageType,
+				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
 			})
 		}
 
 		for _, stvEmote := range stvResp.Emotes {
-			url := fmt.Sprintf("%s/%s", stvEmote.Data.Host.URL, stvEmote.Data.Host.Files[0].Name)
+			var url string
+			if stvEmote.Data.Animated {
+				url = fmt.Sprintf("%s/1x.avif", stvEmote.Data.Host.URL)
+			} else {
+				url = fmt.Sprintf("%s/1x.webp", stvEmote.Data.Host.URL)
+			}
 			url, _ = strings.CutPrefix(url, "//")
 			url = "https://" + url
 
 			emoteSet = append(emoteSet, Emote{
-				ID:       stvEmote.ID,
-				Text:     stvEmote.Name,
-				Platform: SevenTV,
-				URL:      url,
+				ID:         stvEmote.ID,
+				Text:       stvEmote.Name,
+				IsAnimated: stvEmote.Data.Animated,
+				Platform:   SevenTV,
+				URL:        url,
 			})
 		}
 
@@ -299,6 +315,26 @@ func (s *Store) GetAllForUser(id string) EmoteSet {
 	data := make(EmoteSet, 0, len(s.global)+len(userEmotes))
 
 	data = append(data, userEmotes...)
+	data = append(data, s.global...)
+
+	return data
+}
+
+func (s *Store) GetAll() EmoteSet {
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	var lenUserEmotes int
+	for _, lc := range s.channel {
+		lenUserEmotes += len(lc)
+	}
+
+	data := make(EmoteSet, 0, len(s.global)+lenUserEmotes)
+
+	for _, lc := range s.channel {
+		data = append(data, lc...)
+	}
+
 	data = append(data, s.global...)
 
 	return data

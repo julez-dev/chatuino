@@ -74,6 +74,7 @@ func main() {
 			versionCMD,
 			accountCMD,
 			serverCMD,
+			rebuildCacheCMD,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -355,13 +356,12 @@ func setupLogFile() (*os.File, error) {
 }
 
 func getTermSize() (*unix.Winsize, error) {
-	// f, err := os.OpenFile("/dev/tty", unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NDELAY|unix.O_RDWR, 0666)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	f, err := os.OpenFile("/dev/tty", unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NDELAY|unix.O_RDWR, 0666)
+	if err != nil {
+		return nil, err
+	}
 
-	var sz *unix.Winsize
-	sz, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
+	sz, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
 
 	if err != nil {
 		return nil, err

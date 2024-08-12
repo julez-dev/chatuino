@@ -3,11 +3,15 @@ package emote
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
+	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"io/fs"
 	"math"
 	"net/http"
 	"os"
@@ -30,16 +34,23 @@ type EmoteStore interface {
 const imageTmpPrefix = "chatuino.tty-graphics-protocol."
 
 type DecodedEmote struct {
-	id     int
-	cols   int
-	images []DecodedImage
+	ID     int            `json:"-"`
+	Cols   int            `json:"cols"`
+	Images []DecodedImage `json:"images"`
+}
+
+type DecodedImage struct {
+	Width       int    `json:"width"`
+	Height      int    `json:"height"`
+	EncodedPath string `json:"encoded_path"`
+	DelayinMS   int    `json:"delay_in_ms"`
 }
 
 func (d DecodedEmote) PrepareCommand() string {
 	// not animated
-	if len(d.images) == 1 {
-		transmitCMD := fmt.Sprintf("\x1b_Gf=32,i=%d,t=t,q=2,s=%d,v=%d;%s\x1b\\", d.id, d.images[0].width, d.images[0].height, d.images[0].encodedPath)
-		placementCMD := fmt.Sprintf("\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", d.id, d.id, d.cols)
+	if len(d.Images) == 1 {
+		transmitCMD := fmt.Sprintf("\x1b_Gf=32,i=%d,t=f,q=2,s=%d,v=%d;%s\x1b\\", d.ID, d.Images[0].Width, d.Images[0].Height, d.Images[0].EncodedPath)
+		placementCMD := fmt.Sprintf("\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", d.ID, d.ID, d.Cols)
 		return transmitCMD + placementCMD
 	}
 
@@ -48,34 +59,27 @@ func (d DecodedEmote) PrepareCommand() string {
 	var b strings.Builder
 
 	// transmit first image
-	fmt.Fprintf(&b, "\033_Gf=32,i=%d,t=t,q=2,s=%d,v=%d;%s\033\\", d.id, d.images[0].width, d.images[0].height, d.images[0].encodedPath)
+	fmt.Fprintf(&b, "\033_Gf=32,i=%d,t=f,q=2,s=%d,v=%d;%s\033\\", d.ID, d.Images[0].Width, d.Images[0].Height, d.Images[0].EncodedPath)
 
 	// send first frame
-	fmt.Fprintf(&b, "\033_Ga=a,i=%d,r=1,z=%d,q=2;\033\\", d.id, d.images[0].delayinMS)
+	fmt.Fprintf(&b, "\033_Ga=a,i=%d,r=1,z=%d,q=2;\033\\", d.ID, d.Images[0].DelayinMS)
 
 	// send each frame after first image
-	for _, img := range d.images[1:] {
-		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2;%s\033\\", d.id, img.width, img.height, img.delayinMS, img.encodedPath)
+	for _, img := range d.Images[1:] {
+		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2;%s\033\\", d.ID, img.Width, img.Height, img.DelayinMS, img.EncodedPath)
 	}
 
 	// start animation
-	fmt.Fprintf(&b, "\033_Ga=a,i=%d,s=3,v=1,q=2;\033\\", d.id)
+	fmt.Fprintf(&b, "\033_Ga=a,i=%d,s=3,v=1,q=2;\033\\", d.ID)
 
 	// create virtual placement
-	fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", d.id, d.id, d.cols)
+	fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", d.ID, d.ID, d.Cols)
 
 	return b.String()
 }
 
 func (d DecodedEmote) DisplayUnicodePlaceholder() string {
-	return fmt.Sprintf("\033[38;5;%dm\033[58:5:%dm%s\033[59m\033[39m", d.id, d.id, strings.Repeat("\U0010EEEE", d.cols))
-}
-
-type DecodedImage struct {
-	width       int
-	height      int
-	encodedPath string
-	delayinMS   int
+	return fmt.Sprintf("\033[38;5;%dm\033[58:5:%dm%s\033[59m\033[39m", d.ID, d.ID, strings.Repeat("\U0010EEEE", d.Cols))
 }
 
 type Injector struct {
@@ -107,7 +111,6 @@ func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
 
 	var cmd strings.Builder
 	for windex, word := range words {
-		log.Logger.Info().Str("room-id", msg.RoomID).Str("word", word).Send()
 		emote, isEmote := i.store.GetByText(msg.RoomID, word)
 
 		if !isEmote {
@@ -117,6 +120,23 @@ func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
 		// emote was already placed before, reuse virtual placement and replace emote text with unicode placeholders
 		if decoded, is := i.placedEmotes[emote.Text]; is {
 			words[windex] = decoded.DisplayUnicodePlaceholder()
+			continue
+		}
+
+		// check if already in local files
+		i.lastImageID++
+
+		cachedDecoded, isCached, err := TryOpenCached(emote)
+		if err != nil {
+			return "", "", fmt.Errorf("failed opening cache file for %s: %w", emote.Text, err)
+		}
+
+		if isCached {
+			cachedDecoded.ID = i.lastImageID
+			i.placedEmotes[emote.Text] = cachedDecoded
+			cmd.WriteString(cachedDecoded.PrepareCommand())
+			words[windex] = cachedDecoded.DisplayUnicodePlaceholder()
+			log.Logger.Info().Any("id", cachedDecoded.ID).Msg("cache fs hit")
 			continue
 		}
 
@@ -131,10 +151,11 @@ func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
 
 		//  - step2: Convert emote data to kittys fomart
 		//  - step3: Save emote in cache directory
-		decoded, err := i.convertEmote(emote, imageBody)
+		decoded, err := i.ConvertEmote(emote, imageBody)
 		if err != nil {
 			return "", "", err
 		}
+		decoded.ID = i.lastImageID
 
 		// add to cache
 		i.placedEmotes[emote.Text] = decoded
@@ -145,6 +166,13 @@ func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
 
 		//  - step6: Replace emotetext with placeholder
 		words[windex] = decoded.DisplayUnicodePlaceholder()
+
+		// save to filesystem cache if not already cached
+		if err := CacheEmote(emote, decoded); err != nil {
+			return "", "", fmt.Errorf("failed saving cache data for emote %s: %w", emote.Text, err)
+		}
+		log.Logger.Info().Any("emote", emote).Msg("saved new cache entry")
+
 	}
 
 	return cmd.String(), strings.Join(words, " "), nil
@@ -168,15 +196,15 @@ func (i *Injector) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser
 	return resp.Body, nil
 }
 
-func (i *Injector) convertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
+func (i *Injector) ConvertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
 	if path.Ext(e.URL) == ".avif" {
-		return i.convertAnimatedAvif(r)
+		return i.convertAnimatedAvif(e, r)
 	}
 
-	return i.convertDefault(r)
+	return i.convertDefault(e, r)
 }
 
-func (ij *Injector) convertDefault(r io.Reader) (DecodedEmote, error) {
+func (ij *Injector) convertDefault(e Emote, r io.Reader) (DecodedEmote, error) {
 	img, format, err := image.Decode(r)
 	if err != nil {
 		log.Logger.Error().Err(err).Str("format", format).Send()
@@ -191,46 +219,40 @@ func (ij *Injector) convertDefault(r io.Reader) (DecodedEmote, error) {
 	width = int(math.Round(float64(float32(width) * ratio)))
 	cols := int(math.Ceil(float64(float32(width) / ij.cellWidth)))
 
-	ij.lastImageID += 1
-
-	encodedBytes := imageToKittyBytes(img)
-	p, err := saveRawImage(encodedBytes, fmt.Sprintf("%d", ij.lastImageID))
+	encodedBytes := ImageToKittyBytes(img)
+	p, err := SaveRawImage(encodedBytes, e, 0)
 	if err != nil {
 		log.Logger.Err(err).Send()
 		return DecodedEmote{}, err
 	}
 
-	log.Logger.Info().Str("path", p).Send()
-
 	encodedPath := base64.StdEncoding.EncodeToString([]byte(p))
 
 	return DecodedEmote{
-		id:   ij.lastImageID,
-		cols: cols,
-		images: []DecodedImage{
+		ID:   ij.lastImageID,
+		Cols: cols,
+		Images: []DecodedImage{
 			{
-				width:       bounds.Dx(),
-				height:      bounds.Dy(),
-				encodedPath: encodedPath,
+				Width:       bounds.Dx(),
+				Height:      bounds.Dy(),
+				EncodedPath: encodedPath,
 			},
 		},
 	}, nil
 
 }
 
-func (ij *Injector) convertAnimatedAvif(r io.Reader) (DecodedEmote, error) {
+func (ij *Injector) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, error) {
 	images, err := avif.DecodeAll(r)
 	if err != nil {
 		return DecodedEmote{}, err
 	}
 
-	ij.lastImageID += 1
-
 	var cols int
 	var decodedEmote DecodedEmote
 	for i, img := range images.Image {
-		encodedBytes := imageToKittyBytes(img)
-		p, err := saveRawImage(encodedBytes, fmt.Sprintf("%d.%d", ij.lastImageID, i))
+		encodedBytes := ImageToKittyBytes(img)
+		p, err := SaveRawImage(encodedBytes, e, i)
 
 		if err != nil {
 			return DecodedEmote{}, err
@@ -249,21 +271,21 @@ func (ij *Injector) convertAnimatedAvif(r io.Reader) (DecodedEmote, error) {
 			cols = int(math.Ceil(float64(float32(width) / ij.cellWidth)))
 		}
 
-		decodedEmote.images = append(decodedEmote.images, DecodedImage{
-			width:       bounds.Dx(),
-			height:      bounds.Dy(),
-			encodedPath: encodedPath,
-			delayinMS:   int(images.Delay[i] * 1000),
+		decodedEmote.Images = append(decodedEmote.Images, DecodedImage{
+			Width:       bounds.Dx(),
+			Height:      bounds.Dy(),
+			EncodedPath: encodedPath,
+			DelayinMS:   int(images.Delay[i] * 1000),
 		})
 	}
 
-	decodedEmote.cols = cols
-	decodedEmote.id = ij.lastImageID
+	decodedEmote.Cols = cols
+	decodedEmote.ID = ij.lastImageID
 
 	return decodedEmote, nil
 }
 
-func imageToKittyBytes(img image.Image) []byte {
+func ImageToKittyBytes(img image.Image) []byte {
 	bounds := img.Bounds()
 
 	buff := make([]byte, 0, bounds.Dx()*bounds.Dy()*4) // 4 bytes per pixel
@@ -285,8 +307,14 @@ func imageToKittyBytes(img image.Image) []byte {
 	return buff
 }
 
-func saveRawImage(buff []byte, id string) (string, error) {
-	path := filepath.Join(os.TempDir(), fmt.Sprintf("%s%s", imageTmpPrefix, id))
+func SaveRawImage(buff []byte, e Emote, offset int) (string, error) {
+	emoteDir, err := EnsureEmoteDirExists()
+	if err != nil {
+		return "", err
+	}
+
+	imagePath := strings.ToLower(fmt.Sprintf("%s.%s.%d", e.Platform.String(), e.ID, offset))
+	path := filepath.Join(emoteDir, imagePath)
 
 	f, err := os.Create(path)
 	if err != nil {
@@ -300,4 +328,77 @@ func saveRawImage(buff []byte, id string) (string, error) {
 	}
 
 	return f.Name(), nil
+}
+
+func EnsureEmoteDirExists() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	emoteDir := filepath.Join(home, "chatuino", "emote")
+	err = os.MkdirAll(emoteDir, 0o755)
+	if err != nil {
+		if !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+	}
+
+	return emoteDir, nil
+}
+
+func TryOpenCached(e Emote) (DecodedEmote, bool, error) {
+	// ensure emote dir exists
+	emoteDir, err := EnsureEmoteDirExists()
+	if err != nil {
+		return DecodedEmote{}, false, err
+	}
+
+	metaFile := strings.ToLower(fmt.Sprintf("%s.%s.json", e.Platform.String(), e.ID))
+	path := filepath.Join(emoteDir, metaFile)
+
+	metafileData, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DecodedEmote{}, false, nil
+		}
+
+		return DecodedEmote{}, false, err
+	}
+
+	var decoded DecodedEmote
+	if err := json.Unmarshal(metafileData, &decoded); err != nil {
+		return decoded, false, err
+	}
+
+	return decoded, true, nil
+}
+
+func CacheEmote(e Emote, decoded DecodedEmote) error {
+	emoteDir, err := EnsureEmoteDirExists()
+	if err != nil {
+		return err
+	}
+
+	metaFile := strings.ToLower(fmt.Sprintf("%s.%s.json", e.Platform.String(), e.ID))
+	metaFilePath := filepath.Join(emoteDir, metaFile)
+
+	f, err := os.Create(metaFilePath)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	encodedEmoteData, err := json.Marshal(decoded)
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(encodedEmoteData)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

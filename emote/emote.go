@@ -23,10 +23,12 @@ func (p Platform) String() string {
 }
 
 type Emote struct {
-	ID       string
-	Text     string
-	Platform Platform
-	URL      string
+	ID         string
+	Text       string
+	Platform   Platform
+	URL        string
+	IsAnimated bool
+	Format     string
 }
 
 type EmoteSet []Emote
