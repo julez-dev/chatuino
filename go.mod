@@ -1,6 +1,6 @@
 module github.com/julez-dev/chatuino
 
-go 1.22.5
+go 1.23
 
 replace github.com/charmbracelet/bubbletea => github.com/julez-dev/bubbletea-image v0.0.0-20240811161916-0c7b48a8b149
 
@@ -20,7 +20,7 @@ require (
 
 require github.com/cli/browser v1.3.0
 
-require nhooyr.io/websocket v1.8.11
+require nhooyr.io/websocket v1.8.17
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -28,6 +28,7 @@ require (
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
 	github.com/gen2brain/avif v0.3.2
 	github.com/jellydator/ttlcache/v3 v3.2.0
+	github.com/vbauerster/mpb/v8 v8.7.5
 	github.com/zalando/go-keyring v0.2.5
 	golang.org/x/image v0.19.0
 	modernc.org/sqlite v1.32.0
@@ -35,6 +36,8 @@ require (
 )
 
 require (
+	github.com/VividCortex/ewma v1.2.0 // indirect
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/alessio/shellescape v1.4.2 // indirect
 	github.com/aymanbagabas/go-udiff v0.2.0 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
@@ -55,7 +58,7 @@ require (
 	github.com/tetratelabs/wazero v1.7.3 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	modernc.org/gc/v3 v3.0.0-20240801135723-a856999a2e4a // indirect
-	modernc.org/libc v1.57.0 // indirect
+	modernc.org/libc v1.59.3 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
 	modernc.org/strutil v1.2.0 // indirect

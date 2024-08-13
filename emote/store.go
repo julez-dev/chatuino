@@ -329,15 +329,29 @@ func (s *Store) GetAll() EmoteSet {
 		lenUserEmotes += len(lc)
 	}
 
-	data := make(EmoteSet, 0, len(s.global)+lenUserEmotes)
-
-	for _, lc := range s.channel {
-		data = append(data, lc...)
+	fmtEmoteKey := func(e Emote) string {
+		return fmt.Sprintf("%s.%s", e.Platform.String(), e.ID)
 	}
 
-	data = append(data, s.global...)
+	unique := make(map[string]Emote, len(s.global)+lenUserEmotes)
 
-	return data
+	for _, emotes := range s.channel {
+		for _, e := range emotes {
+			unique[fmtEmoteKey(e)] = e
+		}
+	}
+
+	for _, e := range s.global {
+		unique[fmtEmoteKey(e)] = e
+	}
+
+	set := make(EmoteSet, 0, len(unique))
+
+	for _, e := range unique {
+		set = append(set, e)
+	}
+
+	return set
 }
 
 func (s *Store) GetByText(channelID, text string) (Emote, bool) {

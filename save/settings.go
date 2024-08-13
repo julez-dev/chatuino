@@ -13,12 +13,17 @@ const (
 
 type Settings struct {
 	Moderation ModerationSettings `yaml:"moderation"`
+	Chat       ChatSettings       `yaml:"chat"`
 }
 
 type ModerationSettings struct {
 	StoreChatLogs      bool     `yaml:"store_chat_logs"`
 	LogsChannelInclude []string `yaml:"logs_channel_include"`
 	LogsChannelExclude []string `yaml:"logs_channel_exclude"`
+}
+
+type ChatSettings struct {
+	GraphicEmotes bool `yaml:"graphic_emotes"`
 }
 
 func BuildDefaultSettings() Settings {

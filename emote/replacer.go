@@ -17,8 +17,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
 	_ "github.com/gen2brain/avif"
 	"github.com/rs/zerolog/log"
@@ -27,11 +29,13 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 )
 
-type EmoteStore interface {
-	GetByText(string, string) (Emote, bool)
-}
-
 const imageTmpPrefix = "chatuino.tty-graphics-protocol."
+
+var (
+	stvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
+	ttvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
+	bttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d50014"))
+)
 
 type DecodedEmote struct {
 	ID     int            `json:"-"`
@@ -43,7 +47,7 @@ type DecodedImage struct {
 	Width       int    `json:"width"`
 	Height      int    `json:"height"`
 	EncodedPath string `json:"encoded_path"`
-	DelayinMS   int    `json:"delay_in_ms"`
+	DelayInMS   int    `json:"delay_in_ms"`
 }
 
 func (d DecodedEmote) PrepareCommand() string {
@@ -62,11 +66,11 @@ func (d DecodedEmote) PrepareCommand() string {
 	fmt.Fprintf(&b, "\033_Gf=32,i=%d,t=f,q=2,s=%d,v=%d;%s\033\\", d.ID, d.Images[0].Width, d.Images[0].Height, d.Images[0].EncodedPath)
 
 	// send first frame
-	fmt.Fprintf(&b, "\033_Ga=a,i=%d,r=1,z=%d,q=2;\033\\", d.ID, d.Images[0].DelayinMS)
+	fmt.Fprintf(&b, "\033_Ga=a,i=%d,r=1,z=%d,q=2;\033\\", d.ID, d.Images[0].DelayInMS)
 
 	// send each frame after first image
-	for _, img := range d.Images[1:] {
-		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2;%s\033\\", d.ID, img.Width, img.Height, img.DelayinMS, img.EncodedPath)
+	for img := range slices.Values(d.Images[1:]) {
+		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2;%s\033\\", d.ID, img.Width, img.Height, img.DelayInMS, img.EncodedPath)
 	}
 
 	// start animation
@@ -82,9 +86,14 @@ func (d DecodedEmote) DisplayUnicodePlaceholder() string {
 	return fmt.Sprintf("\033[38;5;%dm\033[58:5:%dm%s\033[59m\033[39m", d.ID, d.ID, strings.Repeat("\U0010EEEE", d.Cols))
 }
 
-type Injector struct {
-	store      EmoteStore
-	httpClient *http.Client
+type EmoteStore interface {
+	GetByText(string, string) (Emote, bool)
+}
+
+type Replacer struct {
+	store          EmoteStore
+	httpClient     *http.Client
+	enableGraphics bool
 
 	cellWidth, cellHeight float32
 	placedEmotes          map[string]DecodedEmote
@@ -92,21 +101,22 @@ type Injector struct {
 	lastImageID int
 }
 
-func NewInjector(httpClient *http.Client, store EmoteStore, cellWidth, cellHeight float32) *Injector {
+func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool, cellWidth, cellHeight float32) *Replacer {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
 
-	return &Injector{
-		cellWidth:    cellWidth,
-		cellHeight:   cellHeight,
-		store:        store,
-		httpClient:   httpClient,
-		placedEmotes: map[string]DecodedEmote{},
+	return &Replacer{
+		enableGraphics: enableGraphics,
+		cellWidth:      cellWidth,
+		cellHeight:     cellHeight,
+		store:          store,
+		httpClient:     httpClient,
+		placedEmotes:   map[string]DecodedEmote{},
 	}
 }
 
-func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
+func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) {
 	words := strings.Split(msg.Message, " ")
 
 	var cmd strings.Builder
@@ -114,6 +124,21 @@ func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
 		emote, isEmote := i.store.GetByText(msg.RoomID, word)
 
 		if !isEmote {
+			continue
+		}
+
+		// graphics not enabled, replace with colored emote
+		if !i.enableGraphics {
+			switch emote.Platform {
+			case Twitch:
+				words[windex] = ttvStyle.Render(word)
+			case SevenTV:
+				words[windex] = stvStyle.Render(word)
+			case BTTV:
+				words[windex] = bttvStyle.Render(word)
+			default:
+			}
+
 			continue
 		}
 
@@ -172,13 +197,12 @@ func (i *Injector) Parse(msg *command.PrivateMessage) (string, string, error) {
 			return "", "", fmt.Errorf("failed saving cache data for emote %s: %w", emote.Text, err)
 		}
 		log.Logger.Info().Any("emote", emote).Msg("saved new cache entry")
-
 	}
 
 	return cmd.String(), strings.Join(words, " "), nil
 }
 
-func (i *Injector) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser, error) {
+func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
@@ -196,7 +220,7 @@ func (i *Injector) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser
 	return resp.Body, nil
 }
 
-func (i *Injector) ConvertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
+func (i *Replacer) ConvertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
 	if path.Ext(e.URL) == ".avif" {
 		return i.convertAnimatedAvif(e, r)
 	}
@@ -204,7 +228,7 @@ func (i *Injector) ConvertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
 	return i.convertDefault(e, r)
 }
 
-func (ij *Injector) convertDefault(e Emote, r io.Reader) (DecodedEmote, error) {
+func (ij *Replacer) convertDefault(e Emote, r io.Reader) (DecodedEmote, error) {
 	img, format, err := image.Decode(r)
 	if err != nil {
 		log.Logger.Error().Err(err).Str("format", format).Send()
@@ -239,10 +263,9 @@ func (ij *Injector) convertDefault(e Emote, r io.Reader) (DecodedEmote, error) {
 			},
 		},
 	}, nil
-
 }
 
-func (ij *Injector) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, error) {
+func (ij *Replacer) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, error) {
 	images, err := avif.DecodeAll(r)
 	if err != nil {
 		return DecodedEmote{}, err
@@ -253,7 +276,6 @@ func (ij *Injector) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, err
 	for i, img := range images.Image {
 		encodedBytes := ImageToKittyBytes(img)
 		p, err := SaveRawImage(encodedBytes, e, i)
-
 		if err != nil {
 			return DecodedEmote{}, err
 		}
@@ -275,7 +297,7 @@ func (ij *Injector) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, err
 			Width:       bounds.Dx(),
 			Height:      bounds.Dy(),
 			EncodedPath: encodedPath,
-			DelayinMS:   int(images.Delay[i] * 1000),
+			DelayInMS:   int(images.Delay[i] * 1000),
 		})
 	}
 

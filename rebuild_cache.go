@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 
 	"net/http"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -33,9 +36,13 @@ var rebuildCacheCMD = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		termSize, err := getTermSize()
+		if !hasEmoteSupport() {
+			return fmt.Errorf("graphical emote support enabled but not available for this platform (unix & kitty terminal only)")
+		}
+
+		cellWidth, cellHeight, err := getTermCellWidthHeight()
 		if err != nil {
-			return nil
+			return fmt.Errorf("failed to get terminal size: %w", err)
 		}
 
 		fmt.Println("pruning cache")
@@ -49,9 +56,9 @@ var rebuildCacheCMD = &cli.Command{
 			return err
 		}
 
-		cellWidth := float32(termSize.Xpixel) / float32(termSize.Col)
-		cellHeight := float32(termSize.Ypixel) / float32(termSize.Row)
-		ij := emote.NewInjector(http.DefaultClient, nil, cellWidth, cellHeight)
+		fmt.Println("pruned cache done ✅")
+
+		ij := emote.NewReplacer(http.DefaultClient, nil, true, cellWidth, cellHeight)
 
 		sttvAPI := seventv.NewAPI(http.DefaultClient)
 		bttvAPI := bttv.NewAPI(http.DefaultClient)
@@ -75,7 +82,7 @@ var rebuildCacheCMD = &cli.Command{
 				userLoginsID[u.Login] = u.ID
 			}
 
-			for _, channel := range channels {
+			for channel := range slices.Values(channels) {
 				fmt.Println("loading emotes for", channel)
 				if err := store.RefreshLocal(ctx, userLoginsID[channel]); err != nil {
 					return err
@@ -84,11 +91,24 @@ var rebuildCacheCMD = &cli.Command{
 		}
 
 		errgroup, ctx := errgroup.WithContext(ctx)
-		errgroup.SetLimit(5)
+		errgroup.SetLimit(6)
+		emotes := store.GetAll()
 
-		for _, e := range store.GetAll() {
+		p := mpb.NewWithContext(ctx)
+
+		bar := p.New(int64(len(emotes)),
+			mpb.BarStyle().Lbound("[").Filler("-").Tip("C").Padding("·").Rbound("]"),
+			mpb.PrependDecorators(
+				decor.Name("Emotes:", decor.WC{C: decor.DindentRight | decor.DextraSpace}),
+				decor.CountersNoUnit("%d / %d", decor.WCSyncSpaceR),
+				decor.OnComplete(decor.AverageETA(decor.ET_STYLE_GO), "✅"),
+			),
+			mpb.AppendDecorators(decor.Percentage()),
+		)
+
+		for _, e := range emotes {
 			errgroup.Go(func() error {
-				fmt.Println("caching", e.Text, e.URL)
+				defer bar.Increment()
 				req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.URL, nil)
 				if err != nil {
 					return err
@@ -103,26 +123,26 @@ var rebuildCacheCMD = &cli.Command{
 
 				decoded, err := ij.ConvertEmote(e, resp.Body)
 				if err != nil {
-					fmt.Printf("failed converting: %s (%s) (%s): %s", e.ID, e.URL, e.Format, err.Error())
+					//	fmt.Printf("failed converting: %s (%s) (%s): %s", e.ID, e.URL, e.Format, err.Error())
 					return nil
 				}
-				fmt.Println("converted", e.Text)
 
 				if err := emote.CacheEmote(e, decoded); err != nil {
 					return err
 				}
 
-				fmt.Println("cached", e.Text)
-
 				return nil
 			})
 		}
 
+		errgroup.Go(func() error {
+			p.Wait()
+			return nil
+		})
+
 		if err := errgroup.Wait(); err != nil {
 			return err
 		}
-
-		fmt.Println(len(store.GetAll()), "emotes cached")
 
 		return nil
 	},

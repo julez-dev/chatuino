@@ -36,8 +36,8 @@ type EmoteStore interface {
 	GetAllForUser(id string) emote.EmoteSet
 }
 
-type EmoteInjector interface {
-	Parse(msg *command.PrivateMessage) (string, string, error)
+type EmoteReplacer interface {
+	Replace(msg *command.PrivateMessage) (string, string, error)
 }
 
 type APIClient interface {
@@ -172,7 +172,7 @@ type Root struct {
 	// dependencies
 	accounts             AccountProvider
 	emoteStore           EmoteStore
-	emoteInjector        EmoteInjector
+	emoteInjector        EmoteReplacer
 	serverAPI            APIClientWithRefresh
 	recentMessageService RecentMessageService
 	buildTTVClient       func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
@@ -216,7 +216,7 @@ func NewUI(
 	recentMessageService RecentMessageService,
 	eventSub EventSubPool,
 	messageLoggerChan chan<- *command.PrivateMessage,
-	emoteInjector EmoteInjector,
+	emoteInjector EmoteReplacer,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -319,7 +319,7 @@ func (r *Root) Init() tea.Cmd {
 				loginsUnique[tab.Channel] = struct{}{}
 			}
 
-			for login := range loginsUnique {
+			for _, login := range slices.Collect(maps.Keys(loginsUnique)) {
 				logins = append(logins, login)
 			}
 
@@ -985,10 +985,10 @@ func (r *Root) waitChatEvents() tea.Cmd {
 		var prepare string
 		var overwrite string
 		if privateMsg, ok := msg.Msg.(*command.PrivateMessage); ok {
-			r.messageLoggerChan <- privateMsg
+			r.messageLoggerChan <- privateMsg.Clone()
 
 			var err error
-			prepare, overwrite, err = r.emoteInjector.Parse(privateMsg)
+			prepare, overwrite, err = r.emoteInjector.Replace(privateMsg)
 			if err != nil {
 				panic(err)
 			}

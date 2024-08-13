@@ -20,7 +20,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sys/unix"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/browser"
@@ -49,6 +48,9 @@ const (
 )
 
 var maybeLogFile *os.File
+
+type terminalSize struct {
+}
 
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
 func main() {
@@ -123,14 +125,6 @@ func main() {
 				return fmt.Errorf("failed to read settings file: %w", err)
 			}
 
-			termSize, err := getTermSize()
-			if err != nil {
-				return fmt.Errorf("failed to get terminal size: %w", err)
-			}
-
-			cellWidth := float32(termSize.Xpixel) / float32(termSize.Col)
-			cellHeight := float32(termSize.Ypixel) / float32(termSize.Row)
-
 			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
@@ -154,7 +148,23 @@ func main() {
 				}
 			}
 
-			emoteInjector := emote.NewInjector(http.DefaultClient, emoteStore, cellWidth, cellHeight)
+			var emoteReplacer *emote.Replacer
+
+			if settings.Chat.GraphicEmotes {
+				if !hasEmoteSupport() {
+					return fmt.Errorf("graphical emote support enabled but not available for this platform (unix & kitty terminal only)")
+				}
+
+				cellWidth, cellHeight, err := getTermCellWidthHeight()
+				if err != nil {
+					return fmt.Errorf("failed to get terminal size: %w", err)
+				}
+
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, true, cellWidth, cellHeight)
+			} else {
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, false, 0, 0)
+			}
+
 			keys, err := save.CreateReadKeyMap()
 
 			if err != nil {
@@ -172,7 +182,7 @@ func main() {
 					recentMessageService,
 					eventSubMultiplexer,
 					messageLoggerChan,
-					emoteInjector,
+					emoteReplacer,
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
@@ -225,7 +235,7 @@ func main() {
 	defer cancel()
 
 	if err := app.Run(ctx, os.Args); err != nil {
-		fmt.Printf("error while running Chatuino: %v", err)
+		fmt.Printf("failed to run Chatuino: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -353,19 +363,4 @@ func setupLogFile() (*os.File, error) {
 	}
 
 	return f, nil
-}
-
-func getTermSize() (*unix.Winsize, error) {
-	f, err := os.OpenFile("/dev/tty", unix.O_NOCTTY|unix.O_CLOEXEC|unix.O_NDELAY|unix.O_RDWR, 0666)
-	if err != nil {
-		return nil, err
-	}
-
-	sz, err := unix.IoctlGetWinsize(int(f.Fd()), unix.TIOCGWINSZ)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return sz, nil
 }

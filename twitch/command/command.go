@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -84,6 +85,16 @@ func (p *PrivateMessage) IRC() string {
 	}
 
 	return fmt.Sprintf("PRIVMSG #%s :%s", p.ChannelUserName, p.Message)
+}
+
+func (p *PrivateMessage) Clone() *PrivateMessage {
+	p2 := new(PrivateMessage)
+	*p2 = *p
+
+	p2.BadgeInfo = slices.Clone(p.BadgeInfo)
+	p2.Badges = slices.Clone(p.Badges)
+	p2.Emotes = slices.Clone(p.Emotes)
+	return p2
 }
 
 type PongMessage struct{}
