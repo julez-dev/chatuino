@@ -49,9 +49,6 @@ const (
 
 var maybeLogFile *os.File
 
-type terminalSize struct {
-}
-
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
 func main() {
 	defer func() {
@@ -166,7 +163,6 @@ func main() {
 			}
 
 			keys, err := save.CreateReadKeyMap()
-
 			if err != nil {
 				return fmt.Errorf("error while reading keymap: %w", err)
 			}
@@ -253,14 +249,12 @@ func runChatLogger(messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWait
 	}
 
 	dbPath, err := save.CreateDBFile()
-
 	if err != nil {
 		log.Logger.Err(err).Msg("failed to create db file")
 		return
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
-
 	if err != nil {
 		log.Logger.Err(err).Msg("failed to create sqlite connection")
 		return

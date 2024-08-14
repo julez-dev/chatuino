@@ -33,7 +33,7 @@ var (
 	bttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d50014"))
 )
 
-var unsupportedAnimatedFormat = errors.New("emote is animated but in non supported format")
+var errUnsupportedAnimatedFormat = errors.New("emote is animated but in non supported format")
 
 type DecodedEmote struct {
 	ID     int            `json:"-"`
@@ -217,7 +217,7 @@ func (i *Replacer) ConvertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
 	}
 
 	if e.IsAnimated {
-		return DecodedEmote{}, unsupportedAnimatedFormat
+		return DecodedEmote{}, errUnsupportedAnimatedFormat
 	}
 
 	return i.convertDefault(e, r)

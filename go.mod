@@ -18,12 +18,11 @@ require (
 
 require github.com/cli/browser v1.3.0
 
-require nhooyr.io/websocket v1.8.17
-
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
+	github.com/coder/websocket v1.8.12
 	github.com/gen2brain/avif v0.3.2
 	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/vbauerster/mpb/v8 v8.7.5

@@ -341,9 +341,7 @@ func (r *Root) Init() tea.Cmd {
 				loginsUnique[tab.Channel] = struct{}{}
 			}
 
-			for _, login := range slices.Collect(maps.Keys(loginsUnique)) {
-				logins = append(logins, login)
-			}
+			logins = slices.AppendSeq(logins, maps.Keys(loginsUnique))
 
 			if len(logins) > 0 {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
