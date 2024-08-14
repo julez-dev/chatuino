@@ -378,7 +378,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	case error:
 		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
-		return c.wordwrapMessage(prefix, c.colorMessage("", text))
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.PrivateMessage:
 		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
@@ -413,12 +413,12 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			)
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, event.messageContentEmoteOverride))
+		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *command.Notice:
 		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
-		return c.wordwrapMessage(prefix, c.colorMessage("", styled))
+		return c.wordwrapMessage(prefix, c.colorMessage(styled))
 	case *command.ClearChat:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + clearChatAlertStyle.Render("Clear Chat") + "]: "
 
@@ -439,7 +439,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			text += " was timed out for " + dur.String()
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubMessage:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
 
@@ -468,7 +468,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			text += ": " + msg.Message
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubGiftMessage:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
 
@@ -492,7 +492,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			msg.Months,
 		)
 
-		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 
@@ -510,13 +510,13 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			msg.Message,
 		)
 
-		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, text))
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	}
 
 	return []string{}
 }
 
-func (c *chatWindow) colorMessage(channelID, content string) string {
+func (c *chatWindow) colorMessage(content string) string {
 	content = c.colorMessageMentions(content)
 	return content
 }
