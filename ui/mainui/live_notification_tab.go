@@ -82,10 +82,14 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			msg = fmt.Sprintf("%s is now offline!", info.username)
 		}
 
-		l.chatWindow.handleMessage(&command.Notice{
-			FakeTimestamp: time.Now(),
-			MsgID:         command.MsgID(uuid.NewString()),
-			Message:       msg,
+		l.chatWindow.handleMessage(chatEventMessage{
+			message: &command.Notice{
+				FakeTimestamp: time.Now(),
+				MsgID:         command.MsgID(uuid.NewString()),
+				Message:       msg,
+			},
+			isFakeEvent:                 true,
+			messageContentEmoteOverride: msg,
 		})
 
 		return l, cmd

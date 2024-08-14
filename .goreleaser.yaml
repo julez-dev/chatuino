@@ -32,7 +32,6 @@ builds:
     tags:
       - osusergo
       - netgo
-      - nodynamic # don't use gen2brain/avif dynamic lib (huge memory footprint)
     ldflags:
       - -s -w -X main.Version={{ .Version }} -X main.Commit={{.Commit}} -X main.Date={{ .CommitDate }}
 

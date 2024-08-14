@@ -138,7 +138,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		var affectsUserInChat bool
 
 		for _, e := range u.chatWindow.entries {
-			if priv, ok := e.Message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, msg.UserName) {
+			if priv, ok := e.Event.message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, msg.UserName) {
 				affectsUserInChat = true
 				break
 			}

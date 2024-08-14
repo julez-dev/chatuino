@@ -10,9 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
@@ -43,10 +41,6 @@ var (
 )
 
 var (
-	stvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
-	ttvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
-	bttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d50014"))
-
 	subAlertStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
 	noticeAlertStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
 	clearChatAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
@@ -54,10 +48,11 @@ var (
 )
 
 type chatEntry struct {
-	Position  position
-	Selected  bool
-	IsDeleted bool
-	Message   twitch.IRCer
+	Position                  position
+	Selected                  bool
+	IsDeleted                 bool
+	OverwrittenMessageContent string
+	Event                     chatEventMessage
 }
 
 type position struct {
@@ -107,8 +102,7 @@ func (c *chatWindow) Init() tea.Cmd {
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	switch msg := msg.(type) {
 	case chatEventMessage:
-
-		c.handleMessage(msg.message)
+		c.handleMessage(msg)
 		return c, nil
 	case tea.KeyMsg:
 		if c.focused {
@@ -307,8 +301,8 @@ func (c *chatWindow) markSelectedMessage() {
 	}
 }
 
-func (c *chatWindow) handleMessage(msg twitch.IRCer) {
-	switch msg.(type) {
+func (c *chatWindow) handleMessage(msg chatEventMessage) {
+	switch msg.message.(type) {
 	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage: // supported Message types
 	default: // exit only on other types
 		return
@@ -325,10 +319,10 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	}
 
 	// if timeout message, rewrite all messages from user
-	if timeoutMsg, ok := msg.(*command.ClearChat); ok {
+	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok {
 		var hasDeleted bool
 		for _, e := range c.entries {
-			privMsg, ok := e.Message.(*command.PrivateMessage)
+			privMsg, ok := e.Event.message.(*command.PrivateMessage)
 
 			if !ok {
 				continue
@@ -365,8 +359,9 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 			CursorStart: positionStart + 1,
 			CursorEnd:   positionStart + len(lines),
 		},
-		Selected: wasLatestMessage,
-		Message:  msg,
+		Selected:                  wasLatestMessage,
+		OverwrittenMessageContent: msg.messageContentEmoteOverride,
+		Event:                     msg,
 	}
 
 	c.entries = append(c.entries, entry)
@@ -378,8 +373,8 @@ func (c *chatWindow) handleMessage(msg twitch.IRCer) {
 	}
 }
 
-func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
-	switch msg := msg.(type) {
+func (c *chatWindow) messageToText(event chatEventMessage) []string {
+	switch msg := event.message.(type) {
 	case error:
 		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
@@ -418,7 +413,7 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 			)
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, msg.Message))
+		return c.wordwrapMessage(prefix, c.colorMessage(msg.RoomID, event.messageContentEmoteOverride))
 	case *command.Notice:
 		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
@@ -522,7 +517,6 @@ func (c *chatWindow) messageToText(msg twitch.IRCer) []string {
 }
 
 func (c *chatWindow) colorMessage(channelID, content string) string {
-	content = c.colorMessageEmotes(channelID, content)
 	content = c.colorMessageMentions(content)
 	return content
 }
@@ -560,28 +554,6 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	}
 
 	return lines
-}
-
-func (c *chatWindow) colorMessageEmotes(channelID string, message string) string {
-	splits := strings.Split(message, " ")
-	for i, split := range splits {
-		if e, ok := c.emoteStore.GetByText(channelID, split); ok {
-			switch e.Platform {
-			case emote.Twitch:
-				splits[i] = ttvStyle.Render(split)
-			case emote.SevenTV:
-				splits[i] = stvStyle.Render(split)
-			case emote.BTTV:
-				splits[i] = bttvStyle.Render(split)
-			default:
-
-			}
-
-			continue
-		}
-	}
-
-	return strings.Join(splits, " ")
 }
 
 func (c *chatWindow) colorMessageMentions(message string) string {
@@ -645,7 +617,7 @@ func (c *chatWindow) recalculateLines() {
 			lastCursorEnd = prevEntry.Position.CursorEnd
 		}
 
-		lines := c.messageToText(e.Message)
+		lines := c.messageToText(e.Event)
 		c.lines = append(c.lines, lines...)
 
 		e.Position.CursorStart = lastCursorEnd + 1

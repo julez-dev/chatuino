@@ -19,23 +19,21 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
-	_ "github.com/gen2brain/avif"
 	"github.com/rs/zerolog/log"
 	_ "golang.org/x/image/webp"
-
-	"github.com/julez-dev/chatuino/twitch/command"
 )
-
-const imageTmpPrefix = "chatuino.tty-graphics-protocol."
 
 var (
 	stvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
 	ttvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
 	bttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d50014"))
 )
+
+var unsupportedAnimatedFormat = errors.New("emote is animated but in non supported format")
 
 type DecodedEmote struct {
 	ID     int            `json:"-"`
@@ -87,7 +85,7 @@ func (d DecodedEmote) DisplayUnicodePlaceholder() string {
 }
 
 type EmoteStore interface {
-	GetByText(string, string) (Emote, bool)
+	GetByTextAllChannels(text string) (Emote, bool)
 }
 
 type Replacer struct {
@@ -98,7 +96,12 @@ type Replacer struct {
 	cellWidth, cellHeight float32
 	placedEmotes          map[string]DecodedEmote
 
-	lastImageID int
+	openCached         func(Emote) (DecodedEmote, bool, error)
+	saveCached         func(Emote, DecodedEmote) error
+	createEncodedImage func(buff []byte, e Emote, offset int) (string, error)
+	lastImageID        int
+
+	m *sync.Mutex
 }
 
 func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool, cellWidth, cellHeight float32) *Replacer {
@@ -113,15 +116,27 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 		store:          store,
 		httpClient:     httpClient,
 		placedEmotes:   map[string]DecodedEmote{},
+
+		openCached:         fsOpenCached,
+		saveCached:         SaveCache,
+		createEncodedImage: saveKittyFormattedImage,
+		m:                  &sync.Mutex{},
 	}
 }
 
-func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) {
-	words := strings.Split(msg.Message, " ")
+func (i *Replacer) Replace(content string) (string, string, error) {
+	// When using graphics, shared state causes race conditions
+	// this is not the case when only using colored mode.
+	if i.enableGraphics {
+		i.m.Lock()
+		defer i.m.Unlock()
+	}
+
+	words := strings.Split(content, " ")
 
 	var cmd strings.Builder
 	for windex, word := range words {
-		emote, isEmote := i.store.GetByText(msg.RoomID, word)
+		emote, isEmote := i.store.GetByTextAllChannels(word)
 
 		if !isEmote {
 			continue
@@ -129,16 +144,7 @@ func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) 
 
 		// graphics not enabled, replace with colored emote
 		if !i.enableGraphics {
-			switch emote.Platform {
-			case Twitch:
-				words[windex] = ttvStyle.Render(word)
-			case SevenTV:
-				words[windex] = stvStyle.Render(word)
-			case BTTV:
-				words[windex] = bttvStyle.Render(word)
-			default:
-			}
-
+			words[windex] = ReplaceEmoteColored(emote)
 			continue
 		}
 
@@ -151,7 +157,7 @@ func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) 
 		// check if already in local files
 		i.lastImageID++
 
-		cachedDecoded, isCached, err := TryOpenCached(emote)
+		cachedDecoded, isCached, err := i.openCached(emote)
 		if err != nil {
 			return "", "", fmt.Errorf("failed opening cache file for %s: %w", emote.Text, err)
 		}
@@ -178,7 +184,10 @@ func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) 
 		//  - step3: Save emote in cache directory
 		decoded, err := i.ConvertEmote(emote, imageBody)
 		if err != nil {
-			return "", "", err
+			log.Logger.Err(err).Any("emote", emote).Send()
+
+			words[windex] = ReplaceEmoteColored(emote)
+			continue
 		}
 		decoded.ID = i.lastImageID
 
@@ -189,11 +198,11 @@ func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) 
 		//  - step5: Create Placement
 		cmd.WriteString(decoded.PrepareCommand())
 
-		//  - step6: Replace emotetext with placeholder
+		//  - step6: Replace emote text with placeholder
 		words[windex] = decoded.DisplayUnicodePlaceholder()
 
 		// save to filesystem cache if not already cached
-		if err := CacheEmote(emote, decoded); err != nil {
+		if err := i.saveCached(emote, decoded); err != nil {
 			return "", "", fmt.Errorf("failed saving cache data for emote %s: %w", emote.Text, err)
 		}
 		log.Logger.Info().Any("emote", emote).Msg("saved new cache entry")
@@ -202,27 +211,13 @@ func (i *Replacer) Replace(msg *command.PrivateMessage) (string, string, error) 
 	return cmd.String(), strings.Join(words, " "), nil
 }
 
-func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := i.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code, got: %d", resp.StatusCode)
-	}
-
-	return resp.Body, nil
-}
-
 func (i *Replacer) ConvertEmote(e Emote, r io.Reader) (DecodedEmote, error) {
 	if path.Ext(e.URL) == ".avif" {
 		return i.convertAnimatedAvif(e, r)
+	}
+
+	if e.IsAnimated {
+		return DecodedEmote{}, unsupportedAnimatedFormat
 	}
 
 	return i.convertDefault(e, r)
@@ -243,8 +238,8 @@ func (ij *Replacer) convertDefault(e Emote, r io.Reader) (DecodedEmote, error) {
 	width = int(math.Round(float64(float32(width) * ratio)))
 	cols := int(math.Ceil(float64(float32(width) / ij.cellWidth)))
 
-	encodedBytes := ImageToKittyBytes(img)
-	p, err := SaveRawImage(encodedBytes, e, 0)
+	encodedBytes := imageToKittyBytes(img)
+	p, err := ij.createEncodedImage(encodedBytes, e, 0)
 	if err != nil {
 		log.Logger.Err(err).Send()
 		return DecodedEmote{}, err
@@ -274,8 +269,8 @@ func (ij *Replacer) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, err
 	var cols int
 	var decodedEmote DecodedEmote
 	for i, img := range images.Image {
-		encodedBytes := ImageToKittyBytes(img)
-		p, err := SaveRawImage(encodedBytes, e, i)
+		encodedBytes := imageToKittyBytes(img)
+		p, err := ij.createEncodedImage(encodedBytes, e, i)
 		if err != nil {
 			return DecodedEmote{}, err
 		}
@@ -307,7 +302,57 @@ func (ij *Replacer) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, err
 	return decodedEmote, nil
 }
 
-func ImageToKittyBytes(img image.Image) []byte {
+func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := i.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code, got: %d", resp.StatusCode)
+	}
+
+	return resp.Body, nil
+}
+
+func ReplaceEmoteColored(emote Emote) string {
+	switch emote.Platform {
+	case Twitch:
+		return ttvStyle.Render(emote.Text)
+	case SevenTV:
+		return stvStyle.Render(emote.Text)
+	case BTTV:
+		return bttvStyle.Render(emote.Text)
+	}
+
+	return emote.Text
+}
+
+func EmoteCacheDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(home, "chatuino", "emote")
+
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return path, nil
+		}
+
+		return "", nil
+	}
+
+	return path, nil
+}
+
+func imageToKittyBytes(img image.Image) []byte {
 	bounds := img.Bounds()
 
 	buff := make([]byte, 0, bounds.Dx()*bounds.Dy()*4) // 4 bytes per pixel
@@ -329,8 +374,63 @@ func ImageToKittyBytes(img image.Image) []byte {
 	return buff
 }
 
-func SaveRawImage(buff []byte, e Emote, offset int) (string, error) {
-	emoteDir, err := EnsureEmoteDirExists()
+func SaveCache(e Emote, dec DecodedEmote) error {
+	dir, err := EmoteCacheDir()
+	if err != nil {
+		return err
+	}
+
+	fileName := strings.ToLower(fmt.Sprintf("%s.%s.json", e.Platform.String(), e.ID))
+	filePath := filepath.Join(dir, fileName)
+
+	f, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	encoded, err := json.Marshal(dec)
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(encoded)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func fsOpenCached(e Emote) (DecodedEmote, bool, error) {
+	dir, err := EmoteCacheDir()
+	if err != nil {
+		return DecodedEmote{}, false, err
+	}
+
+	metaFile := strings.ToLower(fmt.Sprintf("%s.%s.json", e.Platform.String(), e.ID))
+	path := filepath.Join(dir, metaFile)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DecodedEmote{}, false, nil
+		}
+
+		return DecodedEmote{}, false, err
+	}
+
+	var decoded DecodedEmote
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return decoded, false, err
+	}
+
+	return decoded, true, nil
+}
+
+func saveKittyFormattedImage(buff []byte, e Emote, offset int) (string, error) {
+	emoteDir, err := EmoteCacheDir()
 	if err != nil {
 		return "", err
 	}
@@ -350,77 +450,4 @@ func SaveRawImage(buff []byte, e Emote, offset int) (string, error) {
 	}
 
 	return f.Name(), nil
-}
-
-func EnsureEmoteDirExists() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
-	emoteDir := filepath.Join(home, "chatuino", "emote")
-	err = os.MkdirAll(emoteDir, 0o755)
-	if err != nil {
-		if !errors.Is(err, fs.ErrExist) {
-			return "", err
-		}
-	}
-
-	return emoteDir, nil
-}
-
-func TryOpenCached(e Emote) (DecodedEmote, bool, error) {
-	// ensure emote dir exists
-	emoteDir, err := EnsureEmoteDirExists()
-	if err != nil {
-		return DecodedEmote{}, false, err
-	}
-
-	metaFile := strings.ToLower(fmt.Sprintf("%s.%s.json", e.Platform.String(), e.ID))
-	path := filepath.Join(emoteDir, metaFile)
-
-	metafileData, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return DecodedEmote{}, false, nil
-		}
-
-		return DecodedEmote{}, false, err
-	}
-
-	var decoded DecodedEmote
-	if err := json.Unmarshal(metafileData, &decoded); err != nil {
-		return decoded, false, err
-	}
-
-	return decoded, true, nil
-}
-
-func CacheEmote(e Emote, decoded DecodedEmote) error {
-	emoteDir, err := EnsureEmoteDirExists()
-	if err != nil {
-		return err
-	}
-
-	metaFile := strings.ToLower(fmt.Sprintf("%s.%s.json", e.Platform.String(), e.ID))
-	metaFilePath := filepath.Join(emoteDir, metaFile)
-
-	f, err := os.Create(metaFilePath)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	encodedEmoteData, err := json.Marshal(decoded)
-	if err != nil {
-		return err
-	}
-
-	_, err = f.Write(encodedEmoteData)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

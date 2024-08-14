@@ -354,6 +354,23 @@ func (s *Store) GetAll() EmoteSet {
 	return set
 }
 
+func (s *Store) GetByTextAllChannels(text string) (Emote, bool) {
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	if emote, ok := s.global.GetByText(text); ok {
+		return emote, true
+	}
+
+	for _, channelSet := range s.channel {
+		if emote, ok := channelSet.GetByText(text); ok {
+			return emote, true
+		}
+	}
+
+	return Emote{}, false
+}
+
 func (s *Store) GetByText(channelID, text string) (Emote, bool) {
 	s.m.RLock()
 	defer s.m.RUnlock()

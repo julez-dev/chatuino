@@ -2,8 +2,6 @@ module github.com/julez-dev/chatuino
 
 go 1.23
 
-replace github.com/charmbracelet/bubbletea => github.com/julez-dev/bubbletea-image v0.0.0-20240811161916-0c7b48a8b149
-
 require (
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
 	github.com/charmbracelet/bubbles v0.18.0
@@ -55,7 +53,7 @@ require (
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/tetratelabs/wazero v1.7.3 // indirect
+	github.com/tetratelabs/wazero v1.8.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	modernc.org/gc/v3 v3.0.0-20240801135723-a856999a2e4a // indirect
 	modernc.org/libc v1.59.3 // indirect

@@ -12,13 +12,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type setStatusData struct {
+type setSteamStatusData struct {
 	target   string
 	err      error
 	settings twitch.ChatSettingData
 }
 
-type status struct {
+type streamStatus struct {
 	logger            zerolog.Logger
 	ttvAPI            APIClient
 	tab               *broadcastTab
@@ -30,8 +30,8 @@ type status struct {
 	isDataFetched bool
 }
 
-func newStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width, height int, userID, channelID string) *status {
-	return &status{
+func newStreamStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width, height int, userID, channelID string) *streamStatus {
+	return &streamStatus{
 		logger:    logger,
 		ttvAPI:    ttvAPI,
 		tab:       tab,
@@ -42,27 +42,27 @@ func newStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width
 	}
 }
 
-func (s *status) Init() tea.Cmd {
+func (s *streamStatus) Init() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
 		settingsResp, err := s.ttvAPI.GetChatSettings(ctx, s.channelID, "")
 		if err != nil {
-			return setStatusData{
+			return setSteamStatusData{
 				target: s.tab.id,
 				err:    err,
 			}
 		}
 
 		if len(settingsResp.Data) == 0 {
-			return setStatusData{
+			return setSteamStatusData{
 				target: s.tab.id,
 				err:    fmt.Errorf("no settings found for channel %s", s.userID),
 			}
 		}
 
-		return setStatusData{
+		return setSteamStatusData{
 			target:   s.tab.id,
 			settings: settingsResp.Data[0],
 			err:      err,
@@ -70,9 +70,9 @@ func (s *status) Init() tea.Cmd {
 	}
 }
 
-func (s *status) Update(msg tea.Msg) (*status, tea.Cmd) {
+func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
 	switch msg := msg.(type) {
-	case setStatusData:
+	case setSteamStatusData:
 		if msg.target != s.tab.id {
 			return s, nil
 		}
@@ -88,7 +88,7 @@ func (s *status) Update(msg tea.Msg) (*status, tea.Cmd) {
 	return s, nil
 }
 
-func (s *status) View() string {
+func (s *streamStatus) View() string {
 	padded := lipgloss.NewStyle().Padding(0, 1).MaxWidth(s.width).Render
 
 	if !s.isDataFetched {
@@ -96,7 +96,7 @@ func (s *status) View() string {
 	}
 
 	if s.err != nil {
-		return padded(fmt.Sprintf("Error while fetching chat settings: %v", s.err))
+		return padded(s.err.Error())
 	}
 
 	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(s.tab.state.String()))

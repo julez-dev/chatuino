@@ -45,18 +45,18 @@ var rebuildCacheCMD = &cli.Command{
 			return fmt.Errorf("failed to get terminal size: %w", err)
 		}
 
-		fmt.Println("pruning cache")
+		fmt.Println("removing cached emotes")
 
-		dir, err := emote.EnsureEmoteDirExists()
+		emoteDir, err := emote.EmoteCacheDir()
 		if err != nil {
 			return err
 		}
 
-		if err := os.RemoveAll(dir); err != nil {
+		if err := os.RemoveAll(emoteDir); err != nil {
 			return err
 		}
 
-		fmt.Println("pruned cache done ✅")
+		fmt.Println("removed cached emotes ✅")
 
 		ij := emote.NewReplacer(http.DefaultClient, nil, true, cellWidth, cellHeight)
 
@@ -127,7 +127,7 @@ var rebuildCacheCMD = &cli.Command{
 					return nil
 				}
 
-				if err := emote.CacheEmote(e, decoded); err != nil {
+				if err := emote.SaveCache(e, decoded); err != nil {
 					return err
 				}
 

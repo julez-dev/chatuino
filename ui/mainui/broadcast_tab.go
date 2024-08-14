@@ -103,7 +103,7 @@ type broadcastTab struct {
 	chatWindow   *chatWindow
 	userInspect  *userInspect
 	messageInput *component.SuggestionTextInput
-	statusInfo   *status
+	statusInfo   *streamStatus
 	unbanWindow  *unbanrequest.UnbanWindow
 
 	err error
@@ -267,7 +267,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.poll = newPoll(t.width)
 		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.emoteStore, t.keymap)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
-		t.statusInfo = newStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
+		t.statusInfo = newStreamStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
 
 		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
@@ -286,22 +286,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			t.chatWindow.Focus()
 		}
 
-		// pass recent messages, recorded before the application was started, to chat window
-		for _, ircMessage := range msg.initialMessages {
-			t.chatWindow.handleMessage(ircMessage)
-		}
-
-		// notify user about loaded messages
-		if len(msg.initialMessages) > 0 {
-			t.chatWindow.handleMessage(&command.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channel,
-				MsgID:           command.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
-			})
-		}
-
-		ircCmds := make([]tea.Cmd, 0, 2)
+		ircCmds := make([]tea.Cmd, 0, 4)
 
 		ircCmds = append(ircCmds, func() tea.Msg {
 			return forwardChatMessage{
@@ -320,6 +305,23 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 						Channel: msg.channel,
 					},
 				},
+			}
+		})
+
+		// notify user about loaded messages
+		msg.initialMessages = append(msg.initialMessages, &command.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channel,
+			MsgID:           command.MsgID(uuid.NewString()),
+			Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
+		})
+
+		// pass recent messages, recorded before the application was started, to chat window
+		ircCmds = append(ircCmds, func() tea.Msg {
+			return requestLocalMessageHandleMessageBatch{
+				messages:  msg.initialMessages,
+				tabID:     t.id,
+				accountID: t.account.ID,
 			}
 		})
 
@@ -384,8 +386,8 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, tea.Batch(cmds...)
 
 	case EventSubMessage:
-		t.handleEventSubMessage(msg.Payload)
-		return t, nil
+		cmd = t.handleEventSubMessage(msg.Payload)
+		return t, cmd
 	case chatEventMessage: // delegate message event to chat window
 		// ignore all messages that don't target this account and channel
 		if !(t.AccountID() == msg.accountID && (t.Channel() == msg.channel || msg.channel == "")) {
@@ -755,20 +757,25 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		TMISentTS:       time.Now(),
 	}
 
-	t.chatWindow.handleMessage(msg)
-
-	if t.state == userInspectMode {
-		t.userInspect.chatWindow.handleMessage(msg)
-	}
-
-	return func() tea.Msg {
+	cmds := []tea.Cmd{}
+	cmds = append(cmds, func() tea.Msg {
 		return forwardChatMessage{
 			msg: multiplex.InboundMessage{
 				AccountID: t.account.ID,
 				Msg:       msg,
 			},
 		}
-	}
+	})
+
+	cmds = append(cmds, func() tea.Msg {
+		return requestLocalMessageHandleMessage{
+			accountID: t.ID(),
+			message:   msg,
+		}
+	})
+
+	return tea.Sequence(cmds...)
+
 }
 
 func (t *broadcastTab) handleCopyMessage() {
@@ -788,7 +795,7 @@ func (t *broadcastTab) handleCopyMessage() {
 		return
 	}
 
-	msg, ok := entry.Message.(*command.PrivateMessage)
+	msg, ok := entry.Event.message.(*command.PrivateMessage)
 
 	if !ok {
 		return
@@ -821,7 +828,7 @@ func (t *broadcastTab) handleOpenUserInspect() tea.Cmd {
 	}
 
 	var username string
-	switch msg := e.Message.(type) {
+	switch msg := e.Event.message.(type) {
 	case *command.PrivateMessage:
 		username = msg.DisplayName
 	case *command.ClearChat:
@@ -836,9 +843,10 @@ func (t *broadcastTab) handleOpenUserInspect() tea.Cmd {
 
 	for _, e := range t.chatWindow.entries {
 		t.userInspect, cmd = t.userInspect.Update(chatEventMessage{
-			accountID: t.account.ID,
-			channel:   t.channel,
-			message:   e.Message,
+			accountID:                   t.account.ID,
+			channel:                     t.channel,
+			messageContentEmoteOverride: e.OverwrittenMessageContent,
+			message:                     e.Event.message,
 		})
 		cmds = append(cmds, cmd)
 	}
@@ -873,7 +881,7 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 		return
 	}
 
-	msg, ok := entry.Message.(*command.PrivateMessage)
+	msg, ok := entry.Event.message.(*command.PrivateMessage)
 
 	if !ok {
 		return
@@ -959,24 +967,35 @@ func (t *broadcastTab) HandleResize() {
 	}
 }
 
-func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) {
+func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) tea.Cmd {
 	if msg.Payload.Subscription.Condition["broadcaster_user_id"] != t.channelID &&
 		msg.Payload.Subscription.Condition["from_broadcaster_user_id"] != t.channelID &&
 		msg.Payload.Subscription.Condition["to_broadcaster_user_id"] != t.channelID {
-		return
+		return nil
+	}
+
+	createCMDFunc := func(ircer twitch.IRCer) tea.Cmd {
+		return func() tea.Msg {
+			return requestLocalMessageHandleMessage{
+				message:   ircer,
+				accountID: t.AccountID(),
+			}
+		}
 	}
 
 	switch msg.Payload.Subscription.Type {
 	case "channel.poll.begin":
-		t.chatWindow.handleMessage(&command.Notice{
-			FakeTimestamp:   time.Now(),
-			ChannelUserName: t.channel,
-			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
-		})
 		t.poll.setPollData(msg)
 		t.poll.enabled = true
 		t.HandleResize()
+		return createCMDFunc(
+			&command.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channel,
+				MsgID:           command.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
+			},
+		)
 	case "channel.poll.progress":
 		heightBefore := lipgloss.Height(t.poll.View())
 		t.poll.setPollData(msg)
@@ -995,35 +1014,39 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 			}
 		}
 
-		t.chatWindow.handleMessage(&command.Notice{
-			FakeTimestamp:   time.Now(),
-			ChannelUserName: t.channel,
-			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
-		})
-
 		t.poll.enabled = false
 		t.HandleResize()
-	case "channel.raid":
-		// broadcaster raided another channel
-		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {
-			t.chatWindow.handleMessage(&command.Notice{
+
+		return createCMDFunc(
+			&command.Notice{
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channel,
 				MsgID:           command.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
-			})
-
-			return
+				Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
+			},
+		)
+	case "channel.raid":
+		// broadcaster raided another channel
+		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {
+			return createCMDFunc(
+				&command.Notice{
+					FakeTimestamp:   time.Now(),
+					ChannelUserName: t.channel,
+					MsgID:           command.MsgID(uuid.NewString()),
+					Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
+				},
+			)
 		}
 
 		// broadcaster gets raided
-		t.chatWindow.handleMessage(&command.Notice{
-			FakeTimestamp:   time.Now(),
-			ChannelUserName: t.channel,
-			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
-		})
+		return createCMDFunc(
+			&command.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channel,
+				MsgID:           command.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
+			},
+		)
 	case "channel.ad_break.begin":
 		var chatMsg string
 
@@ -1033,13 +1056,17 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 			chatMsg = fmt.Sprintf("A %d second ad, requested by %s, just started!", msg.Payload.Event.DurationInSeconds, msg.Payload.Event.RequesterUserName)
 		}
 
-		t.chatWindow.handleMessage(&command.Notice{
-			FakeTimestamp:   time.Now(),
-			ChannelUserName: t.channel,
-			MsgID:           command.MsgID(uuid.NewString()),
-			Message:         chatMsg,
-		})
+		return createCMDFunc(
+			&command.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channel,
+				MsgID:           command.MsgID(uuid.NewString()),
+				Message:         chatMsg,
+			},
+		)
 	}
+
+	return nil
 }
 
 func (t *broadcastTab) Focus() {
