@@ -5,7 +5,7 @@ go 1.23
 require (
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
 	github.com/charmbracelet/bubbles v0.18.0
-	github.com/charmbracelet/bubbletea v0.26.6
+	github.com/charmbracelet/bubbletea v0.27.0
 	github.com/charmbracelet/lipgloss v0.12.1
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/google/uuid v1.6.0
@@ -25,7 +25,7 @@ require (
 	github.com/coder/websocket v1.8.12
 	github.com/gen2brain/avif v0.3.2
 	github.com/jellydator/ttlcache/v3 v3.2.0
-	github.com/vbauerster/mpb/v8 v8.7.5
+	github.com/vbauerster/mpb/v8 v8.8.1
 	github.com/zalando/go-keyring v0.2.5
 	golang.org/x/image v0.19.0
 	modernc.org/sqlite v1.32.0
@@ -55,7 +55,7 @@ require (
 	github.com/tetratelabs/wazero v1.8.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	modernc.org/gc/v3 v3.0.0-20240801135723-a856999a2e4a // indirect
-	modernc.org/libc v1.59.3 // indirect
+	modernc.org/libc v1.59.9 // indirect
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.8.0 // indirect
 	modernc.org/strutil v1.2.0 // indirect

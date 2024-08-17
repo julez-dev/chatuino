@@ -20,6 +20,8 @@ github.com/charmbracelet/bubbles v0.18.0 h1:PYv1A036luoBGroX6VWjQIE9Syf2Wby2oOl/
 github.com/charmbracelet/bubbles v0.18.0/go.mod h1:08qhZhtIwzgrtBjAcJnij1t1H0ZRjwHyGsy6AL11PSw=
 github.com/charmbracelet/bubbletea v0.26.6 h1:zTCWSuST+3yZYZnVSvbXwKOPRSNZceVeqpzOLN2zq1s=
 github.com/charmbracelet/bubbletea v0.26.6/go.mod h1:dz8CWPlfCCGLFbBlTY4N7bjLiyOGDJEnd2Muu7pOWhk=
+github.com/charmbracelet/bubbletea v0.27.0 h1:Mznj+vvYuYagD9Pn2mY7fuelGvP0HAXtZYGgRBCbHvU=
+github.com/charmbracelet/bubbletea v0.27.0/go.mod h1:5MdP9XH6MbQkgGhnlxUqCNmBXf9I74KRQ8HIidRxV1Y=
 github.com/charmbracelet/harmonica v0.2.0 h1:8NxJWRWg/bzKqqEaaeFNipOu77YR5t8aSwG4pgaUBiQ=
 github.com/charmbracelet/harmonica v0.2.0/go.mod h1:KSri/1RMQOZLbw7AHqgcBycp8pgJnQMYYT8QZRqZ1Ao=
 github.com/charmbracelet/lipgloss v0.12.1 h1:/gmzszl+pedQpjCOH+wFkZr/N90Snz40J/NR7A0zQcs=
@@ -121,6 +123,8 @@ github.com/urfave/cli/v3 v3.0.0-alpha9 h1:P0RMy5fQm1AslQS+XCmy9UknDXctOmG/q/FZkU
 github.com/urfave/cli/v3 v3.0.0-alpha9/go.mod h1:0kK/RUFHyh+yIKSfWxwheGndfnrvYSmYFVeKCh03ZUc=
 github.com/vbauerster/mpb/v8 v8.7.5 h1:hUF3zaNsuaBBwzEFoCvfuX3cpesQXZC0Phm/JcHZQ+c=
 github.com/vbauerster/mpb/v8 v8.7.5/go.mod h1:bRCnR7K+mj5WXKsy0NWB6Or+wctYGvVwKn6huwvxKa0=
+github.com/vbauerster/mpb/v8 v8.8.1 h1:7MtGwKWa9RhThnmUDb7d4Ze6YVw2lCwA60ENsNUxX6k=
+github.com/vbauerster/mpb/v8 v8.8.1/go.mod h1:JfCCrtcMsJwP6ZwMn9e5LMnNyp3TVNpUWWkN+nd4EWk=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 h1:gEOO8jv9F4OT7lGCjxCBTO/36wtF6j2nSip77qHd4x4=
@@ -188,6 +192,8 @@ modernc.org/gc/v3 v3.0.0-20240801135723-a856999a2e4a h1:CfbpOLEo2IwNzJdMvE8aiRbP
 modernc.org/gc/v3 v3.0.0-20240801135723-a856999a2e4a/go.mod h1:Qz0X07sNOR1jWYCrJMEnbW/X55x206Q7Vt4mz6/wHp4=
 modernc.org/libc v1.59.3 h1:A4QAp1lRSn2/b4aU+wBtq+yeKgq/2BUevrj0p1ZNy2M=
 modernc.org/libc v1.59.3/go.mod h1:EY/egGEU7Ju66eU6SBqCNYaFUDuc4npICkMWnU5EE3A=
+modernc.org/libc v1.59.9 h1:k+nNDDakwipimgmJ1D9H466LhFeSkaPPycAs1OZiDmY=
+modernc.org/libc v1.59.9/go.mod h1:EY/egGEU7Ju66eU6SBqCNYaFUDuc4npICkMWnU5EE3A=
 modernc.org/mathutil v1.6.0 h1:fRe9+AmYlaej+64JsEEhoWuAYBkOtQiMEU7n/XgfYi4=
 modernc.org/mathutil v1.6.0/go.mod h1:Ui5Q9q1TR2gFm0AQRqQUaBWFLAhQpCwNcuhBOSedWPo=
 modernc.org/memory v1.8.0 h1:IqGTL6eFMaDZZhEWwcREgeMXYwmW83LYW8cROZYkg+E=

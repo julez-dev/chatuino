@@ -1,8 +1,8 @@
 # Self Host
 
-Chatuino needs a server component for handling authentication flow with Twitch.
+Chatuino needs a server component for handling the user authentication flow with Twitch.
 
-Additionally, the server component is used for serving response from Twitch API endpoints that normally require a authenticated user oder app, when the anonymous account user is used to connect to a chat.
+Additionally, the server component is used for serving responses from Twitch API endpoints that normally require a authenticated user oder app, when the anonymous account user is used to connect to a chat.
 
 The server component in included inside the Chatuino binary.
 

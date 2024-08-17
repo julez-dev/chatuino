@@ -6,6 +6,8 @@ Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich T
 
 ![Demo of chatuino.](doc/demo.gif)
 
+![Demo of chatuino with emotes enables.](doc/emote-demo.webp)
+
 ## Table of Contents
 
 - [Introduction](#introduction)
@@ -18,28 +20,28 @@ Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich T
 
 Chatuino aims to be a feature rich and portable Twitch Chat Client for your terminal.
 
-The name and idea to create a Twitch Chat Client is inspired by [Chatterino](https://github.com/Chatterino/chatterino2).
+The name and idea to create a Twitch Chat Client and many features are inspired by [Chatterino](https://github.com/Chatterino/chatterino2) and [twitch-tui](https://github.com/Xithrius/twitch-tui).
 
 ## Features
 
 - Multi Account support
-- Multi Tab support/Can join multiple channels and switch between them
-- Join Chat as Anonymous User
-- Auto resize when window size changes
+- Join as many Chats as you want
+- Join Chats as Anonymous User
 - You can host the server component for authentication/anonymous usage yourself
-- Emote and User Suggestions
+- Graphical display of emotes
+- Emote and User Suggestions/Autocompletion
 - Local save state to persist sessions
-- Simple emote support for Twitch(purple), BTTV(red) and SevenTV(blue) emotes (Emotes are colored), graphic display planned
-- Advanced moderation tools planned
 - Manage ban requests
+- View detailed user data with user inspect mode
 - Quick ban users with ctrl+shift+t
 - Copy and Paste messages with alt+c
 - Simple Twitch duplicate message bypass
-- More twitch integration planned (Announcements etc.)
+- Support for viewing twitch polls in your own channel
+- Special tabs like mentions and live notifications
 
 ## Installation
 
-You can use go install to install the program (`go install github.com/julez-dev/chatuino`) or grab a binary from the [releases](https://github.com/julez-dev/chatuino/releases) page.
+You can use go install to install the program (`go install github.com/julez-dev/chatuino@latest`) or grab a binary from the [releases](https://github.com/julez-dev/chatuino/releases) page.
 
 ## Usage
 
@@ -47,17 +49,15 @@ The binary comes with the account management, the TUI itself and the server comp
 
 You can use the --help flag to get help.
 
-### account sub-command
+### Account sub-command
 
 You can use the account sub-command to link your twitch account to Chatuino. The command will launch a TUI to help you manage your accounts.
 
 If want to link a new account you need to provide a user token to Chatuino which you can generate with the server component. You can start the auth flow here: `https://chatuino.net/auth/start` or your own server if you want to.
 
-### key-binds
+### Settings
 
-Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file (config directory may be different depending on OS).
-
-An overview of the keybinds can be opened with `?` inside Chatuino.
+Make sure to take a look at [the settings doc](doc/SETTINGS.md) to find more details about configuration and more advanced features like key-binds, emote display and chat log storage.
 
 ### server sub-command and hosting you own server
 
