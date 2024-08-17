@@ -6,7 +6,7 @@ Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich T
 
 ![Demo of chatuino.](doc/demo.gif)
 
-![Demo of chatuino with emotes enables.](doc/emote-demo.webp)
+![Demo of chatuino with emotes enables.](doc/emote-demo.gif)
 
 ## Table of Contents
 
