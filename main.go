@@ -73,6 +73,7 @@ func main() {
 			versionCMD,
 			accountCMD,
 			serverCMD,
+			rebuildCacheCMD,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -144,14 +145,41 @@ func main() {
 				}
 			}
 
-			keys, err := save.CreateReadKeyMap()
+			var emoteReplacer *emote.Replacer
 
+			if settings.Chat.GraphicEmotes {
+				if !hasEmoteSupport() {
+					return fmt.Errorf("graphical emote support enabled but not available for this platform (unix & kitty terminal only)")
+				}
+
+				cellWidth, cellHeight, err := getTermCellWidthHeight()
+				if err != nil {
+					return fmt.Errorf("failed to get terminal size: %w", err)
+				}
+
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, true, cellWidth, cellHeight)
+			} else {
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, false, 0, 0)
+			}
+
+			keys, err := save.CreateReadKeyMap()
 			if err != nil {
 				return fmt.Errorf("error while reading keymap: %w", err)
 			}
 
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger, accountProvider, chatMultiplexer, emoteStore, command.String("client-id"), serverAPI, keys, recentMessageService, eventSubMultiplexer, messageLoggerChan),
+				mainui.NewUI(log.Logger,
+					accountProvider,
+					chatMultiplexer,
+					emoteStore,
+					command.String("client-id"),
+					serverAPI,
+					keys,
+					recentMessageService,
+					eventSubMultiplexer,
+					messageLoggerChan,
+					emoteReplacer,
+				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
@@ -203,7 +231,7 @@ func main() {
 	defer cancel()
 
 	if err := app.Run(ctx, os.Args); err != nil {
-		fmt.Printf("error while running Chatuino: %v", err)
+		fmt.Printf("failed to run Chatuino: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -221,14 +249,12 @@ func runChatLogger(messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWait
 	}
 
 	dbPath, err := save.CreateDBFile()
-
 	if err != nil {
 		log.Logger.Err(err).Msg("failed to create db file")
 		return
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
-
 	if err != nil {
 		log.Logger.Err(err).Msg("failed to create sqlite connection")
 		return

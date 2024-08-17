@@ -1,5 +1,7 @@
 package emote
 
+import "slices"
+
 type Platform int
 
 const (
@@ -23,16 +25,18 @@ func (p Platform) String() string {
 }
 
 type Emote struct {
-	ID       string
-	Text     string
-	Platform Platform
-	URL      string
+	ID         string
+	Text       string
+	Platform   Platform
+	URL        string
+	IsAnimated bool
+	Format     string
 }
 
 type EmoteSet []Emote
 
 func (set EmoteSet) GetByText(text string) (Emote, bool) {
-	for _, e := range set {
+	for e := range slices.Values(set) {
 		if e.Text == text {
 			return e, true
 		}

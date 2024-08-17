@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v4"
+	"github.com/coder/websocket"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
-	"nhooyr.io/websocket"
 )
 
 const (
@@ -77,7 +77,6 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 					Timeout:   time.Second * 10,
 				},
 			})
-
 			if err != nil {
 				return err
 			}
@@ -125,7 +124,6 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 					// this deadline just tracks how much time can pass without getting a new message
 					// not to check if the connection is still up, so not a keep-alive
 					_, wsMessage, err := ws.Read(innerCtx)
-
 					if err != nil {
 						return err
 					}

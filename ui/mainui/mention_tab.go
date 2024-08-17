@@ -88,20 +88,29 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		m.usernames = msg.usernames
 
 		if msg.err != nil {
-			m.chatWindow.handleMessage(&command.Notice{
-				FakeTimestamp: time.Now(),
-				MsgID:         command.MsgID(uuid.NewString()),
-				Message:       fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error()),
-			},
-			)
+			msg := fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error())
+			m.chatWindow.handleMessage(chatEventMessage{
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					MsgID:         command.MsgID(uuid.NewString()),
+					Message:       msg,
+				},
+				isFakeEvent:                 true,
+				messageContentEmoteOverride: msg,
+			})
 
 			return m, nil
 		}
 
-		m.chatWindow.handleMessage(&command.Notice{
-			FakeTimestamp: time.Now(),
-			MsgID:         command.MsgID(uuid.NewString()),
-			Message:       fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", ")),
+		notice := fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", "))
+		m.chatWindow.handleMessage(chatEventMessage{
+			message: &command.Notice{
+				FakeTimestamp: time.Now(),
+				MsgID:         command.MsgID(uuid.NewString()),
+				Message:       notice,
+			},
+			isFakeEvent:                 true,
+			messageContentEmoteOverride: notice,
 		})
 
 		return m, nil

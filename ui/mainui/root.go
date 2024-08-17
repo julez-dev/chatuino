@@ -36,6 +36,10 @@ type EmoteStore interface {
 	GetAllForUser(id string) emote.EmoteSet
 }
 
+type EmoteReplacer interface {
+	Replace(content string) (string, string, error)
+}
+
 type APIClient interface {
 	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
 	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
@@ -132,9 +136,32 @@ type persistedDataLoadedMessage struct {
 }
 
 type chatEventMessage struct {
-	accountID string
-	channel   string
+	// If the event was not created by twitch IRC connection but instead locally by message input chat load etc.
+	// This indicates that the root will not start a new wait message command.
+	// All messages requested by requestLocalMessageHandleMessage will have this flag set to true.
+	isFakeEvent bool
+	accountID   string
+	channel     string
+
+	message twitch.IRCer
+	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
+	messageContentEmoteOverride string
+
+	// if message should only be sent to a specific tab ID
+	// if empty send to all
+	tabID string
+}
+
+type requestLocalMessageHandleMessage struct {
 	message   twitch.IRCer
+	accountID string
+	tabID     string
+}
+
+type requestLocalMessageHandleMessageBatch struct {
+	messages  []twitch.IRCer
+	accountID string
+	tabID     string
 }
 
 type forwardChatMessage struct {
@@ -167,6 +194,7 @@ type Root struct {
 	// dependencies
 	accounts             AccountProvider
 	emoteStore           EmoteStore
+	emoteReplacer        EmoteReplacer
 	serverAPI            APIClientWithRefresh
 	recentMessageService RecentMessageService
 	buildTTVClient       func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
@@ -210,6 +238,7 @@ func NewUI(
 	recentMessageService RecentMessageService,
 	eventSub EventSubPool,
 	messageLoggerChan chan<- *command.PrivateMessage,
+	emoteReplacer EmoteReplacer,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -241,6 +270,7 @@ func NewUI(
 		eventSub:           eventSub,
 		eventSubIn:         inEventSub,
 
+		emoteReplacer:        emoteReplacer,
 		messageLoggerChan:    messageLoggerChan,
 		accounts:             provider,
 		ttvAPIUserClients:    clients,
@@ -311,9 +341,7 @@ func (r *Root) Init() tea.Cmd {
 				loginsUnique[tab.Channel] = struct{}{}
 			}
 
-			for login := range loginsUnique {
-				logins = append(logins, login)
-			}
+			logins = slices.AppendSeq(logins, maps.Keys(loginsUnique))
 
 			if len(logins) > 0 {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -368,6 +396,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.header.selectTab(nTab.ID())
 
 		r.joinInput.blur()
+		r.joinInput.input.SetSuggestions(nil) // free up some memory
 
 		r.handleResize()
 
@@ -385,11 +414,33 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	case chatEventMessage:
 		for i := range r.tabs {
+			if msg.tabID != "" && msg.tabID != r.tabs[i].ID() {
+				continue
+			}
+
 			r.tabs[i], cmd = r.tabs[i].Update(msg)
 			cmds = append(cmds, cmd)
 		}
 
-		cmds = append(cmds, r.waitChatEvents())
+		// only start new wait command when event was actually from the websocket/twitch connection
+		if !msg.isFakeEvent {
+			cmds = append(cmds, r.waitChatEvents())
+		}
+		return r, tea.Batch(cmds...)
+	case requestLocalMessageHandleMessage:
+		return r, func() tea.Msg {
+			return r.buildChatEventMessage(msg.accountID, msg.tabID, msg.message, true)
+		}
+	case requestLocalMessageHandleMessageBatch:
+		batched := make([]tea.Cmd, 0, len(msg.messages))
+
+		for ircer := range slices.Values(msg.messages) {
+			batched = append(batched, func() tea.Msg {
+				return r.buildChatEventMessage(msg.accountID, msg.tabID, ircer, true)
+			})
+		}
+
+		cmds = append(cmds, tea.Sequence(batched...))
 		return r, tea.Batch(cmds...)
 	case forwardChatMessage:
 		r.eventSubInInFlight.Add(1)
@@ -931,6 +982,56 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	return tea.Batch(cmds...)
 }
 
+func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitch.IRCer, isFakeEvent bool) chatEventMessage {
+	var (
+		channel          string
+		contentOverwrite string
+		prepare          string
+	)
+
+	switch ircMessage := ircer.(type) {
+	case *command.PrivateMessage:
+		channel = ircMessage.ChannelUserName
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		io.WriteString(os.Stdout, prepare)
+	case *command.RoomState:
+		channel = ircMessage.ChannelUserName
+	case *command.UserNotice:
+		channel = ircMessage.ChannelUserName
+	case *command.UserState:
+		channel = ircMessage.ChannelUserName
+	case *command.ClearChat:
+		channel = ircMessage.ChannelUserName
+	case *command.ClearMessage:
+		channel = ircMessage.ChannelUserName
+	case *command.SubMessage:
+		channel = ircMessage.ChannelUserName
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		io.WriteString(os.Stdout, prepare)
+	case *command.RaidMessage:
+		channel = ircMessage.ChannelUserName
+	case *command.SubGiftMessage:
+		channel = ircMessage.ChannelUserName
+	case *command.RitualMessage:
+		channel = ircMessage.ChannelUserName
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		io.WriteString(os.Stdout, prepare)
+	case *command.AnnouncementMessage:
+		channel = ircMessage.ChannelUserName
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		io.WriteString(os.Stdout, prepare)
+	}
+
+	return chatEventMessage{
+		isFakeEvent:                 isFakeEvent,
+		accountID:                   accountID,
+		channel:                     channel,
+		tabID:                       tabID,
+		message:                     ircer,
+		messageContentEmoteOverride: contentOverwrite,
+	}
+}
+
 func (r *Root) waitChatEvents() tea.Cmd {
 	return func() tea.Msg {
 		msg, ok := <-r.out
@@ -947,42 +1048,11 @@ func (r *Root) waitChatEvents() tea.Cmd {
 			}
 		}
 
-		var channel string
-
-		switch msg.Msg.(type) {
-		case *command.PrivateMessage:
-			channel = msg.Msg.(*command.PrivateMessage).ChannelUserName
-		case *command.RoomState:
-			channel = msg.Msg.(*command.RoomState).ChannelUserName
-		case *command.UserNotice:
-			channel = msg.Msg.(*command.UserNotice).ChannelUserName
-		case *command.UserState:
-			channel = msg.Msg.(*command.UserState).ChannelUserName
-		case *command.ClearChat:
-			channel = msg.Msg.(*command.ClearChat).ChannelUserName
-		case *command.ClearMessage:
-			channel = msg.Msg.(*command.ClearMessage).ChannelUserName
-		case *command.SubMessage:
-			channel = msg.Msg.(*command.SubMessage).ChannelUserName
-		case *command.RaidMessage:
-			channel = msg.Msg.(*command.RaidMessage).ChannelUserName
-		case *command.SubGiftMessage:
-			channel = msg.Msg.(*command.SubGiftMessage).ChannelUserName
-		case *command.RitualMessage:
-			channel = msg.Msg.(*command.RitualMessage).ChannelUserName
-		case *command.AnnouncementMessage:
-			channel = msg.Msg.(*command.AnnouncementMessage).ChannelUserName
-		}
-
 		if privateMsg, ok := msg.Msg.(*command.PrivateMessage); ok {
-			r.messageLoggerChan <- privateMsg
+			r.messageLoggerChan <- privateMsg.Clone()
 		}
 
-		return chatEventMessage{
-			accountID: msg.ID,
-			channel:   channel,
-			message:   msg.Msg,
-		}
+		return r.buildChatEventMessage(msg.ID, "", msg.Msg, false)
 	}
 }
 

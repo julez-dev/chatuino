@@ -3,6 +3,8 @@ package mainui
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -217,12 +219,7 @@ func (j *join) Init() tea.Cmd {
 				uniqueChannels[a.DisplayName] = struct{}{}
 			}
 
-			channelSuggestions := make([]string, 0, len(uniqueChannels))
-			for c := range uniqueChannels {
-				channelSuggestions = append(channelSuggestions, c)
-			}
-
-			return setJoinSuggestionMessage{suggestions: channelSuggestions}
+			return setJoinSuggestionMessage{suggestions: slices.Collect(maps.Keys(uniqueChannels))}
 		},
 		j.input.InputModel.Cursor.BlinkCmd(),
 	)

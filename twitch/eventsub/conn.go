@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/rs/zerolog"
-	"nhooyr.io/websocket"
 )
 
 const (
@@ -139,7 +139,6 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 	ws, _, err := websocket.Dial(ctx, eventSubURL, &websocket.DialOptions{
 		HTTPClient: c.httpClient,
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to dial %s: %w", eventSubURL, err)
 	}
@@ -168,7 +167,6 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 		switch untypedData.Metadata.MessageType {
 		case "session_welcome":
 			welcome, err := convertUntyped[SessionPayload](untypedData)
-
 			if err != nil {
 				return fmt.Errorf("failed to convert to session welcome: %w", err)
 			}

@@ -8,6 +8,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type RoundTripperFunc func(req *http.Request) (*http.Response, error)
+
+func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 type ChatuinoRoundTrip struct {
 	rt      http.RoundTripper
 	logger  zerolog.Logger
@@ -41,7 +47,6 @@ func (t *ChatuinoRoundTrip) RoundTrip(req *http.Request) (*http.Response, error)
 
 	now := time.Now()
 	resp, err := rt.RoundTrip(req)
-
 	if err != nil {
 		t.logger.Error().Err(err).Msg("error while making request")
 		return nil, err
