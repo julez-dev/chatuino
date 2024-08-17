@@ -29,6 +29,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    tags:
+      - nodynamic
     ldflags:
       - -s -w -X main.Version={{ .Version }} -X main.Commit={{.Commit}} -X main.Date={{ .CommitDate }}
 
