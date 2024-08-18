@@ -14,6 +14,8 @@ import (
 )
 
 func TestReplacer_Replace(t *testing.T) {
+	t.Parallel()
+
 	t.Run("cached-graphics", func(t *testing.T) {
 		store := &mockEmoteStore{
 			emotes: map[string]Emote{
@@ -51,7 +53,7 @@ func TestReplacer_Replace(t *testing.T) {
 		command, replacedText, err := replacer.Replace("Test Message with Kappa emote")
 		assert.Nil(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
-		assert.Equal(t, "Test Message with \x1b[38;5;1m\x1b[58:5:1m\U0010eeee\U0010eeee\x1b[59m\x1b[39m emote", replacedText)
+		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m emote", replacedText)
 	})
 
 	t.Run("color-mode", func(t *testing.T) {
@@ -137,7 +139,38 @@ func TestReplacer_Replace(t *testing.T) {
 		assert.True(t, cached, "should call saveCached")
 		assert.Nil(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=28,v=28;L3BhdGgvdG8va2FwcGEucG5n\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=1\x1b\\", command)
-		assert.Equal(t, "Test Message with \x1b[38;5;1m\x1b[58:5:1m\U0010eeee\x1b[59m\x1b[39m emote", replacedText)
+		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\x1b[39m emote", replacedText)
+	})
+}
+
+func Test24BitID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("256", func(t *testing.T) {
+		emote := DecodedEmote{
+			ID:   256,
+			Cols: 2,
+		}
+
+		assert.Equal(t, "\x1b[38;2;0;1;0m\U0010eeee\U0010eeee\x1b[39m", emote.DisplayUnicodePlaceholder())
+	})
+
+	t.Run("8bit", func(t *testing.T) {
+		emote := DecodedEmote{
+			ID:   255,
+			Cols: 2,
+		}
+
+		assert.Equal(t, "\x1b[38;2;0;0;255m\U0010eeee\U0010eeee\x1b[39m", emote.DisplayUnicodePlaceholder())
+	})
+
+	t.Run("24bit", func(t *testing.T) {
+		emote := DecodedEmote{
+			ID:   8235331,
+			Cols: 2,
+		}
+
+		assert.Equal(t, "\x1b[38;2;125;169;67m\U0010eeee\U0010eeee\x1b[39m", emote.DisplayUnicodePlaceholder())
 	})
 }
 
