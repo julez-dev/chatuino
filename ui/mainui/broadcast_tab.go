@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,6 +97,7 @@ type broadcastTab struct {
 
 	ttvAPI               APIClient
 	recentMessageService RecentMessageService
+	emoteReplacer        EmoteReplacer
 
 	// components
 	streamInfo   *streamInfo
@@ -120,6 +122,7 @@ func newBroadcastTab(
 	accountProvider AccountProvider,
 	recentMessageService RecentMessageService,
 	keymap save.KeyMap,
+	emoteReplacer EmoteReplacer,
 ) *broadcastTab {
 	return &broadcastTab{
 		id:                   id,
@@ -133,6 +136,7 @@ func newBroadcastTab(
 		emoteStore:           emoteStore,
 		ttvAPI:               ttvAPI,
 		recentMessageService: recentMessageService,
+		emoteReplacer:        emoteReplacer,
 	}
 }
 
@@ -427,7 +431,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			switch msg := msg.(type) {
 			case tea.KeyMsg:
 				// Focus message input
-				if key.Matches(msg, t.keymap.InsertMode) {
+				if key.Matches(msg, t.keymap.InsertMode) && (t.state == inChatWindow || t.state == userInspectMode) {
 					cmd := t.handleStartInsertMode()
 					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
@@ -442,7 +446,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				// Open user inspect mode, where only messages from a specific user are shown
 				if key.Matches(msg, t.keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
-					cmd := t.handleOpenUserInspect()
+					cmd := t.handleOpenUserInspectFromMessage()
 					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
 				}
@@ -458,13 +462,13 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 
 				// Set quick time out message to message input
-				if key.Matches(msg, t.keymap.QuickTimeout) {
+				if key.Matches(msg, t.keymap.QuickTimeout) && (t.state == inChatWindow || t.state == userInspectMode) {
 					t.handleTimeoutShortcut()
 					return t, nil
 				}
 
 				// Copy selected message to message input
-				if key.Matches(msg, t.keymap.CopyMessage) {
+				if key.Matches(msg, t.keymap.CopyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
 					t.handleCopyMessage()
 					return t, nil
 				}
@@ -718,12 +722,6 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 
 	// Check if input is a command
 	if strings.HasPrefix(input, "/") {
-		// Message input is only allowed for authenticated users
-		// so ttvAPI is guaranteed to be a moderationAPIClient
-		// we sadly can't know if the user is actually a moderator in the channel
-		// so operations that require moderation privileges will fail
-		client := t.ttvAPI.(moderationAPIClient)
-
 		// Get command name
 		end := strings.Index(input, " ")
 		if end == -1 {
@@ -737,6 +735,16 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		channelID := t.channelID
 		channel := t.channel
 		accountID := t.account.ID
+
+		if strings.HasPrefix(commandName, "inspect") {
+			return t.handleOpenUserInspect(args[0])
+		}
+
+		// Message input is only allowed for authenticated users
+		// so ttvAPI is guaranteed to be a moderationAPIClient
+		// we sadly can't know if the user is actually a moderator in the channel
+		// so operations that require moderation privileges will fail
+		client := t.ttvAPI.(moderationAPIClient)
 
 		return handleCommand(commandName, args, channelID, channel, accountID, client)
 	}
@@ -809,12 +817,35 @@ func (t *broadcastTab) handleCopyMessage() {
 	t.messageInput.SetValue(msg.Message)
 }
 
-func (t *broadcastTab) handleOpenUserInspect() tea.Cmd {
-	var (
-		cmds []tea.Cmd
-		cmd  tea.Cmd
-		e    *chatEntry
-	)
+func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
+	var cmds []tea.Cmd
+
+	t.state = userInspectMode
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap, t.emoteReplacer)
+
+	initialEvents := make([]chatEventMessage, 0, len(t.chatWindow.entries))
+	for e := range slices.Values(t.chatWindow.entries) {
+		initialEvents = append(initialEvents, chatEventMessage{
+			isFakeEvent:                 true,
+			accountID:                   t.account.ID,
+			channel:                     t.channel,
+			messageContentEmoteOverride: e.OverwrittenMessageContent,
+			message:                     e.Event.message,
+		})
+	}
+
+	cmds = append(cmds, t.userInspect.init(initialEvents))
+
+	t.HandleResize()
+	t.chatWindow.Blur()
+	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
+	t.userInspect.chatWindow.Focus()
+
+	return tea.Batch(cmds...)
+}
+
+func (t *broadcastTab) handleOpenUserInspectFromMessage() tea.Cmd {
+	var e *chatEntry
 
 	if t.state == inChatWindow {
 		_, e = t.chatWindow.entryForCurrentCursor()
@@ -836,31 +867,7 @@ func (t *broadcastTab) handleOpenUserInspect() tea.Cmd {
 		return nil
 	}
 
-	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap)
-	cmds = append(cmds, t.userInspect.Init())
-
-	for _, e := range t.chatWindow.entries {
-		t.userInspect, cmd = t.userInspect.Update(chatEventMessage{
-			accountID:                   t.account.ID,
-			channel:                     t.channel,
-			messageContentEmoteOverride: e.OverwrittenMessageContent,
-			message:                     e.Event.message,
-		})
-		cmds = append(cmds, cmd)
-	}
-
-	t.userInspect.chatWindow.moveToBottom()
-
-	t.HandleResize()
-	t.chatWindow.Blur()
-	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
-	t.userInspect.chatWindow.Focus()
-
-	// t.chatWindow, cmd = t.chatWindow.Update(msg)
-	// cmds = append(cmds, cmd)
-
-	return tea.Batch(cmds...)
+	return t.handleOpenUserInspect(username)
 }
 
 func (t *broadcastTab) handleTimeoutShortcut() {

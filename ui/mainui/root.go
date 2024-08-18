@@ -830,7 +830,7 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab
 		id := r.header.addTab(channel, identity)
 
 		headerHeight := r.getHeaderHeight()
-		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
+		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer)
 		return nTab
 	case mentionTabKind:
 		id := r.header.addTab("mentioned", "all")

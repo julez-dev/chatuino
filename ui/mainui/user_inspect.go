@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,10 +18,11 @@ import (
 )
 
 type setUserInspectData struct {
-	target   string
-	err      error
-	ivrResp  ivr.SubAgeResponse
-	userData twitch.UserData
+	target        string
+	err           error
+	ivrResp       ivr.SubAgeResponse
+	userData      twitch.UserData
+	initialEvents []chatEventMessage
 }
 
 type userInspect struct {
@@ -35,12 +37,14 @@ type userInspect struct {
 	channel       string // the streamer
 	badges        []command.Badge
 
-	ivr        *ivr.API
-	ttvAPI     APIClient
+	ivr           *ivr.API
+	ttvAPI        APIClient
+	emoteReplacer EmoteReplacer
+
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap, emoteReplacer EmoteReplacer) *userInspect {
 	return &userInspect{
 		tabID:   tabID,
 		channel: channel,
@@ -48,11 +52,16 @@ func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width
 		ivr:     ivr.NewAPI(http.DefaultClient),
 		ttvAPI:  ttvAPI,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow: newChatWindow(logger, width, height, emoteStore, keymap),
+		chatWindow:    newChatWindow(logger, width, height, emoteStore, keymap),
+		emoteReplacer: emoteReplacer,
 	}
 }
 
 func (u *userInspect) Init() tea.Cmd {
+	return u.init(nil)
+}
+
+func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 	var cmds []tea.Cmd
 
 	cmds = append(cmds, u.chatWindow.Init())
@@ -87,10 +96,11 @@ func (u *userInspect) Init() tea.Cmd {
 		}
 
 		return setUserInspectData{
-			target:   u.tabID,
-			err:      err,
-			ivrResp:  ivrResp,
-			userData: ttvResp.Data[0],
+			target:        u.tabID,
+			err:           err,
+			ivrResp:       ivrResp,
+			userData:      ttvResp.Data[0],
+			initialEvents: initialEvents,
 		}
 	})
 	return tea.Batch(cmds...)
@@ -113,8 +123,14 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		u.userData = msg.userData
 		u.isDataFetched = true
 
+		for event := range slices.Values(msg.initialEvents) {
+			u, cmd = u.Update(event)
+			cmds = append(cmds, cmd)
+		}
+
 		u.handleResize()
-		return u, nil
+		u.chatWindow.moveToBottom()
+		return u, tea.Batch(cmds...)
 	}
 
 	chatEvent, ok := msg.(chatEventMessage)

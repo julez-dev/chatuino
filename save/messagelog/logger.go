@@ -3,6 +3,7 @@ package messagelog
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,6 +12,16 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 )
+
+type LogEntry struct {
+	ID               string
+	BroadCastID      int
+	UserID           int
+	BroadcastChannel string
+	SentAt           time.Time
+	SenderDisplay    string
+	PrivateMessage   *command.PrivateMessage
+}
 
 const sqlMigration = `BEGIN;
 CREATE TABLE IF NOT EXISTS messages (
@@ -28,6 +39,7 @@ COMMIT;`
 
 type DB interface {
 	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
 }
 
 const (
@@ -149,6 +161,56 @@ SELECT_LOOP:
 	}
 
 	return nil
+}
+
+func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadcast_id string) ([]LogEntry, error) {
+	query := `SELECT id, broadcast_id, user_id, broadcast_channel, sent_at, sender_display, payload FROM messages WHERE sender_display = ? AND broadcast_id = CAST(? as int)`
+	rows, err := b.db.Query(query, username, broadcast_id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []LogEntry{}, nil
+		}
+
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var logEntries []LogEntry
+
+	for rows.Next() {
+		var entry LogEntry
+		var rawPayload []byte
+		var rawSentAt string
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.BroadCastID,
+			&entry.UserID,
+			&entry.BroadcastChannel,
+			&rawSentAt,
+			&entry.SenderDisplay,
+			&rawPayload,
+		); err != nil {
+			return logEntries, err
+		}
+
+		entry.SentAt, err = time.Parse("2006-01-02 15:04:05-07:00", rawSentAt)
+		if err != nil {
+			return logEntries, err
+		}
+
+		if err := json.Unmarshal(rawPayload, &entry.PrivateMessage); err != nil {
+			return logEntries, err
+		}
+
+		logEntries = append(logEntries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return logEntries, err
+	}
+
+	return logEntries, nil
 }
 
 func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*command.PrivateMessage) error {

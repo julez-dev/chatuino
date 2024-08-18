@@ -13,10 +13,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var commandSuggestions = []string{
+var commandSuggestions = [...]string{
 	"/ban <user> [reason]",
 	"/unban <user>",
 	"/timeout <username> [duration] [reason]",
+	"/inspect <username>",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
@@ -54,7 +55,7 @@ func defaultTrie() *trie.Trie {
 	t := trie.New()
 	t = t.WithoutFuzzy()
 	t = t.WithoutLevenshtein()
-	//t = t.WithoutNormalisation()
+	// t = t.WithoutNormalisation()
 	return t
 }
 
@@ -145,7 +146,6 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 		default:
 			s.updateSuggestions()
 		}
-
 	}
 
 	s.InputModel, cmd = s.InputModel.Update(msg)
@@ -255,7 +255,6 @@ func (s *SuggestionTextInput) updateSuggestions() {
 				} else {
 					matchedUsers = append(matchedUsers, "@"+user)
 				}
-
 			}
 		}
 

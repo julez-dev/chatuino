@@ -468,7 +468,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			text += ": " + msg.Message
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
+		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *command.SubGiftMessage:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
 
@@ -507,7 +507,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		text := fmt.Sprintf("%s: %s",
 			userRenderFn(msg.DisplayName),
-			msg.Message,
+			event.messageContentEmoteOverride,
 		)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
