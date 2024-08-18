@@ -75,7 +75,8 @@ func (c *Client) RevokeToken(ctx context.Context, token string) error {
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	// for revoke endpoint, BadRequest just means that the token was invalid (most likely expired, we can ignore this)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadRequest {
 		return fmt.Errorf("non 200 response code (%d)", resp.StatusCode)
 	}
 

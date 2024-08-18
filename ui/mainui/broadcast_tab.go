@@ -775,7 +775,6 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 	})
 
 	return tea.Sequence(cmds...)
-
 }
 
 func (t *broadcastTab) handleCopyMessage() {
@@ -871,9 +870,10 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 
 	var entry *chatEntry
 
-	if t.state == inChatWindow {
+	switch t.state {
+	case inChatWindow:
 		_, entry = t.chatWindow.entryForCurrentCursor()
-	} else if t.state == userInspectMode {
+	case userInspectMode:
 		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
 	}
 

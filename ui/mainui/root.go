@@ -951,6 +951,15 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 
 			newTab = r.createTab(account, t.Channel, broadcastTabKind)
 		case mentionTabKind:
+			// don't load mention tab, when there are no longer any non-anonymous accounts
+			hasNormalAccount := slices.ContainsFunc(msg.accounts, func(e save.Account) bool {
+				return !e.IsAnonymous
+			})
+
+			if !hasNormalAccount {
+				continue
+			}
+
 			newTab = r.createTab(save.Account{}, "", mentionTabKind)
 		case liveNotificationTabKind:
 			newTab = r.createTab(save.Account{}, "", liveNotificationTabKind)
