@@ -81,7 +81,12 @@ func (d DecodedEmote) PrepareCommand() string {
 }
 
 func (d DecodedEmote) DisplayUnicodePlaceholder() string {
-	return fmt.Sprintf("\033[38;5;%dm\033[58:5:%dm%s\033[59m\033[39m", d.ID, d.ID, strings.Repeat("\U0010EEEE", d.Cols))
+	r, g, b := intToRGB(d.ID)
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[39m", r, g, b, strings.Repeat("\U0010EEEE", d.Cols))
+}
+
+func intToRGB(i int) (byte, byte, byte) {
+	return byte(i >> 16), byte(i >> 8), byte(i)
 }
 
 type EmoteStore interface {

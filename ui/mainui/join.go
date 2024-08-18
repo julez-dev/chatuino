@@ -85,7 +85,7 @@ type join struct {
 	state joinState
 }
 
-func createDefaultList(width, height int) list.Model {
+func createDefaultList(height int) list.Model {
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.NormalTitle = lipgloss.NewStyle().AlignHorizontal(lipgloss.Center)
 	delegate.Styles.SelectedTitle = delegate.Styles.NormalTitle.Foreground(lipgloss.Color("135"))
@@ -124,7 +124,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.SetWidth(width)
 
-	tabKindList := createDefaultList(width, height)
+	tabKindList := createDefaultList(height)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
@@ -143,7 +143,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(width, height)
+	channelList := createDefaultList(height)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]followedFetcher{}
@@ -244,6 +244,15 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			}
 		}
 
+		hasNormalAccount := slices.ContainsFunc(j.accounts, func(e save.Account) bool {
+			return !e.IsAnonymous
+		})
+
+		// remove mention tab, when no non-anonymous accounts were found
+		if !hasNormalAccount {
+			j.tabKindList.RemoveItem(1)
+		}
+
 		j.accountList.SetItems(listItems)
 		j.accountList.Select(index)
 		j.accountList.SetHeight(len(j.accounts) + 1)
@@ -276,18 +285,19 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			}
 
 			if j.state == joinViewMode && key.Matches(msg, j.keymap.Up) {
-				// don't allow next input when mention or live noti tab selected
+				// don't allow next input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
 					j.selectedInput = tabSelect
 					return j, nil
 				}
 
-				if j.selectedInput == tabSelect {
+				switch j.selectedInput {
+				case tabSelect:
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
-				} else if j.selectedInput == channelInput {
+				case channelInput:
 					j.selectedInput = accountSelect
-				} else if j.selectedInput == accountSelect {
+				case accountSelect:
 					j.selectedInput = tabSelect
 				}
 
@@ -325,11 +335,10 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 func (j *join) View() string {
 	style := lipgloss.NewStyle().
-		Width(j.width - 2). // - border width
+		Width(j.width).
 		MaxWidth(j.width).
-		Height(j.height - 2). // - border height
-		MaxHeight(j.height).
-		Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("135"))
+		Height(j.height).
+		MaxHeight(j.height)
 
 	styleCenter := lipgloss.NewStyle().Width(j.width - 2).AlignHorizontal(lipgloss.Center)
 
@@ -341,15 +350,16 @@ func (j *join) View() string {
 		labelIdentity string
 	)
 
-	if j.selectedInput == channelInput {
+	switch j.selectedInput {
+	case channelInput:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("> Channel")
 		labelIdentity = labelStyle("Identity")
-	} else if j.selectedInput == accountSelect {
+	case accountSelect:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("> Identity")
-	} else {
+	default:
 		labelTab = labelStyle("> Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
@@ -368,7 +378,7 @@ func (j *join) View() string {
 
 	// show status at bottom
 	heightUntilNow := lipgloss.Height(b.String())
-	spacerHeight := j.height - heightUntilNow - 2 // one for border, one for status
+	spacerHeight := j.height - heightUntilNow
 	if spacerHeight > 0 {
 		_, _ = b.WriteString(strings.Repeat("\n", spacerHeight))
 	}

@@ -36,7 +36,7 @@ type setAccountsMessage struct {
 	accounts []save.Account
 }
 
-//var baseStyle = lipgloss.NewStyle().
+// var baseStyle = lipgloss.NewStyle().
 //	BorderStyle(lipgloss.NormalBorder()).
 //	BorderForeground(lipgloss.Color("240"))
 
@@ -71,8 +71,8 @@ type List struct {
 func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap save.KeyMap) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
-		{Title: "Main Account", Width: 10},
-		{Title: "Login", Width: 20},
+		{Title: "Main Account", Width: 15},
+		{Title: "Login", Width: 15},
 		{Title: "Date added", Width: 20},
 	}
 
@@ -202,7 +202,7 @@ func (l List) View() string {
 			display = fmt.Sprintf("got error: %s\n\n", l.err)
 		}
 
-		display = display + l.table.View() + "\n" + l.tableHelp.View(l.key)
+		display = display + "\n" + l.table.View() + "\n" + l.tableHelp.View(l.key)
 
 		return lipgloss.NewStyle().
 			AlignHorizontal(lipgloss.Center).
