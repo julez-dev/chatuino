@@ -98,6 +98,7 @@ type broadcastTab struct {
 	ttvAPI               APIClient
 	recentMessageService RecentMessageService
 	emoteReplacer        EmoteReplacer
+	messageLogger        MessageLogger
 
 	// components
 	streamInfo   *streamInfo
@@ -123,6 +124,7 @@ func newBroadcastTab(
 	recentMessageService RecentMessageService,
 	keymap save.KeyMap,
 	emoteReplacer EmoteReplacer,
+	messageLogger MessageLogger,
 ) *broadcastTab {
 	return &broadcastTab{
 		id:                   id,
@@ -137,6 +139,7 @@ func newBroadcastTab(
 		ttvAPI:               ttvAPI,
 		recentMessageService: recentMessageService,
 		emoteReplacer:        emoteReplacer,
+		messageLogger:        messageLogger,
 	}
 }
 
@@ -394,7 +397,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, cmd
 	case chatEventMessage: // delegate message event to chat window
 		// ignore all messages that don't target this account and channel
-		if !(t.AccountID() == msg.accountID && (t.Channel() == msg.channel || msg.channel == "")) {
+		if t.AccountID() != msg.accountID || t.Channel() != msg.channel && msg.channel != "" {
 			return t, nil
 		}
 
@@ -655,17 +658,35 @@ func (t *broadcastTab) handleEscapePressed() {
 
 func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 	return func() tea.Msg {
-		url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel) // open channel in browser
-
 		// open popout chat if modifier is pressed
 		if key.Matches(msg, t.keymap.ChatPopUp) {
-			url = fmt.Sprintf(popupFmt, t.channel)
+			t.handleOpenBrowserChatPopUp()()
+			return nil
 		}
+
+		t.handleOpenBrowserChannel()()
+		return nil
+	}
+}
+
+func (t *broadcastTab) handleOpenBrowserChatPopUp() tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf(popupFmt, t.channel)
 
 		if err := browser.OpenURL(url); err != nil {
 			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
 		}
+		return nil
+	}
+}
 
+func (t *broadcastTab) handleOpenBrowserChannel() tea.Cmd {
+	return func() tea.Msg {
+		url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel)
+
+		if err := browser.OpenURL(url); err != nil {
+			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
+		}
 		return nil
 	}
 }
@@ -736,8 +757,15 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		channel := t.channel
 		accountID := t.account.ID
 
-		if strings.HasPrefix(commandName, "inspect") {
+		switch {
+		case strings.HasPrefix(commandName, "inspect"):
 			return t.handleOpenUserInspect(args[0])
+		case strings.HasPrefix(commandName, "popupchat"):
+			return t.handleOpenBrowserChatPopUp()
+		case strings.HasPrefix(commandName, "channel"):
+			return t.handleOpenBrowserChannel()
+		case strings.HasPrefix(commandName, "banrequests"):
+			return t.handleOpenBanRequest()
 		}
 
 		// Message input is only allowed for authenticated users
@@ -821,7 +849,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap, t.emoteReplacer)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap, t.emoteReplacer, t.messageLogger)
 
 	initialEvents := make([]chatEventMessage, 0, len(t.chatWindow.entries))
 	for e := range slices.Values(t.chatWindow.entries) {

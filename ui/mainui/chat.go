@@ -464,11 +464,11 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			msg.StreakMonths,
 		)
 
-		if msg.Message != "" {
-			text += ": " + msg.Message
+		if event.messageContentEmoteOverride != "" {
+			text += ": " + event.messageContentEmoteOverride
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubGiftMessage:
 		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
 

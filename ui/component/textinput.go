@@ -18,6 +18,9 @@ var commandSuggestions = [...]string{
 	"/unban <user>",
 	"/timeout <username> [duration] [reason]",
 	"/inspect <username>",
+	"/popupchat",
+	"/channel",
+	"/banrequests",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.

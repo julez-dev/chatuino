@@ -3,7 +3,9 @@ package mainui
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -40,11 +42,12 @@ type userInspect struct {
 	ivr           *ivr.API
 	ttvAPI        APIClient
 	emoteReplacer EmoteReplacer
+	messageLogger MessageLogger
 
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap, emoteReplacer EmoteReplacer) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger) *userInspect {
 	return &userInspect{
 		tabID:   tabID,
 		channel: channel,
@@ -54,6 +57,7 @@ func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width
 		// start chat window in full size, will be resized once data is fetched
 		chatWindow:    newChatWindow(logger, width, height, emoteStore, keymap),
 		emoteReplacer: emoteReplacer,
+		messageLogger: messageLogger,
 	}
 }
 
@@ -73,7 +77,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
-				err:    err,
+				err:    fmt.Errorf("failed to fetch user data for: %w", err),
 			}
 		}
 
@@ -84,16 +88,77 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
-				err:    err,
+				err:    fmt.Errorf("failed to fetch user data for: %s: %w", ivrResp.User.ID, err),
 			}
 		}
 
 		if len(ttvResp.Data) != 1 {
 			return setUserInspectData{
 				target: u.tabID,
-				err:    fmt.Errorf("could not return user data for: %s", ivrResp.User.ID),
+				err:    fmt.Errorf("failed to fetch user data for: %s", ivrResp.User.ID),
 			}
 		}
+
+		// get all recent messages for user
+		loggedEntries, err := u.messageLogger.MessagesFromUserInChannel(u.user, u.channel)
+		if err != nil {
+			return setUserInspectData{
+				target: u.tabID,
+				err:    fmt.Errorf("failed to fetch user logs: %w", err),
+			}
+		}
+
+		fakeInitialEvent := make([]chatEventMessage, 0, len(loggedEntries))
+		for loggedEntry := range slices.Values(loggedEntries) {
+			// remove duplicate messages
+			isAlreadyStored := slices.ContainsFunc(initialEvents, func(e chatEventMessage) bool {
+				privMSG, ok := e.message.(*command.PrivateMessage)
+
+				if !ok {
+					return false
+				}
+
+				return privMSG.ID == loggedEntry.PrivateMessage.ID
+			})
+
+			if isAlreadyStored {
+				continue
+			}
+
+			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(loggedEntry.PrivateMessage.Message)
+			io.WriteString(os.Stdout, prepare)
+
+			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
+				isFakeEvent:                 true,
+				message:                     loggedEntry.PrivateMessage,
+				messageContentEmoteOverride: contentOverwrite,
+			})
+		}
+
+		// prepend all messages
+		initialEvents = append(fakeInitialEvent, initialEvents...)
+		slices.SortFunc(initialEvents, func(e1, e2 chatEventMessage) int {
+			var (
+				t1 time.Time
+				t2 time.Time
+			)
+
+			switch msg := e1.message.(type) {
+			case *command.PrivateMessage:
+				t1 = msg.TMISentTS
+			case *command.ClearChat:
+				t1 = msg.TMISentTS
+			}
+
+			switch msg := e2.message.(type) {
+			case *command.PrivateMessage:
+				t2 = msg.TMISentTS
+			case *command.ClearChat:
+				t2 = msg.TMISentTS
+			}
+
+			return t1.Compare(t2)
+		})
 
 		return setUserInspectData{
 			target:        u.tabID,
@@ -169,7 +234,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	}
 
 	// set badges, update for each message
-	// update bades if user inspect user is sender
+	// update badges if user inspect user is sender
 	if msg, ok := chatEvent.message.(*command.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
 		u.badges = msg.Badges
 	}

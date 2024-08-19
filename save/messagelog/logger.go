@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS messages (
 	sender_display TEXT NOT NULL collate nocase,
 	payload JSONB NOT NULL
 );
+CREATE INDEX IF NOT EXISTS user_in_broadcast_channel_idx ON messages (broadcast_channel, sender_display);
 CREATE INDEX IF NOT EXISTS user_in_room_idx ON messages (broadcast_id, sender_display);
 CREATE INDEX IF NOT EXISTS user_idx ON messages (user_id);
 COMMIT;`
@@ -50,15 +51,17 @@ const (
 type BatchedMessageLogger struct {
 	logger zerolog.Logger
 	db     DB
+	roDB   DB
 
 	includeChannels []string
 	excludeChannels []string
 }
 
-func NewBatchedMessageLogger(logger zerolog.Logger, db DB, includeChannels []string, excludeChannels []string) *BatchedMessageLogger {
+func NewBatchedMessageLogger(logger zerolog.Logger, db DB, roDB DB, includeChannels []string, excludeChannels []string) *BatchedMessageLogger {
 	return &BatchedMessageLogger{
 		logger:          logger,
 		db:              db,
+		roDB:            roDB,
 		includeChannels: includeChannels,
 		excludeChannels: excludeChannels,
 	}
@@ -91,9 +94,7 @@ func (b *BatchedMessageLogger) LogMessages(twitchMsgChan <-chan *command.Private
 
 	timer := time.NewTimer(maxBatchWait)
 	defer func() {
-		if !timer.Stop() {
-			<-timer.C
-		}
+		timer.Stop()
 	}()
 
 SELECT_LOOP:
@@ -163,9 +164,9 @@ SELECT_LOOP:
 	return nil
 }
 
-func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadcast_id string) ([]LogEntry, error) {
-	query := `SELECT id, broadcast_id, user_id, broadcast_channel, sent_at, sender_display, payload FROM messages WHERE sender_display = ? AND broadcast_id = CAST(? as int)`
-	rows, err := b.db.Query(query, username, broadcast_id)
+func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadcasterChannel string) ([]LogEntry, error) {
+	query := `SELECT id, broadcast_id, user_id, broadcast_channel, sent_at, sender_display, payload FROM messages WHERE sender_display = ? AND broadcast_channel = ?`
+	rows, err := b.roDB.Query(query, username, broadcasterChannel)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []LogEntry{}, nil

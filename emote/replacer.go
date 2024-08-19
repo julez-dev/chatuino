@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
@@ -99,14 +100,17 @@ type Replacer struct {
 	enableGraphics bool
 
 	cellWidth, cellHeight float32
-	placedEmotes          map[string]DecodedEmote
+
+	// The documentation for sync.Map suggests that our use-case is perfect for a sync.Map instead of a mutex because:
+	// A key is only written once
+	// A entry is read multiple times
+	// Only grow like cache
+	placedEmotes *sync.Map
 
 	openCached         func(Emote) (DecodedEmote, bool, error)
 	saveCached         func(Emote, DecodedEmote) error
 	createEncodedImage func(buff []byte, e Emote, offset int) (string, error)
-	lastImageID        int
-
-	m *sync.Mutex
+	lastImageID        atomic.Int32
 }
 
 func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool, cellWidth, cellHeight float32) *Replacer {
@@ -120,23 +124,15 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 		cellHeight:     cellHeight,
 		store:          store,
 		httpClient:     httpClient,
-		placedEmotes:   map[string]DecodedEmote{},
+		placedEmotes:   &sync.Map{},
 
 		openCached:         fsOpenCached,
 		saveCached:         SaveCache,
 		createEncodedImage: saveKittyFormattedImage,
-		m:                  &sync.Mutex{},
 	}
 }
 
 func (i *Replacer) Replace(content string) (string, string, error) {
-	// When using graphics, shared state causes race conditions
-	// this is not the case when only using colored mode.
-	if i.enableGraphics {
-		i.m.Lock()
-		defer i.m.Unlock()
-	}
-
 	words := strings.Split(content, " ")
 
 	var cmd strings.Builder
@@ -154,13 +150,13 @@ func (i *Replacer) Replace(content string) (string, string, error) {
 		}
 
 		// emote was already placed before, reuse virtual placement and replace emote text with unicode placeholders
-		if decoded, is := i.placedEmotes[emote.Text]; is {
-			words[windex] = decoded.DisplayUnicodePlaceholder()
+
+		if decoded, is := i.placedEmotes.Load(emote.Text); is {
+			words[windex] = decoded.(DecodedEmote).DisplayUnicodePlaceholder()
 			continue
 		}
 
-		// check if already in local files
-		i.lastImageID++
+		incrementID := i.lastImageID.Add(1)
 
 		cachedDecoded, isCached, err := i.openCached(emote)
 		if err != nil {
@@ -168,8 +164,8 @@ func (i *Replacer) Replace(content string) (string, string, error) {
 		}
 
 		if isCached {
-			cachedDecoded.ID = i.lastImageID
-			i.placedEmotes[emote.Text] = cachedDecoded
+			cachedDecoded.ID = int(incrementID)
+			i.placedEmotes.Store(emote.Text, cachedDecoded)
 			cmd.WriteString(cachedDecoded.PrepareCommand())
 			words[windex] = cachedDecoded.DisplayUnicodePlaceholder()
 			log.Logger.Info().Any("id", cachedDecoded.ID).Msg("cache fs hit")
@@ -190,14 +186,13 @@ func (i *Replacer) Replace(content string) (string, string, error) {
 		decoded, err := i.ConvertEmote(emote, imageBody)
 		if err != nil {
 			log.Logger.Err(err).Any("emote", emote).Send()
-
 			words[windex] = ReplaceEmoteColored(emote)
 			continue
 		}
-		decoded.ID = i.lastImageID
+		decoded.ID = int(incrementID)
 
 		// add to cache
-		i.placedEmotes[emote.Text] = decoded
+		i.placedEmotes.Store(emote.Text, decoded)
 
 		//  - step4: Create kitty CMD to transfer emote data
 		//  - step5: Create Placement
@@ -253,7 +248,6 @@ func (ij *Replacer) convertDefault(e Emote, r io.Reader) (DecodedEmote, error) {
 	encodedPath := base64.StdEncoding.EncodeToString([]byte(p))
 
 	return DecodedEmote{
-		ID:   ij.lastImageID,
 		Cols: cols,
 		Images: []DecodedImage{
 			{
@@ -302,7 +296,6 @@ func (ij *Replacer) convertAnimatedAvif(e Emote, r io.Reader) (DecodedEmote, err
 	}
 
 	decodedEmote.Cols = cols
-	decodedEmote.ID = ij.lastImageID
 
 	return decodedEmote, nil
 }
