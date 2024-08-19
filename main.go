@@ -131,10 +131,37 @@ func main() {
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
 			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
 
+			// message logger setup
+			db, err := openDB(false)
+			if err != nil {
+				return fmt.Errorf("failed to open sqlite db: %w", err)
+			}
+
+			roDB, err := openDB(true)
+			if err != nil {
+				return fmt.Errorf("failed to open readonly sqlite db: %w", err)
+			}
+
+			defer func() {
+				if err := db.Close(); err != nil {
+					log.Logger.Err(err).Msg("failed to close db connection")
+				}
+
+				if err := roDB.Close(); err != nil {
+					log.Logger.Err(err).Msg("failed to close db connection")
+				}
+			}()
+
+			messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db, roDB, settings.Moderation.LogsChannelInclude, settings.Moderation.LogsChannelExclude)
 			messageLoggerChan := make(chan *ttvCommand.PrivateMessage)
 			loggerWaitSync := make(chan struct{})
 
-			go runChatLogger(messageLoggerChan, loggerWaitSync, settings.Moderation)
+			if err := messageLogger.PrepareDatabase(); err != nil {
+				log.Logger.Err(err).Msg("failed to run prepare queries")
+				return fmt.Errorf("failed to migrate db: %w", err)
+			}
+
+			go runChatLogger(messageLogger, messageLoggerChan, loggerWaitSync, settings.Moderation.StoreChatLogs)
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote fetching.
@@ -179,6 +206,7 @@ func main() {
 					eventSubMultiplexer,
 					messageLoggerChan,
 					emoteReplacer,
+					messageLogger,
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
@@ -236,41 +264,40 @@ func main() {
 	}
 }
 
-func runChatLogger(messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWaitSync chan struct{}, settings save.ModerationSettings) {
+func openDB(readonly bool) (*sql.DB, error) {
+	dbPath, err := save.CreateDBFile()
+	if err != nil {
+		log.Logger.Err(err).Msg("failed to create db file")
+		return nil, err
+	}
+
+	var db *sql.DB
+
+	if readonly {
+		db, err = sql.Open("sqlite", "file:"+dbPath+"?mode=ro&_time_format=sqlite")
+	} else {
+		db, err = sql.Open("sqlite", "file:"+dbPath+"?_time_format=sqlite")
+	}
+
+	if err != nil {
+		log.Logger.Err(err).Msg("failed to create sqlite connection")
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(1)
+
+	return db, nil
+}
+
+func runChatLogger(messageLogger *messagelog.BatchedMessageLogger, messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWaitSync chan struct{}, enabled bool) {
 	defer func() {
 		for range messageLoggerChan {
 		}
 		close(loggerWaitSync)
 	}()
 
-	if !settings.StoreChatLogs {
+	if !enabled {
 		log.Logger.Debug().Msg("storing chat logs disabled")
-		return
-	}
-
-	dbPath, err := save.CreateDBFile()
-	if err != nil {
-		log.Logger.Err(err).Msg("failed to create db file")
-		return
-	}
-
-	db, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		log.Logger.Err(err).Msg("failed to create sqlite connection")
-		return
-	}
-
-	defer func() {
-		if err := db.Close(); err != nil {
-			log.Logger.Err(err).Msg("failed to close db connection")
-		}
-	}()
-
-	db.SetMaxOpenConns(1)
-	messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db, settings.LogsChannelInclude, settings.LogsChannelExclude)
-
-	if err := messageLogger.PrepareDatabase(); err != nil {
-		log.Logger.Err(err).Msg("failed to run prepare queries")
 		return
 	}
 

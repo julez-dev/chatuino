@@ -464,8 +464,8 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			msg.StreakMonths,
 		)
 
-		if msg.Message != "" {
-			text += ": " + msg.Message
+		if event.messageContentEmoteOverride != "" {
+			text += ": " + event.messageContentEmoteOverride
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
@@ -507,7 +507,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		text := fmt.Sprintf("%s: %s",
 			userRenderFn(msg.DisplayName),
-			msg.Message,
+			event.messageContentEmoteOverride,
 		)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))

@@ -3,6 +3,7 @@ package messagelog
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,6 +12,16 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 )
+
+type LogEntry struct {
+	ID               string
+	BroadCastID      int
+	UserID           int
+	BroadcastChannel string
+	SentAt           time.Time
+	SenderDisplay    string
+	PrivateMessage   *command.PrivateMessage
+}
 
 const sqlMigration = `BEGIN;
 CREATE TABLE IF NOT EXISTS messages (
@@ -22,12 +33,14 @@ CREATE TABLE IF NOT EXISTS messages (
 	sender_display TEXT NOT NULL collate nocase,
 	payload JSONB NOT NULL
 );
+CREATE INDEX IF NOT EXISTS user_in_broadcast_channel_idx ON messages (broadcast_channel, sender_display);
 CREATE INDEX IF NOT EXISTS user_in_room_idx ON messages (broadcast_id, sender_display);
 CREATE INDEX IF NOT EXISTS user_idx ON messages (user_id);
 COMMIT;`
 
 type DB interface {
 	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
 }
 
 const (
@@ -38,15 +51,17 @@ const (
 type BatchedMessageLogger struct {
 	logger zerolog.Logger
 	db     DB
+	roDB   DB
 
 	includeChannels []string
 	excludeChannels []string
 }
 
-func NewBatchedMessageLogger(logger zerolog.Logger, db DB, includeChannels []string, excludeChannels []string) *BatchedMessageLogger {
+func NewBatchedMessageLogger(logger zerolog.Logger, db DB, roDB DB, includeChannels []string, excludeChannels []string) *BatchedMessageLogger {
 	return &BatchedMessageLogger{
 		logger:          logger,
 		db:              db,
+		roDB:            roDB,
 		includeChannels: includeChannels,
 		excludeChannels: excludeChannels,
 	}
@@ -79,9 +94,7 @@ func (b *BatchedMessageLogger) LogMessages(twitchMsgChan <-chan *command.Private
 
 	timer := time.NewTimer(maxBatchWait)
 	defer func() {
-		if !timer.Stop() {
-			<-timer.C
-		}
+		timer.Stop()
 	}()
 
 SELECT_LOOP:
@@ -149,6 +162,56 @@ SELECT_LOOP:
 	}
 
 	return nil
+}
+
+func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadcasterChannel string) ([]LogEntry, error) {
+	query := `SELECT id, broadcast_id, user_id, broadcast_channel, sent_at, sender_display, payload FROM messages WHERE sender_display = ? AND broadcast_channel = ?`
+	rows, err := b.roDB.Query(query, username, broadcasterChannel)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []LogEntry{}, nil
+		}
+
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var logEntries []LogEntry
+
+	for rows.Next() {
+		var entry LogEntry
+		var rawPayload []byte
+		var rawSentAt string
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.BroadCastID,
+			&entry.UserID,
+			&entry.BroadcastChannel,
+			&rawSentAt,
+			&entry.SenderDisplay,
+			&rawPayload,
+		); err != nil {
+			return logEntries, err
+		}
+
+		entry.SentAt, err = time.Parse("2006-01-02 15:04:05-07:00", rawSentAt)
+		if err != nil {
+			return logEntries, err
+		}
+
+		if err := json.Unmarshal(rawPayload, &entry.PrivateMessage); err != nil {
+			return logEntries, err
+		}
+
+		logEntries = append(logEntries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return logEntries, err
+	}
+
+	return logEntries, nil
 }
 
 func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*command.PrivateMessage) error {

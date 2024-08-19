@@ -45,7 +45,6 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 		defer cancel()
 
 		users, err := ttv.GetUsers(ctx, []string{args[0]}, nil)
-
 		if err != nil {
 			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error())
 			return respMsg
@@ -57,7 +56,6 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 		}
 
 		err = ttv.UnbanUser(ctx, channelID, userAccountID, users.Data[0].ID)
-
 		if err != nil {
 			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while sending unban request: %s", err.Error())
 			return respMsg
@@ -100,7 +98,6 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 		defer cancel()
 
 		users, err := ttv.GetUsers(ctx, []string{args[0]}, nil)
-
 		if err != nil {
 			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error())
 			return respMsg
@@ -121,7 +118,6 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 			} else {
 				var err error
 				duration, err = strconv.Atoi(args[1])
-
 				if err != nil {
 					respMsg.message.(*command.Notice).Message = fmt.Sprintf("Could not convert %s to integer: %s", args[1], err.Error())
 					return respMsg
@@ -138,7 +134,6 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 			DurationInSeconds: duration,
 			Reason:            args[2],
 		})
-
 		if err != nil {
 			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while sending ban request: %s", err.Error())
 			return respMsg

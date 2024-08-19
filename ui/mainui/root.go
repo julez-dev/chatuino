@@ -17,6 +17,7 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
@@ -61,6 +62,10 @@ type EventSubPool interface {
 
 type RecentMessageService interface {
 	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error)
+}
+
+type MessageLogger interface {
+	MessagesFromUserInChannel(username string, broadcasterChannel string) ([]messagelog.LogEntry, error)
 }
 
 type tabKind int
@@ -197,6 +202,7 @@ type Root struct {
 	emoteReplacer        EmoteReplacer
 	serverAPI            APIClientWithRefresh
 	recentMessageService RecentMessageService
+	messageLogger        MessageLogger
 	buildTTVClient       func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
 	loadSaveState        func() (save.AppState, error)
 
@@ -239,6 +245,7 @@ func NewUI(
 	eventSub EventSubPool,
 	messageLoggerChan chan<- *command.PrivateMessage,
 	emoteReplacer EmoteReplacer,
+	messageLogger MessageLogger,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -270,6 +277,7 @@ func NewUI(
 		eventSub:           eventSub,
 		eventSubIn:         inEventSub,
 
+		messageLogger:        messageLogger,
 		emoteReplacer:        emoteReplacer,
 		messageLoggerChan:    messageLoggerChan,
 		accounts:             provider,
@@ -830,7 +838,7 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab
 		id := r.header.addTab(channel, identity)
 
 		headerHeight := r.getHeaderHeight()
-		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap)
+		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger)
 		return nTab
 	case mentionTabKind:
 		id := r.header.addTab("mentioned", "all")
