@@ -47,6 +47,7 @@ type KeyMap struct {
 	DumpChat     key.Binding `yaml:"dump_chat"`
 	QuickTimeout key.Binding `yaml:"quick_timeout"`
 	CopyMessage  key.Binding `yaml:"copy_message"`
+	SearchMode   key.Binding `yaml:"search_mode"`
 
 	// Unban Request
 	UnbanRequestMode key.Binding `yaml:"unban_request_mode"`
@@ -228,12 +229,15 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+u"),
 			key.WithHelp("ctrl+u", "open unban request mode in current channel"),
 		),
+		SearchMode: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "start search mode in chat window"),
+		),
 	}
 }
 
 func CreateReadKeyMap() (KeyMap, error) {
 	f, err := openCreateConfigFile(keyMapFileName)
-
 	if err != nil {
 		return KeyMap{}, err
 	}
@@ -241,7 +245,6 @@ func CreateReadKeyMap() (KeyMap, error) {
 	defer f.Close()
 
 	stat, err := f.Stat()
-
 	if err != nil {
 		return KeyMap{}, err
 	}
@@ -250,7 +253,6 @@ func CreateReadKeyMap() (KeyMap, error) {
 	if stat.Size() == 0 {
 		m := BuildDefaultKeyMap()
 		b, err := yaml.Marshal(&m)
-
 		if err != nil {
 			return KeyMap{}, err
 		}
@@ -263,7 +265,6 @@ func CreateReadKeyMap() (KeyMap, error) {
 	}
 
 	b, err := io.ReadAll(f)
-
 	if err != nil {
 		return KeyMap{}, err
 	}

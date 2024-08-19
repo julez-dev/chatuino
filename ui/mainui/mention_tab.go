@@ -26,7 +26,7 @@ type mentionTab struct {
 
 	focused bool
 
-	state         tabState
+	state         broadcastTabState
 	width, height int
 
 	usernames     []string
@@ -52,7 +52,6 @@ func (m *mentionTab) Init() tea.Cmd {
 	return func() tea.Msg {
 		// fetch all of users account names
 		accounts, err := m.provider.GetAllAccounts()
-
 		if err != nil {
 			return setMentionTabData{
 				err: err,
@@ -174,7 +173,7 @@ func (m *mentionTab) Channel() string {
 	return ""
 }
 
-func (m *mentionTab) State() tabState {
+func (m *mentionTab) State() broadcastTabState {
 	return m.state
 }
 

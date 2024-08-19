@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
@@ -60,12 +61,21 @@ type position struct {
 	CursorEnd   int
 }
 
+type chatWindowState int
+
+const (
+	viewChatWindowState chatWindowState = iota
+	searchChatWindowState
+)
+
 type chatWindow struct {
 	logger        zerolog.Logger
 	keymap        save.KeyMap
 	width, height int
 	emoteStore    EmoteStore
-	focused       bool
+
+	focused bool
+	state   chatWindowState
 
 	cursor             int
 	lineStart, lineEnd int
@@ -80,9 +90,17 @@ type chatWindow struct {
 	// optimize color rendering by caching render functions
 	// so we don't need to recreate a new lipgloss.Style for every message
 	userColorCache map[string]func(...string) string
+	searchInput    textinput.Model
 }
 
 func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
+	input := textinput.New()
+	input.CharLimit = 25
+	input.Prompt = "  /"
+	input.Placeholder = "search"
+	input.Cursor.BlinkSpeed = time.Millisecond * 750
+	input.Width = width
+
 	c := chatWindow{
 		keymap:         keymap,
 		logger:         logger,
@@ -90,6 +108,7 @@ func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteSto
 		height:         height,
 		emoteStore:     emoteStore,
 		userColorCache: map[string]func(...string) string{},
+		searchInput:    input,
 	}
 
 	return &c
@@ -100,6 +119,11 @@ func (c *chatWindow) Init() tea.Cmd {
 }
 
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	switch msg := msg.(type) {
 	case chatEventMessage:
 		c.handleMessage(msg)
@@ -107,6 +131,10 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	case tea.KeyMsg:
 		if c.focused {
 			switch {
+			case c.state == searchChatWindowState:
+				c.searchInput, cmd = c.searchInput.Update(msg)
+				cmds = append(cmds, cmd)
+				return c, tea.Batch(cmds...)
 			case key.Matches(msg, c.keymap.Down):
 				c.messageDown(1)
 			case key.Matches(msg, c.keymap.Up):
@@ -117,22 +145,42 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.moveToTop()
 			case key.Matches(msg, c.keymap.DumpChat):
 				c.debugDumpChat()
+			case key.Matches(msg, c.keymap.SearchMode) && c.state == viewChatWindowState:
+				c.state = searchChatWindowState
+				c.searchInput.Focus()
+				c.recalculateLines()
+				return c, c.searchInput.Focus()
 			}
 		}
 	}
 
+	if c.state == searchChatWindowState {
+		c.searchInput, cmd = c.searchInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	c.updatePort()
 
-	return c, nil
+	return c, tea.Batch(cmds...)
 }
 
 func (c *chatWindow) View() string {
-	if c.height < 1 {
+	height := c.height
+
+	if c.state == searchChatWindowState {
+		height--
+	}
+
+	if height < 1 {
 		return ""
 	}
 
-	spaces := make([]string, c.height-len(c.lines[c.lineStart:c.lineEnd]))
+	spaces := make([]string, height-len(c.lines[c.lineStart:c.lineEnd]))
 	lines := append(c.lines[c.lineStart:c.lineEnd], spaces...)
+
+	if c.state == searchChatWindowState {
+		return c.searchInput.View() + "\n" + strings.Join(lines, "\n")
+	}
 
 	return strings.Join(lines, "\n")
 }
@@ -577,28 +625,35 @@ func (c *chatWindow) updatePort() {
 	// validate cursors position
 	c.cursor = clamp(c.cursor, 0, len(c.lines))
 
-	if c.height < 0 {
+	height := c.height
+	if c.state == searchChatWindowState {
+		height--
+	}
+
+	if height < 0 {
 		c.lineStart = 0
 		c.lineEnd = 0
 		return
 	}
 
 	switch {
-	case len(c.lines) < c.height: // all lines fit in the height
+	case len(c.lines) < height: // all lines fit in the height
 		c.lineStart = 0
 		c.lineEnd = len(c.lines)
 	case c.cursor <= c.lineStart: // cursor is before the selection
 		c.lineStart = c.cursor
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
+		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+height)
 	case c.cursor >= c.lineEnd: // cursor is after the selection
 		c.lineEnd = c.cursor + 1
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
+		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+height)
 	}
 }
 
 func (c *chatWindow) recalculateLines() {
+	c.searchInput.Width = c.width
+
 	if len(c.entries) < 1 && len(c.lines) < 1 {
 		return
 	}
@@ -626,6 +681,11 @@ func (c *chatWindow) recalculateLines() {
 	}
 
 	if selected != nil {
+		height := c.height
+		if c.state == searchChatWindowState {
+			height--
+		}
+
 		c.cursor = selected.Position.CursorEnd
 		c.lineEnd = c.cursor + 1
 		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)

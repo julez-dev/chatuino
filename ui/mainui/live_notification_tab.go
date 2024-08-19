@@ -19,7 +19,7 @@ type liveNotificationTab struct {
 
 	focused bool
 
-	state         tabState
+	state         broadcastTabState
 	width, height int
 
 	streamerLive map[string]bool
@@ -125,7 +125,7 @@ func (l *liveNotificationTab) Channel() string {
 	return ""
 }
 
-func (l *liveNotificationTab) State() tabState {
+func (l *liveNotificationTab) State() broadcastTabState {
 	return l.state
 }
 

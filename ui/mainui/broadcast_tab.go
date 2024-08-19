@@ -42,9 +42,9 @@ type setChannelDataMessage struct {
 	initialMessages []twitch.IRCer
 }
 
-type tabState int
+type broadcastTabState int
 
-func (t tabState) String() string {
+func (t broadcastTabState) String() string {
 	switch t {
 	case 1:
 		return "Insert"
@@ -60,7 +60,7 @@ func (t tabState) String() string {
 }
 
 const (
-	inChatWindow tabState = iota
+	inChatWindow broadcastTabState = iota
 	insertMode
 	userInspectMode
 	userInspectInsertMode
@@ -80,7 +80,7 @@ type broadcastTab struct {
 	logger zerolog.Logger
 	keymap save.KeyMap
 
-	state tabState
+	state broadcastTabState
 
 	provider AccountProvider
 	account  save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
@@ -609,7 +609,7 @@ func (t *broadcastTab) ChannelID() string {
 	return t.channelID
 }
 
-func (t *broadcastTab) State() tabState {
+func (t *broadcastTab) State() broadcastTabState {
 	return t.state
 }
 
