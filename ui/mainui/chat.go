@@ -163,7 +163,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		}
 	}
 
-	if c.state == searchChatWindowState {
+	if c.state == searchChatWindowState && c.focused {
 		c.searchInput, cmd = c.searchInput.Update(msg)
 		cmds = append(cmds, cmd)
 	}

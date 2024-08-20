@@ -89,7 +89,7 @@ func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
 }
 
 func (s *streamStatus) View() string {
-	padded := lipgloss.NewStyle().Padding(0, 1).MaxWidth(s.width).Render
+	padded := lipgloss.NewStyle().MaxWidth(s.width).Render
 
 	if !s.isDataFetched {
 		return padded("Fetching chat settings...")
@@ -99,7 +99,16 @@ func (s *streamStatus) View() string {
 		return padded(s.err.Error())
 	}
 
-	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(s.tab.state.String()))
+	state := s.tab.state.String()
+	if s.tab.chatWindow.state == searchChatWindowState {
+		state = "Search"
+	}
+
+	if s.tab.state == userInspectMode && s.tab.userInspect.chatWindow.state == searchChatWindowState {
+		state = "Inspect / Search"
+	}
+
+	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(state))
 
 	settingsBuilder := strings.Builder{}
 
@@ -140,5 +149,5 @@ func (s *streamStatus) View() string {
 		settingsBuilder.WriteString("Unique Only")
 	}
 
-	return padded(stateStr + lipgloss.NewStyle().AlignHorizontal(lipgloss.Right).Width(s.width-lipgloss.Width(stateStr)-2).Render(settingsBuilder.String()))
+	return padded(stateStr + lipgloss.NewStyle().AlignHorizontal(lipgloss.Right).Width(s.width-lipgloss.Width(stateStr)).Render(settingsBuilder.String()))
 }

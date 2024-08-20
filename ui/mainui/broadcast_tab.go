@@ -478,8 +478,27 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 
 				// Close overlay windows
-				if key.Matches(msg, t.keymap.Escape) && t.chatWindow.state != searchChatWindowState && (t.userInspect == nil || t.userInspect.chatWindow.state != searchChatWindowState) {
-					t.logger.Info().Msg("esc pressed")
+				if key.Matches(msg, t.keymap.Escape) {
+					// first end search in user inspect sub window
+					if t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState {
+						t.userInspect.chatWindow, cmd = t.userInspect.chatWindow.Update(msg)
+						cmds = append(cmds, cmd)
+						return t, tea.Batch(cmds...)
+					}
+
+					// second case, end inspect mode or end insert mode in inspect window
+					if t.state == userInspectMode || t.state == userInspectInsertMode {
+						t.handleEscapePressed()
+						return t, nil
+					}
+
+					// third case, end search in 'main' chat window
+					if t.chatWindow.state == searchChatWindowState {
+						t.chatWindow, cmd = t.chatWindow.Update(msg)
+						cmds = append(cmds, cmd)
+						return t, tea.Batch(cmds...)
+					}
+
 					t.handleEscapePressed()
 					return t, nil
 				}
