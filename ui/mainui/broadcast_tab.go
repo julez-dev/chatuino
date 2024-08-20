@@ -433,8 +433,9 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		if t.focused {
 			switch msg := msg.(type) {
 			case tea.KeyMsg:
-				// Focus message input
-				if key.Matches(msg, t.keymap.InsertMode) && (t.state == inChatWindow || t.state == userInspectMode) {
+				// Focus message input, when not in insert mode and not in search mode inside chat window, depending on the current active chat window
+				if key.Matches(msg, t.keymap.InsertMode) &&
+					(t.state == inChatWindow && t.chatWindow.state != searchChatWindowState || t.state == userInspectMode && t.userInspect.chatWindow.state != searchChatWindowState) {
 					cmd := t.handleStartInsertMode()
 					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
@@ -477,7 +478,8 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 
 				// Close overlay windows
-				if key.Matches(msg, t.keymap.Escape) {
+				if key.Matches(msg, t.keymap.Escape) && t.chatWindow.state != searchChatWindowState && (t.userInspect == nil || t.userInspect.chatWindow.state != searchChatWindowState) {
+					t.logger.Info().Msg("esc pressed")
 					t.handleEscapePressed()
 					return t, nil
 				}
@@ -487,6 +489,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.messageInput, cmd = t.messageInput.Update(msg)
 				cmds = append(cmds, cmd)
 			}
+		}
+
+		// don't update any components when key message but not focused
+		if _, ok := msg.(tea.KeyMsg); ok && !t.focused {
+			return t, nil
 		}
 
 		t.chatWindow, cmd = t.chatWindow.Update(msg)
@@ -805,7 +812,7 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 
 	cmds = append(cmds, func() tea.Msg {
 		return requestLocalMessageHandleMessage{
-			accountID: t.ID(),
+			accountID: t.AccountID(),
 			message:   msg,
 		}
 	})
@@ -822,8 +829,16 @@ func (t *broadcastTab) handleCopyMessage() {
 
 	if t.state == inChatWindow {
 		_, entry = t.chatWindow.entryForCurrentCursor()
+		if t.chatWindow.state == searchChatWindowState {
+			t.chatWindow.handleStopSearchMode()
+			t.chatWindow.Blur()
+		}
 	} else {
 		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
+		if t.userInspect.chatWindow.state == searchChatWindowState {
+			t.userInspect.chatWindow.handleStopSearchMode()
+			t.userInspect.chatWindow.Blur()
+		}
 	}
 
 	if entry == nil || entry.IsDeleted {
@@ -924,8 +939,12 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 
 	if t.state == userInspectMode {
 		t.state = userInspectInsertMode
+		t.userInspect.chatWindow.handleStopSearchMode()
+		t.userInspect.chatWindow.Blur()
 	} else {
 		t.state = insertMode
+		t.chatWindow.handleStopSearchMode()
+		t.chatWindow.Blur()
 	}
 
 	t.messageInput.Focus()

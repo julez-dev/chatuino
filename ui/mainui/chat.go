@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
@@ -54,6 +56,7 @@ type chatEntry struct {
 	IsDeleted                 bool
 	OverwrittenMessageContent string
 	Event                     chatEventMessage
+	IsIgnored                 bool
 }
 
 type position struct {
@@ -131,25 +134,31 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	case tea.KeyMsg:
 		if c.focused {
 			switch {
-			case c.state == searchChatWindowState:
+			// start search
+			case key.Matches(msg, c.keymap.SearchMode):
+				return c, c.handleStartSearchMode()
+			// stop search
+			case key.Matches(msg, c.keymap.Escape) && c.state == searchChatWindowState:
+				c.handleStopSearchMode()
+				return c, nil
+			// update search, allow up and down arrow keys for navigation in result
+			case c.state == searchChatWindowState && msg.String() != "up" && msg.String() != "down":
 				c.searchInput, cmd = c.searchInput.Update(msg)
+				c.applySearch()
 				cmds = append(cmds, cmd)
 				return c, tea.Batch(cmds...)
 			case key.Matches(msg, c.keymap.Down):
 				c.messageDown(1)
 			case key.Matches(msg, c.keymap.Up):
 				c.messageUp(1)
+				return c, nil
 			case key.Matches(msg, c.keymap.GoToBottom):
 				c.moveToBottom()
 			case key.Matches(msg, c.keymap.GoToTop):
 				c.moveToTop()
 			case key.Matches(msg, c.keymap.DumpChat):
 				c.debugDumpChat()
-			case key.Matches(msg, c.keymap.SearchMode) && c.state == viewChatWindowState:
-				c.state = searchChatWindowState
-				c.searchInput.Focus()
-				c.recalculateLines()
-				return c, c.searchInput.Focus()
+
 			}
 		}
 	}
@@ -162,6 +171,30 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	c.updatePort()
 
 	return c, tea.Batch(cmds...)
+}
+
+func (c *chatWindow) handleStartSearchMode() tea.Cmd {
+	c.state = searchChatWindowState
+	c.searchInput.Focus()
+	c.recalculateLines()
+	return c.searchInput.Focus()
+}
+
+func (c *chatWindow) handleStopSearchMode() {
+	c.state = viewChatWindowState
+	var last *chatEntry
+	for e := range slices.Values(c.entries) {
+		e.IsIgnored = false
+		last = e
+		e.Selected = false
+	}
+
+	if last != nil {
+		last.Selected = true
+	}
+	c.searchInput.SetValue("")
+	c.recalculateLines()
+	c.moveToBottom()
 }
 
 func (c *chatWindow) View() string {
@@ -237,11 +270,12 @@ func (c *chatWindow) debugDumpChat() {
 }
 
 func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
-	if len(c.entries) < 1 {
+	active := c.activeEntries()
+	if len(active) < 1 {
 		return -1, nil
 	}
 
-	for i, e := range c.entries {
+	for i, e := range active {
 		if c.cursor >= e.Position.CursorStart && c.cursor <= e.Position.CursorEnd {
 			return i, e
 		}
@@ -251,7 +285,8 @@ func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
 }
 
 func (c *chatWindow) messageDown(n int) {
-	if len(c.entries) < 1 {
+	active := c.activeEntries()
+	if len(active) < 1 {
 		return
 	}
 
@@ -263,17 +298,18 @@ func (c *chatWindow) messageDown(n int) {
 
 	e.Selected = false
 
-	i = clamp(i+n, 0, len(c.entries)-1)
+	i = clamp(i+n, 0, len(active)-1)
 
-	c.entries[i].Selected = true
-	c.cursor = c.entries[i].Position.CursorEnd
+	active[i].Selected = true
+	c.cursor = active[i].Position.CursorEnd
 
 	c.updatePort()
 	c.markSelectedMessage()
 }
 
 func (c *chatWindow) messageUp(n int) {
-	if len(c.entries) < 1 {
+	active := c.activeEntries()
+	if len(active) < 1 {
 		return
 	}
 
@@ -285,10 +321,10 @@ func (c *chatWindow) messageUp(n int) {
 
 	e.Selected = false
 
-	i = clamp(i-n, 0, len(c.entries)-1)
+	i = clamp(i-n, 0, len(active)-1)
 
-	c.entries[i].Selected = true
-	c.cursor = c.entries[i].Position.CursorStart
+	active[i].Selected = true
+	c.cursor = active[i].Position.CursorStart
 
 	c.updatePort()
 	c.markSelectedMessage()
@@ -301,7 +337,8 @@ func (c *chatWindow) moveToBottom() {
 		return
 	}
 
-	c.messageDown(len(c.entries) - i)
+	active := c.activeEntries()
+	c.messageDown(len(active) - i)
 }
 
 func (c *chatWindow) moveToTop() {
@@ -315,8 +352,9 @@ func (c *chatWindow) moveToTop() {
 }
 
 func (c *chatWindow) getNewestEntry() *chatEntry {
-	if len(c.entries) > 0 {
-		return c.entries[len(c.entries)-1]
+	active := c.activeEntries()
+	if len(active) > 0 {
+		return active[len(active)-1]
 	}
 
 	return nil
@@ -331,7 +369,9 @@ func (c *chatWindow) markSelectedMessage() {
 		}
 	}
 
-	for _, e := range c.entries {
+	active := c.activeEntries()
+
+	for e := range slices.Values(active) {
 		if !e.Selected {
 			continue
 		}
@@ -412,8 +452,15 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 		Event:                     msg,
 	}
 
-	c.entries = append(c.entries, entry)
-	c.lines = append(c.lines, lines...)
+	// we are currently searching and the new entry does not match the search, then ignore new entry
+	if c.state == searchChatWindowState && !c.entryMatchesSearch(entry) {
+		entry.IsIgnored = true
+		c.entries = append(c.entries, entry)
+	} else {
+		c.entries = append(c.entries, entry)
+		c.lines = append(c.lines, lines...)
+	}
+
 	c.updatePort()
 
 	if wasLatestMessage {
@@ -623,7 +670,7 @@ func (c *chatWindow) colorMessageMentions(message string) string {
 
 func (c *chatWindow) updatePort() {
 	// validate cursors position
-	c.cursor = clamp(c.cursor, 0, len(c.lines))
+	c.cursor = clamp(c.cursor, 0, len(c.lines)-1)
 
 	height := c.height
 	if c.state == searchChatWindowState {
@@ -645,7 +692,7 @@ func (c *chatWindow) updatePort() {
 		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+height)
 	case c.cursor >= c.lineEnd: // cursor is after the selection
 		c.lineEnd = c.cursor + 1
-		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
+		c.lineStart = clamp(c.lineEnd-height, 0, c.lineEnd)
 	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
 		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+height)
 	}
@@ -654,7 +701,9 @@ func (c *chatWindow) updatePort() {
 func (c *chatWindow) recalculateLines() {
 	c.searchInput.Width = c.width
 
-	if len(c.entries) < 1 && len(c.lines) < 1 {
+	entries := c.activeEntries()
+
+	if len(entries) < 1 && len(c.lines) < 1 {
 		return
 	}
 
@@ -665,7 +714,7 @@ func (c *chatWindow) recalculateLines() {
 
 	var prevEntry *chatEntry
 
-	for _, e := range c.entries {
+	for e := range slices.Values(entries) {
 		lastCursorEnd := -1
 
 		if prevEntry != nil {
@@ -693,4 +742,52 @@ func (c *chatWindow) recalculateLines() {
 
 	c.updatePort()
 	c.markSelectedMessage()
+}
+
+func (c *chatWindow) activeEntries() []*chatEntry {
+	activeEntries := []*chatEntry{}
+	for e := range slices.Values(c.entries) {
+		if !e.IsIgnored {
+			activeEntries = append(activeEntries, e)
+		}
+	}
+
+	return activeEntries
+}
+
+func (c *chatWindow) applySearch() {
+	var last *chatEntry
+	for e := range slices.Values(c.entries) {
+		e.Selected = false
+		if c.entryMatchesSearch(e) {
+			e.IsIgnored = false
+			last = e
+			continue
+		}
+
+		e.IsIgnored = true
+	}
+
+	if last != nil {
+		last.Selected = true
+	}
+
+	c.recalculateLines()
+	c.updatePort()
+	c.moveToBottom()
+}
+
+func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
+	cast, ok := e.Event.message.(*command.PrivateMessage)
+
+	if !ok {
+		return false
+	}
+
+	search := c.searchInput.Value()
+	if fuzzy.MatchFold(search, cast.DisplayName) || fuzzy.MatchFold(search, cast.Message) {
+		return true
+	}
+
+	return false
 }
