@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	cleanupAfterMessage float64 = 1000.0
+	cleanupAfterMessage float64 = 800.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 	// prefixPadding               = 41
 	prefixPadding = 0
@@ -389,6 +389,44 @@ func (c *chatWindow) markSelectedMessage() {
 	}
 }
 
+func (c *chatWindow) cleanup() {
+	// todo: make this smarter, so we can delete more often
+	// c.logger.Info().Msgf("(%d/%d)", len(c.entries), cleanupThreshold)
+	if len(c.entries) < cleanupThreshold {
+		return
+	}
+
+	if c.state == searchChatWindowState {
+		return
+	}
+
+	if e := c.getNewestEntry(); e == nil || !e.Selected {
+		c.logger.Info().Msg("skip cleanup because not on newest message")
+		return
+	}
+
+	c.logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
+	c.entries = c.entries[int(cleanupAfterMessage):]
+	c.recalculateLines()
+
+	// for i, e := range c.entries {
+	// 	if e.IsIgnored {
+	// 		continue
+	// 	}
+
+	// 	if c.lineStart >= e.Position.CursorStart && c.lineStart <= e.Position.CursorEnd {
+	// 		c.logger.Info().Int("index", i).Int("threshold", cleanupThreshold).Msg("cleanup")
+
+	// 		if i > cleanupThreshold {
+	// 			c.entries = c.entries[i:]
+	// 			c.recalculateLines()
+	// 		}
+
+	// 		return
+	// 	}
+	// }
+}
+
 func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	switch msg.message.(type) {
 	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage: // supported Message types
@@ -397,14 +435,21 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	}
 
 	// cleanup messages if we have more messages than cleanupThreshold
-	if len(c.entries) > cleanupThreshold {
-		_, currentEntry := c.entryForCurrentCursor()
+	// if len(c.entries) > cleanupThreshold {
+	// 	_, currentEntry := c.entryForCurrentCursor()
 
-		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
-			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
-			c.recalculateLines()
-		}
-	}
+	// 	remainingStart := len(c.entries) - int(cleanupAfterMessage)
+	// 	c.logger.Info().Int("c.lineStart", c.lineStart).Int("remaining-start", remainingStart).Int("new-len", len(c.entries[remainingStart:])).Msg("cleanup")
+	// 	if currentEntry == nil || c.lineStart > remainingStart {
+	// 		c.logger.Info().Int("c.lineStart", c.lineStart).Int("remaining-start", remainingStart).Int("new-len", len(c.entries[remainingStart:])).Msg("done cleanup")
+
+	// 		c.entries = c.entries[remainingStart:]
+	// 		c.recalculateLines()
+	// 	}
+	// }
+
+	// 1st: number of entries before line start
+	c.cleanup()
 
 	// if timeout message, rewrite all messages from user
 	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok {
@@ -736,8 +781,6 @@ func (c *chatWindow) recalculateLines() {
 		}
 
 		c.cursor = selected.Position.CursorEnd
-		c.lineEnd = c.cursor + 1
-		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	}
 
 	c.updatePort()
