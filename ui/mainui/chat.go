@@ -732,14 +732,33 @@ func (c *chatWindow) updatePort() {
 	case len(c.lines) < height: // all lines fit in the height
 		c.lineStart = 0
 		c.lineEnd = len(c.lines)
-	case c.cursor <= c.lineStart: // cursor is before the selection
+	case c.cursor <= c.lineStart: // cursor is before the viewport
+		// start new port from current cursor location
 		c.lineStart = c.cursor
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+height)
-	case c.cursor >= c.lineEnd: // cursor is after the selection
+
+		spaceAvailable := height // we can use this many space at most
+		// if we have less lines than height, set space to len
+		linesFromStart := len(c.lines[c.lineStart:])
+		if linesFromStart < spaceAvailable {
+			spaceAvailable = linesFromStart
+		}
+
+		c.lineEnd = c.lineStart + spaceAvailable
+	case c.cursor+1 >= c.lineEnd: // the cursor is after the view
 		c.lineEnd = c.cursor + 1
-		c.lineStart = clamp(c.lineEnd-height, 0, c.lineEnd)
-	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+height)
+		c.lineStart = c.lineEnd - height
+
+		if c.lineStart < 0 {
+			c.lineStart = 0
+		}
+	case c.cursor >= c.lineStart && c.cursor <= c.lineEnd: // validate cursor inside view
+		c.lineEnd = c.lineStart + height
+
+		// height is bigger than the number of lines, can only display x lines instead
+		if len(c.lines[c.lineStart:]) < height {
+			c.lineEnd = c.lineStart + len(c.lines[c.lineStart:])
+		}
+
 	}
 }
 
@@ -775,11 +794,6 @@ func (c *chatWindow) recalculateLines() {
 	}
 
 	if selected != nil {
-		height := c.height
-		if c.state == searchChatWindowState {
-			height--
-		}
-
 		c.cursor = selected.Position.CursorEnd
 	}
 

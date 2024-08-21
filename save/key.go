@@ -48,6 +48,7 @@ type KeyMap struct {
 	QuickTimeout key.Binding `yaml:"quick_timeout"`
 	CopyMessage  key.Binding `yaml:"copy_message"`
 	SearchMode   key.Binding `yaml:"search_mode"`
+	QuickSent    key.Binding `yaml:"quick_sent"`
 
 	// Unban Request
 	UnbanRequestMode key.Binding `yaml:"unban_request_mode"`
@@ -232,6 +233,10 @@ func BuildDefaultKeyMap() KeyMap {
 		SearchMode: key.NewBinding(
 			key.WithKeys("/"),
 			key.WithHelp("/", "start search mode in chat window"),
+		),
+		QuickSent: key.NewBinding(
+			key.WithKeys("alt+enter"),
+			key.WithHelp("alt+enter", "send message but stay in insert mode"),
 		),
 	}
 }

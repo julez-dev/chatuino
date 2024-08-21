@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,7 @@ type broadcastTab struct {
 
 	channelDataLoaded bool
 	lastMessageSent   string
+	lastMessageSentAt time.Time
 
 	channel    string
 	channelID  string
@@ -462,7 +464,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				// Send message
 				if key.Matches(msg, t.keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-					return t, t.handleMessageSent()
+					return t, t.handleMessageSent(false)
+				}
+
+				// Send message - quick send
+				if key.Matches(msg, t.keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+					return t, t.handleMessageSent(true)
 				}
 
 				// Set quick time out message to message input
@@ -752,20 +759,114 @@ func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
 	return t.unbanWindow.Init()
 }
 
-func (t *broadcastTab) handleMessageSent() tea.Cmd {
-	input := t.messageInput.Value()
-
-	// reset state
-	if t.state == userInspectInsertMode {
-		t.state = userInspectMode
-		t.userInspect.chatWindow.Focus()
-	} else {
-		t.state = inChatWindow
-		t.chatWindow.Focus()
+// handlePyramidMessagesCommand build a message pyramid with the given word and count
+// like this:
+// word
+// word word
+// word word word
+// word word
+// word
+func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Expected Usage: /pyramid <word> <count>",
+				},
+			}
+		}
 	}
 
-	t.messageInput.Blur()
-	t.messageInput.SetValue("")
+	word := args[0]
+	count, err := strconv.Atoi(args[1])
+	if err != nil {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Failed to convert count to integer",
+				},
+			}
+		}
+	}
+
+	var msgs []twitch.IRCer
+	for i := 1; i <= count; i++ {
+		msgs = append(msgs, &command.PrivateMessage{
+			ID:              uuid.Must(uuid.NewUUID()).String(),
+			ChannelUserName: t.channel,
+			Message:         strings.Repeat(word+" ", i),
+			DisplayName:     t.account.DisplayName,
+			TMISentTS:       time.Now(),
+		})
+	}
+
+	for i := count - 1; i > 0; i-- {
+		msgs = append(msgs, &command.PrivateMessage{
+			ID:              uuid.Must(uuid.NewUUID()).String(),
+			ChannelUserName: t.channel,
+			Message:         strings.Repeat(word+" ", i),
+			DisplayName:     t.account.DisplayName,
+			TMISentTS:       time.Now(),
+		})
+	}
+
+	accountIsStreamer := t.account.ID == t.channelID
+	var delay time.Duration
+	if accountIsStreamer {
+		delay = time.Millisecond * 500
+	} else {
+		delay = time.Millisecond * 1050
+	}
+
+	var cmds []tea.Cmd
+	for i, msg := range msgs {
+		cmds = append(cmds, func() tea.Msg {
+			time.Sleep(delay)
+			if i%2 == 0 {
+				msg.(*command.PrivateMessage).Message += string(duplicateBypass)
+			}
+			return forwardChatMessage{
+				msg: multiplex.InboundMessage{
+					AccountID: t.account.ID,
+					Msg:       msg,
+				},
+			}
+		})
+
+		cmds = append(cmds, func() tea.Msg {
+			return requestLocalMessageHandleMessage{
+				accountID: t.AccountID(),
+				message:   msg,
+			}
+		})
+
+	}
+
+	return tea.Sequence(cmds...)
+}
+
+func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
+	input := t.messageInput.Value()
+
+	if !quickSend {
+		// reset state
+		if t.state == userInspectInsertMode {
+			t.state = userInspectMode
+			t.userInspect.chatWindow.Focus()
+		} else {
+			t.state = inChatWindow
+			t.chatWindow.Focus()
+		}
+
+		t.messageInput.Blur()
+		t.messageInput.SetValue("")
+	}
 
 	// Check if input is a command
 	if strings.HasPrefix(input, "/") {
@@ -792,6 +893,8 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 			return t.handleOpenBrowserChannel()
 		case strings.HasPrefix(commandName, "banrequests"):
 			return t.handleOpenBanRequest()
+		case strings.HasPrefix(commandName, "pyramid"):
+			return t.handlePyramidMessagesCommand(args)
 		}
 
 		// Message input is only allowed for authenticated users
@@ -809,8 +912,6 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		input = input + string(duplicateBypass)
 	}
 
-	t.lastMessageSent = input
-
 	msg := &command.PrivateMessage{
 		ID:              uuid.Must(uuid.NewUUID()).String(),
 		ChannelUserName: t.channel,
@@ -819,8 +920,15 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		TMISentTS:       time.Now(),
 	}
 
+	lastSent := t.lastMessageSentAt
 	cmds := []tea.Cmd{}
 	cmds = append(cmds, func() tea.Msg {
+		const delay = time.Second
+		diff := time.Since(lastSent)
+		if diff < delay {
+			time.Sleep(delay - diff)
+		}
+
 		return forwardChatMessage{
 			msg: multiplex.InboundMessage{
 				AccountID: t.account.ID,
@@ -835,6 +943,9 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 			message:   msg,
 		}
 	})
+
+	t.lastMessageSent = input
+	t.lastMessageSentAt = time.Now()
 
 	return tea.Sequence(cmds...)
 }

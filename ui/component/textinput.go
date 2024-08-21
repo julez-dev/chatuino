@@ -21,6 +21,7 @@ var commandSuggestions = [...]string{
 	"/popupchat",
 	"/channel",
 	"/banrequests",
+	"/pyramid <word> <count>",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
