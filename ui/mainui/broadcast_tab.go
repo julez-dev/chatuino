@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,9 +43,9 @@ type setChannelDataMessage struct {
 	initialMessages []twitch.IRCer
 }
 
-type tabState int
+type broadcastTabState int
 
-func (t tabState) String() string {
+func (t broadcastTabState) String() string {
 	switch t {
 	case 1:
 		return "Insert"
@@ -60,7 +61,7 @@ func (t tabState) String() string {
 }
 
 const (
-	inChatWindow tabState = iota
+	inChatWindow broadcastTabState = iota
 	insertMode
 	userInspectMode
 	userInspectInsertMode
@@ -80,7 +81,7 @@ type broadcastTab struct {
 	logger zerolog.Logger
 	keymap save.KeyMap
 
-	state tabState
+	state broadcastTabState
 
 	provider AccountProvider
 	account  save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
@@ -88,6 +89,7 @@ type broadcastTab struct {
 
 	channelDataLoaded bool
 	lastMessageSent   string
+	lastMessageSentAt time.Time
 
 	channel    string
 	channelID  string
@@ -433,8 +435,9 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		if t.focused {
 			switch msg := msg.(type) {
 			case tea.KeyMsg:
-				// Focus message input
-				if key.Matches(msg, t.keymap.InsertMode) && (t.state == inChatWindow || t.state == userInspectMode) {
+				// Focus message input, when not in insert mode and not in search mode inside chat window, depending on the current active chat window
+				if key.Matches(msg, t.keymap.InsertMode) &&
+					(t.state == inChatWindow && t.chatWindow.state != searchChatWindowState || t.state == userInspectMode && t.userInspect.chatWindow.state != searchChatWindowState) {
 					cmd := t.handleStartInsertMode()
 					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
@@ -461,7 +464,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				// Send message
 				if key.Matches(msg, t.keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-					return t, t.handleMessageSent()
+					return t, t.handleMessageSent(false)
+				}
+
+				// Send message - quick send
+				if key.Matches(msg, t.keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+					return t, t.handleMessageSent(true)
 				}
 
 				// Set quick time out message to message input
@@ -478,6 +486,26 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				// Close overlay windows
 				if key.Matches(msg, t.keymap.Escape) {
+					// first end search in user inspect sub window
+					if t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState {
+						t.userInspect.chatWindow, cmd = t.userInspect.chatWindow.Update(msg)
+						cmds = append(cmds, cmd)
+						return t, tea.Batch(cmds...)
+					}
+
+					// second case, end inspect mode or end insert mode in inspect window
+					if t.state == userInspectMode || t.state == userInspectInsertMode {
+						t.handleEscapePressed()
+						return t, nil
+					}
+
+					// third case, end search in 'main' chat window
+					if t.chatWindow.state == searchChatWindowState {
+						t.chatWindow, cmd = t.chatWindow.Update(msg)
+						cmds = append(cmds, cmd)
+						return t, tea.Batch(cmds...)
+					}
+
 					t.handleEscapePressed()
 					return t, nil
 				}
@@ -487,6 +515,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.messageInput, cmd = t.messageInput.Update(msg)
 				cmds = append(cmds, cmd)
 			}
+		}
+
+		// don't update any components when key message but not focused
+		if _, ok := msg.(tea.KeyMsg); ok && !t.focused {
+			return t, nil
 		}
 
 		t.chatWindow, cmd = t.chatWindow.Update(msg)
@@ -609,7 +642,7 @@ func (t *broadcastTab) ChannelID() string {
 	return t.channelID
 }
 
-func (t *broadcastTab) State() tabState {
+func (t *broadcastTab) State() broadcastTabState {
 	return t.state
 }
 
@@ -726,20 +759,131 @@ func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
 	return t.unbanWindow.Init()
 }
 
-func (t *broadcastTab) handleMessageSent() tea.Cmd {
-	input := t.messageInput.Value()
+// handlePyramidMessagesCommand build a message pyramid with the given word and count
+// like this:
+// word
+// word word
+// word word word
+// word word
+// word
+func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
+	accountIsStreamer := t.account.ID == t.channelID
 
-	// reset state
-	if t.state == userInspectInsertMode {
-		t.state = userInspectMode
-		t.userInspect.chatWindow.Focus()
-	} else {
-		t.state = inChatWindow
-		t.chatWindow.Focus()
+	if !accountIsStreamer && t.statusInfo != nil && t.statusInfo.settings.SlowMode {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Pyramid command is disabled in slow mode",
+				},
+			}
+		}
 	}
 
-	t.messageInput.Blur()
-	t.messageInput.SetValue("")
+	if len(args) < 2 {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Expected Usage: /pyramid <word> <count>",
+				},
+			}
+		}
+	}
+
+	word := args[0]
+	count, err := strconv.Atoi(args[1])
+	if err != nil {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Failed to convert count to integer",
+				},
+			}
+		}
+	}
+
+	var msgs []twitch.IRCer
+	for i := 1; i <= count; i++ {
+		msgs = append(msgs, &command.PrivateMessage{
+			ID:              uuid.Must(uuid.NewUUID()).String(),
+			ChannelUserName: t.channel,
+			Message:         strings.Repeat(word+" ", i),
+			DisplayName:     t.account.DisplayName,
+			TMISentTS:       time.Now(),
+		})
+	}
+
+	for i := count - 1; i > 0; i-- {
+		msgs = append(msgs, &command.PrivateMessage{
+			ID:              uuid.Must(uuid.NewUUID()).String(),
+			ChannelUserName: t.channel,
+			Message:         strings.Repeat(word+" ", i),
+			DisplayName:     t.account.DisplayName,
+			TMISentTS:       time.Now(),
+		})
+	}
+
+	var delay time.Duration
+	if accountIsStreamer {
+		delay = time.Millisecond * 500
+	} else {
+		delay = time.Millisecond * 1050
+	}
+
+	var cmds []tea.Cmd
+	for i, msg := range msgs {
+		cmds = append(cmds, func() tea.Msg {
+			time.Sleep(delay)
+			if i%2 == 0 {
+				msg.(*command.PrivateMessage).Message += string(duplicateBypass)
+			}
+			return forwardChatMessage{
+				msg: multiplex.InboundMessage{
+					AccountID: t.account.ID,
+					Msg:       msg,
+				},
+			}
+		})
+
+		cmds = append(cmds, func() tea.Msg {
+			return requestLocalMessageHandleMessage{
+				accountID: t.AccountID(),
+				message:   msg,
+			}
+		})
+
+	}
+
+	return tea.Sequence(cmds...)
+}
+
+func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
+	input := t.messageInput.Value()
+
+	if !quickSend {
+		// reset state
+		if t.state == userInspectInsertMode {
+			t.state = userInspectMode
+			t.userInspect.chatWindow.Focus()
+		} else {
+			t.state = inChatWindow
+			t.chatWindow.Focus()
+		}
+
+		t.messageInput.Blur()
+		t.messageInput.SetValue("")
+	}
 
 	// Check if input is a command
 	if strings.HasPrefix(input, "/") {
@@ -766,6 +910,8 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 			return t.handleOpenBrowserChannel()
 		case strings.HasPrefix(commandName, "banrequests"):
 			return t.handleOpenBanRequest()
+		case strings.HasPrefix(commandName, "pyramid"):
+			return t.handlePyramidMessagesCommand(args)
 		}
 
 		// Message input is only allowed for authenticated users
@@ -783,8 +929,6 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		input = input + string(duplicateBypass)
 	}
 
-	t.lastMessageSent = input
-
 	msg := &command.PrivateMessage{
 		ID:              uuid.Must(uuid.NewUUID()).String(),
 		ChannelUserName: t.channel,
@@ -793,8 +937,15 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 		TMISentTS:       time.Now(),
 	}
 
+	lastSent := t.lastMessageSentAt
 	cmds := []tea.Cmd{}
 	cmds = append(cmds, func() tea.Msg {
+		const delay = time.Second
+		diff := time.Since(lastSent)
+		if diff < delay {
+			time.Sleep(delay - diff)
+		}
+
 		return forwardChatMessage{
 			msg: multiplex.InboundMessage{
 				AccountID: t.account.ID,
@@ -805,10 +956,13 @@ func (t *broadcastTab) handleMessageSent() tea.Cmd {
 
 	cmds = append(cmds, func() tea.Msg {
 		return requestLocalMessageHandleMessage{
-			accountID: t.ID(),
+			accountID: t.AccountID(),
 			message:   msg,
 		}
 	})
+
+	t.lastMessageSent = input
+	t.lastMessageSentAt = time.Now()
 
 	return tea.Sequence(cmds...)
 }
@@ -822,8 +976,16 @@ func (t *broadcastTab) handleCopyMessage() {
 
 	if t.state == inChatWindow {
 		_, entry = t.chatWindow.entryForCurrentCursor()
+		if t.chatWindow.state == searchChatWindowState {
+			t.chatWindow.handleStopSearchMode()
+			t.chatWindow.Blur()
+		}
 	} else {
 		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
+		if t.userInspect.chatWindow.state == searchChatWindowState {
+			t.userInspect.chatWindow.handleStopSearchMode()
+			t.userInspect.chatWindow.Blur()
+		}
 	}
 
 	if entry == nil || entry.IsDeleted {
@@ -924,8 +1086,12 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 
 	if t.state == userInspectMode {
 		t.state = userInspectInsertMode
+		t.userInspect.chatWindow.handleStopSearchMode()
+		t.userInspect.chatWindow.Blur()
 	} else {
 		t.state = insertMode
+		t.chatWindow.handleStopSearchMode()
+		t.chatWindow.Blur()
 	}
 
 	t.messageInput.Focus()

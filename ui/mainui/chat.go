@@ -4,21 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
 )
 
 const (
-	cleanupAfterMessage float64 = 1000.0
+	cleanupAfterMessage float64 = 800.0
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 	// prefixPadding               = 41
 	prefixPadding = 0
@@ -53,6 +56,7 @@ type chatEntry struct {
 	IsDeleted                 bool
 	OverwrittenMessageContent string
 	Event                     chatEventMessage
+	IsIgnored                 bool
 }
 
 type position struct {
@@ -60,12 +64,21 @@ type position struct {
 	CursorEnd   int
 }
 
+type chatWindowState int
+
+const (
+	viewChatWindowState chatWindowState = iota
+	searchChatWindowState
+)
+
 type chatWindow struct {
 	logger        zerolog.Logger
 	keymap        save.KeyMap
 	width, height int
 	emoteStore    EmoteStore
-	focused       bool
+
+	focused bool
+	state   chatWindowState
 
 	cursor             int
 	lineStart, lineEnd int
@@ -80,9 +93,17 @@ type chatWindow struct {
 	// optimize color rendering by caching render functions
 	// so we don't need to recreate a new lipgloss.Style for every message
 	userColorCache map[string]func(...string) string
+	searchInput    textinput.Model
 }
 
 func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
+	input := textinput.New()
+	input.CharLimit = 25
+	input.Prompt = "  /"
+	input.Placeholder = "search"
+	input.Cursor.BlinkSpeed = time.Millisecond * 750
+	input.Width = width
+
 	c := chatWindow{
 		keymap:         keymap,
 		logger:         logger,
@@ -90,6 +111,7 @@ func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteSto
 		height:         height,
 		emoteStore:     emoteStore,
 		userColorCache: map[string]func(...string) string{},
+		searchInput:    input,
 	}
 
 	return &c
@@ -100,6 +122,11 @@ func (c *chatWindow) Init() tea.Cmd {
 }
 
 func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	switch msg := msg.(type) {
 	case chatEventMessage:
 		c.handleMessage(msg)
@@ -107,32 +134,86 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	case tea.KeyMsg:
 		if c.focused {
 			switch {
+			// start search
+			case key.Matches(msg, c.keymap.SearchMode):
+				return c, c.handleStartSearchMode()
+			// stop search
+			case key.Matches(msg, c.keymap.Escape) && c.state == searchChatWindowState:
+				c.handleStopSearchMode()
+				return c, nil
+			// update search, allow up and down arrow keys for navigation in result
+			case c.state == searchChatWindowState && msg.String() != "up" && msg.String() != "down":
+				c.searchInput, cmd = c.searchInput.Update(msg)
+				c.applySearch()
+				cmds = append(cmds, cmd)
+				return c, tea.Batch(cmds...)
 			case key.Matches(msg, c.keymap.Down):
 				c.messageDown(1)
 			case key.Matches(msg, c.keymap.Up):
 				c.messageUp(1)
+				return c, nil
 			case key.Matches(msg, c.keymap.GoToBottom):
 				c.moveToBottom()
 			case key.Matches(msg, c.keymap.GoToTop):
 				c.moveToTop()
 			case key.Matches(msg, c.keymap.DumpChat):
 				c.debugDumpChat()
+
 			}
 		}
 	}
 
+	if c.state == searchChatWindowState && c.focused {
+		c.searchInput, cmd = c.searchInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	c.updatePort()
 
-	return c, nil
+	return c, tea.Batch(cmds...)
+}
+
+func (c *chatWindow) handleStartSearchMode() tea.Cmd {
+	c.state = searchChatWindowState
+	c.searchInput.Focus()
+	c.recalculateLines()
+	return c.searchInput.Focus()
+}
+
+func (c *chatWindow) handleStopSearchMode() {
+	c.state = viewChatWindowState
+	var last *chatEntry
+	for e := range slices.Values(c.entries) {
+		e.IsIgnored = false
+		last = e
+		e.Selected = false
+	}
+
+	if last != nil {
+		last.Selected = true
+	}
+	c.searchInput.SetValue("")
+	c.recalculateLines()
+	c.moveToBottom()
 }
 
 func (c *chatWindow) View() string {
-	if c.height < 1 {
+	height := c.height
+
+	if c.state == searchChatWindowState {
+		height--
+	}
+
+	if height < 1 {
 		return ""
 	}
 
-	spaces := make([]string, c.height-len(c.lines[c.lineStart:c.lineEnd]))
+	spaces := make([]string, height-len(c.lines[c.lineStart:c.lineEnd]))
 	lines := append(c.lines[c.lineStart:c.lineEnd], spaces...)
+
+	if c.state == searchChatWindowState {
+		return c.searchInput.View() + "\n" + strings.Join(lines, "\n")
+	}
 
 	return strings.Join(lines, "\n")
 }
@@ -189,11 +270,12 @@ func (c *chatWindow) debugDumpChat() {
 }
 
 func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
-	if len(c.entries) < 1 {
+	active := c.activeEntries()
+	if len(active) < 1 {
 		return -1, nil
 	}
 
-	for i, e := range c.entries {
+	for i, e := range active {
 		if c.cursor >= e.Position.CursorStart && c.cursor <= e.Position.CursorEnd {
 			return i, e
 		}
@@ -203,7 +285,8 @@ func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
 }
 
 func (c *chatWindow) messageDown(n int) {
-	if len(c.entries) < 1 {
+	active := c.activeEntries()
+	if len(active) < 1 {
 		return
 	}
 
@@ -215,17 +298,18 @@ func (c *chatWindow) messageDown(n int) {
 
 	e.Selected = false
 
-	i = clamp(i+n, 0, len(c.entries)-1)
+	i = clamp(i+n, 0, len(active)-1)
 
-	c.entries[i].Selected = true
-	c.cursor = c.entries[i].Position.CursorEnd
+	active[i].Selected = true
+	c.cursor = active[i].Position.CursorEnd
 
 	c.updatePort()
 	c.markSelectedMessage()
 }
 
 func (c *chatWindow) messageUp(n int) {
-	if len(c.entries) < 1 {
+	active := c.activeEntries()
+	if len(active) < 1 {
 		return
 	}
 
@@ -237,10 +321,10 @@ func (c *chatWindow) messageUp(n int) {
 
 	e.Selected = false
 
-	i = clamp(i-n, 0, len(c.entries)-1)
+	i = clamp(i-n, 0, len(active)-1)
 
-	c.entries[i].Selected = true
-	c.cursor = c.entries[i].Position.CursorStart
+	active[i].Selected = true
+	c.cursor = active[i].Position.CursorStart
 
 	c.updatePort()
 	c.markSelectedMessage()
@@ -253,7 +337,8 @@ func (c *chatWindow) moveToBottom() {
 		return
 	}
 
-	c.messageDown(len(c.entries) - i)
+	active := c.activeEntries()
+	c.messageDown(len(active) - i)
 }
 
 func (c *chatWindow) moveToTop() {
@@ -267,8 +352,9 @@ func (c *chatWindow) moveToTop() {
 }
 
 func (c *chatWindow) getNewestEntry() *chatEntry {
-	if len(c.entries) > 0 {
-		return c.entries[len(c.entries)-1]
+	active := c.activeEntries()
+	if len(active) > 0 {
+		return active[len(active)-1]
 	}
 
 	return nil
@@ -283,7 +369,9 @@ func (c *chatWindow) markSelectedMessage() {
 		}
 	}
 
-	for _, e := range c.entries {
+	active := c.activeEntries()
+
+	for e := range slices.Values(active) {
 		if !e.Selected {
 			continue
 		}
@@ -301,6 +389,44 @@ func (c *chatWindow) markSelectedMessage() {
 	}
 }
 
+func (c *chatWindow) cleanup() {
+	// todo: make this smarter, so we can delete more often
+	// c.logger.Info().Msgf("(%d/%d)", len(c.entries), cleanupThreshold)
+	if len(c.entries) < cleanupThreshold {
+		return
+	}
+
+	if c.state == searchChatWindowState {
+		return
+	}
+
+	if e := c.getNewestEntry(); e == nil || !e.Selected {
+		c.logger.Info().Msg("skip cleanup because not on newest message")
+		return
+	}
+
+	c.logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
+	c.entries = c.entries[int(cleanupAfterMessage):]
+	c.recalculateLines()
+
+	// for i, e := range c.entries {
+	// 	if e.IsIgnored {
+	// 		continue
+	// 	}
+
+	// 	if c.lineStart >= e.Position.CursorStart && c.lineStart <= e.Position.CursorEnd {
+	// 		c.logger.Info().Int("index", i).Int("threshold", cleanupThreshold).Msg("cleanup")
+
+	// 		if i > cleanupThreshold {
+	// 			c.entries = c.entries[i:]
+	// 			c.recalculateLines()
+	// 		}
+
+	// 		return
+	// 	}
+	// }
+}
+
 func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	switch msg.message.(type) {
 	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage: // supported Message types
@@ -309,14 +435,21 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	}
 
 	// cleanup messages if we have more messages than cleanupThreshold
-	if len(c.entries) > cleanupThreshold {
-		_, currentEntry := c.entryForCurrentCursor()
+	// if len(c.entries) > cleanupThreshold {
+	// 	_, currentEntry := c.entryForCurrentCursor()
 
-		if currentEntry == nil || currentEntry.Position.CursorStart > cleanupThreshold {
-			c.entries = c.entries[cleanupThreshold-int(cleanupAfterMessage):]
-			c.recalculateLines()
-		}
-	}
+	// 	remainingStart := len(c.entries) - int(cleanupAfterMessage)
+	// 	c.logger.Info().Int("c.lineStart", c.lineStart).Int("remaining-start", remainingStart).Int("new-len", len(c.entries[remainingStart:])).Msg("cleanup")
+	// 	if currentEntry == nil || c.lineStart > remainingStart {
+	// 		c.logger.Info().Int("c.lineStart", c.lineStart).Int("remaining-start", remainingStart).Int("new-len", len(c.entries[remainingStart:])).Msg("done cleanup")
+
+	// 		c.entries = c.entries[remainingStart:]
+	// 		c.recalculateLines()
+	// 	}
+	// }
+
+	// 1st: number of entries before line start
+	c.cleanup()
 
 	// if timeout message, rewrite all messages from user
 	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok {
@@ -364,8 +497,15 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 		Event:                     msg,
 	}
 
-	c.entries = append(c.entries, entry)
-	c.lines = append(c.lines, lines...)
+	// we are currently searching and the new entry does not match the search, then ignore new entry
+	if c.state == searchChatWindowState && !c.entryMatchesSearch(entry) {
+		entry.IsIgnored = true
+		c.entries = append(c.entries, entry)
+	} else {
+		c.entries = append(c.entries, entry)
+		c.lines = append(c.lines, lines...)
+	}
+
 	c.updatePort()
 
 	if wasLatestMessage {
@@ -575,31 +715,59 @@ func (c *chatWindow) colorMessageMentions(message string) string {
 
 func (c *chatWindow) updatePort() {
 	// validate cursors position
-	c.cursor = clamp(c.cursor, 0, len(c.lines))
+	c.cursor = clamp(c.cursor, 0, len(c.lines)-1)
 
-	if c.height < 0 {
+	height := c.height
+	if c.state == searchChatWindowState {
+		height--
+	}
+
+	if height < 0 {
 		c.lineStart = 0
 		c.lineEnd = 0
 		return
 	}
 
 	switch {
-	case len(c.lines) < c.height: // all lines fit in the height
+	case len(c.lines) < height: // all lines fit in the height
 		c.lineStart = 0
 		c.lineEnd = len(c.lines)
-	case c.cursor <= c.lineStart: // cursor is before the selection
+	case c.cursor <= c.lineStart: // cursor is before the viewport
+		// start new port from current cursor location
 		c.lineStart = c.cursor
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
-	case c.cursor >= c.lineEnd: // cursor is after the selection
+
+		spaceAvailable := height // we can use this many space at most
+		// if we have less lines than height, set space to len
+		linesFromStart := len(c.lines[c.lineStart:])
+		if linesFromStart < spaceAvailable {
+			spaceAvailable = linesFromStart
+		}
+
+		c.lineEnd = c.lineStart + spaceAvailable
+	case c.cursor+1 >= c.lineEnd: // the cursor is after the view
 		c.lineEnd = c.cursor + 1
-		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
-	case c.cursor > c.lineStart && c.cursor < c.lineEnd:
-		c.lineEnd = clamp(c.lineStart+len(c.lines), c.lineStart, c.lineStart+c.height)
+		c.lineStart = c.lineEnd - height
+
+		if c.lineStart < 0 {
+			c.lineStart = 0
+		}
+	case c.cursor >= c.lineStart && c.cursor <= c.lineEnd: // validate cursor inside view
+		c.lineEnd = c.lineStart + height
+
+		// height is bigger than the number of lines, can only display x lines instead
+		if len(c.lines[c.lineStart:]) < height {
+			c.lineEnd = c.lineStart + len(c.lines[c.lineStart:])
+		}
+
 	}
 }
 
 func (c *chatWindow) recalculateLines() {
-	if len(c.entries) < 1 && len(c.lines) < 1 {
+	c.searchInput.Width = c.width
+
+	entries := c.activeEntries()
+
+	if len(entries) < 1 && len(c.lines) < 1 {
 		return
 	}
 
@@ -610,7 +778,7 @@ func (c *chatWindow) recalculateLines() {
 
 	var prevEntry *chatEntry
 
-	for _, e := range c.entries {
+	for e := range slices.Values(entries) {
 		lastCursorEnd := -1
 
 		if prevEntry != nil {
@@ -627,10 +795,56 @@ func (c *chatWindow) recalculateLines() {
 
 	if selected != nil {
 		c.cursor = selected.Position.CursorEnd
-		c.lineEnd = c.cursor + 1
-		c.lineStart = clamp(c.lineEnd-c.height, 0, c.lineEnd)
 	}
 
 	c.updatePort()
 	c.markSelectedMessage()
+}
+
+func (c *chatWindow) activeEntries() []*chatEntry {
+	activeEntries := []*chatEntry{}
+	for e := range slices.Values(c.entries) {
+		if !e.IsIgnored {
+			activeEntries = append(activeEntries, e)
+		}
+	}
+
+	return activeEntries
+}
+
+func (c *chatWindow) applySearch() {
+	var last *chatEntry
+	for e := range slices.Values(c.entries) {
+		e.Selected = false
+		if c.entryMatchesSearch(e) {
+			e.IsIgnored = false
+			last = e
+			continue
+		}
+
+		e.IsIgnored = true
+	}
+
+	if last != nil {
+		last.Selected = true
+	}
+
+	c.recalculateLines()
+	c.updatePort()
+	c.moveToBottom()
+}
+
+func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
+	cast, ok := e.Event.message.(*command.PrivateMessage)
+
+	if !ok {
+		return false
+	}
+
+	search := c.searchInput.Value()
+	if fuzzy.RankMatchNormalizedFold(search, cast.DisplayName) > 2 || fuzzy.RankMatchNormalizedFold(search, cast.Message) > 2 {
+		return true
+	}
+
+	return false
 }

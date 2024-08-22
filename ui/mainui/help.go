@@ -62,6 +62,8 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.DumpChat,
 				keymap.QuickTimeout,
 				keymap.CopyMessage,
+				keymap.SearchMode,
+				keymap.QuickSent,
 			},
 		},
 		{

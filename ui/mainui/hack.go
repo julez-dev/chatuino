@@ -3,7 +3,9 @@ package mainui
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/julez-dev/chatuino/twitch/command"
@@ -16,6 +18,20 @@ var (
 	accountStartRegex = regexp.MustCompile(`^[^a-zA-Z0-9_-]+`)
 	accountEndRegex   = regexp.MustCompile(`[^a-zA-Z0-9_-]+$`)
 )
+
+func filter[S ~[]E, E any](x S, f func(e E) bool) iter.Seq[E] {
+	return func(yield func(E) bool) {
+		for v := range slices.Values(x) {
+			if !f(v) {
+				continue
+			}
+
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
 
 func stripAnsi(str string) string {
 	return ansiRegex.ReplaceAllString(str, "")

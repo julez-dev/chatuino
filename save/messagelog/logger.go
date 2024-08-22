@@ -175,6 +175,10 @@ func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadc
 		return nil, err
 	}
 
+	return b.scanRows(rows)
+}
+
+func (b *BatchedMessageLogger) scanRows(rows *sql.Rows) ([]LogEntry, error) {
 	defer rows.Close()
 
 	var logEntries []LogEntry
@@ -195,6 +199,7 @@ func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadc
 			return logEntries, err
 		}
 
+		var err error
 		entry.SentAt, err = time.Parse("2006-01-02 15:04:05-07:00", rawSentAt)
 		if err != nil {
 			return logEntries, err

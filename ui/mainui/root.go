@@ -98,7 +98,7 @@ type tab interface {
 	Blur()
 	AccountID() string
 	Channel() string
-	State() tabState
+	State() broadcastTabState
 	IsDataLoaded() bool
 	ID() string
 	Focused() bool
