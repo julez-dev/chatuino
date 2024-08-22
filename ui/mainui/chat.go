@@ -842,7 +842,7 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 	}
 
 	search := c.searchInput.Value()
-	if fuzzy.MatchFold(search, cast.DisplayName) || fuzzy.MatchFold(search, cast.Message) {
+	if fuzzy.RankMatchNormalizedFold(search, cast.DisplayName) > 2 || fuzzy.RankMatchNormalizedFold(search, cast.Message) > 2 {
 		return true
 	}
 
