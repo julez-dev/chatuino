@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jellydator/ttlcache/v3"
+	"github.com/lithammer/fuzzysearch/fuzzy"
+
 	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -81,7 +84,10 @@ type broadcastTab struct {
 	logger zerolog.Logger
 	keymap save.KeyMap
 
-	state broadcastTabState
+	state            broadcastTabState
+	isLocalSub       bool
+	isUniqueOnlyChat bool
+	lastMessages     *ttlcache.Cache[string, struct{}]
 
 	provider AccountProvider
 	account  save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
@@ -128,6 +134,11 @@ func newBroadcastTab(
 	emoteReplacer EmoteReplacer,
 	messageLogger MessageLogger,
 ) *broadcastTab {
+	cache := ttlcache.New(
+		ttlcache.WithTTL[string, struct{}](time.Second * 10),
+	)
+	go cache.Start()
+
 	return &broadcastTab{
 		id:                   id,
 		logger:               logger,
@@ -142,6 +153,7 @@ func newBroadcastTab(
 		recentMessageService: recentMessageService,
 		emoteReplacer:        emoteReplacer,
 		messageLogger:        messageLogger,
+		lastMessages:         cache,
 	}
 }
 
@@ -404,6 +416,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		if t.channelDataLoaded {
+			if t.shouldIgnoreMessage(msg.message) {
+				return t, nil
+			}
+
 			t.chatWindow, cmd = t.chatWindow.Update(msg)
 			cmds = append(cmds, cmd)
 
@@ -416,6 +432,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.userInspect, cmd = t.userInspect.Update(msg)
 				cmds = append(cmds, cmd)
 			}
+
+			// add message content to cache
+			if cast, ok := msg.message.(*command.PrivateMessage); ok {
+				t.lastMessages.Set(cast.Message, struct{}{}, ttlcache.DefaultTTL)
+			}
+
 		}
 
 		if err, ok := msg.message.(error); ok {
@@ -691,7 +713,7 @@ func (t *broadcastTab) handleEscapePressed() {
 
 func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 	return func() tea.Msg {
-		// open popout chat if modifier is pressed
+		// open popup chat if modifier is pressed
 		if key.Matches(msg, t.keymap.ChatPopUp) {
 			t.handleOpenBrowserChatPopUp()()
 			return nil
@@ -868,6 +890,116 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 	return tea.Sequence(cmds...)
 }
 
+func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
+	if enable && t.isLocalSub {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Already in local submode",
+				},
+			}
+		}
+	}
+
+	if !enable && !t.isLocalSub {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Already out of local submode",
+				},
+			}
+		}
+	}
+
+	t.isLocalSub = enable
+
+	return nil
+}
+
+func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
+	if enable && t.isUniqueOnlyChat {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Already in unique only chat",
+				},
+			}
+		}
+	}
+
+	if !enable && !t.isUniqueOnlyChat {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Already out of unique only chat",
+				},
+			}
+		}
+	}
+
+	t.isUniqueOnlyChat = enable
+
+	return nil
+}
+
+func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
+	cast, ok := msg.(*command.PrivateMessage)
+
+	// all non private messages are okay
+	if !ok {
+		return false
+	}
+
+	// never ignore messages from the user,broadcaster,subs,mods,vips,paid messages,staff,bits or message mentions user
+	if cast.UserID == t.account.ID || cast.UserID == t.channelID || cast.Mod || cast.PaidAmount != 0 || cast.VIP ||
+		messageContainsCaseInsensitive(cast, t.account.DisplayName) || cast.Bits != 0 ||
+		cast.UserType == command.Admin || cast.UserType == command.GlobalMod || cast.UserType == command.Staff {
+		return false
+	}
+
+	// is sub and sender is not sub
+	if t.isLocalSub && !cast.Subscriber {
+		return true
+	}
+
+	if t.isUniqueOnlyChat {
+		messagesInStore := t.lastMessages.Keys()
+		lenWords := len(strings.Fields(cast.Message))
+
+		// ignore if message is only one word and the message is in the last messages
+		if lenWords == 1 && slices.ContainsFunc(messagesInStore, func(e string) bool { return strings.EqualFold(e, cast.Message) }) {
+			return true
+		} else if lenWords == 1 {
+			return false
+		}
+
+		for stored := range slices.Values(messagesInStore) {
+			distance := fuzzy.LevenshteinDistance(cast.Message, stored)
+			if distance < 3 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	input := t.messageInput.Value()
 
@@ -901,17 +1033,25 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		channel := t.channel
 		accountID := t.account.ID
 
-		switch {
-		case strings.HasPrefix(commandName, "inspect"):
+		switch commandName {
+		case "inspect":
 			return t.handleOpenUserInspect(args[0])
-		case strings.HasPrefix(commandName, "popupchat"):
+		case "popupchat":
 			return t.handleOpenBrowserChatPopUp()
-		case strings.HasPrefix(commandName, "channel"):
+		case "channel":
 			return t.handleOpenBrowserChannel()
-		case strings.HasPrefix(commandName, "banrequests"):
+		case "banrequests":
 			return t.handleOpenBanRequest()
-		case strings.HasPrefix(commandName, "pyramid"):
+		case "pyramid":
 			return t.handlePyramidMessagesCommand(args)
+		case "localsubscribers":
+			return t.handleLocalSubCommand(true)
+		case "localsubscribersoff":
+			return t.handleLocalSubCommand(false)
+		case "uniqueonly":
+			return t.handleUniqueOnlyChatCommand(true)
+		case "uniqueonlyoff":
+			return t.handleUniqueOnlyChatCommand(true)
 		}
 
 		// Message input is only allowed for authenticated users
@@ -1296,4 +1436,10 @@ func (t *broadcastTab) Blur() {
 			t.userInspect.chatWindow.Blur()
 		}
 	}
+}
+
+func (t *broadcastTab) close() {
+	t.lastMessages.DeleteAll()
+	t.lastMessages.Stop()
+	t.lastMessages = nil
 }

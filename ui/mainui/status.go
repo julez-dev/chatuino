@@ -135,6 +135,20 @@ func (s *streamStatus) View() string {
 		settingsBuilder.WriteString("Sub Only")
 	}
 
+	if s.tab.isLocalSub {
+		if settingsBuilder.Len() > 0 {
+			settingsBuilder.WriteString(" | ")
+		}
+		settingsBuilder.WriteString("Local Sub Only")
+	}
+
+	if s.tab.isUniqueOnlyChat {
+		if settingsBuilder.Len() > 0 {
+			settingsBuilder.WriteString(" | ")
+		}
+		settingsBuilder.WriteString("Unique Only")
+	}
+
 	if s.settings.EmoteMode {
 		if settingsBuilder.Len() > 0 {
 			settingsBuilder.WriteString(" | ")
