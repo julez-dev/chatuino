@@ -6,5 +6,6 @@ dist/
 .idea
 idea.txt
 .env
+.vscode
 
 secrets
