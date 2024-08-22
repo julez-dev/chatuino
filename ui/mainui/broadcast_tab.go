@@ -767,11 +767,28 @@ func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
 // word word
 // word
 func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
+	accountIsStreamer := t.account.ID == t.channelID
+
+	if !accountIsStreamer && t.statusInfo != nil && t.statusInfo.settings.SlowMode {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channel,
+				tabID:     t.id,
+				message: &command.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Pyramid command is disabled in slow mode",
+				},
+			}
+		}
+	}
+
 	if len(args) < 2 {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channel,
+				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Expected Usage: /pyramid <word> <count>",
@@ -787,6 +804,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channel,
+				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Failed to convert count to integer",
@@ -816,7 +834,6 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		})
 	}
 
-	accountIsStreamer := t.account.ID == t.channelID
 	var delay time.Duration
 	if accountIsStreamer {
 		delay = time.Millisecond * 500
