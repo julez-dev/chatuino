@@ -21,10 +21,12 @@ type AppState struct {
 }
 
 type TabState struct {
-	Channel    string `json:"channel"`
-	IsFocused  bool   `json:"is_focused"`
-	IdentityID string `json:"identity_id"`
-	Kind       int    `json:"kind"`
+	IsLocalUnique bool   `json:"is_local_unique"`
+	IsLocalSub    bool   `json:"is_local_sub"`
+	Channel       string `json:"channel"`
+	IsFocused     bool   `json:"is_focused"`
+	IdentityID    string `json:"identity_id"`
+	Kind          int    `json:"kind"`
 }
 
 func (a *AppState) Save() error {
@@ -46,7 +48,6 @@ func (a *AppState) Save() error {
 	}
 
 	_, err = io.Copy(f, bytes.NewReader(data))
-
 	if err != nil {
 		return err
 	}
@@ -69,7 +70,6 @@ func AppStateFromDisk() (AppState, error) {
 
 	state := AppState{}
 	err = json.Unmarshal(data, &state)
-
 	if err != nil {
 		syntaxErr := &json.SyntaxError{}
 		if errors.As(err, &syntaxErr) {
@@ -129,7 +129,6 @@ func openCreateDataFile(file string) (*os.File, error) {
 
 func CreateDBFile() (string, error) {
 	f, err := openCreateDataFile(messageDBFileName)
-
 	if err != nil {
 		return "", err
 	}

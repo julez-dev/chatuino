@@ -78,9 +78,8 @@ func ParseIRC(message string) (IRCer, error) {
 	}
 
 	c := &rawTMI{
-		tags:    tags{},
-		prefix:  &prefix{},
-		Message: message,
+		tags:   tags{},
+		prefix: &prefix{},
 	}
 
 	if message[0] == '@' {

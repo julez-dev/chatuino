@@ -22,6 +22,10 @@ var commandSuggestions = [...]string{
 	"/channel",
 	"/banrequests",
 	"/pyramid <word> <count>",
+	"/localsubscribers",
+	"/localsubscribersoff",
+	"/uniqueonly",
+	"/uniqueonlysoff",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.

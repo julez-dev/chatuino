@@ -54,7 +54,7 @@ func NewConn(logger zerolog.Logger, httpClient *http.Client) *Conn {
 		m:             &sync.Mutex{},
 		HandleMessage: func(msg Message[NotificationPayload]) {},
 		HandleError:   func(err error) {},
-		duplicate: ttlcache.New[string, struct{}](
+		duplicate: ttlcache.New(
 			ttlcache.WithTTL[string, struct{}](15 * time.Minute),
 		),
 	}

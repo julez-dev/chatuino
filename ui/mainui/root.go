@@ -691,6 +691,11 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 			Kind:       int(t.Kind()),
 		}
 
+		if t.Kind() == broadcastTabKind {
+			tabState.IsLocalUnique = t.(*broadcastTab).isUniqueOnlyChat
+			tabState.IsLocalSub = t.(*broadcastTab).isLocalSub
+		}
+
 		appState.Tabs = append(appState.Tabs, tabState)
 	}
 
@@ -958,6 +963,8 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			}
 
 			newTab = r.createTab(account, t.Channel, broadcastTabKind)
+			newTab.(*broadcastTab).isUniqueOnlyChat = t.IsLocalUnique
+			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
 		case mentionTabKind:
 			// don't load mention tab, when there are no longer any non-anonymous accounts
 			hasNormalAccount := slices.ContainsFunc(msg.accounts, func(e save.Account) bool {
@@ -1076,6 +1083,9 @@ func (r *Root) waitChatEvents() tea.Cmd {
 func (r *Root) closeTab() {
 	if len(r.tabs) > r.tabCursor {
 		tabID := r.tabs[r.tabCursor].ID()
+		if r.tabs[r.tabCursor].Kind() == broadcastTabKind {
+			r.tabs[r.tabCursor].(*broadcastTab).close()
+		}
 		r.header.removeTab(tabID)
 		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
 			return t.ID() == tabID

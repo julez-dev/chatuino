@@ -137,6 +137,8 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 
 		// prepend all messages
 		initialEvents = append(fakeInitialEvent, initialEvents...)
+
+		// sort all messages by timestamp
 		slices.SortFunc(initialEvents, func(e1, e2 chatEventMessage) int {
 			var (
 				t1 time.Time
