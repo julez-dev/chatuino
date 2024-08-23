@@ -132,6 +132,7 @@ func (s *streamStatus) View() string {
 		if settingsBuilder.Len() > 0 {
 			settingsBuilder.WriteString(" | ")
 		}
+
 		settingsBuilder.WriteString("Sub Only")
 	}
 

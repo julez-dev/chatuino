@@ -56,7 +56,7 @@ type chatEntry struct {
 	IsDeleted                 bool
 	OverwrittenMessageContent string
 	Event                     chatEventMessage
-	IsIgnored                 bool
+	IsFiltered                bool // message is filtered out by search
 }
 
 type position struct {
@@ -184,7 +184,7 @@ func (c *chatWindow) handleStopSearchMode() {
 	c.state = viewChatWindowState
 	var last *chatEntry
 	for e := range slices.Values(c.entries) {
-		e.IsIgnored = false
+		e.IsFiltered = false
 		last = e
 		e.Selected = false
 	}
@@ -499,7 +499,7 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 
 	// we are currently searching and the new entry does not match the search, then ignore new entry
 	if c.state == searchChatWindowState && !c.entryMatchesSearch(entry) {
-		entry.IsIgnored = true
+		entry.IsFiltered = true
 		c.entries = append(c.entries, entry)
 	} else {
 		c.entries = append(c.entries, entry)
@@ -804,7 +804,7 @@ func (c *chatWindow) recalculateLines() {
 func (c *chatWindow) activeEntries() []*chatEntry {
 	activeEntries := []*chatEntry{}
 	for e := range slices.Values(c.entries) {
-		if !e.IsIgnored {
+		if !e.IsFiltered {
 			activeEntries = append(activeEntries, e)
 		}
 	}
@@ -817,12 +817,12 @@ func (c *chatWindow) applySearch() {
 	for e := range slices.Values(c.entries) {
 		e.Selected = false
 		if c.entryMatchesSearch(e) {
-			e.IsIgnored = false
+			e.IsFiltered = false
 			last = e
 			continue
 		}
 
-		e.IsIgnored = true
+		e.IsFiltered = true
 	}
 
 	if last != nil {

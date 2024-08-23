@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -980,7 +981,8 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
 
 	if t.isUniqueOnlyChat {
 		messagesInStore := t.lastMessages.Keys()
-		lenWords := len(strings.Fields(cast.Message))
+		wordsSrc := strings.Fields(cast.Message)
+		lenWords := len(wordsSrc)
 
 		// ignore if message is only one word and the message is in the last messages
 		if lenWords == 1 && slices.ContainsFunc(messagesInStore, func(e string) bool { return strings.EqualFold(e, cast.Message) }) {
@@ -989,12 +991,39 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
 			return false
 		}
 
+		uniqueWordsSrc := map[string]struct{}{}
+		for word := range slices.Values(wordsSrc) {
+			uniqueWordsSrc[word] = struct{}{}
+		}
+
+		uniqueWordsTarget := map[string]struct{}{}
 		for stored := range slices.Values(messagesInStore) {
 			distance := fuzzy.LevenshteinDistance(cast.Message, stored)
 			if distance < 3 {
 				return true
 			}
+
+			for word := range slices.Values(strings.Fields(stored)) {
+				uniqueWordsTarget[strings.ToLower(word)] = struct{}{}
+			}
+
+			wordListSrc := slices.Collect(maps.Keys(uniqueWordsSrc))
+			var matches int
+			for word := range slices.Values(wordListSrc) {
+				word = strings.ToLower(word)
+				if _, ok := uniqueWordsTarget[word]; ok {
+					matches++
+				}
+			}
+
+			// if more than 70% of the words are the same, ignore the message
+			if float64(matches)/float64(lenWords) > 0.7 {
+				return true
+			}
+
+			clear(uniqueWordsTarget)
 		}
+
 	}
 
 	return false
