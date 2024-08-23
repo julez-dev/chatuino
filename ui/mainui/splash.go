@@ -15,15 +15,6 @@ type splash struct {
 	userConfiguration UserConfiguration
 }
 
-func newSplash(width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) splash {
-	return splash{
-		width:             width,
-		height:            height,
-		keymap:            keymap,
-		userConfiguration: userConfiguration,
-	}
-}
-
 func (s splash) Init() tea.Cmd {
 	return nil
 }

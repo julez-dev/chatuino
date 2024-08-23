@@ -108,14 +108,15 @@ func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteSto
 	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Background(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Render("@")
 
 	c := chatWindow{
-		keymap:         keymap,
-		badgeMap:       badgeMap,
-		logger:         logger,
-		width:          width,
-		height:         height,
-		emoteStore:     emoteStore,
-		userColorCache: map[string]func(...string) string{},
-		searchInput:    input,
+		keymap:            keymap,
+		badgeMap:          badgeMap,
+		logger:            logger,
+		width:             width,
+		height:            height,
+		emoteStore:        emoteStore,
+		userColorCache:    map[string]func(...string) string{},
+		searchInput:       input,
+		userConfiguration: userConfiguration,
 
 		indicator:           indicator,
 		indicatorWidth:      lipgloss.Width(indicator) + 1,

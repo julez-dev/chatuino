@@ -61,6 +61,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 		spinner:   s,
 		width:     width,
 		height:    height,
+		theme:     theme,
 	}
 }
 
