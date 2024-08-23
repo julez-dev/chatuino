@@ -114,13 +114,11 @@ func (a *API) BanUser(ctx context.Context, broadcasterID string, moderatorID str
 	url := fmt.Sprintf("/moderation/bans?%s", values.Encode())
 
 	body, err := json.Marshal(BanUserRequest{Data: data})
-
 	if err != nil {
 		return err
 	}
 
 	_, err = doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, url, body)
-
 	if err != nil {
 		return err
 	}
@@ -141,7 +139,6 @@ func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID s
 	url := fmt.Sprintf("/moderation/bans?%s", values.Encode())
 
 	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, url, nil)
-
 	if err != nil {
 		return err
 	}
@@ -273,13 +270,11 @@ func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID,
 	url := fmt.Sprintf("/moderation/unban_requests?%s", values.Encode())
 
 	resp, err := doAuthenticatedUserRequest[GetUnbanRequestsResponse](ctx, a, http.MethodPatch, url, nil)
-
 	if err != nil {
 		return UnbanRequest{}, err
 	}
 
 	return resp.Data[0], nil
-
 }
 
 func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {
@@ -345,13 +340,11 @@ func (a *API) CreateEventSubSubscription(ctx context.Context, reqData CreateEven
 	}
 
 	reqBytes, err := json.Marshal(reqData)
-
 	if err != nil {
 		return CreateEventSubSubscriptionResponse{}, err
 	}
 
 	resp, err := doAuthenticatedUserRequest[CreateEventSubSubscriptionResponse](ctx, a, http.MethodPost, "/eventsub/subscriptions", reqBytes)
-
 	if err != nil {
 		return CreateEventSubSubscriptionResponse{}, err
 	}
@@ -593,7 +586,6 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 
 				return accessToken, nil
 			})
-
 			if err != nil {
 				log.Logger.Err(err).Str("user-id", user.ID).Bool("shared", shared).Msg("could not refresh token")
 

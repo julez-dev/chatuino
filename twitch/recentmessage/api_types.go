@@ -14,6 +14,7 @@ func (a APIError) Error() string {
 }
 
 type (
+	//easyjson:json
 	responseData struct {
 		Messages  []string `json:"messages"`
 		Error     string   `json:"error"`

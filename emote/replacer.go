@@ -3,7 +3,6 @@ package emote
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
+	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 	_ "golang.org/x/image/webp"
 )
@@ -36,12 +36,14 @@ var (
 
 var errUnsupportedAnimatedFormat = errors.New("emote is animated but in non supported format")
 
+//easyjson:json
 type DecodedEmote struct {
 	ID     int            `json:"-"`
 	Cols   int            `json:"cols"`
 	Images []DecodedImage `json:"images"`
 }
 
+//easyjson:json
 type DecodedImage struct {
 	Width       int    `json:"width"`
 	Height      int    `json:"height"`
@@ -388,7 +390,7 @@ func SaveCache(e Emote, dec DecodedEmote) error {
 
 	defer f.Close()
 
-	encoded, err := json.Marshal(dec)
+	encoded, err := easyjson.Marshal(dec)
 	if err != nil {
 		return err
 	}
@@ -420,7 +422,7 @@ func fsOpenCached(e Emote) (DecodedEmote, bool, error) {
 	}
 
 	var decoded DecodedEmote
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := easyjson.Unmarshal(data, &decoded); err != nil {
 		return decoded, false, err
 	}
 

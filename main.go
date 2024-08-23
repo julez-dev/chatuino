@@ -31,9 +31,9 @@ import (
 	ttvCommand "github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
+	_ "github.com/mailru/easyjson"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
-
 	_ "modernc.org/sqlite"
 )
 
@@ -50,6 +50,10 @@ const (
 var maybeLogFile *os.File
 
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/command
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -pkg ./twitch
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -pkg ./twitch/recentmessage
 func main() {
 	defer func() {
 		if maybeLogFile != nil {
