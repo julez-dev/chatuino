@@ -26,6 +26,7 @@ require (
 	github.com/gen2brain/avif v0.3.2
 	github.com/jellydator/ttlcache/v3 v3.2.0
 	github.com/lithammer/fuzzysearch v1.1.8
+	github.com/mailru/easyjson v0.7.7
 	github.com/vbauerster/mpb/v8 v8.8.2
 	github.com/zalando/go-keyring v0.2.5
 	golang.org/x/image v0.19.0
@@ -48,6 +49,7 @@ require (
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

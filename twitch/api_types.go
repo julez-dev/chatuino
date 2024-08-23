@@ -20,11 +20,13 @@ func (a APIError) Error() string {
 
 // https://api.twitch.tv/helix/chat/emotes/global
 type (
+	//easyjson:json
 	EmoteResponse struct {
 		Data     []EmoteData `json:"data"`
 		Template string      `json:"template"`
 	}
 
+	//easyjson:json
 	EmoteData struct {
 		ID        string     `json:"id"`
 		Name      string     `json:"name"`
@@ -34,6 +36,7 @@ type (
 		ThemeMode []string   `json:"theme_mode"`
 	}
 
+	//easyjson:json
 	EmoteImage struct {
 		URL1X string `json:"url_1x"`
 		URL2X string `json:"url_2x"`
@@ -43,9 +46,12 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-users
 type (
+	//easyjson:json
 	UserResponse struct {
 		Data []UserData `json:"data"`
 	}
+
+	//easyjson:json
 	UserData struct {
 		ID              string    `json:"id"`
 		Login           string    `json:"login"`
@@ -63,10 +69,13 @@ type (
 
 // https://api.twitch.tv/helix/streams
 type (
+	//easyjson:json
 	GetStreamsResponse struct {
 		Data       []StreamData `json:"data"`
 		Pagination Pagination   `json:"pagination"`
 	}
+
+	//easyjson:json
 	StreamData struct {
 		ID           string    `json:"id"`
 		UserID       string    `json:"user_id"`
@@ -84,6 +93,8 @@ type (
 		TagIds       []any     `json:"tag_ids"`
 		IsMature     bool      `json:"is_mature"`
 	}
+
+	//easyjson:json
 	Pagination struct {
 		Cursor string `json:"cursor"`
 	}
@@ -91,9 +102,12 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-chat-settings
 type (
+	//easyjson:json
 	GetChatSettingsResponse struct {
 		Data []ChatSettingData `json:"data"`
 	}
+
+	//easyjson:json
 	ChatSettingData struct {
 		BroadcasterID                 string `json:"broadcaster_id"`
 		SlowMode                      bool   `json:"slow_mode"`
@@ -110,9 +124,12 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#ban-user
 type (
+	//easyjson:json
 	BanUserRequest struct {
 		Data BanUserData `json:"data"`
 	}
+
+	//easyjson:json
 	BanUserData struct {
 		UserID            string `json:"user_id"`
 		DurationInSeconds int    `json:"duration,omitempty"`
@@ -122,10 +139,13 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-unban-requests
 type (
+	//easyjson:json
 	GetUnbanRequestsResponse struct {
 		Data       []UnbanRequest `json:"data"`
 		Pagination Pagination     `json:"pagination"`
 	}
+
+	//easyjson:json
 	UnbanRequest struct {
 		ID               string    `json:"id"`
 		BroadcasterName  string    `json:"broadcaster_name"`
@@ -147,11 +167,14 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-followed-channels
 type (
+	//easyjson:json
 	GetFollowedChannelsResponse struct {
 		Total      int               `json:"total"`
 		Data       []FollowedChannel `json:"data"`
 		Pagination Pagination        `json:"pagination"`
 	}
+
+	//easyjson:json
 	FollowedChannel struct {
 		BroadcasterID    string    `json:"broadcaster_id"`
 		BroadcasterLogin string    `json:"broadcaster_login"`
@@ -162,6 +185,7 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
 type (
+	//easyjson:json
 	GetEventSubSubscriptionsResponse struct {
 		Total        int            `json:"total"`
 		TotalCost    int            `json:"total_cost"`
@@ -173,12 +197,15 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#create-eventsub-subscription
 type (
+	//easyjson:json
 	CreateEventSubSubscriptionRequest struct {
 		Type      string                   `json:"type"`
 		Version   string                   `json:"version"`
 		Condition map[string]string        `json:"condition"`
 		Transport EventSubTransportRequest `json:"transport"`
 	}
+
+	//easyjson:json
 	EventSubTransportRequest struct {
 		Method    string `json:"method"`
 		Callback  string `json:"callback"`
@@ -187,16 +214,21 @@ type (
 		SessionID string `json:"session_id"`
 	}
 
+	//easyjson:json
 	CreateEventSubSubscriptionResponse struct {
 		Data         []EventSubData `json:"data"`
 		Total        int            `json:"total"`
 		TotalCost    int            `json:"total_cost"`
 		MaxTotalCost int            `json:"max_total_cost"`
 	}
+
+	//easyjson:json
 	EventSubTransport struct {
 		Method    string `json:"method"`
 		ConduitID string `json:"conduit_id"`
 	}
+
+	//easyjson:json
 	EventSubData struct {
 		ID        string            `json:"id"`
 		Status    string            `json:"status"`

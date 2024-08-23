@@ -40,6 +40,7 @@ const (
 	Staff     UserType = "staff"
 )
 
+//easyjson:json
 type PrivateMessage struct {
 	BadgeInfo   []Badge
 	Badges      []Badge
@@ -143,16 +144,16 @@ const (
 	Announcement        MsgID = "announcement"
 
 	// Notice
-	//SubsOn       MsgID = "subs_on"
-	//SubsOff      MsgID = "subs_off"
-	//EmoteOnlyOn  MsgID = "emote_only_on"
-	//EmoteOnlyOff MsgID = "emote_only_off"
-	//FollowersOn  MsgID = "followers_on"
-	//FollowersOff MsgID = "followers_off"
-	//SlowOn       MsgID = "slow_on"
-	//SlowOff      MsgID = "slow_off"
-	//R9kOn        MsgID = "r9k_on" // also known as unique chat
-	//R9kOff       MsgID = "r9k_off"
+	// SubsOn       MsgID = "subs_on"
+	// SubsOff      MsgID = "subs_off"
+	// EmoteOnlyOn  MsgID = "emote_only_on"
+	// EmoteOnlyOff MsgID = "emote_only_off"
+	// FollowersOn  MsgID = "followers_on"
+	// FollowersOff MsgID = "followers_off"
+	// SlowOn       MsgID = "slow_on"
+	// SlowOff      MsgID = "slow_off"
+	// R9kOn        MsgID = "r9k_on" // also known as unique chat
+	// R9kOff       MsgID = "r9k_off"
 )
 
 type UserNotice struct {

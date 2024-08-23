@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	"github.com/julez-dev/chatuino/twitch"
+	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 )
 
@@ -31,9 +32,8 @@ func NewAPI(client *http.Client) *API {
 	}
 }
 
-func (api API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error) {
+func (a API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error) {
 	reqURL, err := url.JoinPath(baseURL, channelLogin)
-
 	if err != nil {
 		return nil, err
 	}
@@ -45,8 +45,7 @@ func (api API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([
 
 	reqURL = fmt.Sprintf("%s?%s", reqURL, values.Encode())
 
-	data, err := doRequest[responseData](ctx, api, http.MethodGet, reqURL, nil)
-
+	data, err := a.doRequest(ctx, a, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not fetch recent messages for %s: %w", channelLogin, err)
 	}
@@ -55,7 +54,6 @@ func (api API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([
 
 	for _, message := range data.Messages {
 		parsed, err := twitch.ParseIRC(message)
-
 		if err != nil {
 			log.Logger.Error().Err(err).Str("message", message).Msg("failed to parse message")
 			continue
@@ -67,9 +65,8 @@ func (api API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([
 	return messages, nil
 }
 
-func doRequest[T any](ctx context.Context, api API, method, url string, body io.Reader) (T, error) {
-	var data T
-
+func (a API) doRequest(ctx context.Context, api API, method, url string, body io.Reader) (responseData, error) {
+	var data responseData
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return data, err
@@ -96,7 +93,7 @@ func doRequest[T any](ctx context.Context, api API, method, url string, body io.
 		return data, errResp
 	}
 
-	if err := json.Unmarshal(respBody, &data); err != nil {
+	if err := easyjson.Unmarshal(respBody, &data); err != nil {
 		return data, err
 	}
 

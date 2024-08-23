@@ -1079,7 +1079,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		case "uniqueonly":
 			return t.handleUniqueOnlyChatCommand(true)
 		case "uniqueonlyoff":
-			return t.handleUniqueOnlyChatCommand(true)
+			return t.handleUniqueOnlyChatCommand(false)
 		}
 
 		// Message input is only allowed for authenticated users
