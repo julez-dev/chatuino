@@ -126,6 +126,16 @@ func main() {
 				return fmt.Errorf("failed to read settings file: %w", err)
 			}
 
+			theme, err := save.ThemeFromDisk()
+			if err != nil {
+				return fmt.Errorf("failed to read theme file: %w", err)
+			}
+
+			keymap, err := save.CreateReadKeyMap()
+			if err != nil {
+				return fmt.Errorf("failed to read keymap file: %w", err)
+			}
+
 			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
@@ -188,14 +198,9 @@ func main() {
 					return fmt.Errorf("failed to get terminal size: %w", err)
 				}
 
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, true, cellWidth, cellHeight)
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, true, cellWidth, cellHeight, theme)
 			} else {
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, false, 0, 0)
-			}
-
-			keys, err := save.CreateReadKeyMap()
-			if err != nil {
-				return fmt.Errorf("error while reading keymap: %w", err)
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, false, 0, 0, theme)
 			}
 
 			p := tea.NewProgram(
@@ -205,12 +210,13 @@ func main() {
 					emoteStore,
 					command.String("client-id"),
 					serverAPI,
-					keys,
+					keymap,
 					recentMessageService,
 					eventSubMultiplexer,
 					messageLoggerChan,
 					emoteReplacer,
 					messageLogger,
+					mainui.UserConfiguration{Settings: settings, Theme: theme},
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),

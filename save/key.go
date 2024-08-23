@@ -140,7 +140,7 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		Create: key.NewBinding(
 			key.WithKeys("ctrl+t"),
-			key.WithHelp("ctrl+t", "open new tab"),
+			key.WithHelp("ctrl+t", "open new tab/add account"),
 		),
 		Remove: key.NewBinding(
 			key.WithKeys("r"),

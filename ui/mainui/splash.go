@@ -10,8 +10,18 @@ import (
 )
 
 type splash struct {
-	width, height int
-	keymap        save.KeyMap
+	width, height     int
+	keymap            save.KeyMap
+	userConfiguration UserConfiguration
+}
+
+func newSplash(width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) splash {
+	return splash{
+		width:             width,
+		height:            height,
+		keymap:            keymap,
+		userConfiguration: userConfiguration,
+	}
 }
 
 func (s splash) Init() tea.Cmd {
@@ -27,19 +37,19 @@ func (s splash) view(loading bool, err error) string {
 
 	keyDisplay := strings.Join(s.keymap.Create.Keys(), ", ")
 
-	name := lipgloss.NewStyle().Foreground(lipgloss.Color("#8bd5ca")).Render("Chatuino")
+	name := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render("Chatuino")
 
 	var help string
 	if loading {
 		help = "Loading state from disk..."
 	} else if err != nil {
 		help = err.Error() + "\n"
-		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color("#8bd5ca")).Render(keyDisplay) + " to create a new tab and join a channel"
+		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
 	} else {
-		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color("#8bd5ca")).Render(keyDisplay) + " to create a new tab and join a channel"
+		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
 	}
 
-	logo := lipgloss.NewStyle().Foreground(lipgloss.Color("#c6a0f6")).Render(figure.NewFigure("CHATUINO", "isometric1", true).String())
+	logo := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.ChatuinoSplashColor)).Render(figure.NewFigure("CHATUINO", "isometric1", true).String())
 	splash := style.Render(logo + "\n" + "Welcome to " + name + "!\n" + help)
 
 	return splash

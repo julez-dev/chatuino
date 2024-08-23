@@ -27,6 +27,7 @@ The name and idea to create a Twitch Chat Client and many features are inspired 
 - Multi Account support
 - Join as many Chats as you want
 - Join Chats as Anonymous User
+- [Custom Themes](/doc/THEME.md)
 - You can host the server component for authentication/anonymous usage yourself
 - Graphical display of emotes
 - Emote and User Suggestions/Autocompletion
@@ -38,6 +39,9 @@ The name and idea to create a Twitch Chat Client and many features are inspired 
 - Simple Twitch duplicate message bypass
 - Support for viewing twitch polls in your own channel
 - Special tabs like mentions and live notifications
+- Chat is moving too fast? Try the /localsubscribers and /uniqueonly chat modes
+
+Read more about Chatuinos features [here](doc/FEATURES.md)
 
 ## Installation
 

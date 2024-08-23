@@ -13,9 +13,10 @@ import (
 )
 
 type liveNotificationTab struct {
-	id     string
-	keymap save.KeyMap
-	logger zerolog.Logger
+	id                string
+	keymap            save.KeyMap
+	logger            zerolog.Logger
+	userConfiguration UserConfiguration
 
 	focused bool
 
@@ -26,16 +27,17 @@ type liveNotificationTab struct {
 	chatWindow   *chatWindow
 }
 
-func newLiveNotificationTab(id string, logger zerolog.Logger, keymap save.KeyMap, emoteStore EmoteStore, width, height int) *liveNotificationTab {
+func newLiveNotificationTab(id string, logger zerolog.Logger, keymap save.KeyMap, emoteStore EmoteStore, width, height int, userConfiguration UserConfiguration) *liveNotificationTab {
 	return &liveNotificationTab{
-		id:           id,
-		logger:       logger,
-		keymap:       keymap,
-		state:        inChatWindow,
-		width:        width,
-		height:       height,
-		chatWindow:   newChatWindow(logger, width, height, emoteStore, keymap),
-		streamerLive: map[string]bool{},
+		id:                id,
+		logger:            logger,
+		keymap:            keymap,
+		state:             inChatWindow,
+		width:             width,
+		height:            height,
+		userConfiguration: userConfiguration,
+		chatWindow:        newChatWindow(logger, width, height, emoteStore, keymap, userConfiguration),
+		streamerLive:      map[string]bool{},
 	}
 }
 

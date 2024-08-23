@@ -64,11 +64,12 @@ type List struct {
 	state           state
 	width, height   int
 	err             error
+	theme           save.Theme
 
 	clientID, apiHost string
 }
 
-func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap save.KeyMap) List {
+func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap save.KeyMap, theme save.Theme) List {
 	columns := []table.Column{
 		{Title: "ID", Width: 10},
 		{Title: "Main Account", Width: 15},
@@ -84,13 +85,10 @@ func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap s
 
 	s := table.DefaultStyles()
 	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
 		Bold(false)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("135")).
+		Foreground(lipgloss.Color(theme.ListFontColor)).
+		Background(lipgloss.Color(theme.ListBackgroundColor)).
 		Bold(false)
 	t.SetStyles(s)
 
@@ -103,6 +101,7 @@ func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap s
 		},
 		table:     t,
 		tableHelp: help.New(),
+		theme:     theme,
 	}
 }
 
@@ -165,7 +164,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, l.key.Create):
 			if l.state == inTable {
 				l.state = inCreate
-				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost, l.key.KeyMap)
+				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost, l.key.KeyMap, l.theme)
 			} else {
 				l.state = inTable
 			}
@@ -199,7 +198,7 @@ func (l List) View() string {
 	if l.state == inTable {
 		display := ""
 		if l.err != nil {
-			display = fmt.Sprintf("got error: %s\n\n", l.err)
+			display = fmt.Sprintf("failed: %s\n\n", l.err)
 		}
 
 		display = display + "\n" + l.table.View() + "\n" + l.tableHelp.View(l.key)
@@ -209,8 +208,6 @@ func (l List) View() string {
 			AlignVertical(lipgloss.Center).
 			Width(l.width - 2).
 			Height(l.height - 2).
-			Border(lipgloss.ThickBorder()).
-			BorderForeground(lipgloss.Color("135")).
 			Render(display)
 	} else {
 		return l.create.View()

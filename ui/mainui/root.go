@@ -24,6 +24,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type UserConfiguration struct {
+	Settings save.Settings
+	Theme    save.Theme
+}
+
 type AccountProvider interface {
 	GetAllAccounts() ([]save.Account, error)
 	UpdateTokensFor(id, accessToken, refreshToken string) error
@@ -192,6 +197,7 @@ type Root struct {
 
 	width, height int
 	keymap        save.KeyMap
+	userConfig    UserConfiguration
 
 	hasLoadedSession bool
 	screenType       activeScreen
@@ -246,6 +252,7 @@ func NewUI(
 	messageLoggerChan chan<- *command.PrivateMessage,
 	emoteReplacer EmoteReplacer,
 	messageLogger MessageLogger,
+	userConfig UserConfiguration,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -261,11 +268,12 @@ func NewUI(
 
 		// components
 		splash: splash{
-			keymap: keymap,
+			keymap:            keymap,
+			userConfiguration: userConfig,
 		},
-		header:    newTabHeader(),
+		header:    newTabHeader(userConfig),
 		help:      newHelp(10, 10, keymap),
-		joinInput: newJoin(provider, clients, 10, 10, keymap),
+		joinInput: newJoin(provider, clients, 10, 10, keymap, userConfig),
 
 		// chat multiplex channels
 		closerWG: &sync.WaitGroup{},
@@ -289,6 +297,7 @@ func NewUI(
 			return twitch.NewAPI(clientID, opts...)
 		},
 		loadSaveState: save.AppStateFromDisk,
+		userConfig:    userConfig,
 	}
 }
 
@@ -530,7 +539,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.screenType = inputScreen
-				r.joinInput = newJoin(r.accounts, r.ttvAPIUserClients, r.width, r.height, r.keymap)
+				r.joinInput = newJoin(r.accounts, r.ttvAPIUserClients, r.width, r.height, r.keymap, r.userConfig)
 				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
 					return t.Kind() == mentionTabKind
 				})
@@ -843,17 +852,18 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab
 		id := r.header.addTab(channel, identity)
 
 		headerHeight := r.getHeaderHeight()
-		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger)
+
+		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger, r.userConfig)
 		return nTab
 	case mentionTabKind:
 		id := r.header.addTab("mentioned", "all")
 		headerHeight := r.getHeaderHeight()
-		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteStore, r.width, r.height-headerHeight)
+		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteStore, r.width, r.height-headerHeight, r.userConfig)
 		return nTab
 	case liveNotificationTabKind:
 		id := r.header.addTab("live notifications", "all")
 		headerHeight := r.getHeaderHeight()
-		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteStore, r.width, r.height-headerHeight)
+		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteStore, r.width, r.height-headerHeight, r.userConfig)
 		return nTab
 	}
 
