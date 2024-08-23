@@ -87,7 +87,7 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string) *Sugges
 		trie:                      t,
 		KeyMap:                    DefaultKeyMap,
 		InputModel:                input,
-		history:                   make([]string, 0),
+		history:                   []string{},
 		userCache:                 userCache,
 		IncludeCommandSuggestions: true,
 	}

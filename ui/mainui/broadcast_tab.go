@@ -101,7 +101,8 @@ type broadcastTab struct {
 	channelID  string
 	emoteStore EmoteStore
 
-	width, height int
+	width, height     int
+	userConfiguration UserConfiguration
 
 	ttvAPI               APIClient
 	recentMessageService RecentMessageService
@@ -133,6 +134,7 @@ func newBroadcastTab(
 	keymap save.KeyMap,
 	emoteReplacer EmoteReplacer,
 	messageLogger MessageLogger,
+	userConfiguration UserConfiguration,
 ) *broadcastTab {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](time.Second * 10),
@@ -154,6 +156,7 @@ func newBroadcastTab(
 		emoteReplacer:        emoteReplacer,
 		messageLogger:        messageLogger,
 		lastMessages:         cache,
+		userConfiguration:    userConfiguration,
 	}
 }
 
@@ -286,9 +289,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
-		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.emoteStore, t.keymap)
+		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.emoteStore, t.keymap, t.userConfiguration)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
-		t.statusInfo = newStreamStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID)
+		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.userConfiguration.Theme.InputPromptColor))
+		t.statusInfo = newStreamStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID, t.userConfiguration)
 
 		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
@@ -486,11 +490,13 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				// Send message
 				if key.Matches(msg, t.keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
 					return t, t.handleMessageSent(false)
 				}
 
 				// Send message - quick send
 				if key.Matches(msg, t.keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
 					return t, t.handleMessageSent(true)
 				}
 
@@ -1146,14 +1152,14 @@ func (t *broadcastTab) handleCopyMessage() {
 		_, entry = t.chatWindow.entryForCurrentCursor()
 		if t.chatWindow.state == searchChatWindowState {
 			t.chatWindow.handleStopSearchMode()
-			t.chatWindow.Blur()
 		}
+		t.chatWindow.Blur()
 	} else {
 		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
 		if t.userInspect.chatWindow.state == searchChatWindowState {
 			t.userInspect.chatWindow.handleStopSearchMode()
-			t.userInspect.chatWindow.Blur()
 		}
+		t.userInspect.chatWindow.Blur()
 	}
 
 	if entry == nil || entry.IsDeleted {
@@ -1171,15 +1177,16 @@ func (t *broadcastTab) handleCopyMessage() {
 	} else {
 		t.state = insertMode
 	}
+
 	t.messageInput.Focus()
-	t.messageInput.SetValue(msg.Message)
+	t.messageInput.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
 }
 
 func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap, t.emoteReplacer, t.messageLogger)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
 
 	initialEvents := make([]chatEventMessage, 0, len(t.chatWindow.entries))
 	for e := range slices.Values(t.chatWindow.entries) {

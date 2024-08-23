@@ -23,15 +23,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 	_ "golang.org/x/image/webp"
-)
-
-var (
-	stvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#0aa6ec"))
-	ttvStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2"))
-	bttvStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d50014"))
 )
 
 var errUnsupportedAnimatedFormat = errors.New("emote is animated but in non supported format")
@@ -113,9 +108,13 @@ type Replacer struct {
 	saveCached         func(Emote, DecodedEmote) error
 	createEncodedImage func(buff []byte, e Emote, offset int) (string, error)
 	lastImageID        atomic.Int32
+
+	stvStyle  lipgloss.Style
+	ttvStyle  lipgloss.Style
+	bttvStyle lipgloss.Style
 }
 
-func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool, cellWidth, cellHeight float32) *Replacer {
+func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool, cellWidth, cellHeight float32, theme save.Theme) *Replacer {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -131,6 +130,10 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 		openCached:         fsOpenCached,
 		saveCached:         SaveCache,
 		createEncodedImage: saveKittyFormattedImage,
+
+		stvStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SevenTVEmoteColor)),
+		ttvStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color(theme.TwitchTVEmoteColor)),
+		bttvStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.BetterTTVEmoteColor)),
 	}
 }
 
@@ -147,7 +150,7 @@ func (i *Replacer) Replace(content string) (string, string, error) {
 
 		// graphics not enabled, replace with colored emote
 		if !i.enableGraphics {
-			words[windex] = ReplaceEmoteColored(emote)
+			words[windex] = i.replaceEmoteColored(emote)
 			continue
 		}
 
@@ -188,7 +191,7 @@ func (i *Replacer) Replace(content string) (string, string, error) {
 		decoded, err := i.ConvertEmote(emote, imageBody)
 		if err != nil {
 			log.Logger.Err(err).Any("emote", emote).Send()
-			words[windex] = ReplaceEmoteColored(emote)
+			words[windex] = i.replaceEmoteColored(emote)
 			continue
 		}
 		decoded.ID = int(incrementID)
@@ -320,14 +323,14 @@ func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser
 	return resp.Body, nil
 }
 
-func ReplaceEmoteColored(emote Emote) string {
+func (i *Replacer) replaceEmoteColored(emote Emote) string {
 	switch emote.Platform {
 	case Twitch:
-		return ttvStyle.Render(emote.Text)
+		return i.ttvStyle.Render(emote.Text)
 	case SevenTV:
-		return stvStyle.Render(emote.Text)
+		return i.stvStyle.Render(emote.Text)
 	case BTTV:
-		return bttvStyle.Render(emote.Text)
+		return i.bttvStyle.Render(emote.Text)
 	}
 
 	return emote.Text

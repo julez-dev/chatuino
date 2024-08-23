@@ -28,10 +28,11 @@ type setUserInspectData struct {
 }
 
 type userInspect struct {
-	subAge        ivr.SubAgeResponse
-	userData      twitch.UserData
-	err           error
-	isDataFetched bool
+	subAge            ivr.SubAgeResponse
+	userData          twitch.UserData
+	err               error
+	isDataFetched     bool
+	userConfiguration UserConfiguration
 
 	width, height int
 	tabID         string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
@@ -47,7 +48,7 @@ type userInspect struct {
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration) *userInspect {
 	return &userInspect{
 		tabID:   tabID,
 		channel: channel,
@@ -55,9 +56,10 @@ func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width
 		ivr:     ivr.NewAPI(http.DefaultClient),
 		ttvAPI:  ttvAPI,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow:    newChatWindow(logger, width, height, emoteStore, keymap),
-		emoteReplacer: emoteReplacer,
-		messageLogger: messageLogger,
+		chatWindow:        newChatWindow(logger, width, height, emoteStore, keymap, userConfiguration),
+		userConfiguration: userConfiguration,
+		emoteReplacer:     emoteReplacer,
+		messageLogger:     messageLogger,
 	}
 }
 
@@ -279,7 +281,7 @@ func (u *userInspect) renderUserInfo() string {
 	style := lipgloss.NewStyle().
 		Padding(0).
 		Border(border, true).
-		BorderForeground(lipgloss.Color("135")).
+		BorderForeground(lipgloss.Color(u.userConfiguration.Theme.InspectBorderColor)).
 		Width(u.width - 2)
 
 	styleCentered := style.MaxWidth(u.width).AlignHorizontal(lipgloss.Center)

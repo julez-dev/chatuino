@@ -2,13 +2,13 @@ package emote
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"testing"
 
 	"github.com/julez-dev/chatuino/httputil"
+	"github.com/julez-dev/chatuino/save"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -27,7 +27,7 @@ func TestReplacer_Replace(t *testing.T) {
 			},
 		}
 
-		replacer := NewReplacer(nil, store, true, 10, 10)
+		replacer := NewReplacer(nil, store, true, 10, 10, save.Theme{})
 		replacer.createEncodedImage = func(buff []byte, e Emote, offset int) (string, error) {
 			t.Log("should not call createEncodedImage")
 			return "", nil
@@ -67,7 +67,7 @@ func TestReplacer_Replace(t *testing.T) {
 			},
 		}
 
-		replacer := NewReplacer(nil, store, false, 0, 0)
+		replacer := NewReplacer(nil, store, false, 0, 0, save.Theme{})
 		replacer.createEncodedImage = func(buff []byte, e Emote, offset int) (string, error) {
 			t.Log("should not call createEncodedImage")
 			return "", nil
@@ -84,7 +84,7 @@ func TestReplacer_Replace(t *testing.T) {
 		command, replacedText, err := replacer.Replace("Test Message with Kappa emote")
 		assert.Nil(t, err)
 		assert.Equal(t, "", command)
-		assert.Equal(t, fmt.Sprintf("Test Message with %s emote", bttvStyle.Render("Kappa")), replacedText)
+		assert.Equal(t, "Test Message with Kappa emote", replacedText)
 	})
 
 	t.Run("fetch-emote", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestReplacer_Replace(t *testing.T) {
 			}),
 		}
 
-		replacer := NewReplacer(client, store, true, 400, 400)
+		replacer := NewReplacer(client, store, true, 400, 400, save.Theme{})
 		replacer.createEncodedImage = func(buff []byte, e Emote, offset int) (string, error) {
 			assert.NotEmpty(t, buff)
 			assert.Equal(t, "Kappa", e.Text)

@@ -70,25 +70,26 @@ type setJoinSuggestionMessage struct {
 }
 
 type join struct {
-	focused          bool
-	width, height    int
-	input            *component.SuggestionTextInput
-	tabKindList      list.Model
-	accountList      list.Model
-	selectedInput    currentJoinInput
-	accounts         []save.Account
-	keymap           save.KeyMap
-	provider         AccountProvider
-	followedFetchers map[string]followedFetcher
-	hasLoaded        bool
+	focused           bool
+	width, height     int
+	input             *component.SuggestionTextInput
+	tabKindList       list.Model
+	accountList       list.Model
+	selectedInput     currentJoinInput
+	accounts          []save.Account
+	keymap            save.KeyMap
+	provider          AccountProvider
+	followedFetchers  map[string]followedFetcher
+	hasLoaded         bool
+	userConfiguration UserConfiguration
 
 	state joinState
 }
 
-func createDefaultList(height int) list.Model {
+func createDefaultList(height int, selectedColor string) list.Model {
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.NormalTitle = lipgloss.NewStyle().AlignHorizontal(lipgloss.Center)
-	delegate.Styles.SelectedTitle = delegate.Styles.NormalTitle.Foreground(lipgloss.Color("135"))
+	delegate.Styles.SelectedTitle = delegate.Styles.NormalTitle.Foreground(lipgloss.Color(selectedColor))
 	delegate.ShowDescription = false
 	delegate.SetSpacing(0)
 
@@ -105,12 +106,13 @@ func createDefaultList(height int) list.Model {
 	return newList
 }
 
-func newJoin(provider AccountProvider, clients map[string]APIClient, width, height int, keymap save.KeyMap) *join {
+func newJoin(provider AccountProvider, clients map[string]APIClient, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *join {
 	emptyUserMap := map[string]func(...string) string{}
 
 	input := component.NewSuggestionTextInput(emptyUserMap)
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "
+	input.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.InputPromptColor))
 	input.InputModel.Placeholder = "Channel"
 	input.InputModel.Validate = func(s string) error {
 		for _, r := range s {
@@ -124,7 +126,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.SetWidth(width)
 
-	tabKindList := createDefaultList(height)
+	tabKindList := createDefaultList(height, userConfiguration.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
@@ -143,7 +145,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(height)
+	channelList := createDefaultList(height, userConfiguration.Theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]followedFetcher{}
@@ -154,15 +156,16 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	}
 
 	return &join{
-		width:            width,
-		height:           height,
-		input:            input,
-		provider:         provider,
-		accountList:      channelList,
-		tabKindList:      tabKindList,
-		keymap:           keymap,
-		followedFetchers: followedFetchers,
-		state:            joinInsertMode,
+		width:             width,
+		height:            height,
+		input:             input,
+		provider:          provider,
+		accountList:       channelList,
+		tabKindList:       tabKindList,
+		keymap:            keymap,
+		followedFetchers:  followedFetchers,
+		state:             joinInsertMode,
+		userConfiguration: userConfiguration,
 	}
 }
 
@@ -342,7 +345,7 @@ func (j *join) View() string {
 
 	styleCenter := lipgloss.NewStyle().Width(j.width - 2).AlignHorizontal(lipgloss.Center)
 
-	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color("135")).Render
+	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color(j.userConfiguration.Theme.ListLabelColor)).Render
 
 	var (
 		labelTab      string
@@ -383,7 +386,7 @@ func (j *join) View() string {
 		_, _ = b.WriteString(strings.Repeat("\n", spacerHeight))
 	}
 
-	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(j.state.String()))
+	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.userConfiguration.Theme.StatusColor)).Render(j.state.String()))
 	_, _ = b.WriteString(stateStr)
 
 	return style.Render(b.String())

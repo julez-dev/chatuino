@@ -34,6 +34,7 @@ type createModel struct {
 	textinput textinput.Model
 	spinner   spinner.Model
 	keymap    save.KeyMap
+	theme     save.Theme
 
 	width, height     int
 	clientID, apiHost string
@@ -42,7 +43,7 @@ type createModel struct {
 	account save.Account
 }
 
-func newCreateModel(width, height int, clientID, apiHost string, keymap save.KeyMap) createModel {
+func newCreateModel(width, height int, clientID, apiHost string, keymap save.KeyMap, theme save.Theme) createModel {
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()
@@ -50,7 +51,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 	s := spinner.New()
 
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ListFontColor))
 
 	return createModel{
 		clientID:  clientID,
@@ -60,6 +61,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 		spinner:   s,
 		width:     width,
 		height:    height,
+		theme:     theme,
 	}
 }
 
@@ -125,8 +127,6 @@ func (c createModel) View() string {
 		AlignVertical(lipgloss.Center).
 		Width(c.width - 2).
 		Height(c.height - 2).
-		Border(lipgloss.ThickBorder()).
-		BorderForeground(lipgloss.Color("135")).
 		Render(view)
 }
 

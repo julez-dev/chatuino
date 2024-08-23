@@ -13,11 +13,6 @@ import (
 
 const bellEmojiPrefix = string(rune(128276)) + " "
 
-var (
-	tabHeaderStyle       = lipgloss.NewStyle().Background(lipgloss.Color("#556")).MarginBottom(1).MarginLeft(1).UnsetMarginTop()
-	tabHeaderActiveStyle = tabHeaderStyle.Background(lipgloss.Color("135"))
-)
-
 type requestNotificationIconMessage struct {
 	tabID string
 }
@@ -30,14 +25,24 @@ type tabHeaderEntry struct {
 }
 
 type tabHeader struct {
-	width   int
-	entries []tabHeaderEntry
+	width             int
+	entries           []tabHeaderEntry
+	userConfiguration UserConfiguration
+
+	tabHeaderStyle       lipgloss.Style
+	tabHeaderActiveStyle lipgloss.Style
 }
 
-func newTabHeader() *tabHeader {
+func newTabHeader(userConfiguration UserConfiguration) *tabHeader {
+	tabHeaderStyle := lipgloss.NewStyle().Background(lipgloss.Color(userConfiguration.Theme.TabHeaderBackgroundColor)).MarginBottom(1).MarginLeft(1).UnsetMarginTop()
+	tabHeaderActiveStyle := tabHeaderStyle.Background(lipgloss.Color(userConfiguration.Theme.TabHeaderActiveBackgroundColor))
+
 	return &tabHeader{
-		width:   10,
-		entries: make([]tabHeaderEntry, 0),
+		width:                10,
+		entries:              make([]tabHeaderEntry, 0),
+		userConfiguration:    userConfiguration,
+		tabHeaderStyle:       tabHeaderStyle,
+		tabHeaderActiveStyle: tabHeaderActiveStyle,
 	}
 }
 
@@ -68,10 +73,10 @@ func (t *tabHeader) View() string {
 
 	for _, e := range t.entries {
 
-		style := tabHeaderStyle
+		style := t.tabHeaderStyle
 
 		if e.selected {
-			style = tabHeaderActiveStyle
+			style = t.tabHeaderActiveStyle
 		}
 
 		displayEntry := style.Render(fmt.Sprintf("%s [%s]", e.name, e.identity))

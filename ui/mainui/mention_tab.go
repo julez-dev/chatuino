@@ -19,10 +19,11 @@ type setMentionTabData struct {
 }
 
 type mentionTab struct {
-	id       string
-	keymap   save.KeyMap
-	logger   zerolog.Logger
-	provider AccountProvider
+	id                string
+	keymap            save.KeyMap
+	logger            zerolog.Logger
+	provider          AccountProvider
+	userConfiguration UserConfiguration
 
 	focused bool
 
@@ -35,16 +36,17 @@ type mentionTab struct {
 	chatWindow *chatWindow
 }
 
-func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provider AccountProvider, emoteStore EmoteStore, width, height int) *mentionTab {
+func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provider AccountProvider, emoteStore EmoteStore, width, height int, userConfiguration UserConfiguration) *mentionTab {
 	return &mentionTab{
-		id:         id,
-		logger:     logger,
-		keymap:     keymap,
-		provider:   provider,
-		state:      inChatWindow,
-		width:      width,
-		height:     height,
-		chatWindow: newChatWindow(logger, width, height, emoteStore, keymap),
+		id:                id,
+		logger:            logger,
+		keymap:            keymap,
+		provider:          provider,
+		state:             inChatWindow,
+		width:             width,
+		height:            height,
+		userConfiguration: userConfiguration,
+		chatWindow:        newChatWindow(logger, width, height, emoteStore, keymap, userConfiguration),
 	}
 }
 
@@ -121,7 +123,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			for iu := range m.usernames {
 				if messageContainsCaseInsensitive(privMsg, m.usernames[iu]) {
-					privMsg.Message = fmt.Sprintf("%s [mentioned in %s]", privMsg.Message, privMsg.ChannelUserName)
+					event.messageContentEmoteOverride = fmt.Sprintf("%s (mentioned in %s)", event.messageContentEmoteOverride, privMsg.ChannelUserName)
 					mentioned = true
 					break
 				}
@@ -132,7 +134,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			var cmds []tea.Cmd
-			m.chatWindow, cmd = m.chatWindow.Update(msg)
+			m.chatWindow, cmd = m.chatWindow.Update(event)
 			cmds = append(cmds, cmd)
 			cmds = append(cmds, func() tea.Msg {
 				return requestNotificationIconMessage{

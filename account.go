@@ -28,13 +28,17 @@ var accountCMD = &cli.Command{
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		keys, err := save.CreateReadKeyMap()
-
 		if err != nil {
-			return fmt.Errorf("error while reading keymap: %w", err)
+			return fmt.Errorf("failed to read keymap file: %w", err)
+		}
+
+		theme, err := save.ThemeFromDisk()
+		if err != nil {
+			return fmt.Errorf("failed to read theme file: %w", err)
 		}
 
 		p := tea.NewProgram(
-			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(save.KeyringWrapper{}), keys),
+			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(save.KeyringWrapper{}), keys, theme),
 			tea.WithContext(ctx),
 			tea.WithAltScreen(),
 		)

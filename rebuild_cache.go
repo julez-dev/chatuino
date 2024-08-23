@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"slices"
 
-	"net/http"
-
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/seventv"
@@ -58,7 +58,7 @@ var rebuildCacheCMD = &cli.Command{
 
 		fmt.Println("removed cached emotes ✅")
 
-		ij := emote.NewReplacer(http.DefaultClient, nil, true, cellWidth, cellHeight)
+		ij := emote.NewReplacer(http.DefaultClient, nil, true, cellWidth, cellHeight, save.Theme{})
 
 		sttvAPI := seventv.NewAPI(http.DefaultClient)
 		bttvAPI := bttv.NewAPI(http.DefaultClient)

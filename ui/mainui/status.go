@@ -24,21 +24,23 @@ type streamStatus struct {
 	tab               *broadcastTab
 	width, height     int
 	userID, channelID string
+	userConfig        UserConfiguration
 
 	settings      twitch.ChatSettingData
 	err           error
 	isDataFetched bool
 }
 
-func newStreamStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width, height int, userID, channelID string) *streamStatus {
+func newStreamStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width, height int, userID, channelID string, userConfig UserConfiguration) *streamStatus {
 	return &streamStatus{
-		logger:    logger,
-		ttvAPI:    ttvAPI,
-		tab:       tab,
-		width:     width,
-		height:    height,
-		userID:    userID,
-		channelID: channelID,
+		logger:     logger,
+		ttvAPI:     ttvAPI,
+		tab:        tab,
+		width:      width,
+		height:     height,
+		userID:     userID,
+		channelID:  channelID,
+		userConfig: userConfig,
 	}
 }
 
@@ -108,14 +110,14 @@ func (s *streamStatus) View() string {
 		state = "Inspect / Search"
 	}
 
-	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render(state))
+	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(state))
 
 	settingsBuilder := strings.Builder{}
 
 	if s.settings.SlowMode {
 		dur := time.Duration(s.settings.SlowModeWaitTime * 1e9).String()
 		settingsBuilder.WriteString("Slow Mode: ")
-		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("135")).Render(dur))
+		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
 	}
 
 	if s.settings.FollowerMode {
@@ -125,7 +127,7 @@ func (s *streamStatus) View() string {
 
 		dur := time.Duration(s.settings.FollowerModeDuration * 6e+10).String()
 		settingsBuilder.WriteString("Follow Only: ")
-		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("135")).Render(dur))
+		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
 	}
 
 	if s.settings.SubscriberMode {

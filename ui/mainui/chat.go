@@ -18,6 +18,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -25,29 +26,6 @@ const (
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 	// prefixPadding               = 41
 	prefixPadding = 0
-)
-
-var badgeMap = map[string]string{
-	"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color("#E91916")).Render("Streamer"),
-	"no_audio":    "No Audio",
-	"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color("#E005B9")).Render("VIP"),
-	"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color("#8B54F0")).Render("Sub"),
-	"admin":       "Admin",
-	"staff":       "Staff",
-	"Turbo":       lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render("Turbo"),
-	"moderator":   lipgloss.NewStyle().Foreground(lipgloss.Color("#00AD03")).Render("Mod"),
-}
-
-var (
-	indicator      = lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Background(lipgloss.Color("135")).Render("@")
-	indicatorWidth = lipgloss.Width(indicator) + 1 // for empty space
-)
-
-var (
-	subAlertStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
-	noticeAlertStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
-	clearChatAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a35df2")).Bold(true)
-	errorAlertStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff6347")).Bold(true)
 )
 
 type chatEntry struct {
@@ -72,10 +50,12 @@ const (
 )
 
 type chatWindow struct {
-	logger        zerolog.Logger
-	keymap        save.KeyMap
-	width, height int
-	emoteStore    EmoteStore
+	logger            zerolog.Logger
+	keymap            save.KeyMap
+	width, height     int
+	emoteStore        EmoteStore
+	userConfiguration UserConfiguration
+	badgeMap          map[string]string
 
 	focused bool
 	state   chatWindowState
@@ -94,24 +74,56 @@ type chatWindow struct {
 	// so we don't need to recreate a new lipgloss.Style for every message
 	userColorCache map[string]func(...string) string
 	searchInput    textinput.Model
+
+	// styles
+	indicator      string
+	indicatorWidth int
+
+	subAlertStyle       lipgloss.Style
+	noticeAlertStyle    lipgloss.Style
+	clearChatAlertStyle lipgloss.Style
+	errorAlertStyle     lipgloss.Style
 }
 
-func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteStore, keymap save.KeyMap) *chatWindow {
+func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteStore, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
+	badgeMap := map[string]string{
+		"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatStreamerColor)).Render("Streamer"),
+		"no_audio":    "No Audio",
+		"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatVIPColor)).Render("VIP"),
+		"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatSubColor)).Render("Sub"),
+		"admin":       "Admin",
+		"staff":       "Staff",
+		"Turbo":       lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatTurboColor)).Render("Turbo"),
+		"moderator":   lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatModeratorColor)).Render("Mod"),
+	}
+
 	input := textinput.New()
 	input.CharLimit = 25
 	input.Prompt = "  /"
 	input.Placeholder = "search"
+	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.InputPromptColor))
 	input.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.Width = width
 
+	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Background(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Render("@")
+
 	c := chatWindow{
-		keymap:         keymap,
-		logger:         logger,
-		width:          width,
-		height:         height,
-		emoteStore:     emoteStore,
-		userColorCache: map[string]func(...string) string{},
-		searchInput:    input,
+		keymap:            keymap,
+		badgeMap:          badgeMap,
+		logger:            logger,
+		width:             width,
+		height:            height,
+		emoteStore:        emoteStore,
+		userColorCache:    map[string]func(...string) string{},
+		searchInput:       input,
+		userConfiguration: userConfiguration,
+
+		indicator:           indicator,
+		indicatorWidth:      lipgloss.Width(indicator) + 1,
+		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatSubAlertColor)).Bold(true),
+		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatNoticeAlertColor)).Bold(true),
+		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatClearChatColor)).Bold(true),
+		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatErrorColor)).Bold(true),
 	}
 
 	return &c
@@ -363,8 +375,8 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 func (c *chatWindow) markSelectedMessage() {
 	linesInView := c.lines[c.lineStart:c.lineEnd]
 	for i, s := range linesInView {
-		if strings.HasPrefix(s, indicator+" ") {
-			s = strings.TrimPrefix(s, indicator+" ")
+		if strings.HasPrefix(s, c.indicator+" ") {
+			s = strings.TrimPrefix(s, c.indicator+" ")
 			linesInView[i] = "  " + s
 		}
 	}
@@ -379,12 +391,12 @@ func (c *chatWindow) markSelectedMessage() {
 		lines := c.lines[e.Position.CursorStart : e.Position.CursorEnd+1]
 
 		for i, s := range lines {
-			if strings.HasPrefix(s, indicator) {
+			if strings.HasPrefix(s, c.indicator) {
 				continue
 			}
 
 			s = strings.TrimPrefix(s, "  ")
-			lines[i] = indicator + " " + s
+			lines[i] = c.indicator + " " + s
 		}
 	}
 }
@@ -434,21 +446,6 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 		return
 	}
 
-	// cleanup messages if we have more messages than cleanupThreshold
-	// if len(c.entries) > cleanupThreshold {
-	// 	_, currentEntry := c.entryForCurrentCursor()
-
-	// 	remainingStart := len(c.entries) - int(cleanupAfterMessage)
-	// 	c.logger.Info().Int("c.lineStart", c.lineStart).Int("remaining-start", remainingStart).Int("new-len", len(c.entries[remainingStart:])).Msg("cleanup")
-	// 	if currentEntry == nil || c.lineStart > remainingStart {
-	// 		c.logger.Info().Int("c.lineStart", c.lineStart).Int("remaining-start", remainingStart).Int("new-len", len(c.entries[remainingStart:])).Msg("done cleanup")
-
-	// 		c.entries = c.entries[remainingStart:]
-	// 		c.recalculateLines()
-	// 	}
-	// }
-
-	// 1st: number of entries before line start
 	c.cleanup()
 
 	// if timeout message, rewrite all messages from user
@@ -516,15 +513,17 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	switch msg := event.message.(type) {
 	case error:
-		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + errorAlertStyle.Render("Error") + "]: "
+		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.PrivateMessage:
+		log.Logger.Info().Msg(event.messageContentEmoteOverride)
+
 		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
 		// format users badges
 		for _, badge := range msg.Badges {
-			if b, ok := badgeMap[badge.Name]; ok {
+			if b, ok := c.badgeMap[badge.Name]; ok {
 				badges = append(badges, b)
 			}
 		}
@@ -555,12 +554,12 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *command.Notice:
-		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + noticeAlertStyle.Render("Notice") + "]: "
+		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + c.noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(styled))
 	case *command.ClearChat:
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + clearChatAlertStyle.Render("Clear Chat") + "]: "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
 
 		userRenderFunc, ok := c.userColorCache[msg.UserName]
 
@@ -581,7 +580,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubMessage:
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Alert") + "]: "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + c.subAlertStyle.Render("Sub Alert") + "]: "
 
 		subResubText := "subscribed"
 		if msg.MsgID == "resub" {
@@ -610,7 +609,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubGiftMessage:
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + subAlertStyle.Render("Sub Gift Alert") + "]: "
+		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
 
 		gifterRenderFunc, ok := c.userColorCache[msg.Login]
 
@@ -679,7 +678,7 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 		prefixWidth = lipgloss.Width(prefix)
 	}
 
-	contentWidthLimit := c.width - indicatorWidth - prefixWidth
+	contentWidthLimit := c.width - c.indicatorWidth - prefixWidth
 
 	// softwrap text to contentWidthLimit, if soft wrapping fails (for example in links) force break
 	wrappedText := wrap.String(wordwrap.String(content, contentWidthLimit), contentWidthLimit)
@@ -700,14 +699,17 @@ func (c *chatWindow) colorMessageMentions(message string) string {
 	words := strings.Split(message, " ")
 	for i, word := range words {
 		cleaned := strings.ToLower(stripDisplayNameEdges(word))
-
 		renderFn, ok := c.userColorCache[cleaned]
 
 		if !ok {
 			continue
 		}
 
-		words[i] = renderFn(word)
+		if start := strings.Index(word, cleaned); start != -1 {
+			word = word[:start] + renderFn(cleaned) + word[start+len(cleaned):]
+		}
+
+		words[i] = word
 	}
 
 	return strings.Join(words, " ")
