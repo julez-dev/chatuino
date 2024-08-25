@@ -68,6 +68,14 @@ func (t *tabHeader) Update(msg tea.Msg) (*tabHeader, tea.Cmd) {
 }
 
 func (t *tabHeader) View() string {
+	if t.userConfiguration.Settings.VerticalTabList {
+		return t.verticalView()
+	}
+
+	return t.horizontalView()
+}
+
+func (t *tabHeader) horizontalView() string {
 	var rowIndex int
 	var displayRows [][]string
 
@@ -110,6 +118,33 @@ func (t *tabHeader) View() string {
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, flattenedDisplayRows...)
+}
+
+func (t *tabHeader) verticalView() string {
+	var displayEntries []string
+
+	var longestLen int
+
+	for e := range slices.Values(t.entries) {
+		len := len(fmt.Sprintf("%s [%s]", e.name, e.identity))
+		if len > longestLen {
+			longestLen = len
+		}
+	}
+
+	for _, e := range t.entries {
+		style := t.tabHeaderStyle
+
+		if e.selected {
+			style = t.tabHeaderActiveStyle
+		}
+
+		display := fmt.Sprintf("%s [%s]", e.name, e.identity)
+		display += strings.Repeat(" ", longestLen-len(display))
+		displayEntries = append(displayEntries, style.Render(display))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, displayEntries...)
 }
 
 func (t *tabHeader) selectTab(id string) {

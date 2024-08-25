@@ -679,6 +679,10 @@ func (r *Root) View() string {
 			return r.splash.View()
 		}
 
+		if r.userConfig.Settings.VerticalTabList {
+			return lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
+		}
+
 		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
 	case inputScreen:
 		return r.joinInput.View()
@@ -880,9 +884,6 @@ func (r *Root) handleResize() {
 	r.splash.width = r.width
 	r.splash.height = r.height
 
-	// tab header
-	r.header.width = r.width
-
 	// channel join input
 	r.joinInput.width = r.width
 	r.joinInput.height = r.height
@@ -890,6 +891,20 @@ func (r *Root) handleResize() {
 
 	// help
 	r.help.handleResize(r.width, r.height)
+
+	if r.userConfig.Settings.VerticalTabList {
+		headerWidth := lipgloss.Width(r.header.View())
+
+		for i := range r.tabs {
+			r.tabs[i].SetSize(r.width-headerWidth, r.height)
+			r.tabs[i].HandleResize()
+		}
+
+		return
+	}
+
+	// tab header
+	r.header.width = r.width
 
 	// tab
 	headerHeight := r.getHeaderHeight()

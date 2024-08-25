@@ -12,8 +12,9 @@ const (
 )
 
 type Settings struct {
-	Moderation ModerationSettings `yaml:"moderation"`
-	Chat       ChatSettings       `yaml:"chat"`
+	VerticalTabList bool               `yaml:"vertical_tab_list"`
+	Moderation      ModerationSettings `yaml:"moderation"`
+	Chat            ChatSettings       `yaml:"chat"`
 }
 
 type ModerationSettings struct {
@@ -50,7 +51,6 @@ func SettingsFromDisk() (Settings, error) {
 
 	defer f.Close()
 	stat, err := f.Stat()
-
 	if err != nil {
 		return Settings{}, err
 	}
@@ -60,7 +60,6 @@ func SettingsFromDisk() (Settings, error) {
 	}
 
 	b, err := io.ReadAll(f)
-
 	if err != nil {
 		return Settings{}, err
 	}
