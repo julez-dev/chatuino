@@ -18,3 +18,7 @@ func (k KeyringWrapper) Get(service, user string) (string, error) {
 func (k KeyringWrapper) Delete(service, user string) error {
 	return keyring.Delete(service, user)
 }
+
+func (k KeyringWrapper) DeleteAll(service string) error {
+	return keyring.DeleteAll(service)
+}
