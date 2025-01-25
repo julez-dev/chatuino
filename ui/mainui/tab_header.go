@@ -24,8 +24,13 @@ type tabHeaderEntry struct {
 	selected bool
 }
 
+func (t tabHeaderEntry) FilterValue() string {
+	return ""
+}
+
 type tabHeader struct {
 	width             int
+	height            int
 	entries           []tabHeaderEntry
 	userConfiguration UserConfiguration
 

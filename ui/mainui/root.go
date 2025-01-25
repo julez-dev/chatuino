@@ -231,7 +231,7 @@ type Root struct {
 
 	// components
 	splash    splash
-	header    *tabHeader
+	header    *verticalTabHeader
 	joinInput *join
 	help      *help
 
@@ -271,7 +271,7 @@ func NewUI(
 			keymap:            keymap,
 			userConfiguration: userConfig,
 		},
-		header:    newTabHeader(userConfig),
+		header:    newVerticalTabHeader(10, 10, userConfig),
 		help:      newHelp(10, 10, keymap),
 		joinInput: newJoin(provider, clients, 10, 10, keymap, userConfig),
 
@@ -404,7 +404,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.screenType = mainScreen
 		r.initErr = nil
 
-		nTab := r.createTab(msg.account, msg.channel, msg.tabKind)
+		nTab, cmd := r.createTab(msg.account, msg.channel, msg.tabKind)
 		nTab.Focus()
 
 		r.tabs = append(r.tabs, nTab)
@@ -417,7 +417,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		r.handleResize()
 
-		return r, nTab.Init()
+		return r, tea.Batch(nTab.Init(), cmd)
 	case forwardEventSubMessage:
 		r.eventSubInInFlight.Add(1)
 		cmd := func() tea.Msg {
@@ -844,7 +844,7 @@ func (r *Root) handlePolledStreamInfo(polled polledStreamInfo) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab {
+func (r *Root) createTab(account save.Account, channel string, kind tabKind) (tab, tea.Cmd) {
 	switch kind {
 	case broadcastTabKind:
 		identity := account.DisplayName
@@ -853,25 +853,25 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) tab
 			identity = "Anonymous"
 		}
 
-		id := r.header.addTab(channel, identity)
+		id, cmd := r.header.addTab(channel, identity)
 
 		headerHeight := r.getHeaderHeight()
 
 		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger, r.userConfig)
-		return nTab
+		return nTab, cmd
 	case mentionTabKind:
-		id := r.header.addTab("mentioned", "all")
+		id, cmd := r.header.addTab("mentioned", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteStore, r.width, r.height-headerHeight, r.userConfig)
-		return nTab
+		return nTab, cmd
 	case liveNotificationTabKind:
-		id := r.header.addTab("live notifications", "all")
+		id, cmd := r.header.addTab("live notifications", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteStore, r.width, r.height-headerHeight, r.userConfig)
-		return nTab
+		return nTab, cmd
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (r *Root) getHeaderHeight() int {
@@ -893,6 +893,9 @@ func (r *Root) handleResize() {
 	r.help.handleResize(r.width, r.height)
 
 	if r.userConfig.Settings.VerticalTabList {
+		minWidth := r.header.minWidth()
+		r.header.resize(minWidth, r.height)
+
 		headerWidth := lipgloss.Width(r.header.View())
 
 		for i := range r.tabs {
@@ -972,7 +975,10 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	for _, t := range msg.state.Tabs {
 		r.screenType = mainScreen
 
-		var newTab tab
+		var (
+			newTab tab
+			cmd    tea.Cmd
+		)
 		switch tabKind(t.Kind) {
 		case broadcastTabKind:
 			var account save.Account
@@ -987,7 +993,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab = r.createTab(account, t.Channel, broadcastTabKind)
+			newTab, cmd = r.createTab(account, t.Channel, broadcastTabKind)
 			newTab.(*broadcastTab).isUniqueOnlyChat = t.IsLocalUnique
 			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
 		case mentionTabKind:
@@ -1000,10 +1006,12 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab = r.createTab(save.Account{}, "", mentionTabKind)
+			newTab, cmd = r.createTab(save.Account{}, "", mentionTabKind)
 		case liveNotificationTabKind:
-			newTab = r.createTab(save.Account{}, "", liveNotificationTabKind)
+			newTab, cmd = r.createTab(save.Account{}, "", liveNotificationTabKind)
 		}
+
+		cmds = append(cmds, cmd)
 
 		if t.IsFocused {
 			newTab.Focus()
