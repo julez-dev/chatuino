@@ -18,7 +18,6 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -521,8 +520,6 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.PrivateMessage:
-		log.Logger.Info().Msg(event.messageContentEmoteOverride)
-
 		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
 		// format users badges

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 type verticalTabHeader struct {
@@ -30,7 +31,7 @@ func (d verticalTabDelegate) Height() int {
 }
 
 func (d verticalTabDelegate) Spacing() int {
-	return 1
+	return 0
 }
 
 func (d verticalTabDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
@@ -49,6 +50,9 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 	)
 
 	title := fmt.Sprintf("%s (%s)", name, identity)
+	if entry.hasNotification {
+		title = fmt.Sprintf("%s%s", bellEmojiPrefix, title)
+	}
 
 	diff := m.Width() - lipgloss.Width(title)
 	if diff > 0 {
@@ -70,12 +74,15 @@ func newVerticalTabHeader(width, height int, userConfiguration UserConfiguration
 		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(userConfiguration.Theme.TabHeaderActiveBackgroundColor)),
 	}
 
-	l := createDefaultList(0, "#FFFFFF")
+	l := list.New(nil, delegate, width, height)
 	l.SetShowPagination(false)
 	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetShowHelp(false)
 	l.SetWidth(width)
 	l.SetHeight(height)
 	l.SetDelegate(delegate)
+	l.Title = ""
 	l.InfiniteScrolling = true
 
 	l.KeyMap = list.KeyMap{}
@@ -105,7 +112,14 @@ func (v *verticalTabHeader) addTab(channel, identity string) (string, tea.Cmd) {
 
 func (v *verticalTabHeader) selectTab(id string) {
 	for i, item := range v.list.Items() {
-		if item.(tabHeaderEntry).id == id {
+		e := item.(tabHeaderEntry)
+		if e.id == id {
+			// reset notification flag on select
+			if e.hasNotification {
+				e.hasNotification = false
+				v.list.SetItem(i, e)
+			}
+
 			v.list.Select(i)
 		}
 	}
@@ -113,7 +127,7 @@ func (v *verticalTabHeader) selectTab(id string) {
 
 func (v *verticalTabHeader) removeTab(id string) {
 	for i, item := range v.list.Items() {
-		if item.(tabHeaderEntry).id == id {
+		if item != nil && item.(tabHeaderEntry).id == id {
 			v.list.RemoveItem(i)
 		}
 	}
@@ -123,6 +137,9 @@ func (v *verticalTabHeader) minWidth() int {
 	minWidth := 10
 
 	for i, e := range v.list.Items() {
+		e := e.(tabHeaderEntry)
+		e.hasNotification = true
+
 		out := strings.Builder{}
 
 		v.delegate.Render(&out, v.list, i, e)
@@ -147,11 +164,33 @@ func (v *verticalTabHeader) Init() tea.Cmd {
 }
 
 func (v *verticalTabHeader) Update(msg tea.Msg) (*verticalTabHeader, tea.Cmd) {
-	var cmd tea.Cmd
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
+
 	v.list, cmd = v.list.Update(msg)
-	return v, cmd
+	cmds = append(cmds, cmd)
+
+	if req, ok := msg.(requestNotificationIconMessage); ok {
+		log.Logger.Info().Str("id", req.tabID).Msg("got noti request")
+		for i, e := range v.list.Items() {
+			e := e.(tabHeaderEntry)
+			// add bell prefix if tab id matched, and tab is not already active
+			if e.id == req.tabID && v.list.Index() != i {
+				e.hasNotification = true
+				v.list.SetItem(i, e)
+			}
+		}
+	}
+
+	return v, tea.Batch(cmds...)
 }
 
 func (v *verticalTabHeader) View() string {
-	return v.list.View()
+	view := v.list.View()
+	if idx := strings.Index(view, "\n"); idx != -1 {
+		view = view[idx+1:]
+	}
+	return view
 }

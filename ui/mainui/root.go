@@ -231,7 +231,7 @@ type Root struct {
 
 	// components
 	splash    splash
-	header    *verticalTabHeader
+	header    *horizontalTabHeader
 	joinInput *join
 	help      *help
 
@@ -271,7 +271,7 @@ func NewUI(
 			keymap:            keymap,
 			userConfiguration: userConfig,
 		},
-		header:    newVerticalTabHeader(10, 10, userConfig),
+		header:    newHorizontalTabHeader(10, userConfig),
 		help:      newHelp(10, 10, keymap),
 		joinInput: newJoin(provider, clients, 10, 10, keymap, userConfig),
 
@@ -683,7 +683,7 @@ func (r *Root) View() string {
 			return lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
 		}
 
-		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
+		return "  " + r.header.View() + " \n" + r.tabs[r.tabCursor].View()
 	case inputScreen:
 		return r.joinInput.View()
 	case helpScreen:
@@ -904,6 +904,8 @@ func (r *Root) handleResize() {
 		}
 
 		return
+	} else {
+		r.header.resize(r.width-3, 0) // one placeholder space foreach side
 	}
 
 	// tab header
