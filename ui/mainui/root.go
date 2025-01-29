@@ -113,6 +113,17 @@ type tab interface {
 	Kind() tabKind
 }
 
+type header interface {
+	Init() tea.Cmd
+	Update(tea.Msg) (header, tea.Cmd)
+	View() string
+	AddTab(channel, identity string) (string, tea.Cmd)
+	RemoveTab(id string)
+	SelectTab(id string)
+	Resize(width, height int)
+	MinWidth() int
+}
+
 type activeScreen int
 
 const (
@@ -231,7 +242,7 @@ type Root struct {
 
 	// components
 	splash    splash
-	header    *horizontalTabHeader
+	header    header
 	joinInput *join
 	help      *help
 
@@ -258,6 +269,13 @@ func NewUI(
 	outChat := chatPool.ListenAndServe(inChat)
 	inEventSub := make(chan multiplex.EventSubInboundMessage)
 
+	var header header
+	if userConfig.Settings.VerticalTabList {
+		header = newVerticalTabHeader(10, 10, userConfig)
+	} else {
+		header = newHorizontalTabHeader(10, userConfig)
+	}
+
 	clients := map[string]APIClient{}
 	return &Root{
 		clientID: clientID,
@@ -271,7 +289,7 @@ func NewUI(
 			keymap:            keymap,
 			userConfiguration: userConfig,
 		},
-		header:    newHorizontalTabHeader(10, userConfig),
+		header:    header,
 		help:      newHelp(10, 10, keymap),
 		joinInput: newJoin(provider, clients, 10, 10, keymap, userConfig),
 
@@ -410,7 +428,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.tabs = append(r.tabs, nTab)
 
 		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-		r.header.selectTab(nTab.ID())
+		r.header.SelectTab(nTab.ID())
 
 		r.joinInput.blur()
 		r.joinInput.input.SetSuggestions(nil) // free up some memory
@@ -853,19 +871,19 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) (ta
 			identity = "Anonymous"
 		}
 
-		id, cmd := r.header.addTab(channel, identity)
+		id, cmd := r.header.AddTab(channel, identity)
 
 		headerHeight := r.getHeaderHeight()
 
 		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteStore, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger, r.userConfig)
 		return nTab, cmd
 	case mentionTabKind:
-		id, cmd := r.header.addTab("mentioned", "all")
+		id, cmd := r.header.AddTab("mentioned", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteStore, r.width, r.height-headerHeight, r.userConfig)
 		return nTab, cmd
 	case liveNotificationTabKind:
-		id, cmd := r.header.addTab("live notifications", "all")
+		id, cmd := r.header.AddTab("live notifications", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteStore, r.width, r.height-headerHeight, r.userConfig)
 		return nTab, cmd
@@ -893,8 +911,8 @@ func (r *Root) handleResize() {
 	r.help.handleResize(r.width, r.height)
 
 	if r.userConfig.Settings.VerticalTabList {
-		minWidth := r.header.minWidth()
-		r.header.resize(minWidth, r.height)
+		minWidth := r.header.MinWidth()
+		r.header.Resize(minWidth, r.height)
 
 		headerWidth := lipgloss.Width(r.header.View())
 
@@ -905,11 +923,8 @@ func (r *Root) handleResize() {
 
 		return
 	} else {
-		r.header.resize(r.width-3, 0) // one placeholder space foreach side
+		r.header.Resize(r.width-3, 0) // one placeholder space foreach side
 	}
-
-	// tab header
-	r.header.width = r.width
 
 	// tab
 	headerHeight := r.getHeaderHeight()
@@ -934,7 +949,7 @@ func (r *Root) nextTab() {
 	r.tabCursor = newIndex
 
 	if len(r.tabs) > r.tabCursor {
-		r.header.selectTab(r.tabs[r.tabCursor].ID())
+		r.header.SelectTab(r.tabs[r.tabCursor].ID())
 		r.tabs[r.tabCursor].Focus()
 	}
 }
@@ -957,7 +972,7 @@ func (r *Root) prevTab() {
 	r.tabCursor = newIndex
 
 	if len(r.tabs) > r.tabCursor {
-		r.header.selectTab(r.tabs[r.tabCursor].ID())
+		r.header.SelectTab(r.tabs[r.tabCursor].ID())
 		r.tabs[r.tabCursor].Focus()
 	}
 }
@@ -1024,7 +1039,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		if t.IsFocused {
 			hasActiveTab = true
 			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-			r.header.selectTab(newTab.ID())
+			r.header.SelectTab(newTab.ID())
 		}
 		cmds = append(cmds, newTab.InitWithUserData(msg.ttvUsers[t.Channel]))
 	}
@@ -1032,7 +1047,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	// if for some reason there were tabs persisted but non tab has the focus flag set
 	// focus the first tab
 	if len(r.tabs) > 0 && !hasActiveTab {
-		r.header.selectTab(r.tabs[0].ID())
+		r.header.SelectTab(r.tabs[0].ID())
 		r.tabCursor = 0
 		r.tabs[0].Focus()
 	}
@@ -1121,7 +1136,7 @@ func (r *Root) closeTab() {
 		if r.tabs[r.tabCursor].Kind() == broadcastTabKind {
 			r.tabs[r.tabCursor].(*broadcastTab).close()
 		}
-		r.header.removeTab(tabID)
+		r.header.RemoveTab(tabID)
 		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
 			return t.ID() == tabID
 		})

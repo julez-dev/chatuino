@@ -34,7 +34,16 @@ func (h *horizontalTabHeader) Init() tea.Cmd {
 	return nil
 }
 
-func (h *horizontalTabHeader) Update(msg tea.Msg) (*horizontalTabHeader, tea.Cmd) {
+func (h *horizontalTabHeader) Update(msg tea.Msg) (header, tea.Cmd) {
+	if req, ok := msg.(requestNotificationIconMessage); ok {
+		for i, e := range h.entries {
+			if e.id == req.tabID && !e.selected {
+				h.entries[i].hasNotification = true
+				break
+			}
+		}
+	}
+
 	return h, nil
 }
 
@@ -43,7 +52,8 @@ func (h *horizontalTabHeader) View() string {
 		return ""
 	}
 
-	entries := h.entriesForPage()
+	start, end := h.currentPageBounds()
+	entries := h.entries[start:end]
 	var renderedVisible []string
 
 	var (
@@ -62,9 +72,9 @@ func (h *horizontalTabHeader) View() string {
 	for _, e := range entries {
 		var rendered string
 		if e.selected {
-			rendered = h.tabHeaderActiveStyle.Render(e.render())
+			rendered = h.tabHeaderActiveStyle.Width(h.maxEntryWidth()).AlignHorizontal(lipgloss.Center).Render(e.render())
 		} else {
-			rendered = h.tabHeaderStyle.Render(e.render())
+			rendered = h.tabHeaderStyle.Width(h.maxEntryWidth()).AlignHorizontal(lipgloss.Center).Render(e.render())
 		}
 
 		renderedVisible = append(renderedVisible, rendered)
@@ -73,20 +83,53 @@ func (h *horizontalTabHeader) View() string {
 	var out string
 
 	if showPrevious {
-		out += "< "
+		// check if any previous entries have a notification
+		var hasNotification bool
+		before := h.entries[:start]
+		for _, e := range before {
+			if e.hasNotification {
+				hasNotification = true
+				break
+			}
+		}
+
+		if hasNotification {
+			out += lipgloss.NewStyle().Foreground(lipgloss.Color(h.userConfig.Theme.ChatNoticeAlertColor)).Render("< ")
+		} else {
+			out += "< "
+		}
 	}
 
 	out += lipgloss.JoinHorizontal(lipgloss.Left, renderedVisible...)
 
 	if showNext {
+		// cehck if any next entries have a notification
+		var hasNotification bool
+		after := h.entries[end:]
+		for _, e := range after {
+			if e.hasNotification {
+				hasNotification = true
+				break
+			}
+		}
+
 		spaces := h.width - lipgloss.Width(out) - 4
-		out += strings.Repeat(" ", spaces) + " >"
+		if spaces < 0 {
+			spaces = 0
+		}
+		out += strings.Repeat(" ", spaces)
+
+		if hasNotification {
+			out += lipgloss.NewStyle().Foreground(lipgloss.Color(h.userConfig.Theme.ChatNoticeAlertColor)).Render(" >")
+		} else {
+			out += " >"
+		}
 	}
 
 	return out
 }
 
-func (v *horizontalTabHeader) addTab(channel, identity string) (string, tea.Cmd) {
+func (v *horizontalTabHeader) AddTab(channel, identity string) (string, tea.Cmd) {
 	entry := tabHeaderEntry{
 		id:       uuid.New().String(),
 		name:     channel,
@@ -94,18 +137,19 @@ func (v *horizontalTabHeader) addTab(channel, identity string) (string, tea.Cmd)
 	}
 
 	v.entries = append(v.entries, entry)
-	v.resize(v.width, 0) // new entry might be longer than others
+	v.Resize(v.width, 0) // new entry might be longer than others
 
 	return entry.id, nil
 }
 
-func (v *horizontalTabHeader) selectTab(id string) {
+func (v *horizontalTabHeader) SelectTab(id string) {
 	// reset selected
 	for i := range v.entries {
 		v.entries[i].selected = false
 	}
 
 	i := v.indexForEntry(id)
+	v.entries[i].hasNotification = false
 	v.entries[i].selected = true
 	v.calculatePage(i)
 }
@@ -128,12 +172,14 @@ func (v *horizontalTabHeader) calculatePage(entryIndex int) {
 	page := entryIndex / v.perPage
 	v.page = page
 }
-
 func (v *horizontalTabHeader) maxPage() int {
-	return len(v.entries) / v.perPage
+	if v.perPage == 0 {
+		return 0
+	}
+	return (len(v.entries)+v.perPage-1)/v.perPage - 1
 }
 
-func (v *horizontalTabHeader) entriesForPage() []tabHeaderEntry {
+func (v *horizontalTabHeader) currentPageBounds() (int, int) {
 	start := v.page * v.perPage
 	end := start + v.perPage
 
@@ -141,17 +187,18 @@ func (v *horizontalTabHeader) entriesForPage() []tabHeaderEntry {
 		end = len(v.entries)
 	}
 
-	return v.entries[start:end]
+	return start, end
 }
 
-func (v *horizontalTabHeader) removeTab(id string) {
+func (v *horizontalTabHeader) RemoveTab(id string) {
 	v.entries = slices.DeleteFunc(v.entries, func(e tabHeaderEntry) bool {
 		return e.id == id
 	})
-	v.resize(v.width, 0)
+
+	v.Resize(v.width, 0)
 }
 
-func (h *horizontalTabHeader) resize(width, _ int) {
+func (h *horizontalTabHeader) Resize(width, _ int) {
 	h.width = width
 
 	entryWidth := h.maxEntryWidth()
@@ -170,7 +217,7 @@ func (h *horizontalTabHeader) maxEntryWidth() int {
 	max := 5
 	for _, entry := range h.entries {
 		entry.hasNotification = true
-		w := lipgloss.Width(entry.render()) + 1 // extra margin
+		w := lipgloss.Width(entry.render()) + 1
 		if w > max {
 			max = w
 		}
@@ -179,6 +226,6 @@ func (h *horizontalTabHeader) maxEntryWidth() int {
 	return max
 }
 
-func (h *horizontalTabHeader) minWidth() int {
+func (h *horizontalTabHeader) MinWidth() int {
 	return 0
 }

@@ -96,7 +96,7 @@ func newVerticalTabHeader(width, height int, userConfiguration UserConfiguration
 	}
 }
 
-func (v *verticalTabHeader) addTab(channel, identity string) (string, tea.Cmd) {
+func (v *verticalTabHeader) AddTab(channel, identity string) (string, tea.Cmd) {
 	entry := tabHeaderEntry{
 		id:       uuid.New().String(),
 		name:     channel,
@@ -110,7 +110,7 @@ func (v *verticalTabHeader) addTab(channel, identity string) (string, tea.Cmd) {
 	return entry.id, cmd
 }
 
-func (v *verticalTabHeader) selectTab(id string) {
+func (v *verticalTabHeader) SelectTab(id string) {
 	for i, item := range v.list.Items() {
 		e := item.(tabHeaderEntry)
 		if e.id == id {
@@ -125,7 +125,7 @@ func (v *verticalTabHeader) selectTab(id string) {
 	}
 }
 
-func (v *verticalTabHeader) removeTab(id string) {
+func (v *verticalTabHeader) RemoveTab(id string) {
 	for i, item := range v.list.Items() {
 		if item != nil && item.(tabHeaderEntry).id == id {
 			v.list.RemoveItem(i)
@@ -133,7 +133,7 @@ func (v *verticalTabHeader) removeTab(id string) {
 	}
 }
 
-func (v *verticalTabHeader) minWidth() int {
+func (v *verticalTabHeader) MinWidth() int {
 	minWidth := 10
 
 	for i, e := range v.list.Items() {
@@ -152,7 +152,7 @@ func (v *verticalTabHeader) minWidth() int {
 	return minWidth
 }
 
-func (v *verticalTabHeader) resize(width, height int) {
+func (v *verticalTabHeader) Resize(width, height int) {
 	v.width = width
 	v.height = height
 	v.list.SetWidth(width)
@@ -163,7 +163,7 @@ func (v *verticalTabHeader) Init() tea.Cmd {
 	return nil
 }
 
-func (v *verticalTabHeader) Update(msg tea.Msg) (*verticalTabHeader, tea.Cmd) {
+func (v *verticalTabHeader) Update(msg tea.Msg) (header, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
