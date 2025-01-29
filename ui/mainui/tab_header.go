@@ -2,8 +2,6 @@ package mainui
 
 import (
 	"fmt"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 const bellEmojiPrefix = string(rune(128276)) + " "
@@ -30,14 +28,4 @@ func (t tabHeaderEntry) render() string {
 	}
 
 	return fmt.Sprintf("%s [%s]", t.name, t.identity)
-}
-
-type tabHeader struct {
-	width             int
-	height            int
-	entries           []tabHeaderEntry
-	userConfiguration UserConfiguration
-
-	tabHeaderStyle       lipgloss.Style
-	tabHeaderActiveStyle lipgloss.Style
 }

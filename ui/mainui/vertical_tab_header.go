@@ -61,11 +61,11 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 
 	selected := m.Index() == index
 	if selected {
-		fmt.Fprintf(w, d.tabHeaderActiveStyle.Render(title))
+		fmt.Fprint(w, d.tabHeaderActiveStyle.Render(title))
 		return
 	}
 
-	fmt.Fprintf(w, d.tabHeaderStyle.Render(title))
+	fmt.Fprint(w, d.tabHeaderStyle.Render(title))
 }
 
 func newVerticalTabHeader(width, height int, userConfiguration UserConfiguration) *verticalTabHeader {
