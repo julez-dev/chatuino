@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
@@ -844,8 +843,13 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 		return false
 	}
 
-	search := c.searchInput.Value()
-	if fuzzy.RankMatchNormalizedFold(search, cast.DisplayName) > 2 || fuzzy.RankMatchNormalizedFold(search, cast.Message) > 2 {
+	// search := c.searchInput.Value()
+	// if fuzzy.RankMatchFold(search, cast.DisplayName) > 5 || fuzzy.RankMatchFold(search, cast.Message) > 6 {
+	// 	return true
+	// }
+
+	search := strings.ToLower(c.searchInput.Value())
+	if strings.Contains(strings.ToLower(cast.DisplayName), search) || strings.Contains(strings.ToLower(cast.Message), search) {
 		return true
 	}
 

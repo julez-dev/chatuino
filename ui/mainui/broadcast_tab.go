@@ -1051,6 +1051,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		t.messageInput.SetValue("")
 	}
 
+	t.chatWindow.moveToBottom()
+
 	// Check if input is a command
 	if strings.HasPrefix(input, "/") {
 		// Get command name
@@ -1100,7 +1102,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	// Check if message is the same as the last message sent
 	// If so, append special character to bypass twitch duplicate message filter
 	if strings.EqualFold(input, t.lastMessageSent) {
-		input = input + string(duplicateBypass)
+		input = input + " " + string(duplicateBypass)
 	}
 
 	msg := &command.PrivateMessage{
