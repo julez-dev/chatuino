@@ -136,16 +136,12 @@ func (v *verticalTabHeader) RemoveTab(id string) {
 func (v *verticalTabHeader) MinWidth() int {
 	minWidth := 10
 
-	for i, e := range v.list.Items() {
+	for _, e := range v.list.Items() {
 		e := e.(tabHeaderEntry)
 		e.hasNotification = true
-
-		out := strings.Builder{}
-
-		v.delegate.Render(&out, v.list, i, e)
-
-		if lipgloss.Width(out.String()) > minWidth {
-			minWidth = lipgloss.Width(out.String())
+		r := e.render()
+		if lipgloss.Width(r) > minWidth {
+			minWidth = lipgloss.Width(r)
 		}
 	}
 

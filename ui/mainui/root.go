@@ -889,6 +889,8 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) (ta
 		return nTab, cmd
 	}
 
+	r.handleResize()
+
 	return nil, nil
 }
 
