@@ -50,7 +50,7 @@ func TestReplacer_Replace(t *testing.T) {
 			return nil
 		}
 
-		command, replacedText, err := replacer.Replace("Test Message with Kappa emote")
+		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote")
 		assert.Nil(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
 		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m emote", replacedText)
@@ -81,7 +81,7 @@ func TestReplacer_Replace(t *testing.T) {
 			return nil
 		}
 
-		command, replacedText, err := replacer.Replace("Test Message with Kappa emote")
+		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote")
 		assert.Nil(t, err)
 		assert.Equal(t, "", command)
 		assert.Equal(t, "Test Message with Kappa emote", replacedText)
@@ -135,7 +135,7 @@ func TestReplacer_Replace(t *testing.T) {
 			return nil
 		}
 
-		command, replacedText, err := replacer.Replace("Test Message with Kappa emote")
+		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote")
 		assert.True(t, cached, "should call saveCached")
 		assert.Nil(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=28,v=28;L3BhdGgvdG8va2FwcGEucG5n\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=1\x1b\\", command)
@@ -181,4 +181,8 @@ type mockEmoteStore struct {
 func (m *mockEmoteStore) GetByTextAllChannels(text string) (Emote, bool) {
 	emote, ok := m.emotes[text]
 	return emote, ok
+}
+
+func (m *mockEmoteStore) GetByText(_ string, text string) (Emote, bool) {
+	return m.GetByTextAllChannels(text)
 }

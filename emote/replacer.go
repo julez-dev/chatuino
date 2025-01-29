@@ -89,6 +89,7 @@ func intToRGB(i int) (byte, byte, byte) {
 
 type EmoteStore interface {
 	GetByTextAllChannels(text string) (Emote, bool)
+	GetByText(channelID, text string) (Emote, bool)
 }
 
 type Replacer struct {
@@ -137,12 +138,21 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 	}
 }
 
-func (i *Replacer) Replace(content string) (string, string, error) {
+func (i *Replacer) Replace(channelID, content string) (string, string, error) {
 	words := strings.Split(content, " ")
 
 	var cmd strings.Builder
 	for windex, word := range words {
-		emote, isEmote := i.store.GetByTextAllChannels(word)
+		var (
+			emote   Emote
+			isEmote bool
+		)
+
+		if channelID == "" {
+			emote, isEmote = i.store.GetByTextAllChannels(word)
+		} else {
+			emote, isEmote = i.store.GetByText(channelID, word)
+		}
 
 		if !isEmote {
 			continue

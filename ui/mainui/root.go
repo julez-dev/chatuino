@@ -43,7 +43,7 @@ type EmoteStore interface {
 }
 
 type EmoteReplacer interface {
-	Replace(content string) (string, string, error)
+	Replace(channelID, content string) (string, string, error)
 }
 
 type APIClient interface {
@@ -1068,7 +1068,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	switch ircMessage := ircer.(type) {
 	case *command.PrivateMessage:
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RoomState:
 		channel = ircMessage.ChannelUserName
@@ -1082,7 +1082,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channel = ircMessage.ChannelUserName
 	case *command.SubMessage:
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RaidMessage:
 		channel = ircMessage.ChannelUserName
@@ -1090,11 +1090,11 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channel = ircMessage.ChannelUserName
 	case *command.RitualMessage:
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	case *command.AnnouncementMessage:
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	}
 
