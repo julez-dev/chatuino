@@ -18,7 +18,6 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -56,6 +55,7 @@ type chatWindow struct {
 	emoteStore        EmoteStore
 	userConfiguration UserConfiguration
 	badgeMap          map[string]string
+	timeFormatFunc    func(time.Time) string
 
 	focused bool
 	state   chatWindowState
@@ -108,13 +108,16 @@ func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteSto
 	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Background(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Render("@")
 
 	c := chatWindow{
-		keymap:            keymap,
-		badgeMap:          badgeMap,
-		logger:            logger,
-		width:             width,
-		height:            height,
-		emoteStore:        emoteStore,
-		userColorCache:    map[string]func(...string) string{},
+		keymap:         keymap,
+		badgeMap:       badgeMap,
+		logger:         logger,
+		width:          width,
+		height:         height,
+		emoteStore:     emoteStore,
+		userColorCache: map[string]func(...string) string{},
+		timeFormatFunc: func(t time.Time) string {
+			return t.Local().Format("15:04:05")
+		},
 		searchInput:       input,
 		userConfiguration: userConfiguration,
 
@@ -513,12 +516,10 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	switch msg := event.message.(type) {
 	case error:
-		prefix := "  " + strings.Repeat(" ", len(time.Now().Format("15:04:05"))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
+		prefix := "  " + strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.PrivateMessage:
-		log.Logger.Info().Msg(event.messageContentEmoteOverride)
-
 		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
 
 		// format users badges
@@ -540,13 +541,13 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		if len(badges) == 0 {
 			// start of the message (sent date + username)
 			prefix = fmt.Sprintf("  %s %s: ",
-				msg.TMISentTS.Local().Format("15:04:05"),
+				c.timeFormatFunc(msg.TMISentTS),
 				userRenderFunc(msg.DisplayName),
 			)
 		} else {
 			// start of the message (sent date + badges + username)
 			prefix = fmt.Sprintf("  %s [%s] %s: ",
-				msg.TMISentTS.Local().Format("15:04:05"),
+				c.timeFormatFunc(msg.TMISentTS),
 				strings.Join(badges, ", "),
 				userRenderFunc(msg.DisplayName),
 			)
@@ -554,12 +555,12 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *command.Notice:
-		prefix := "  " + msg.FakeTimestamp.Local().Format("15:04:05") + " [" + c.noticeAlertStyle.Render("Notice") + "]: "
+		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(styled))
 	case *command.ClearChat:
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
+		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
 
 		userRenderFunc, ok := c.userColorCache[msg.UserName]
 
@@ -580,7 +581,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubMessage:
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + c.subAlertStyle.Render("Sub Alert") + "]: "
+		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Alert") + "]: "
 
 		subResubText := "subscribed"
 		if msg.MsgID == "resub" {
@@ -609,7 +610,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.SubGiftMessage:
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
+		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
 
 		gifterRenderFunc, ok := c.userColorCache[msg.Login]
 
@@ -635,7 +636,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	case *command.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 
-		prefix := "  " + msg.TMISentTS.Local().Format("15:04:05") + " [" + style.Render("Announcement") + "] "
+		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
 
 		userRenderFn, ok := c.userColorCache[msg.Login]
 

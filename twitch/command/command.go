@@ -18,7 +18,9 @@ func (b Badge) String() string {
 
 	for i, split := range splits {
 		r := []rune(split)
-		r[0] = unicode.ToUpper(r[0])
+		if len(r) > 0 {
+			r[0] = unicode.ToUpper(r[0])
+		}
 		splits[i] = string(r)
 	}
 

@@ -317,7 +317,7 @@ func runChatLogger(messageLogger *messagelog.BatchedMessageLogger, messageLogger
 	}
 }
 
-func beforeAction(ctx context.Context, command *cli.Command) error {
+func beforeAction(ctx context.Context, command *cli.Command) (context.Context, error) {
 	// Setup logging
 	//  - If logging not enabled, skip
 	//  - If log-to-file is enabled, log to file, else stderr
@@ -333,7 +333,7 @@ func beforeAction(ctx context.Context, command *cli.Command) error {
 
 	if !command.Bool("log") {
 		log.Logger = zerolog.Nop()
-		return nil
+		return ctx, nil
 	}
 
 	shouldLogToFile := command.Bool("log-to-file")
@@ -342,7 +342,7 @@ func beforeAction(ctx context.Context, command *cli.Command) error {
 	if shouldLogToFile {
 		f, err := setupLogFile()
 		if err != nil {
-			return fmt.Errorf("error while opening log file: %w", err)
+			return ctx, fmt.Errorf("error while opening log file: %w", err)
 		}
 
 		maybeLogFile = f
@@ -357,7 +357,7 @@ func beforeAction(ctx context.Context, command *cli.Command) error {
 		log.Logger = zerolog.New(logFile).With().Timestamp().Logger()
 	}
 
-	return nil
+	return ctx, nil
 }
 
 func runProfilingServer(ctx context.Context, logger zerolog.Logger, host string) {
