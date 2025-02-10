@@ -13,14 +13,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var commandSuggestions = [...]string{
+var moderatorSuggestions = [...]string{
 	"/ban <user> [reason]",
 	"/unban <user>",
 	"/timeout <username> [duration] [reason]",
+	"/banrequests",
+}
+
+var commandSuggestions = [...]string{
 	"/inspect <username>",
 	"/popupchat",
 	"/channel",
-	"/banrequests",
 	"/pyramid <word> <count>",
 	"/localsubscribers",
 	"/localsubscribersoff",
@@ -55,6 +58,7 @@ type SuggestionTextInput struct {
 	history                   []string
 	historyIndex              int
 	IncludeCommandSuggestions bool
+	IncludeModeratorCommands  bool
 
 	userCache map[string]func(...string) string // [username]render func
 }
@@ -90,6 +94,7 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string) *Sugges
 		history:                   []string{},
 		userCache:                 userCache,
 		IncludeCommandSuggestions: true,
+		IncludeModeratorCommands:  false,
 	}
 }
 
@@ -242,10 +247,20 @@ func (s *SuggestionTextInput) updateSuggestions() {
 	s.suggestions = matches
 
 	// If the current word is a command and is at the start of the message, add command help to suggestions
-	if s.IncludeCommandSuggestions && strings.HasPrefix(currWord, "/") && startIndex == 0 {
-		for _, suggestion := range commandSuggestions {
-			if strings.Contains(suggestion, currWord) {
-				s.suggestions = append(s.suggestions, suggestion)
+	if strings.HasPrefix(currWord, "/") && startIndex == 0 {
+		if s.IncludeCommandSuggestions {
+			for _, suggestion := range commandSuggestions {
+				if strings.Contains(suggestion, currWord) {
+					s.suggestions = append(s.suggestions, suggestion)
+				}
+			}
+		}
+
+		if s.IncludeModeratorCommands {
+			for _, suggestion := range moderatorSuggestions {
+				if strings.Contains(suggestion, currWord) {
+					s.suggestions = append(s.suggestions, suggestion)
+				}
 			}
 		}
 	}

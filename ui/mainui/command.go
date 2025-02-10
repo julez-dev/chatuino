@@ -26,8 +26,9 @@ func handleCommand(name string, args []string, channelID string, channel string,
 
 func handleUnban(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
 	respMsg := chatEventMessage{
-		accountID: userAccountID,
-		channel:   channel,
+		isFakeEvent: true,
+		accountID:   userAccountID,
+		channel:     channel,
 		message: &command.Notice{
 			FakeTimestamp: time.Now(),
 		},

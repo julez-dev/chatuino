@@ -40,3 +40,16 @@ type (
 		Start         time.Time `json:"start"`
 	}
 )
+
+type (
+	ModVIPResponse struct {
+		Mods []PrivilegedUser `json:"mods"`
+		VIPs []PrivilegedUser `json:"vips"`
+	}
+	PrivilegedUser struct {
+		ID          string    `json:"id"`
+		Login       string    `json:"login"`
+		DisplayName string    `json:"displayName"`
+		GrantedAt   time.Time `json:"grantedAt"`
+	}
+)
