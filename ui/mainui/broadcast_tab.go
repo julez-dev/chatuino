@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -44,6 +46,7 @@ type setChannelDataMessage struct {
 	channel         string
 	channelID       string
 	initialMessages []twitch.IRCer
+	isUserMod       bool
 }
 
 type broadcastTabState int
@@ -79,6 +82,10 @@ type moderationAPIClient interface {
 	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 }
 
+type ModStatusFetcher interface {
+	GetModVIPList(ctx context.Context, channel string) (ivr.ModVIPResponse, error)
+}
+
 type broadcastTab struct {
 	id     string
 	logger zerolog.Logger
@@ -89,9 +96,10 @@ type broadcastTab struct {
 	isUniqueOnlyChat bool
 	lastMessages     *ttlcache.Cache[string, struct{}]
 
-	provider AccountProvider
-	account  save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
-	focused  bool
+	isUserMod bool
+	provider  AccountProvider
+	account   save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
+	focused   bool
 
 	channelDataLoaded bool
 	lastMessageSent   string
@@ -105,6 +113,7 @@ type broadcastTab struct {
 	userConfiguration UserConfiguration
 
 	ttvAPI               APIClient
+	modFetcher           ModStatusFetcher
 	recentMessageService RecentMessageService
 	emoteReplacer        EmoteReplacer
 	messageLogger        MessageLogger
@@ -157,6 +166,7 @@ func newBroadcastTab(
 		messageLogger:        messageLogger,
 		lastMessages:         cache,
 		userConfiguration:    userConfiguration,
+		modFetcher:           ivr.NewAPI(http.DefaultClient),
 	}
 }
 
@@ -195,6 +205,22 @@ func (t *broadcastTab) Init() tea.Cmd {
 			}
 		}
 
+		modVips, err := t.modFetcher.GetModVIPList(ctx, t.account.DisplayName)
+		if err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.account.DisplayName, err),
+			}
+		}
+
+		var isUserMod bool
+		for _, mod := range modVips.Mods {
+			if mod.ID == t.account.ID {
+				isUserMod = true
+				break
+			}
+		}
+
 		// fetch recent messages
 		recentMessages, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
 		if err != nil {
@@ -209,6 +235,7 @@ func (t *broadcastTab) Init() tea.Cmd {
 			channelID:       userData.Data[0].ID,
 			channel:         userData.Data[0].DisplayName,
 			initialMessages: recentMessages,
+			isUserMod:       isUserMod,
 		}
 	}
 
@@ -244,11 +271,28 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 			}
 		}
 
+		modVips, err := t.modFetcher.GetModVIPList(ctx, t.account.DisplayName)
+		if err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.account.DisplayName, err),
+			}
+		}
+
+		var isUserMod bool
+		for _, mod := range modVips.Mods {
+			if mod.ID == t.account.ID {
+				isUserMod = true
+				break
+			}
+		}
+
 		return setChannelDataMessage{
 			targetID:        t.id,
 			channelID:       userData.ID,
 			channel:         userData.DisplayName,
 			initialMessages: recentMessages,
+			isUserMod:       isUserMod,
 		}
 	}
 
@@ -286,6 +330,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.channelDataLoaded = true
 
+		t.isUserMod = msg.isUserMod
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
@@ -302,6 +347,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			for _, emote := range emoteSet {
 				suggestions = append(suggestions, emote.Text)
+			}
+
+			// user is mod or broadcaster, include mod commands
+			if t.isUserMod || t.account.ID == msg.channelID {
+				t.messageInput.IncludeModeratorCommands = true
 			}
 
 			t.messageInput.SetSuggestions(suggestions)
@@ -1088,6 +1138,21 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleUniqueOnlyChatCommand(true)
 		case "uniqueonlyoff":
 			return t.handleUniqueOnlyChatCommand(false)
+		}
+
+		if !t.isUserMod {
+			return func() tea.Msg {
+				respMsg := chatEventMessage{
+					isFakeEvent: true,
+					accountID:   t.account.ID,
+					tabID:       t.id,
+					message: &command.Notice{
+						FakeTimestamp: time.Now(),
+						Message:       "Moderator commands are not available since you are not a moderator",
+					},
+				}
+				return respMsg
+			}
 		}
 
 		// Message input is only allowed for authenticated users

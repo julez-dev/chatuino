@@ -307,7 +307,9 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
-			if key.Matches(msg, j.keymap.Confirm) && (j.input.Value() != "" || j.tabKindList.SelectedItem().(listItem).kind != broadcastTabKind || j.tabKindList.SelectedItem().(listItem).kind != liveNotificationTabKind) {
+			kind := j.tabKindList.SelectedItem().(listItem).kind
+
+			if key.Matches(msg, j.keymap.Confirm) && (j.input.Value() != "" || kind == liveNotificationTabKind || kind == mentionTabKind) {
 				return j, func() tea.Msg {
 					return joinChannelMessage{
 						tabKind: j.tabKindList.SelectedItem().(listItem).kind,

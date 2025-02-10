@@ -34,6 +34,16 @@ func (a API) GetSubAge(ctx context.Context, user, channel string) (SubAgeRespons
 	return resp, nil
 }
 
+// https://api.ivr.fi/v2/twitch/modvip/{channel}
+func (a API) GetModVIPList(ctx context.Context, channel string) (ModVIPResponse, error) {
+	resp, err := doRequest[ModVIPResponse](ctx, a, http.MethodGet, "/twitch/modvip/"+channel, nil)
+	if err != nil {
+		return ModVIPResponse{}, err
+	}
+
+	return resp, nil
+}
+
 func doRequest[T any](ctx context.Context, api API, method, url string, body io.Reader) (T, error) {
 	var data T
 
