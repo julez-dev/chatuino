@@ -5,6 +5,7 @@ Chatuino can be run without creating any settings file but you may want to confi
 Your settings file is read from ~/.config/chatuino/settings.yaml (config directory may be different depending on OS). You may want to create a new settings file if it doesn't exists already.
 
 ```yaml
+vertical_tab_list: false # if Chatuino should display tabs vertically instead of horizontally
 moderation:
   store_chat_logs: true # if Chatuino should store chat logs in a sqlite database; Default: false
 
