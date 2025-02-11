@@ -73,17 +73,17 @@ Enter
 
 Sleep 2s
 
-Ctrl+N
+Ctrl+t
 Sleep 2s
 Type "loltyler1"
 Sleep 2s
 Enter
 Sleep 8s
 
-Type "u"
+Ctrl+l
 Sleep 5s
 
-Ctrl+N
+Ctrl+t
 Sleep 2s
 Type "julezdev"
 Sleep 2s
@@ -99,11 +99,6 @@ Sleep 1s
 Enter
 Escape
 Sleep 5s
-
-Type "r"
-Sleep 2s
-Type "["
-Sleep 4s
 
 Tab
 Sleep 1s
