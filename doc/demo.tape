@@ -104,5 +104,9 @@ Tab
 Sleep 1s
 Escape
 Sleep 2s
+
+Type "/loltyler1"
+Sleep 4s
+
 Alt+C
 Sleep 3s
