@@ -1118,10 +1118,9 @@ func (r *Root) waitChatEvents() tea.Cmd {
 
 		if msg.Err != nil {
 			return chatEventMessage{
-				isFakeEvent: true,
-				accountID:   msg.ID,
-				channel:     "",
-				message:     ircConnectionError{err: msg.Err},
+				accountID: msg.ID,
+				channel:   "",
+				message:   ircConnectionError{err: msg.Err},
 			}
 		}
 

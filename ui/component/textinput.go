@@ -13,14 +13,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var moderatorSuggestions = [...]string{
+var ModeratorSuggestions = [...]string{
 	"/ban <user> [reason]",
 	"/unban <user>",
 	"/timeout <username> [duration] [reason]",
 	"/banrequests",
 }
 
-var commandSuggestions = [...]string{
+var CommandSuggestions = [...]string{
 	"/inspect <username>",
 	"/popupchat",
 	"/channel",
@@ -60,6 +60,8 @@ type SuggestionTextInput struct {
 	IncludeCommandSuggestions bool
 	IncludeModeratorCommands  bool
 
+	customSuggestions map[string]string
+
 	userCache map[string]func(...string) string // [username]render func
 }
 
@@ -72,7 +74,7 @@ func defaultTrie() *trie.Trie {
 }
 
 // NewSuggestionTextInput creates a new model with default settings.
-func NewSuggestionTextInput(userCache map[string]func(...string) string) *SuggestionTextInput {
+func NewSuggestionTextInput(userCache map[string]func(...string) string, customSuggestions map[string]string) *SuggestionTextInput {
 	input := textinput.New()
 	input.Width = 20
 
@@ -95,6 +97,7 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string) *Sugges
 		userCache:                 userCache,
 		IncludeCommandSuggestions: true,
 		IncludeModeratorCommands:  false,
+		customSuggestions:         customSuggestions,
 	}
 }
 
@@ -147,6 +150,13 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			before := s.InputModel.Value()[:startIndex]
 			after := s.InputModel.Value()[endIndex:]
 			suggestion := s.suggestions[s.suggestionIndex]
+
+			// if the suggestion is in custom suggestions, replace with custom suggestion text
+			if s.customSuggestions != nil {
+				if customSuggestion, ok := s.customSuggestions[suggestion]; ok {
+					suggestion = customSuggestion
+				}
+			}
 
 			s.InputModel.SetValue(before + suggestion + after)
 			s.InputModel.SetCursor(len(before) + len(suggestion) + 1) // set cursor to end of suggestion + 1 for space
@@ -249,7 +259,7 @@ func (s *SuggestionTextInput) updateSuggestions() {
 	// If the current word is a command and is at the start of the message, add command help to suggestions
 	if strings.HasPrefix(currWord, "/") && startIndex == 0 {
 		if s.IncludeCommandSuggestions {
-			for _, suggestion := range commandSuggestions {
+			for _, suggestion := range CommandSuggestions {
 				if strings.Contains(suggestion, currWord) {
 					s.suggestions = append(s.suggestions, suggestion)
 				}
@@ -257,9 +267,17 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		}
 
 		if s.IncludeModeratorCommands {
-			for _, suggestion := range moderatorSuggestions {
+			for _, suggestion := range ModeratorSuggestions {
 				if strings.Contains(suggestion, currWord) {
 					s.suggestions = append(s.suggestions, suggestion)
+				}
+			}
+		}
+
+		if s.customSuggestions != nil {
+			for command := range s.customSuggestions {
+				if strings.Contains(command, currWord) {
+					s.suggestions = append(s.suggestions, command)
 				}
 			}
 		}

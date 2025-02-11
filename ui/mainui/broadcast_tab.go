@@ -335,7 +335,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
 		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.emoteStore, t.keymap, t.userConfiguration)
-		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache)
+		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.userConfiguration.Settings.BuildCustomSuggestionMap())
 		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.userConfiguration.Theme.InputPromptColor))
 		t.statusInfo = newStreamStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID, t.userConfiguration)
 
