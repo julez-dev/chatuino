@@ -172,7 +172,6 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.moveToTop()
 			case key.Matches(msg, c.keymap.DumpChat):
 				c.debugDumpChat()
-
 			}
 		}
 	}

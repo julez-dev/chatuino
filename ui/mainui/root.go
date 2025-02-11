@@ -202,6 +202,8 @@ type polledStreamInfo struct {
 	streamInfos []setStreamInfo
 }
 
+type appStateSaveMessage struct{}
+
 type Root struct {
 	logger   zerolog.Logger
 	clientID string
@@ -488,10 +490,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, cmd
 	case polledStreamInfo:
 		return r, r.handlePolledStreamInfo(msg)
+	case appStateSaveMessage:
+		return r, r.tickSaveAppState()
 	case tea.WindowSizeMsg:
 		r.width = msg.Width
 		r.height = msg.Height
 		r.handleResize()
+		return r, nil
 	case tea.KeyMsg:
 		if key.Matches(msg, r.keymap.Quit) {
 			return r, tea.Quit
@@ -744,6 +749,23 @@ func (r *Root) Close() error {
 	close(r.in)
 
 	return nil
+}
+
+func (r *Root) tickSaveAppState() tea.Cmd {
+	state := r.TakeStateSnapshot()
+
+	return func() tea.Msg {
+		r.logger.Info().Msg("saving app state inside ticker")
+		if err := state.Save(); err != nil {
+			r.logger.Err(err).Msg("failed to save app state")
+		}
+
+		timer := time.NewTimer(time.Second * 15)
+		defer timer.Stop()
+
+		<-timer.C
+		return appStateSaveMessage{}
+	}
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
@@ -1055,6 +1077,10 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	}
 
 	r.handleResize()
+
+	// initial app state tick
+	cmds = append(cmds, r.tickSaveAppState())
+
 	return tea.Batch(cmds...)
 }
 
