@@ -21,7 +21,7 @@ require github.com/cli/browser v1.3.0
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/avast/retry-go/v4 v4.6.0
-	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
+	github.com/charmbracelet/x/exp/teatest v0.0.0-20250211210431-757ba509b453
 	github.com/coder/websocket v1.8.12
 	github.com/gen2brain/avif v0.4.2
 	github.com/jellydator/ttlcache/v3 v3.3.0
@@ -41,7 +41,7 @@ require (
 	github.com/aymanbagabas/go-udiff v0.2.0 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
-	github.com/charmbracelet/x/exp/golden v0.0.0-20240815200342-61de596daa2b // indirect
+	github.com/charmbracelet/x/exp/golden v0.0.0-20250211183012-cd7b2ce3af48 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
