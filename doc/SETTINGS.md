@@ -17,6 +17,10 @@ chat:
   # NOTE: read the README for more information about how emote rendering works before enabling this feature
   graphic_emotes: true # EXPERIMENTAL: if Chatuino should display emotes as images instead of text; Default: false
 
+custom_commands:
+  # Custom commands are available as command suggestions
+  - trigger: "/ocean"
+    replacement: "OCEAN MAN 🌊 😍 Take me by the hand ✋ lead me to the land that you understand 🙌 🌊 OCEAN MAN 🌊 😍 The voyage 🚲 to the corner of the 🌎 globe is a real trip 👌 🌊 OCEAN MAN 🌊 😍 The crust of a tan man 👳 imbibed by the sand 👍 Soaking up the 💦 thirst of the land 💯"
 ```
 
 ## NO_COLOR

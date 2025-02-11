@@ -38,6 +38,7 @@ The name and idea to create a Twitch Chat Client and many features are inspired 
 - Copy and Paste messages with alt+c
 - Simple Twitch duplicate message bypass
 - Support for viewing twitch polls in your own channel
+- Custom chat commands for fast copy pasta spamming
 - Special tabs like mentions and live notifications
 - Chat is moving too fast? Try the /localsubscribers and /uniqueonly chat modes
 
