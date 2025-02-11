@@ -3,7 +3,9 @@ package save
 import (
 	"fmt"
 	"io"
+	"strings"
 
+	"github.com/julez-dev/chatuino/ui/component"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,6 +17,7 @@ type Settings struct {
 	VerticalTabList bool               `yaml:"vertical_tab_list"`
 	Moderation      ModerationSettings `yaml:"moderation"`
 	Chat            ChatSettings       `yaml:"chat"`
+	CustomCommands  []CustomCommand    `yaml:"custom_commands"`
 }
 
 type ModerationSettings struct {
@@ -25,6 +28,11 @@ type ModerationSettings struct {
 
 type ChatSettings struct {
 	GraphicEmotes bool `yaml:"graphic_emotes"`
+}
+
+type CustomCommand struct {
+	Trigger     string `yaml:"trigger"`
+	Replacement string `yaml:"replacement"`
 }
 
 func BuildDefaultSettings() Settings {
@@ -40,7 +48,32 @@ func (s Settings) validate() error {
 		return fmt.Errorf("cant't have both of logs_channel_include and logs_channel_exclude in settings.moderation")
 	}
 
+	for _, c := range s.CustomCommands {
+		if len(c.Trigger) < 4 || !strings.HasPrefix(c.Trigger, "/") {
+			return fmt.Errorf("custom command trigger %q must have at least 3 characters and start with a /", c.Trigger)
+		}
+
+		// combine CommandSuggestions and CustomCommands to check for collisions for custom commands
+		predefinedCommands := append(component.CommandSuggestions[:], component.ModeratorSuggestions[:]...)
+
+		for _, m := range predefinedCommands {
+			if c.Trigger == m {
+				return fmt.Errorf("custom command trigger %q is already a default command", c.Trigger)
+			}
+		}
+
+	}
+
 	return nil
+}
+
+func (s Settings) BuildCustomSuggestionMap() map[string]string {
+	m := make(map[string]string, len(s.CustomCommands))
+	for _, c := range s.CustomCommands {
+		m[c.Trigger] = c.Replacement
+	}
+
+	return m
 }
 
 func SettingsFromDisk() (Settings, error) {

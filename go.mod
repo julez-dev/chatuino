@@ -1,11 +1,11 @@
 module github.com/julez-dev/chatuino
 
-go 1.23
+go 1.24
 
 require (
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
 	github.com/charmbracelet/bubbles v0.20.0
-	github.com/charmbracelet/bubbletea v1.3.0
+	github.com/charmbracelet/bubbletea v1.3.3
 	github.com/charmbracelet/lipgloss v1.0.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/google/uuid v1.6.0
@@ -21,7 +21,7 @@ require github.com/cli/browser v1.3.0
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/avast/retry-go/v4 v4.6.0
-	github.com/charmbracelet/x/exp/teatest v0.0.0-20240625164403-2627ec16405d
+	github.com/charmbracelet/x/exp/teatest v0.0.0-20250211210431-757ba509b453
 	github.com/coder/websocket v1.8.12
 	github.com/gen2brain/avif v0.4.2
 	github.com/jellydator/ttlcache/v3 v3.3.0
@@ -41,7 +41,7 @@ require (
 	github.com/aymanbagabas/go-udiff v0.2.0 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
-	github.com/charmbracelet/x/exp/golden v0.0.0-20240815200342-61de596daa2b // indirect
+	github.com/charmbracelet/x/exp/golden v0.0.0-20250211183012-cd7b2ce3af48 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -54,8 +54,8 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tetratelabs/wazero v1.8.2 // indirect
-	golang.org/x/exp v0.0.0-20250207012021-f9890c6ad9f3 // indirect
-	modernc.org/libc v1.61.12 // indirect
+	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac // indirect
+	modernc.org/libc v1.61.13 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.8.2 // indirect
 )

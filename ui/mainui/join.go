@@ -109,7 +109,7 @@ func createDefaultList(height int, selectedColor string) list.Model {
 func newJoin(provider AccountProvider, clients map[string]APIClient, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *join {
 	emptyUserMap := map[string]func(...string) string{}
 
-	input := component.NewSuggestionTextInput(emptyUserMap)
+	input := component.NewSuggestionTextInput(emptyUserMap, nil)
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "
 	input.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.InputPromptColor))
