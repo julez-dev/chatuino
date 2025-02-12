@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,9 +25,63 @@ func handleCommand(name string, args []string, channelID string, channel string,
 		return handleUnban(args, channel, channelID, userAccountID, ttv)
 	case "announcement":
 		return handleAnnouncement(args, channel, channelID, userAccountID, ttv)
+	case "marker":
+		return handleMarker(args, channelID, channel, userAccountID, ttv)
 	}
 
 	return nil
+}
+
+func handleMarker(args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+	notice := &command.Notice{
+		FakeTimestamp: time.Now(),
+	}
+	respMsg := chatEventMessage{
+		accountID:   userAccountID,
+		channel:     channel,
+		message:     notice,
+		isFakeEvent: true,
+	}
+
+	var description string
+	if len(args) > 0 {
+		description = strings.Join(args, " ")
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		resp, err := ttv.CreateStreamMarker(ctx, twitch.CreateStreamMarkerRequest{
+			UserID:      channelID,
+			Description: description,
+		})
+
+		notice.FakeTimestamp = time.Now()
+
+		if err != nil {
+			var apiErr twitch.APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.Status {
+				case http.StatusBadRequest:
+					notice.Message = fmt.Sprintf("Marker request invalid: %s", apiErr.Message)
+				case http.StatusUnauthorized, http.StatusForbidden:
+					notice.Message = fmt.Sprintf("Unauthorized to create markers: %s", apiErr.Message)
+				case http.StatusNotFound:
+					notice.Message = fmt.Sprintf("%s not live or has VODs disabled: %s", channel, apiErr.Message)
+				}
+				return respMsg
+			}
+
+			notice.Message = fmt.Sprintf("Failed to create marker: %s", err.Error())
+			return respMsg
+		}
+
+		dur := time.Duration(int(time.Second) * resp.PositionSeconds)
+		notice.Message = fmt.Sprintf("Marker (%s) created at %s; stream time: %s", resp.ID, resp.CreatedAt.Local().Format("02.01.2006 15:04:05"), dur)
+
+		return respMsg
+	}
 }
 
 func handleAnnouncement(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
@@ -64,7 +119,9 @@ func handleAnnouncement(args []string, channel string, channelID string, userAcc
 		}
 	}
 
-	if args[1] == "" {
+	annoucementMessage := strings.Join(args[1:], " ")
+
+	if annoucementMessage == "" {
 		return func() tea.Msg {
 			notice.Message = "Message can not be empty"
 			return respMsg
@@ -77,14 +134,14 @@ func handleAnnouncement(args []string, channel string, channelID string, userAcc
 
 		err := ttv.SendChatAnnouncement(ctx, channelID, userAccountID, twitch.CreateChatAnnouncementRequest{
 			Color:   twitch.ChatAnnouncementColor(color),
-			Message: args[1],
+			Message: annoucementMessage,
 		})
 
 		notice.FakeTimestamp = time.Now()
 
 		if err != nil {
-			var apiErr *twitch.APIError
-			if !errors.As(err, &apiErr) {
+			var apiErr twitch.APIError
+			if errors.As(err, &apiErr) {
 				switch apiErr.Status {
 				case http.StatusBadRequest:
 					notice.Message = fmt.Sprintf("Announcement request invalid: %s", apiErr.Message)
