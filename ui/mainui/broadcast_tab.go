@@ -81,6 +81,7 @@ type moderationAPIClient interface {
 	FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]twitch.UnbanRequest, error)
 	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitch.CreateChatAnnouncementRequest) error
+	CreateStreamMarker(ctx context.Context, req twitch.CreateStreamMarkerRequest) (twitch.StreamMarker, error)
 }
 
 type userAuthenticatedAPIClient interface {

@@ -271,3 +271,24 @@ type (
 		Color   ChatAnnouncementColor `json:"color"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#create-stream-marker
+type (
+	//easyjson:json
+	CreateStreamMarkerRequest struct {
+		UserID string `json:"user_id"`
+		// optional
+		Description string `json:"description,omitempty"`
+	}
+	//easyjson:json
+	CreateStreamMarkerResponse struct {
+		Data []StreamMarker `json:"data"`
+	}
+	//easyjson:json
+	StreamMarker struct {
+		ID              string    `json:"id"`
+		CreatedAt       time.Time `json:"created_at"`
+		PositionSeconds int       `json:"position_seconds"`
+		Description     string    `json:"description"`
+	}
+)

@@ -521,6 +521,24 @@ func (a *API) SendChatAnnouncement(ctx context.Context, broadcasterID string, mo
 	return nil
 }
 
+func (a *API) CreateStreamMarker(ctx context.Context, req CreateStreamMarkerRequest) (StreamMarker, error) {
+	if a.provider == nil {
+		return StreamMarker{}, ErrNoUserAccess
+	}
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return StreamMarker{}, err
+	}
+
+	resp, err := doAuthenticatedUserRequest[CreateStreamMarkerResponse](ctx, a, http.MethodPost, "/streams/markers", reqBytes)
+	if err != nil {
+		return StreamMarker{}, err
+	}
+
+	return resp.Data[0], nil
+}
+
 func (a *API) createAppAccessToken(ctx context.Context) (string, error) {
 	if a.clientSecret == "" {
 		return "", ErrNoClientSecret
