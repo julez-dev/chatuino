@@ -240,3 +240,16 @@ type (
 		Cost      int               `json:"cost"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#create-clip
+type (
+	//easyjson:json
+	CreateClipResponse struct {
+		Data []CreatedClip `json:"data"`
+	}
+	//easyjson:json
+	CreatedClip struct {
+		ID      string `json:"id"`
+		EditURL string `json:"edit_url"`
+	}
+)

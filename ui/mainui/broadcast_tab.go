@@ -82,6 +82,10 @@ type moderationAPIClient interface {
 	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 }
 
+type userAuthenticatedAPIClient interface {
+	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitch.CreatedClip, error)
+}
+
 type ModStatusFetcher interface {
 	GetModVIPList(ctx context.Context, channel string) (ivr.ModVIPResponse, error)
 }
@@ -1138,6 +1142,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleUniqueOnlyChatCommand(true)
 		case "uniqueonlyoff":
 			return t.handleUniqueOnlyChatCommand(false)
+		case "createclip":
+			return t.handleCreateClipMessage()
 		}
 
 		if !t.isUserMod {
@@ -1206,6 +1212,55 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	t.lastMessageSentAt = time.Now()
 
 	return tea.Sequence(cmds...)
+}
+
+func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
+	return func() tea.Msg {
+		api, ok := t.ttvAPI.(userAuthenticatedAPIClient)
+		if !ok {
+			t.logger.Warn().Str("broadcast", t.channel).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
+			return nil
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+		defer cancel()
+
+		notice := &command.Notice{
+			FakeTimestamp: time.Now(),
+		}
+
+		resp := chatEventMessage{
+			isFakeEvent: true,
+			accountID:   t.account.ID,
+			channel:     t.channel,
+			tabID:       t.id,
+			message:     notice,
+		}
+
+		clip, err := api.CreateClip(ctx, t.channelID, false)
+		if err != nil {
+			apiErr := twitch.APIError{}
+			if errors.As(err, &apiErr) {
+				switch apiErr.Status {
+				case http.StatusUnauthorized:
+					notice.Message = fmt.Sprintf("@%s Failed to create clip because you are unauthenticated or missing a auth scope; please authenticate again", t.account.DisplayName)
+					return resp
+				case http.StatusForbidden:
+					notice.Message = fmt.Sprintf("@%s Failed to create clip because broadcaster restricted the ability to capture clips", t.account.DisplayName)
+					return resp
+				case http.StatusNotFound:
+					notice.Message = fmt.Sprintf("@%s Failed to create clip because broadcaster is not live", t.account.DisplayName)
+					return resp
+				}
+			}
+
+			notice.Message = fmt.Sprintf("@%s Failed to create clip: %s", t.account.DisplayName, err)
+			return resp
+		}
+
+		notice.Message = fmt.Sprintf("@%s Created clip can be edited here: %s", t.account.DisplayName, clip.EditURL)
+		return resp
+	}
 }
 
 func (t *broadcastTab) handleCopyMessage() {

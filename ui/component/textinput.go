@@ -29,6 +29,7 @@ var CommandSuggestions = [...]string{
 	"/localsubscribersoff",
 	"/uniqueonly",
 	"/uniqueonlysoff",
+	"/createclip",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
