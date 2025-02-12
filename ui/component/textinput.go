@@ -18,6 +18,7 @@ var ModeratorSuggestions = [...]string{
 	"/unban <user>",
 	"/timeout <username> [duration] [reason]",
 	"/banrequests",
+	"/announcement <blue|green|orange|purple|primary> <message>",
 }
 
 var CommandSuggestions = [...]string{

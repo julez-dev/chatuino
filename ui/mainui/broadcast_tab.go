@@ -80,6 +80,7 @@ type moderationAPIClient interface {
 	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
 	FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]twitch.UnbanRequest, error)
 	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
+	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitch.CreateChatAnnouncementRequest) error
 }
 
 type userAuthenticatedAPIClient interface {
@@ -334,7 +335,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.channelDataLoaded = true
 
-		t.isUserMod = msg.isUserMod
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
@@ -345,6 +345,13 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
+			t.isUserMod = msg.isUserMod
+
+			// if user is broadcaster, allow mod commands
+			if t.account.ID == msg.channelID {
+				t.isUserMod = true
+			}
+
 			// TODO: This blocks in update function, should be moved to CMD
 			emoteSet := t.emoteStore.GetAllForUser(msg.channelID)
 			suggestions := make([]string, 0, len(emoteSet))
@@ -354,7 +361,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			// user is mod or broadcaster, include mod commands
-			if t.isUserMod || t.account.ID == msg.channelID {
+			if t.isUserMod {
 				t.messageInput.IncludeModeratorCommands = true
 			}
 

@@ -10,7 +10,9 @@ import (
 
 func hasEmoteSupport() bool {
 	_, isKitty := os.LookupEnv("KITTY_WINDOW_ID") // always defined by kitty
-	return isKitty
+	term := os.Getenv("TERM")
+
+	return isKitty || term == "xterm-ghostty"
 }
 
 func getTermCellWidthHeight() (float32, float32, error) {
