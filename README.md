@@ -29,7 +29,7 @@ The name and idea to create a Twitch Chat Client and many features are inspired 
 - Join Chats as Anonymous User
 - [Custom Themes](/doc/THEME.md)
 - You can host the server component for authentication/anonymous usage yourself
-- Graphical display of emotes
+- Graphical display of emotes (kitty terminal only; ghostty only non-animated emotes)
 - Emote and User Suggestions/Autocompletion
 - Local save state to persist sessions
 - Manage ban requests

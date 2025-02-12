@@ -497,6 +497,30 @@ func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderat
 	return resp, nil
 }
 
+func (a *API) SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req CreateChatAnnouncementRequest) error {
+	if a.provider == nil {
+		return ErrNoUserAccess
+	}
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", moderatorID)
+
+	url := fmt.Sprintf("/chat/announcements?%s", values.Encode())
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	_, err = doAuthenticatedUserRequest[struct{}](ctx, a, http.MethodPost, url, reqBytes)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (a *API) createAppAccessToken(ctx context.Context) (string, error) {
 	if a.clientSecret == "" {
 		return "", ErrNoClientSecret

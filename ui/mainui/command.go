@@ -2,7 +2,10 @@ package mainui
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -19,9 +22,86 @@ func handleCommand(name string, args []string, channelID string, channel string,
 		return handleTimeout(name, args, channelID, channel, userAccountID, ttv)
 	case "unban":
 		return handleUnban(args, channel, channelID, userAccountID, ttv)
+	case "announcement":
+		return handleAnnouncement(args, channel, channelID, userAccountID, ttv)
 	}
 
 	return nil
+}
+
+func handleAnnouncement(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+	notice := &command.Notice{
+		FakeTimestamp: time.Now(),
+	}
+	respMsg := chatEventMessage{
+		accountID:   userAccountID,
+		channel:     channel,
+		message:     notice,
+		isFakeEvent: true,
+	}
+
+	if len(args) < 2 {
+		return func() tea.Msg {
+			notice.Message = "Expected Usage: /announcement <blue|green|orange|purple|primary> <message>"
+			return respMsg
+		}
+	}
+
+	color := args[0]
+
+	allowed := []string{
+		string(twitch.ChatAnnouncementColorBlue),
+		string(twitch.ChatAnnouncementColorGreen),
+		string(twitch.ChatAnnouncementColorOrange),
+		string(twitch.ChatAnnouncementColorPurple),
+		string(twitch.ChatAnnouncementColorPrimary),
+	}
+
+	if !slices.Contains(allowed, color) {
+		return func() tea.Msg {
+			notice.Message = fmt.Sprintf("Invalid color %s, expected one of %s", color, allowed)
+			return respMsg
+		}
+	}
+
+	if args[1] == "" {
+		return func() tea.Msg {
+			notice.Message = "Message can not be empty"
+			return respMsg
+		}
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err := ttv.SendChatAnnouncement(ctx, channelID, userAccountID, twitch.CreateChatAnnouncementRequest{
+			Color:   twitch.ChatAnnouncementColor(color),
+			Message: args[1],
+		})
+
+		notice.FakeTimestamp = time.Now()
+
+		if err != nil {
+			var apiErr *twitch.APIError
+			if !errors.As(err, &apiErr) {
+				switch apiErr.Status {
+				case http.StatusBadRequest:
+					notice.Message = fmt.Sprintf("Announcement request invalid: %s", apiErr.Message)
+				case http.StatusUnauthorized:
+					notice.Message = fmt.Sprintf("Unauthorized to send announcement: %s", apiErr.Message)
+				case http.StatusTooManyRequests:
+					notice.Message = fmt.Sprintf("Exceeded the number of announcements for %s: %s", channel, apiErr.Message)
+				}
+				return respMsg
+			}
+
+			notice.Message = fmt.Sprintf("Error while sending announcement: %s", err.Error())
+			return respMsg
+		}
+
+		return nil
+	}
 }
 
 func handleUnban(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {

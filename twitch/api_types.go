@@ -253,3 +253,21 @@ type (
 		EditURL string `json:"edit_url"`
 	}
 )
+
+type ChatAnnouncementColor string
+
+const (
+	ChatAnnouncementColorBlue    ChatAnnouncementColor = "blue"
+	ChatAnnouncementColorGreen   ChatAnnouncementColor = "green"
+	ChatAnnouncementColorOrange  ChatAnnouncementColor = "orange"
+	ChatAnnouncementColorPurple  ChatAnnouncementColor = "purple"
+	ChatAnnouncementColorPrimary ChatAnnouncementColor = "primary"
+)
+
+// https://dev.twitch.tv/docs/api/reference/#send-chat-announcement
+type (
+	CreateChatAnnouncementRequest struct {
+		Message string                `json:"message"`
+		Color   ChatAnnouncementColor `json:"color"`
+	}
+)
