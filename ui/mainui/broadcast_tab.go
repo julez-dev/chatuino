@@ -1225,6 +1225,8 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 
+		clip, err := api.CreateClip(ctx, t.channelID, false)
+
 		notice := &command.Notice{
 			FakeTimestamp: time.Now(),
 		}
@@ -1237,7 +1239,6 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 			message:     notice,
 		}
 
-		clip, err := api.CreateClip(ctx, t.channelID, false)
 		if err != nil {
 			apiErr := twitch.APIError{}
 			if errors.As(err, &apiErr) {
