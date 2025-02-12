@@ -146,6 +146,27 @@ func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID s
 	return nil
 }
 
+func (a *API) CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (CreatedClip, error) {
+	if a.provider == nil {
+		return CreatedClip{}, ErrNoUserAccess
+	}
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcastID)
+	if hasDelay {
+		values.Add("has_delay", "true")
+	}
+
+	url := fmt.Sprintf("/clips?%s", values.Encode())
+
+	resp, err := doAuthenticatedUserRequest[CreateClipResponse](ctx, a, http.MethodPost, url, nil)
+	if err != nil {
+		return CreatedClip{}, err
+	}
+
+	return resp.Data[0], nil
+}
+
 func (a *API) FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]FollowedChannel, error) {
 	if a.provider == nil {
 		return nil, ErrNoUserAccess
