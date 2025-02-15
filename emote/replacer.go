@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/adrg/xdg"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
 	"github.com/julez-dev/chatuino/save"
@@ -347,12 +348,7 @@ func (i *Replacer) replaceEmoteColored(emote Emote) string {
 }
 
 func EmoteCacheDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
-	path := filepath.Join(home, "chatuino", "emote")
+	path := filepath.Join(xdg.DataHome, "chatuino", "emote")
 
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		if errors.Is(err, fs.ErrExist) {

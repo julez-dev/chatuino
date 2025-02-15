@@ -40,6 +40,8 @@ type EmoteStore interface {
 	RefreshLocal(ctx context.Context, channelID string) error
 	RefreshGlobal(ctx context.Context) error
 	GetAllForUser(id string) emote.EmoteSet
+	AddUserEmotes(userID string, emotes []emote.Emote)
+	AllEmotesUsableByUser(userID string) []emote.Emote
 }
 
 type EmoteReplacer interface {
@@ -55,6 +57,10 @@ type APIClient interface {
 type APIClientWithRefresh interface {
 	APIClient
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+}
+
+type UserEmoteClient interface {
+	FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]twitch.UserEmoteImage, string, error)
 }
 
 type ChatPool interface {
@@ -349,7 +355,11 @@ func (r *Root) Init() tea.Cmd {
 				var api APIClient
 
 				if !acc.IsAnonymous {
-					api, _ = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
+					api, err = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
+					if err != nil {
+						r.logger.Error().Err(err).Msg("failed to build twitch client")
+						continue
+					}
 				} else {
 					api = r.serverAPI
 				}
@@ -366,6 +376,56 @@ func (r *Root) Init() tea.Cmd {
 				}
 			}
 
+			wg := sync.WaitGroup{}
+			// fetch usable emotes for all users
+			for _, acc := range accounts {
+				if acc.IsAnonymous {
+					continue
+				}
+
+				client, has := clients[acc.ID]
+				if !has {
+					continue
+				}
+
+				fetcher, ok := client.(UserEmoteClient)
+				if !ok {
+					r.logger.Error().Msg("failed to parse user emote client")
+					continue
+				}
+
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+					defer cancel()
+					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
+					if err != nil {
+						r.logger.Err(err).Msg("failed to fetch user emotes")
+						return
+					}
+
+					emotes := make(emote.EmoteSet, 0, len(set))
+					for _, e := range set {
+						url := strings.ReplaceAll(template, "{{id}}", e.ID)
+						url = strings.ReplaceAll(url, "{{format}}", "static")
+						url = strings.ReplaceAll(url, "{{theme_mode}}", "light")
+						url = strings.ReplaceAll(url, "{{scale}}", "1.0")
+
+						emotes = append(emotes, emote.Emote{
+							ID:         e.ID,
+							Text:       e.Name,
+							Platform:   emote.Twitch,
+							IsAnimated: false,
+							URL:        url,
+						})
+					}
+
+					r.emoteStore.AddUserEmotes(acc.ID, emotes)
+				}()
+			}
+
 			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
 			ttvUsers := make(map[string]twitch.UserData, len(state.Tabs))
 			loginsUnique := make(map[string]struct{}, len(state.Tabs))
@@ -379,31 +439,37 @@ func (r *Root) Init() tea.Cmd {
 			}
 
 			logins = slices.AppendSeq(logins, maps.Keys(loginsUnique))
+			var userDataErr error
 
 			if len(logins) > 0 {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-				defer cancel()
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
 
-				resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
-				if err != nil {
-					r.logger.Err(err).Msg("failed to connect to load users")
-					return persistedDataLoadedMessage{
-						accounts: accounts,
-						clients:  clients,
-						err:      fmt.Errorf("failed to fetch users: %w", err),
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+					defer cancel()
+
+					resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
+					if err != nil {
+						r.logger.Err(err).Msg("failed to connect to load users")
+						userDataErr = fmt.Errorf("failed to fetch users: %w", err)
+						return
 					}
-				}
 
-				for _, data := range resp.Data {
-					ttvUsers[data.Login] = data
-				}
+					for _, data := range resp.Data {
+						ttvUsers[data.Login] = data
+					}
+				}()
 			}
+
+			wg.Wait()
 
 			return persistedDataLoadedMessage{
 				state:    state,
 				accounts: accounts,
 				clients:  clients,
 				ttvUsers: ttvUsers,
+				err:      userDataErr,
 			}
 		},
 		r.waitChatEvents(),

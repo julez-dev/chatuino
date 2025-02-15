@@ -35,10 +35,12 @@ type BTTVEmoteFetcher interface {
 }
 
 type Store struct {
-	logger  zerolog.Logger
-	m       *sync.RWMutex
+	logger zerolog.Logger
+	m      *sync.RWMutex
+
 	global  EmoteSet
 	channel map[string]EmoteSet
+	user    map[string]EmoteSet
 
 	twitchEmotes  TwitchEmoteFetcher
 	sevenTVEmotes SevenTVEmoteFetcher
@@ -60,6 +62,7 @@ func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 		bttvEmotes:      bttvEmotes,
 		single:          &singleflight.Group{},
 		channelsFetched: map[string]struct{}{},
+		user:            map[string]EmoteSet{},
 	}
 }
 
@@ -368,6 +371,12 @@ func (s *Store) GetByTextAllChannels(text string) (Emote, bool) {
 		}
 	}
 
+	for _, userSet := range s.user {
+		if emote, ok := userSet.GetByText(text); ok {
+			return emote, true
+		}
+	}
+
 	return Emote{}, false
 }
 
@@ -377,6 +386,12 @@ func (s *Store) GetByText(channelID, text string) (Emote, bool) {
 
 	if emote, ok := s.global.GetByText(text); ok {
 		return emote, true
+	}
+
+	for _, userSet := range s.user {
+		if emote, ok := userSet.GetByText(text); ok {
+			return emote, true
+		}
 	}
 
 	channelSet, ok := s.channel[channelID]
@@ -390,4 +405,20 @@ func (s *Store) GetByText(channelID, text string) (Emote, bool) {
 	}
 
 	return Emote{}, false
+}
+
+func (s *Store) AllEmotesUsableByUser(userID string) []Emote {
+	s.m.RLock()
+	defer s.m.RUnlock()
+
+	copied := make([]Emote, len(s.user[userID]))
+	copy(copied, s.user[userID])
+	return copied
+}
+
+func (s *Store) AddUserEmotes(userID string, emotes []Emote) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	s.user[userID] = append(s.user[userID], emotes...)
 }

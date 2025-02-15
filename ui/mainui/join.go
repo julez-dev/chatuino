@@ -110,6 +110,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 	emptyUserMap := map[string]func(...string) string{}
 
 	input := component.NewSuggestionTextInput(emptyUserMap, nil)
+	input.DisableAutoSpaceSuggestion = true
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "
 	input.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.InputPromptColor))

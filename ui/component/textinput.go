@@ -65,10 +65,11 @@ type SuggestionTextInput struct {
 	suggestionIndex int
 	suggestions     []string
 
-	history                   []string
-	historyIndex              int
-	IncludeCommandSuggestions bool
-	IncludeModeratorCommands  bool
+	history                    []string
+	historyIndex               int
+	IncludeCommandSuggestions  bool
+	IncludeModeratorCommands   bool
+	DisableAutoSpaceSuggestion bool
 
 	customSuggestions map[string]string
 
@@ -168,8 +169,13 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 				}
 			}
 
+			// add space on non command suggestions
+			if !strings.HasPrefix(suggestion, "/") && !s.DisableAutoSpaceSuggestion {
+				suggestion = suggestion + " "
+			}
+
 			s.InputModel.SetValue(before + suggestion + after)
-			s.InputModel.SetCursor(len(before) + len(suggestion) + 1) // set cursor to end of suggestion + 1 for space
+			s.InputModel.SetCursor(len(before) + len(suggestion)) // set cursor to end of suggestion + 1 for space
 
 			return s, nil
 		case key.Matches(msg, s.KeyMap.NextSuggestion):
@@ -177,7 +183,9 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 		case key.Matches(msg, s.KeyMap.PrevSuggestion):
 			s.previousSuggestion()
 		default:
+			s.InputModel, cmd = s.InputModel.Update(msg)
 			s.updateSuggestions()
+			return s, cmd
 		}
 	}
 
@@ -214,7 +222,7 @@ func (s *SuggestionTextInput) SetWidth(width int) {
 }
 
 func (s *SuggestionTextInput) Value() string {
-	return s.InputModel.Value()
+	return strings.TrimSpace(s.InputModel.Value())
 }
 
 func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
@@ -242,7 +250,8 @@ func (s *SuggestionTextInput) canAcceptSuggestion() bool {
 	word, _, _ := selectWordAtIndex(tiVal, s.InputModel.Position())
 
 	// only show if the current word is longer than 2 characters and the suggestion is different from the current word
-	return len(word) > 2 && len(s.suggestions) > 0 && s.suggestions[s.suggestionIndex] != word
+	// or if the current word is a command
+	return (len(word) > 2 || strings.HasPrefix(tiVal, "/")) && len(s.suggestions) > 0 && s.suggestions[s.suggestionIndex] != word
 }
 
 func (s *SuggestionTextInput) updateSuggestions() {
@@ -252,7 +261,6 @@ func (s *SuggestionTextInput) updateSuggestions() {
 	}
 
 	currWord, startIndex, _ := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
-
 	if currWord == "" {
 		s.suggestions = nil
 		return
