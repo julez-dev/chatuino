@@ -20,6 +20,7 @@ require github.com/cli/browser v1.3.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/adrg/xdg v0.5.3
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/coder/websocket v1.8.12
 	github.com/gen2brain/avif v0.4.2
@@ -37,7 +38,6 @@ require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
-	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250211183012-cd7b2ce3af48 // indirect
