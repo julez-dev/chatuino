@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -285,8 +286,6 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 			}
 		}
 
-		log.Logger.Info().Any("resp", modVips).Msg("modvips")
-
 		var isUserMod bool
 		for _, mod := range modVips.Mods {
 			if mod.ID == t.account.ID {
@@ -355,19 +354,26 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.isUserMod = true
 			}
 
-			emoteSet := t.emoteStore.AllEmotesUsableByUser(t.channelID)
-			suggestions := make([]string, 0, len(emoteSet))
+			userEmoteSet := t.emoteStore.AllEmotesUsableByUser(t.account.ID)
+			channelEmoteSet := t.emoteStore.GetAllForUser(msg.channelID) // includes bttv, 7tv
 
-			for _, emote := range emoteSet {
-				suggestions = append(suggestions, emote.Text)
+			unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
+
+			for _, emote := range userEmoteSet {
+				unique[emote.Text] = struct{}{}
 			}
+
+			for _, emote := range channelEmoteSet {
+				unique[emote.Text] = struct{}{}
+			}
+
+			suggestions := slices.Collect(maps.Keys(unique))
+			t.messageInput.SetSuggestions(suggestions)
 
 			// user is mod or broadcaster, include mod commands
 			if t.isUserMod {
 				t.messageInput.IncludeModeratorCommands = true
 			}
-
-			t.messageInput.SetSuggestions(suggestions)
 		}
 
 		if t.focused {
