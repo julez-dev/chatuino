@@ -102,6 +102,47 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	return api, nil
 }
 
+func (a *API) FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]UserEmoteImage, string, error) {
+	if a.provider == nil {
+		return nil, "", ErrNoUserAccess
+	}
+
+	emotes := []UserEmoteImage{}
+	var (
+		after    string
+		template string
+	)
+
+	for {
+		values := url.Values{}
+		if broadcasterID != "" {
+			values.Add("broadcaster_id", broadcasterID)
+		}
+		values.Add("user_id", userID)
+		if after != "" {
+			values.Add("after", after)
+		}
+
+		url := fmt.Sprintf("/chat/emotes/user?%s", values.Encode())
+
+		resp, err := doAuthenticatedUserRequest[GetUserEmotesResponse](ctx, a, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, "", err
+		}
+
+		emotes = append(emotes, resp.Data...)
+
+		if resp.Pagination.Cursor == "" {
+			break
+		}
+
+		template = resp.Template
+		after = resp.Pagination.Cursor
+	}
+
+	return emotes, template, nil
+}
+
 func (a *API) BanUser(ctx context.Context, broadcasterID string, moderatorID string, data BanUserData) error {
 	if a.provider == nil {
 		return ErrNoUserAccess

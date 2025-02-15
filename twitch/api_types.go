@@ -292,3 +292,24 @@ type (
 		Description     string    `json:"description"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#get-user-emotes
+type (
+	//easyjson:json
+	GetUserEmotesResponse struct {
+		Data       []UserEmoteImage `json:"data"`
+		Template   string           `json:"template"`
+		Pagination Pagination       `json:"pagination"`
+	}
+	//easyjson:json
+	UserEmoteImage struct {
+		ID         string   `json:"id"`
+		EmoteSetID string   `json:"emote_set_id"`
+		EmoteType  string   `json:"emote_type"`
+		Format     []string `json:"format"`
+		Name       string   `json:"name"`
+		OwnerID    string   `json:"owner_id"`
+		Scale      []string `json:"scale"`
+		ThemeMode  []string `json:"theme_mode"`
+	}
+)

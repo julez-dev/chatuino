@@ -35,10 +35,12 @@ type (
 		Host     Host `json:"host"`
 	}
 	Files struct {
-		Name   string `json:"name"`
-		Width  int    `json:"width"`
-		Height int    `json:"height"`
-		Format string `json:"format"`
+		Name       string `json:"name"`
+		Width      int    `json:"width"`
+		Height     int    `json:"height"`
+		Format     string `json:"format"`
+		StaticName string `json:"static_name"`
+		FrameCount int    `json:"frame_count"`
 	}
 	Host struct {
 		URL   string  `json:"url"`

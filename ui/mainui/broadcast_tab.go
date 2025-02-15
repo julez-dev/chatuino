@@ -211,11 +211,11 @@ func (t *broadcastTab) Init() tea.Cmd {
 			}
 		}
 
-		modVips, err := t.modFetcher.GetModVIPList(ctx, t.account.DisplayName)
+		modVips, err := t.modFetcher.GetModVIPList(ctx, t.channel)
 		if err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.account.DisplayName, err),
+				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.channel, err),
 			}
 		}
 
@@ -277,13 +277,15 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 			}
 		}
 
-		modVips, err := t.modFetcher.GetModVIPList(ctx, t.account.DisplayName)
+		modVips, err := t.modFetcher.GetModVIPList(ctx, t.channel)
 		if err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.account.DisplayName, err),
+				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.channel, err),
 			}
 		}
+
+		log.Logger.Info().Any("resp", modVips).Msg("modvips")
 
 		var isUserMod bool
 		for _, mod := range modVips.Mods {
@@ -353,8 +355,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.isUserMod = true
 			}
 
-			// TODO: This blocks in update function, should be moved to CMD
-			emoteSet := t.emoteStore.GetAllForUser(msg.channelID)
+			emoteSet := t.emoteStore.AllEmotesUsableByUser(t.channelID)
 			suggestions := make([]string, 0, len(emoteSet))
 
 			for _, emote := range emoteSet {
