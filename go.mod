@@ -37,6 +37,7 @@ require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
+	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250211183012-cd7b2ce3af48 // indirect

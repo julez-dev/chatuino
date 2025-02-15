@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/adrg/xdg"
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save/messagelog"
@@ -44,7 +45,12 @@ func init() {
 
 const (
 	defaultClientID = "jliqj1q6nmp0uh5ofangdx4iac7yd9"
-	logFileName     = "log.txt"
+)
+
+var (
+	dataDir     = xdg.DataHome + "/chatuino"
+	logFileName = dataDir + "/chatuino.log"
+	dbFileName  = dataDir + "/chatuino.db"
 )
 
 var maybeLogFile *os.File
@@ -275,18 +281,15 @@ func main() {
 }
 
 func openDB(readonly bool) (*sql.DB, error) {
-	dbPath, err := save.CreateDBFile()
-	if err != nil {
-		log.Logger.Err(err).Msg("failed to create db file")
-		return nil, err
-	}
-
-	var db *sql.DB
+	var (
+		db  *sql.DB
+		err error
+	)
 
 	if readonly {
-		db, err = sql.Open("sqlite", "file:"+dbPath+"?mode=ro&_time_format=sqlite")
+		db, err = sql.Open("sqlite", "file:"+dbFileName+"?mode=ro&_time_format=sqlite")
 	} else {
-		db, err = sql.Open("sqlite", "file:"+dbPath+"?_time_format=sqlite")
+		db, err = sql.Open("sqlite", "file:"+dbFileName+"?_time_format=sqlite")
 	}
 
 	if err != nil {
@@ -330,6 +333,10 @@ func beforeAction(ctx context.Context, command *cli.Command) (context.Context, e
 		transport := http.DefaultClient.Transport
 		http.DefaultClient.Transport = httputil.NewChatuinoRoundTrip(transport, log.Logger, Version)
 	}()
+
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return ctx, fmt.Errorf("failed to create data directory: %w", err)
+	}
 
 	if !command.Bool("log") {
 		log.Logger = zerolog.Nop()
