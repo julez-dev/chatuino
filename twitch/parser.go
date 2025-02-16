@@ -184,6 +184,10 @@ func ParseIRC(message string) (IRCer, error) {
 			UserID:          string(c.tags["user-id"]),
 			UserType:        command.UserType(c.tags["user-type"]),
 			VIP:             c.tags["vip"] == "1",
+
+			SourceID:     string(c.tags["source-id"]),
+			SourceRoomID: string(c.tags["source-room-id"]),
+			SourceBadges: parseBadges(string(c.tags["source-badges"])),
 		}
 
 		if len(c.Params) > 1 {

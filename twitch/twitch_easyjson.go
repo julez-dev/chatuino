@@ -464,7 +464,94 @@ func (v *UserData) UnmarshalJSON(data []byte) error {
 func (v *UserData) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch2(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(in *jlexer.Lexer, out *UnbanRequest) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(in *jlexer.Lexer, out *UserChatColor) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "color":
+			out.Color = string(in.String())
+		case "user_name":
+			out.UserName = string(in.String())
+		case "user_login":
+			out.UserLogin = string(in.String())
+		case "user_id":
+			out.UserID = string(in.String())
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(out *jwriter.Writer, in UserChatColor) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"color\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.Color))
+	}
+	{
+		const prefix string = ",\"user_name\":"
+		out.RawString(prefix)
+		out.String(string(in.UserName))
+	}
+	{
+		const prefix string = ",\"user_login\":"
+		out.RawString(prefix)
+		out.String(string(in.UserLogin))
+	}
+	{
+		const prefix string = ",\"user_id\":"
+		out.RawString(prefix)
+		out.String(string(in.UserID))
+	}
+	out.RawByte('}')
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v UserChatColor) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v UserChatColor) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *UserChatColor) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *UserChatColor) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(l, v)
+}
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(in *jlexer.Lexer, out *UnbanRequest) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -527,7 +614,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(out *jwriter.Writer, in UnbanRequest) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(out *jwriter.Writer, in UnbanRequest) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -612,27 +699,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v UnbanRequest) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v UnbanRequest) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch3(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *UnbanRequest) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *UnbanRequest) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(in *jlexer.Lexer, out *StreamMarker) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(in *jlexer.Lexer, out *StreamMarker) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -671,7 +758,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(out *jwriter.Writer, in StreamMarker) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(out *jwriter.Writer, in StreamMarker) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -701,27 +788,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v StreamMarker) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v StreamMarker) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch4(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *StreamMarker) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *StreamMarker) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(in *jlexer.Lexer, out *StreamData) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(in *jlexer.Lexer, out *StreamData) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -830,7 +917,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(out *jwriter.Writer, in StreamData) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(out *jwriter.Writer, in StreamData) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -943,27 +1030,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v StreamData) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v StreamData) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch5(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *StreamData) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *StreamData) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(in *jlexer.Lexer, out *Pagination) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(in *jlexer.Lexer, out *Pagination) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -994,7 +1081,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(out *jwriter.Writer, in Pagination) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(out *jwriter.Writer, in Pagination) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1009,27 +1096,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v Pagination) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v Pagination) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch6(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *Pagination) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *Pagination) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(in *jlexer.Lexer, out *GetUserEmotesResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(in *jlexer.Lexer, out *GetUserEmotesResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1085,7 +1172,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(out *jwriter.Writer, in GetUserEmotesResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(out *jwriter.Writer, in GetUserEmotesResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1121,27 +1208,125 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v GetUserEmotesResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v GetUserEmotesResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch7(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *GetUserEmotesResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *GetUserEmotesResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(in *jlexer.Lexer, out *GetUnbanRequestsResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(in *jlexer.Lexer, out *GetUserChatColorResponse) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "data":
+			if in.IsNull() {
+				in.Skip()
+				out.Data = nil
+			} else {
+				in.Delim('[')
+				if out.Data == nil {
+					if !in.IsDelim(']') {
+						out.Data = make([]UserChatColor, 0, 1)
+					} else {
+						out.Data = []UserChatColor{}
+					}
+				} else {
+					out.Data = (out.Data)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v22 UserChatColor
+					(v22).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v22)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(out *jwriter.Writer, in GetUserChatColorResponse) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"data\":"
+		out.RawString(prefix[1:])
+		if in.Data == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v23, v24 := range in.Data {
+				if v23 > 0 {
+					out.RawByte(',')
+				}
+				(v24).MarshalEasyJSON(out)
+			}
+			out.RawByte(']')
+		}
+	}
+	out.RawByte('}')
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v GetUserChatColorResponse) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v GetUserChatColorResponse) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *GetUserChatColorResponse) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *GetUserChatColorResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(l, v)
+}
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(in *jlexer.Lexer, out *GetUnbanRequestsResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1176,9 +1361,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(in *jlexer.Lexer, ou
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v22 UnbanRequest
-					(v22).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v22)
+					var v25 UnbanRequest
+					(v25).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v25)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -1195,7 +1380,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(out *jwriter.Writer, in GetUnbanRequestsResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(out *jwriter.Writer, in GetUnbanRequestsResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1206,11 +1391,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(out *jwriter.Writer,
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v23, v24 := range in.Data {
-				if v23 > 0 {
+			for v26, v27 := range in.Data {
+				if v26 > 0 {
 					out.RawByte(',')
 				}
-				(v24).MarshalEasyJSON(out)
+				(v27).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -1226,27 +1411,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v GetUnbanRequestsResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v GetUnbanRequestsResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch8(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *GetUnbanRequestsResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *GetUnbanRequestsResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(in *jlexer.Lexer, out *GetStreamsResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(in *jlexer.Lexer, out *GetStreamsResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1281,9 +1466,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(in *jlexer.Lexer, ou
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v25 StreamData
-					(v25).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v25)
+					var v28 StreamData
+					(v28).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v28)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -1300,7 +1485,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(in *jlexer.Lexer, ou
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(out *jwriter.Writer, in GetStreamsResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(out *jwriter.Writer, in GetStreamsResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1311,11 +1496,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(out *jwriter.Writer,
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v26, v27 := range in.Data {
-				if v26 > 0 {
+			for v29, v30 := range in.Data {
+				if v29 > 0 {
 					out.RawByte(',')
 				}
-				(v27).MarshalEasyJSON(out)
+				(v30).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -1331,27 +1516,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(out *jwriter.Writer,
 // MarshalJSON supports json.Marshaler interface
 func (v GetStreamsResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v GetStreamsResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch9(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *GetStreamsResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *GetStreamsResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(in *jlexer.Lexer, out *GetFollowedChannelsResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(in *jlexer.Lexer, out *GetFollowedChannelsResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1388,9 +1573,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v28 FollowedChannel
-					(v28).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v28)
+					var v31 FollowedChannel
+					(v31).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v31)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -1407,7 +1592,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(out *jwriter.Writer, in GetFollowedChannelsResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(out *jwriter.Writer, in GetFollowedChannelsResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1423,11 +1608,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v29, v30 := range in.Data {
-				if v29 > 0 {
+			for v32, v33 := range in.Data {
+				if v32 > 0 {
 					out.RawByte(',')
 				}
-				(v30).MarshalEasyJSON(out)
+				(v33).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -1443,27 +1628,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v GetFollowedChannelsResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v GetFollowedChannelsResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch10(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *GetFollowedChannelsResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *GetFollowedChannelsResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(in *jlexer.Lexer, out *GetEventSubSubscriptionsResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(in *jlexer.Lexer, out *GetEventSubSubscriptionsResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1506,9 +1691,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v31 EventSubData
-					(v31).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v31)
+					var v34 EventSubData
+					(v34).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v34)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -1523,7 +1708,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(out *jwriter.Writer, in GetEventSubSubscriptionsResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(out *jwriter.Writer, in GetEventSubSubscriptionsResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1554,11 +1739,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v32, v33 := range in.Data {
-				if v32 > 0 {
+			for v35, v36 := range in.Data {
+				if v35 > 0 {
 					out.RawByte(',')
 				}
-				(v33).MarshalEasyJSON(out)
+				(v36).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -1569,27 +1754,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v GetEventSubSubscriptionsResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v GetEventSubSubscriptionsResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch11(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *GetEventSubSubscriptionsResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *GetEventSubSubscriptionsResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(in *jlexer.Lexer, out *GetChatSettingsResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(in *jlexer.Lexer, out *GetChatSettingsResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1624,9 +1809,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v34 ChatSettingData
-					(v34).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v34)
+					var v37 ChatSettingData
+					(v37).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v37)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -1641,7 +1826,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(out *jwriter.Writer, in GetChatSettingsResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(out *jwriter.Writer, in GetChatSettingsResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1652,11 +1837,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v35, v36 := range in.Data {
-				if v35 > 0 {
+			for v38, v39 := range in.Data {
+				if v38 > 0 {
 					out.RawByte(',')
 				}
-				(v36).MarshalEasyJSON(out)
+				(v39).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -1667,27 +1852,125 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v GetChatSettingsResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v GetChatSettingsResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch12(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *GetChatSettingsResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *GetChatSettingsResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(in *jlexer.Lexer, out *FollowedChannel) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(in *jlexer.Lexer, out *GetChannelChatBadgesResp) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "data":
+			if in.IsNull() {
+				in.Skip()
+				out.Data = nil
+			} else {
+				in.Delim('[')
+				if out.Data == nil {
+					if !in.IsDelim(']') {
+						out.Data = make([]ChannelChatBadges, 0, 1)
+					} else {
+						out.Data = []ChannelChatBadges{}
+					}
+				} else {
+					out.Data = (out.Data)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v40 ChannelChatBadges
+					(v40).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v40)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(out *jwriter.Writer, in GetChannelChatBadgesResp) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"data\":"
+		out.RawString(prefix[1:])
+		if in.Data == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v41, v42 := range in.Data {
+				if v41 > 0 {
+					out.RawByte(',')
+				}
+				(v42).MarshalEasyJSON(out)
+			}
+			out.RawByte(']')
+		}
+	}
+	out.RawByte('}')
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v GetChannelChatBadgesResp) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v GetChannelChatBadgesResp) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *GetChannelChatBadgesResp) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *GetChannelChatBadgesResp) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(l, v)
+}
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(in *jlexer.Lexer, out *FollowedChannel) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1726,7 +2009,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(out *jwriter.Writer, in FollowedChannel) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(out *jwriter.Writer, in FollowedChannel) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1756,27 +2039,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v FollowedChannel) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v FollowedChannel) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch13(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *FollowedChannel) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *FollowedChannel) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(in *jlexer.Lexer, out *EventSubTransportRequest) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(in *jlexer.Lexer, out *EventSubTransportRequest) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1815,7 +2098,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(out *jwriter.Writer, in EventSubTransportRequest) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(out *jwriter.Writer, in EventSubTransportRequest) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1850,27 +2133,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v EventSubTransportRequest) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v EventSubTransportRequest) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch14(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *EventSubTransportRequest) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *EventSubTransportRequest) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(in *jlexer.Lexer, out *EventSubTransport) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(in *jlexer.Lexer, out *EventSubTransport) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1903,7 +2186,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(out *jwriter.Writer, in EventSubTransport) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(out *jwriter.Writer, in EventSubTransport) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -1923,27 +2206,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v EventSubTransport) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v EventSubTransport) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch15(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *EventSubTransport) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *EventSubTransport) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(in *jlexer.Lexer, out *EventSubData) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, out *EventSubData) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -1979,9 +2262,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(in *jlexer.Lexer, o
 				for !in.IsDelim('}') {
 					key := string(in.String())
 					in.WantColon()
-					var v37 string
-					v37 = string(in.String())
-					(out.Condition)[key] = v37
+					var v43 string
+					v43 = string(in.String())
+					(out.Condition)[key] = v43
 					in.WantComma()
 				}
 				in.Delim('}')
@@ -2004,7 +2287,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(out *jwriter.Writer, in EventSubData) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(out *jwriter.Writer, in EventSubData) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2035,16 +2318,16 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(out *jwriter.Writer
 			out.RawString(`null`)
 		} else {
 			out.RawByte('{')
-			v38First := true
-			for v38Name, v38Value := range in.Condition {
-				if v38First {
-					v38First = false
+			v44First := true
+			for v44Name, v44Value := range in.Condition {
+				if v44First {
+					v44First = false
 				} else {
 					out.RawByte(',')
 				}
-				out.String(string(v38Name))
+				out.String(string(v44Name))
 				out.RawByte(':')
-				out.String(string(v38Value))
+				out.String(string(v44Value))
 			}
 			out.RawByte('}')
 		}
@@ -2070,27 +2353,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v EventSubData) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v EventSubData) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch16(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *EventSubData) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *EventSubData) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(in *jlexer.Lexer, out *EmoteResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(in *jlexer.Lexer, out *EmoteResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2125,9 +2408,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v39 EmoteData
-					(v39).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v39)
+					var v45 EmoteData
+					(v45).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v45)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -2144,7 +2427,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(out *jwriter.Writer, in EmoteResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(out *jwriter.Writer, in EmoteResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2155,11 +2438,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v40, v41 := range in.Data {
-				if v40 > 0 {
+			for v46, v47 := range in.Data {
+				if v46 > 0 {
 					out.RawByte(',')
 				}
-				(v41).MarshalEasyJSON(out)
+				(v47).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -2175,27 +2458,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v EmoteResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v EmoteResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch17(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *EmoteResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *EmoteResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(in *jlexer.Lexer, out *EmoteImage) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(in *jlexer.Lexer, out *EmoteImage) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2230,7 +2513,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(out *jwriter.Writer, in EmoteImage) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(out *jwriter.Writer, in EmoteImage) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2255,27 +2538,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v EmoteImage) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v EmoteImage) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch18(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *EmoteImage) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *EmoteImage) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, out *EmoteData) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, out *EmoteData) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2316,9 +2599,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, o
 					out.Format = (out.Format)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v42 string
-					v42 = string(in.String())
-					out.Format = append(out.Format, v42)
+					var v48 string
+					v48 = string(in.String())
+					out.Format = append(out.Format, v48)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -2339,9 +2622,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, o
 					out.Scale = (out.Scale)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v43 string
-					v43 = string(in.String())
-					out.Scale = append(out.Scale, v43)
+					var v49 string
+					v49 = string(in.String())
+					out.Scale = append(out.Scale, v49)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -2362,9 +2645,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, o
 					out.ThemeMode = (out.ThemeMode)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v44 string
-					v44 = string(in.String())
-					out.ThemeMode = append(out.ThemeMode, v44)
+					var v50 string
+					v50 = string(in.String())
+					out.ThemeMode = append(out.ThemeMode, v50)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -2379,7 +2662,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(out *jwriter.Writer, in EmoteData) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(out *jwriter.Writer, in EmoteData) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2405,11 +2688,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v45, v46 := range in.Format {
-				if v45 > 0 {
+			for v51, v52 := range in.Format {
+				if v51 > 0 {
 					out.RawByte(',')
 				}
-				out.String(string(v46))
+				out.String(string(v52))
 			}
 			out.RawByte(']')
 		}
@@ -2421,11 +2704,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v47, v48 := range in.Scale {
-				if v47 > 0 {
+			for v53, v54 := range in.Scale {
+				if v53 > 0 {
 					out.RawByte(',')
 				}
-				out.String(string(v48))
+				out.String(string(v54))
 			}
 			out.RawByte(']')
 		}
@@ -2437,11 +2720,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v49, v50 := range in.ThemeMode {
-				if v49 > 0 {
+			for v55, v56 := range in.ThemeMode {
+				if v55 > 0 {
 					out.RawByte(',')
 				}
-				out.String(string(v50))
+				out.String(string(v56))
 			}
 			out.RawByte(']')
 		}
@@ -2452,27 +2735,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v EmoteData) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v EmoteData) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch19(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *EmoteData) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *EmoteData) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(in *jlexer.Lexer, out *CreatedClip) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(in *jlexer.Lexer, out *CreatedClip) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2505,7 +2788,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(out *jwriter.Writer, in CreatedClip) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(out *jwriter.Writer, in CreatedClip) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2525,27 +2808,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v CreatedClip) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v CreatedClip) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch20(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *CreatedClip) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *CreatedClip) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(in *jlexer.Lexer, out *CreateStreamMarkerResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(in *jlexer.Lexer, out *CreateStreamMarkerResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2580,9 +2863,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v51 StreamMarker
-					(v51).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v51)
+					var v57 StreamMarker
+					(v57).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v57)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -2597,7 +2880,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(out *jwriter.Writer, in CreateStreamMarkerResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(out *jwriter.Writer, in CreateStreamMarkerResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2608,11 +2891,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v52, v53 := range in.Data {
-				if v52 > 0 {
+			for v58, v59 := range in.Data {
+				if v58 > 0 {
 					out.RawByte(',')
 				}
-				(v53).MarshalEasyJSON(out)
+				(v59).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -2623,27 +2906,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v CreateStreamMarkerResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v CreateStreamMarkerResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch21(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *CreateStreamMarkerResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *CreateStreamMarkerResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, out *CreateStreamMarkerRequest) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(in *jlexer.Lexer, out *CreateStreamMarkerRequest) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2676,7 +2959,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(out *jwriter.Writer, in CreateStreamMarkerRequest) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(out *jwriter.Writer, in CreateStreamMarkerRequest) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2696,27 +2979,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v CreateStreamMarkerRequest) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v CreateStreamMarkerRequest) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch22(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *CreateStreamMarkerRequest) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *CreateStreamMarkerRequest) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(in *jlexer.Lexer, out *CreateEventSubSubscriptionResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(in *jlexer.Lexer, out *CreateEventSubSubscriptionResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2751,9 +3034,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v54 EventSubData
-					(v54).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v54)
+					var v60 EventSubData
+					(v60).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v60)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -2774,7 +3057,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(out *jwriter.Writer, in CreateEventSubSubscriptionResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(out *jwriter.Writer, in CreateEventSubSubscriptionResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2785,11 +3068,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v55, v56 := range in.Data {
-				if v55 > 0 {
+			for v61, v62 := range in.Data {
+				if v61 > 0 {
 					out.RawByte(',')
 				}
-				(v56).MarshalEasyJSON(out)
+				(v62).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -2815,27 +3098,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v CreateEventSubSubscriptionResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v CreateEventSubSubscriptionResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch23(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *CreateEventSubSubscriptionResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *CreateEventSubSubscriptionResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(in *jlexer.Lexer, out *CreateEventSubSubscriptionRequest) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(in *jlexer.Lexer, out *CreateEventSubSubscriptionRequest) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2867,9 +3150,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(in *jlexer.Lexer, o
 				for !in.IsDelim('}') {
 					key := string(in.String())
 					in.WantColon()
-					var v57 string
-					v57 = string(in.String())
-					(out.Condition)[key] = v57
+					var v63 string
+					v63 = string(in.String())
+					(out.Condition)[key] = v63
 					in.WantComma()
 				}
 				in.Delim('}')
@@ -2886,7 +3169,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(out *jwriter.Writer, in CreateEventSubSubscriptionRequest) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(out *jwriter.Writer, in CreateEventSubSubscriptionRequest) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -2907,16 +3190,16 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(out *jwriter.Writer
 			out.RawString(`null`)
 		} else {
 			out.RawByte('{')
-			v58First := true
-			for v58Name, v58Value := range in.Condition {
-				if v58First {
-					v58First = false
+			v64First := true
+			for v64Name, v64Value := range in.Condition {
+				if v64First {
+					v64First = false
 				} else {
 					out.RawByte(',')
 				}
-				out.String(string(v58Name))
+				out.String(string(v64Name))
 				out.RawByte(':')
-				out.String(string(v58Value))
+				out.String(string(v64Value))
 			}
 			out.RawByte('}')
 		}
@@ -2932,27 +3215,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v CreateEventSubSubscriptionRequest) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v CreateEventSubSubscriptionRequest) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch24(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *CreateEventSubSubscriptionRequest) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *CreateEventSubSubscriptionRequest) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(in *jlexer.Lexer, out *CreateClipResponse) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(in *jlexer.Lexer, out *CreateClipResponse) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -2987,9 +3270,9 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(in *jlexer.Lexer, o
 					out.Data = (out.Data)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v59 CreatedClip
-					(v59).UnmarshalEasyJSON(in)
-					out.Data = append(out.Data, v59)
+					var v65 CreatedClip
+					(v65).UnmarshalEasyJSON(in)
+					out.Data = append(out.Data, v65)
 					in.WantComma()
 				}
 				in.Delim(']')
@@ -3004,7 +3287,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(out *jwriter.Writer, in CreateClipResponse) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(out *jwriter.Writer, in CreateClipResponse) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -3015,11 +3298,11 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(out *jwriter.Writer
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v60, v61 := range in.Data {
-				if v60 > 0 {
+			for v66, v67 := range in.Data {
+				if v66 > 0 {
 					out.RawByte(',')
 				}
-				(v61).MarshalEasyJSON(out)
+				(v67).MarshalEasyJSON(out)
 			}
 			out.RawByte(']')
 		}
@@ -3030,27 +3313,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v CreateClipResponse) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v CreateClipResponse) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch25(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *CreateClipResponse) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *CreateClipResponse) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(in *jlexer.Lexer, out *ChatSettingData) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch29(in *jlexer.Lexer, out *ChatSettingData) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -3099,7 +3382,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(out *jwriter.Writer, in ChatSettingData) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch29(out *jwriter.Writer, in ChatSettingData) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -3159,27 +3442,247 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v ChatSettingData) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch29(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v ChatSettingData) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch26(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch29(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *ChatSettingData) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch29(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *ChatSettingData) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch29(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(in *jlexer.Lexer, out *BanUserRequest) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch30(in *jlexer.Lexer, out *ChannelChatBadges) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "set_id":
+			out.SetID = string(in.String())
+		case "versions":
+			if in.IsNull() {
+				in.Skip()
+				out.Versions = nil
+			} else {
+				in.Delim('[')
+				if out.Versions == nil {
+					if !in.IsDelim(']') {
+						out.Versions = make([]ChannelChatBadgeVersion, 0, 0)
+					} else {
+						out.Versions = []ChannelChatBadgeVersion{}
+					}
+				} else {
+					out.Versions = (out.Versions)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v68 ChannelChatBadgeVersion
+					(v68).UnmarshalEasyJSON(in)
+					out.Versions = append(out.Versions, v68)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch30(out *jwriter.Writer, in ChannelChatBadges) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"set_id\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.SetID))
+	}
+	{
+		const prefix string = ",\"versions\":"
+		out.RawString(prefix)
+		if in.Versions == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v69, v70 := range in.Versions {
+				if v69 > 0 {
+					out.RawByte(',')
+				}
+				(v70).MarshalEasyJSON(out)
+			}
+			out.RawByte(']')
+		}
+	}
+	out.RawByte('}')
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v ChannelChatBadges) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch30(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v ChannelChatBadges) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch30(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *ChannelChatBadges) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch30(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *ChannelChatBadges) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch30(l, v)
+}
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch31(in *jlexer.Lexer, out *ChannelChatBadgeVersion) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		if in.IsNull() {
+			in.Skip()
+			in.WantComma()
+			continue
+		}
+		switch key {
+		case "id":
+			out.ID = string(in.String())
+		case "image_url_1x":
+			out.Image_URL_1x = string(in.String())
+		case "image_url_2x":
+			out.Image_URL_2x = string(in.String())
+		case "image_url_4x":
+			out.Image_URL_4x = string(in.String())
+		case "title":
+			out.Title = string(in.String())
+		case "description":
+			out.Description = string(in.String())
+		case "click_action":
+			out.ClickAction = string(in.String())
+		case "click_url":
+			out.ClickURL = string(in.String())
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch31(out *jwriter.Writer, in ChannelChatBadgeVersion) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"id\":"
+		out.RawString(prefix[1:])
+		out.String(string(in.ID))
+	}
+	{
+		const prefix string = ",\"image_url_1x\":"
+		out.RawString(prefix)
+		out.String(string(in.Image_URL_1x))
+	}
+	{
+		const prefix string = ",\"image_url_2x\":"
+		out.RawString(prefix)
+		out.String(string(in.Image_URL_2x))
+	}
+	{
+		const prefix string = ",\"image_url_4x\":"
+		out.RawString(prefix)
+		out.String(string(in.Image_URL_4x))
+	}
+	{
+		const prefix string = ",\"title\":"
+		out.RawString(prefix)
+		out.String(string(in.Title))
+	}
+	{
+		const prefix string = ",\"description\":"
+		out.RawString(prefix)
+		out.String(string(in.Description))
+	}
+	{
+		const prefix string = ",\"click_action\":"
+		out.RawString(prefix)
+		out.String(string(in.ClickAction))
+	}
+	{
+		const prefix string = ",\"click_url\":"
+		out.RawString(prefix)
+		out.String(string(in.ClickURL))
+	}
+	out.RawByte('}')
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v ChannelChatBadgeVersion) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch31(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v ChannelChatBadgeVersion) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch31(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *ChannelChatBadgeVersion) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch31(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *ChannelChatBadgeVersion) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch31(l, v)
+}
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch32(in *jlexer.Lexer, out *BanUserRequest) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -3210,7 +3713,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(out *jwriter.Writer, in BanUserRequest) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch32(out *jwriter.Writer, in BanUserRequest) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -3225,27 +3728,27 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v BanUserRequest) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch32(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v BanUserRequest) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch27(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch32(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *BanUserRequest) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch32(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *BanUserRequest) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch32(l, v)
 }
-func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(in *jlexer.Lexer, out *BanUserData) {
+func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch33(in *jlexer.Lexer, out *BanUserData) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -3280,7 +3783,7 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(in *jlexer.Lexer, o
 		in.Consumed()
 	}
 }
-func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(out *jwriter.Writer, in BanUserData) {
+func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch33(out *jwriter.Writer, in BanUserData) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -3305,23 +3808,23 @@ func easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(out *jwriter.Writer
 // MarshalJSON supports json.Marshaler interface
 func (v BanUserData) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(&w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch33(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v BanUserData) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch28(w, v)
+	easyjson3f687995EncodeGithubComJulezDevChatuinoTwitch33(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *BanUserData) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(&r, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch33(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *BanUserData) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(l, v)
+	easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch33(l, v)
 }

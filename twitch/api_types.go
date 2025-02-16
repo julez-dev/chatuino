@@ -313,3 +313,42 @@ type (
 		ThemeMode  []string `json:"theme_mode"`
 	}
 )
+
+// https://dev.twitch.tv/docs/api/reference/#get-user-chat-color
+type (
+	//easyjson:json
+	GetUserChatColorResponse struct {
+		Data []UserChatColor `json:"data"`
+	}
+	//easyjson:json
+	UserChatColor struct {
+		Color     string `json:"color"`
+		UserName  string `json:"user_name"`
+		UserLogin string `json:"user_login"`
+		UserID    string `json:"user_id"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#get-channel-chat-badges
+type (
+	//easyjson:json
+	GetChannelChatBadgesResp struct {
+		Data []ChannelChatBadges `json:"data"`
+	}
+	//easyjson:json
+	ChannelChatBadges struct {
+		SetID    string                    `json:"set_id"`
+		Versions []ChannelChatBadgeVersion `json:"versions"`
+	}
+	//easyjson:json
+	ChannelChatBadgeVersion struct {
+		ID           string `json:"id"`
+		Image_URL_1x string `json:"image_url_1x"`
+		Image_URL_2x string `json:"image_url_2x"`
+		Image_URL_4x string `json:"image_url_4x"`
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		ClickAction  string `json:"click_action"`
+		ClickURL     string `json:"click_url"`
+	}
+)
