@@ -79,6 +79,11 @@ type PrivateMessage struct {
 	UserType        UserType
 	VIP             bool
 
+	// Joined chat rooms
+	SourceID     string
+	SourceRoomID string
+	SourceBadges []Badge
+
 	Message string
 }
 

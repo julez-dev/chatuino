@@ -50,6 +50,11 @@ type setChannelDataMessage struct {
 	isUserMod       bool
 }
 
+type setUserIdentityData struct {
+	targetID  string
+	colorData twitch.UserChatColor
+}
+
 type broadcastTabState int
 
 func (t broadcastTabState) String() string {
@@ -87,6 +92,7 @@ type moderationAPIClient interface {
 
 type userAuthenticatedAPIClient interface {
 	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitch.CreatedClip, error)
+	GetUserChatColor(ctx context.Context, userIDs []string) ([]twitch.UserChatColor, error)
 }
 
 type ModStatusFetcher interface {
@@ -115,6 +121,8 @@ type broadcastTab struct {
 	channel    string
 	channelID  string
 	emoteStore EmoteStore
+
+	colorData twitch.UserChatColor
 
 	width, height     int
 	userConfiguration UserConfiguration
@@ -475,10 +483,42 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			})
 		}
 
+		if !t.account.IsAnonymous {
+			cmds = append(cmds, func() tea.Msg {
+				api, ok := t.ttvAPI.(userAuthenticatedAPIClient)
+				if !ok {
+					return nil
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+				defer cancel()
+
+				colorData, err := api.GetUserChatColor(ctx, []string{t.account.ID})
+				if err != nil {
+					t.logger.Error().Err(err).Str("account-id", t.account.ID).Msg("failed to fetch user chat color")
+					return nil
+				}
+
+				resp := setUserIdentityData{}
+				if len(colorData) > 0 {
+					resp.colorData = colorData[0]
+				}
+
+				resp.targetID = t.id
+				return resp
+			})
+		}
+
 		t.HandleResize()
 		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 		return t, tea.Batch(cmds...)
+	case setUserIdentityData:
+		if msg.targetID != t.id {
+			return t, nil
+		}
 
+		t.colorData = msg.colorData
+		return t, nil
 	case EventSubMessage:
 		cmd = t.handleEventSubMessage(msg.Payload)
 		return t, cmd
@@ -1041,6 +1081,11 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
 		return false
 	}
 
+	// TODO: shared chat; ignore for now
+	if cast.SourceRoomID != "" && cast.SourceRoomID != t.channelID {
+		return true
+	}
+
 	// never ignore messages from the user,broadcaster,subs,mods,vips,paid messages,staff,bits or message mentions user
 	if cast.UserID == t.account.ID || cast.UserID == t.channelID || cast.Mod || cast.PaidAmount != 0 || cast.VIP ||
 		messageContainsCaseInsensitive(cast, t.account.DisplayName) || cast.Bits != 0 ||
@@ -1197,6 +1242,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		Message:         input,
 		DisplayName:     t.account.DisplayName,
 		TMISentTS:       time.Now(),
+		Color:           t.colorData.Color,
 	}
 
 	lastSent := t.lastMessageSentAt

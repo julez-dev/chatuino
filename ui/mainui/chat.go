@@ -17,6 +17,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/muesli/reflow/wrap"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -422,6 +423,23 @@ func (c *chatWindow) cleanup() {
 	c.entries = c.entries[int(cleanupAfterMessage):]
 	c.recalculateLines()
 
+	// users that should not be removed from the color cache
+	usersLeft := make(map[string]struct{}, len(c.entries))
+	for _, e := range c.entries {
+		if privMsg, ok := e.Event.message.(*command.PrivateMessage); ok {
+			usersLeft[strings.ToLower(privMsg.DisplayName)] = struct{}{}
+		}
+	}
+
+	// remove no longer needed user color cache entries
+	for user := range c.userColorCache {
+		// user no longer exists in chat
+		if _, ok := usersLeft[user]; !ok {
+			log.Logger.Info().Str("user", user).Msg("delete user from cache")
+			delete(c.userColorCache, user)
+		}
+	}
+
 	// for i, e := range c.entries {
 	// 	if e.IsIgnored {
 	// 		continue
@@ -803,7 +821,11 @@ func (c *chatWindow) recalculateLines() {
 }
 
 func (c *chatWindow) activeEntries() []*chatEntry {
-	activeEntries := []*chatEntry{}
+	if c.searchInput.Value() == "" {
+		return c.entries
+	}
+
+	activeEntries := make([]*chatEntry, 0, c.height)
 	for e := range slices.Values(c.entries) {
 		if !e.IsFiltered {
 			activeEntries = append(activeEntries, e)

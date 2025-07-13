@@ -159,6 +159,33 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand(in *jlexer.Lex
 			out.UserType = UserType(in.String())
 		case "vip":
 			out.VIP = bool(in.Bool())
+		case "source_id":
+			out.SourceID = string(in.String())
+		case "source_room_id":
+			out.SourceRoomID = string(in.String())
+		case "source_badges":
+			if in.IsNull() {
+				in.Skip()
+				out.SourceBadges = nil
+			} else {
+				in.Delim('[')
+				if out.SourceBadges == nil {
+					if !in.IsDelim(']') {
+						out.SourceBadges = make([]Badge, 0, 2)
+					} else {
+						out.SourceBadges = []Badge{}
+					}
+				} else {
+					out.SourceBadges = (out.SourceBadges)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v4 Badge
+					easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand1(in, &v4)
+					out.SourceBadges = append(out.SourceBadges, v4)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
 		case "message":
 			out.Message = string(in.String())
 		default:
@@ -182,11 +209,11 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand(out *jwriter.W
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v4, v5 := range in.BadgeInfo {
-				if v4 > 0 {
+			for v5, v6 := range in.BadgeInfo {
+				if v5 > 0 {
 					out.RawByte(',')
 				}
-				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand1(out, v5)
+				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand1(out, v6)
 			}
 			out.RawByte(']')
 		}
@@ -198,11 +225,11 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand(out *jwriter.W
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v6, v7 := range in.Badges {
-				if v6 > 0 {
+			for v7, v8 := range in.Badges {
+				if v7 > 0 {
 					out.RawByte(',')
 				}
-				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand1(out, v7)
+				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand1(out, v8)
 			}
 			out.RawByte(']')
 		}
@@ -229,11 +256,11 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand(out *jwriter.W
 			out.RawString("null")
 		} else {
 			out.RawByte('[')
-			for v8, v9 := range in.Emotes {
-				if v8 > 0 {
+			for v9, v10 := range in.Emotes {
+				if v9 > 0 {
 					out.RawByte(',')
 				}
-				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand2(out, v9)
+				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand2(out, v10)
 			}
 			out.RawByte(']')
 		}
@@ -352,6 +379,32 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand(out *jwriter.W
 		const prefix string = ",\"vip\":"
 		out.RawString(prefix)
 		out.Bool(bool(in.VIP))
+	}
+	{
+		const prefix string = ",\"source_id\":"
+		out.RawString(prefix)
+		out.String(string(in.SourceID))
+	}
+	{
+		const prefix string = ",\"source_room_id\":"
+		out.RawString(prefix)
+		out.String(string(in.SourceRoomID))
+	}
+	{
+		const prefix string = ",\"source_badges\":"
+		out.RawString(prefix)
+		if in.SourceBadges == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v11, v12 := range in.SourceBadges {
+				if v11 > 0 {
+					out.RawByte(',')
+				}
+				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand1(out, v12)
+			}
+			out.RawByte(']')
+		}
 	}
 	{
 		const prefix string = ",\"message\":"

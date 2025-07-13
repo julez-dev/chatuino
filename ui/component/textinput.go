@@ -301,6 +301,15 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		}
 	}
 
+	// sort suggestions by word length
+	slices.SortFunc(s.suggestions, func(a, b string) int {
+		if len(a) == len(b) {
+			return strings.Compare(a, b)
+		}
+
+		return len(a) - len(b)
+	})
+
 	// If the current word is a user, add user suggestions to suggestions (with @ prefix)
 	if strings.HasPrefix(currWord, "@") {
 		var matchedUsers []string
