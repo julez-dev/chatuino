@@ -432,7 +432,7 @@ func (c *chatWindow) cleanup() {
 	}
 
 	// remove no longer needed user color cache entries
-	for user, _ := range c.userColorCache {
+	for user := range c.userColorCache {
 		// user no longer exists in chat
 		if _, ok := usersLeft[user]; !ok {
 			log.Logger.Info().Str("user", user).Msg("delete user from cache")
@@ -821,7 +821,11 @@ func (c *chatWindow) recalculateLines() {
 }
 
 func (c *chatWindow) activeEntries() []*chatEntry {
-	activeEntries := []*chatEntry{}
+	if c.searchInput.Value() == "" {
+		return c.entries
+	}
+
+	activeEntries := make([]*chatEntry, 0, c.height)
 	for e := range slices.Values(c.entries) {
 		if !e.IsFiltered {
 			activeEntries = append(activeEntries, e)
