@@ -359,12 +359,12 @@ func (r *RoomState) IRC() string {
 }
 
 type ClearChat struct {
-	BanDuration     int // in seconds
+	BanDuration     *int // in seconds
 	RoomID          string
 	ChannelUserName string
-	TargetUserID    string
+	TargetUserID    *string
 	TMISentTS       time.Time
-	UserName        string
+	UserName        *string
 }
 
 func (c *ClearChat) IRC() string {

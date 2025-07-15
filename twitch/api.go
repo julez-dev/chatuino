@@ -201,6 +201,29 @@ func (a *API) FetchAllUserEmotes(ctx context.Context, userID string, broadcaster
 	return emotes, template, nil
 }
 
+func (a *API) DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error {
+	if a.provider == nil {
+		return ErrNoUserAccess
+	}
+
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", moderatorID)
+
+	if messageID != "" {
+		values.Add("message_id", messageID)
+	}
+
+	url := fmt.Sprintf("/moderation/chat?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (a *API) BanUser(ctx context.Context, broadcasterID string, moderatorID string, data BanUserData) error {
 	if a.provider == nil {
 		return ErrNoUserAccess

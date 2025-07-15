@@ -17,12 +17,14 @@ import (
 
 func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
 	switch name {
-	case "timeout":
+	case "timeout", "timeout_selected":
 		return handleTimeout(name, args, channelID, channel, userAccountID, ttv)
-	case "ban":
+	case "ban", "ban_selected":
 		return handleTimeout(name, args, channelID, channel, userAccountID, ttv)
-	case "unban":
+	case "unban", "unban_selected":
 		return handleUnban(args, channel, channelID, userAccountID, ttv)
+	case "delete_all_messages", "delete_selected_message":
+		return handleDeleteMessages(name, args, channel, channelID, userAccountID, ttv)
 	case "announcement":
 		return handleAnnouncement(args, channel, channelID, userAccountID, ttv)
 	case "marker":
@@ -211,14 +213,14 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 		message:   &command.Notice{},
 	}
 
-	if len(args) < 1 && name == "timeout" {
+	if len(args) < 1 && (name == "timeout" || name == "timeout_selected") {
 		return func() tea.Msg {
 			respMsg.message.(*command.Notice).Message = "Expected Usage: /timeout <username> [duration] [reason]"
 			return respMsg
 		}
 	}
 
-	if len(args) < 1 && name == "ban" {
+	if len(args) < 1 && (name == "ban" || name == "ban_selected") {
 		return func() tea.Msg {
 			respMsg.message.(*command.Notice).Message = "Expected Usage: /ban <username> [reason]"
 			return respMsg
@@ -250,7 +252,7 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 
 		// parse duration for timeouts
 		// if timeout is not set, default to 1 second
-		if name == "timeout" {
+		if name == "timeout" || name == "timeout_selected" {
 			if args[1] == "" {
 				duration = 1
 			} else {
@@ -277,12 +279,65 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 			return respMsg
 		}
 
-		if name == "ban" {
+		if name == "ban" || name == "ban_selected" {
 			respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s received a ban by you because: %s", users.Data[0].DisplayName, args[2])
 			return respMsg
 		}
 
 		respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s received a timeout by you for %d seconds because: %s", users.Data[0].DisplayName, duration, args[2])
+		return respMsg
+	}
+}
+
+func handleDeleteMessages(name string, args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+	notice := &command.Notice{
+		FakeTimestamp: time.Now(),
+	}
+	respMsg := chatEventMessage{
+		accountID:   userAccountID,
+		channel:     channel,
+		message:     notice,
+		isFakeEvent: true,
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var messageID string
+		if name == "delete_selected_message" {
+			if len(args) < 1 {
+				notice.Message = "Expected Usage: /delete_selected_message <message_id>"
+				return respMsg
+			}
+			messageID = args[0]
+		}
+
+		err := ttv.DeleteMessage(ctx, channelID, userAccountID, messageID)
+		if err != nil {
+			var apiErr twitch.APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.Status {
+				case http.StatusBadRequest:
+					notice.Message = fmt.Sprintf("Delete message request invalid: %s", apiErr.Message)
+				case http.StatusUnauthorized, http.StatusForbidden:
+					notice.Message = fmt.Sprintf("Unauthorized to delete message(s): %s", apiErr.Message)
+				case http.StatusNotFound:
+					notice.Message = fmt.Sprintf("Message not found: %s", apiErr.Message)
+				default:
+					notice.Message = fmt.Sprintf("Failed to delete message(s): %s", apiErr.Message)
+				}
+				return respMsg
+			}
+			notice.Message = fmt.Sprintf("Failed to delete message(s): %s", err.Error())
+			return respMsg
+		}
+
+		if name == "delete_selected_message" {
+			notice.Message = fmt.Sprintf("Message %s deleted.", messageID)
+		} else {
+			notice.Message = "All messages deleted."
+		}
 		return respMsg
 	}
 }

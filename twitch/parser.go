@@ -417,21 +417,28 @@ func ParseIRC(message string) (IRCer, error) {
 
 		return &r, nil
 	case "CLEARCHAT":
-		banDuration, err := strconv.Atoi(emptyStringZero(string(c.tags["ban-duration"])))
-		if err != nil {
-			return nil, err
-		}
 
 		cc := command.ClearChat{
-			BanDuration:     banDuration,
 			RoomID:          string(c.tags["room-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
-			TargetUserID:    string(c.tags["target-user-id"]),
 			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
 		}
 
+		if c.tags["ban-duration"] != "" {
+			banDuration, err := strconv.Atoi(emptyStringZero(string(c.tags["ban-duration"])))
+			if err != nil {
+				return nil, err
+			}
+
+			cc.BanDuration = pointer(banDuration)
+		}
+
+		if c.tags["target-user-id"] != "" {
+			cc.TargetUserID = pointer(string(c.tags["target-user-id"]))
+		}
+
 		if len(c.Params) > 1 {
-			cc.UserName = c.Params[1]
+			cc.UserName = pointer(c.Params[1])
 		}
 
 		return &cc, nil

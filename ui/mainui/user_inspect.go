@@ -227,14 +227,18 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		// of message in user inspect chat window
 		var affectsUserInChat bool
 
+		if msg.UserName == nil {
+			return u, nil
+		}
+
 		for _, e := range u.chatWindow.entries {
-			if priv, ok := e.Event.message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, msg.UserName) {
+			if priv, ok := e.Event.message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, *msg.UserName) {
 				affectsUserInChat = true
 				break
 			}
 		}
 
-		if !strings.EqualFold(msg.UserName, u.user) && !affectsUserInChat {
+		if !strings.EqualFold(*msg.UserName, u.user) && !affectsUserInChat {
 			return u, nil
 		}
 

@@ -39,6 +39,12 @@ const (
 	popupFmt      = "https://www.twitch.tv/popout/%s/chat?popout=1"
 )
 
+var modCommandAlternativeMapping = map[string]string{
+	"/ban_selected":     "/ban",
+	"/unban_selected":   "/unban",
+	"/timeout_selected": "/timeout",
+}
+
 type setErrorMessage struct {
 	targetID string
 	err      error
@@ -86,6 +92,7 @@ type moderationAPIClient interface {
 	APIClient
 	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitch.BanUserData) error
 	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
+	DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error
 	FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]twitch.UnbanRequest, error)
 	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitch.CreateChatAnnouncementRequest) error
@@ -1344,20 +1351,26 @@ func (t *broadcastTab) handleCopyMessage() {
 
 	if t.state == inChatWindow {
 		_, entry = t.chatWindow.entryForCurrentCursor()
+
+		if entry == nil {
+			return
+		}
+
 		if t.chatWindow.state == searchChatWindowState {
 			t.chatWindow.handleStopSearchMode()
 		}
 		t.chatWindow.Blur()
 	} else {
 		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
+
+		if entry == nil {
+			return
+		}
+
 		if t.userInspect.chatWindow.state == searchChatWindowState {
 			t.userInspect.chatWindow.handleStopSearchMode()
 		}
 		t.userInspect.chatWindow.Blur()
-	}
-
-	if entry == nil || entry.IsDeleted {
-		return
 	}
 
 	msg, ok := entry.Event.message.(*command.PrivateMessage)
@@ -1421,7 +1434,11 @@ func (t *broadcastTab) handleOpenUserInspectFromMessage() tea.Cmd {
 	case *command.PrivateMessage:
 		username = msg.DisplayName
 	case *command.ClearChat:
-		username = msg.UserName
+		if msg.UserName == nil {
+			return nil
+		}
+
+		username = *msg.UserName
 	default:
 		return nil
 	}
@@ -1677,12 +1694,15 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 			data["SelectedDisplayName"] = msg.DisplayName
 			data["SelectedMessageContent"] = msg.Message
 			data["SelectedUserID"] = msg.UserID
+			data["MessageID"] = msg.ID
+
 			data["RawMessage"] = msg
 			data["MessageType"] = "PrivateMessage"
 		case *command.SubMessage:
 			data["SelectedDisplayName"] = msg.DisplayName
 			data["SelectedMessageContent"] = msg.Message
 			data["SelectedUserID"] = msg.UserID
+			data["MessageID"] = msg.ID
 
 			data["SubMessageCumulativeMonths"] = msg.CumulativeMonths
 			data["SubMessageStreakMonths"] = msg.StreakMonths
@@ -1694,6 +1714,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 			data["SelectedDisplayName"] = msg.DisplayName
 			data["SelectedMessageContent"] = msg
 			data["SelectedUserID"] = msg.UserID
+			data["MessageID"] = msg.ID
 
 			data["SubGiftReceiptDisplayName"] = msg.ReceiptDisplayName
 			data["SubGiftRecipientID"] = msg.RecipientID
@@ -1714,7 +1735,19 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 		}
 	}
 
-	t.messageInput.SetValue(out.String())
+	inputText := out.String()
+
+	// replace alternative mod commands
+	if t.isUserMod && strings.HasPrefix(inputText, "/") {
+		for from, to := range maps.All(modCommandAlternativeMapping) {
+			if strings.HasPrefix(inputText, from) {
+				inputText = strings.Replace(inputText, from, to, 1)
+				break
+			}
+		}
+	}
+
+	t.messageInput.SetValue(inputText)
 	return nil
 }
 

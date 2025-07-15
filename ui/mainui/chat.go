@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -377,8 +378,8 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 func (c *chatWindow) markSelectedMessage() {
 	linesInView := c.lines[c.lineStart:c.lineEnd]
 	for i, s := range linesInView {
-		if strings.HasPrefix(s, c.indicator+" ") {
-			s = strings.TrimPrefix(s, c.indicator+" ")
+		s, found := strings.CutPrefix(s, c.indicator+" ")
+		if found {
 			linesInView[i] = "  " + s
 		}
 	}
@@ -459,8 +460,10 @@ func (c *chatWindow) cleanup() {
 }
 
 func (c *chatWindow) handleMessage(msg chatEventMessage) {
+	log.Logger.Info().Any("type", reflect.TypeOf(msg.message).String()).Msg("event")
+
 	switch msg.message.(type) {
-	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage: // supported Message types
+	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage, *command.ClearMessage: // supported Message types
 	default: // exit only on other types
 		return
 	}
@@ -468,7 +471,7 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	c.cleanup()
 
 	// if timeout message, rewrite all messages from user
-	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok {
+	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok && timeoutMsg.UserName != nil {
 		var hasDeleted bool
 		for _, e := range c.entries {
 			privMsg, ok := e.Event.message.(*command.PrivateMessage)
@@ -477,10 +480,32 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 				continue
 			}
 
-			if strings.EqualFold(privMsg.DisplayName, timeoutMsg.UserName) && !e.IsDeleted && !strings.HasPrefix(privMsg.Message, "[deleted by moderator]") {
+			if strings.EqualFold(privMsg.DisplayName, *timeoutMsg.UserName) && !e.IsDeleted {
 				hasDeleted = true
 				e.IsDeleted = true
-				privMsg.Message = fmt.Sprintf("[deleted by moderator]\n%s", privMsg.Message)
+				e.Event.messageContentEmoteOverride = fmt.Sprintf("[deleted by moderator]\n%s", e.Event.messageContentEmoteOverride)
+			}
+		}
+
+		if hasDeleted {
+			c.recalculateLines()
+		}
+	}
+
+	// if specific message deleted
+	if clearMsg, ok := msg.message.(*command.ClearMessage); ok {
+		var hasDeleted bool
+		for _, e := range c.entries {
+			privMsg, ok := e.Event.message.(*command.PrivateMessage)
+
+			if !ok {
+				continue
+			}
+
+			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
+				hasDeleted = true
+				e.IsDeleted = true
+				e.Event.messageContentEmoteOverride = fmt.Sprintf("[deleted by moderator]\n%s", e.Event.messageContentEmoteOverride)
 			}
 		}
 
@@ -575,24 +600,43 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(styled))
-	case *command.ClearChat:
-		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
+	case *command.ClearMessage:
+		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Message") + "]: A message from "
 
-		userRenderFunc, ok := c.userColorCache[msg.UserName]
+		userRenderFunc, ok := c.userColorCache[msg.Login]
 
 		var text string
 
 		if !ok {
-			text += msg.UserName
+			text += msg.Login
 		} else {
-			text += userRenderFunc(msg.UserName)
+			text += userRenderFunc(msg.Login)
 		}
 
-		if msg.BanDuration == 0 {
-			text += " was permanently banned."
+		text += " was removed."
+		return c.wordwrapMessage(prefix, c.colorMessage(text))
+	case *command.ClearChat:
+		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
+
+		if msg.TargetUserID == nil {
+			text := "Clear chat prevented by Chatuino. Chat restored."
+			return c.wordwrapMessage(prefix, c.colorMessage(text))
+		}
+
+		userRenderFunc, ok := c.userColorCache[*msg.UserName]
+
+		var text string
+
+		if !ok {
+			text += *msg.UserName
 		} else {
-			dur := time.Duration(msg.BanDuration * 1e9)
-			text += " was timed out for " + dur.String()
+			text += userRenderFunc(*msg.UserName)
+		}
+
+		if msg.BanDuration != nil && *msg.BanDuration > 0 {
+			text += " was timed out for " + time.Duration(*msg.BanDuration*1e9).String()
+		} else {
+			text += " was permanently banned."
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
