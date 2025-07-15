@@ -3,6 +3,7 @@ package save
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/julez-dev/chatuino/ui/component"
@@ -56,12 +57,9 @@ func (s Settings) validate() error {
 		// combine CommandSuggestions and CustomCommands to check for collisions for custom commands
 		predefinedCommands := append(component.CommandSuggestions[:], component.ModeratorSuggestions[:]...)
 
-		for _, m := range predefinedCommands {
-			if c.Trigger == m {
-				return fmt.Errorf("custom command trigger %q is already a default command", c.Trigger)
-			}
+		if slices.Contains(predefinedCommands, c.Trigger) {
+			return fmt.Errorf("custom command trigger %q is already a default command", c.Trigger)
 		}
-
 	}
 
 	return nil

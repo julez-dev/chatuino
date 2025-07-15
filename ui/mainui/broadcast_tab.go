@@ -1,6 +1,7 @@
 package mainui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -607,6 +609,14 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				if key.Matches(msg, t.keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
 					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
 					return t, t.handleMessageSent(true)
+				}
+
+				// Message Accept Suggestion Template Replace
+				// always allow accept suggestion key so even new texts can be templated
+				if key.Matches(msg, t.messageInput.KeyMap.AcceptSuggestion) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+					t.messageInput, _ = t.messageInput.Update(msg)
+					cmds = append(cmds, t.replaceInputTemplate())
+					return t, tea.Batch(cmds...)
 				}
 
 				// Set quick time out message to message input
@@ -1626,6 +1636,85 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		)
 	}
 
+	return nil
+}
+
+func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
+	input := t.messageInput.Value()
+
+	notice := &command.Notice{
+		FakeTimestamp: time.Now(),
+	}
+
+	resp := chatEventMessage{
+		isFakeEvent: true,
+		accountID:   t.account.ID,
+		channel:     t.channel,
+		tabID:       t.id,
+		message:     notice,
+	}
+
+	tmpl, err := template.New("").Parse(input)
+	if err != nil {
+		notice.Message = fmt.Sprintf("Error while parsing template: %s", err)
+
+		return func() tea.Msg {
+			return resp
+		}
+	}
+
+	data := map[string]any{
+		"CurrentTime":     time.Now().Local().Format("15:04:05"),
+		"CurrentDateTime": time.Now().Local().Format("2006-01-02 15:04:05"),
+		"BroadcastID":     t.channelID,
+		"BroadcastName":   t.channel,
+	}
+
+	// if a row is currently selected
+	if _, e := t.chatWindow.entryForCurrentCursor(); e != nil {
+		switch msg := e.Event.message.(type) {
+		case *command.PrivateMessage:
+			data["SelectedDisplayName"] = msg.DisplayName
+			data["SelectedMessageContent"] = msg.Message
+			data["SelectedUserID"] = msg.UserID
+			data["RawMessage"] = msg
+			data["MessageType"] = "PrivateMessage"
+		case *command.SubMessage:
+			data["SelectedDisplayName"] = msg.DisplayName
+			data["SelectedMessageContent"] = msg.Message
+			data["SelectedUserID"] = msg.UserID
+
+			data["SubMessageCumulativeMonths"] = msg.CumulativeMonths
+			data["SubMessageStreakMonths"] = msg.StreakMonths
+			data["SubMessageSubPlan"] = msg.SubPlan.String()
+
+			data["RawMessage"] = msg
+			data["MessageType"] = "SubMessage"
+		case *command.SubGiftMessage:
+			data["SelectedDisplayName"] = msg.DisplayName
+			data["SelectedMessageContent"] = msg
+			data["SelectedUserID"] = msg.UserID
+
+			data["SubGiftReceiptDisplayName"] = msg.ReceiptDisplayName
+			data["SubGiftRecipientID"] = msg.RecipientID
+			data["SubGiftMonths"] = msg.Months
+			data["SubGiftSubPlan"] = msg.SubPlan.String()
+			data["SubGiftGiftMonths"] = msg.GiftMonths
+
+			data["RawMessage"] = msg
+			data["MessageType"] = "SubGiftMessage"
+		}
+	}
+
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, data); err != nil {
+		notice.Message = fmt.Sprintf("Error while executing template: %s", err)
+		return func() tea.Msg {
+			return resp
+		}
+	}
+
+	t.messageInput.SetValue(out.String())
 	return nil
 }
 
