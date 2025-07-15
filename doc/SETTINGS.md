@@ -37,6 +37,54 @@ Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file (config di
 
 An overview of the keybinds can be opened with `?` inside Chatuino.
 
+## Custom Commands
+
+The settings allow you to configure custom commands which will be suggested to you during text input.
+
+```yaml
+custom_commands:
+  - trigger: "/ocean"
+    replacement: "OCEAN MAN 🌊 😍 Take me by the hand ✋ lead me to the land that you understand 🙌 🌊 OCEAN MAN 🌊 😍 The voyage 🚲 to the corner of the 🌎 globe is a real trip 👌 🌊 OCEAN MAN 🌊 😍 The crust of a tan man 👳 imbibed by the sand 👍 Soaking up the 💦 thirst of the land 💯"
+```
+
+Additionally you can also template dynamic commands like this
+
+```yaml
+custom_commands:
+  - trigger: "/with-template"
+    replacement: "CurrentTime: {{ .CurrentTime }}; CurrentDateTime: {{ .CurrentDateTime }}; BroadcastID: {{ .BroadcastID }}; BroadcastName: {{ .BroadcastName }}; SelectedDisplayName: {{ .SelectedDisplayName }}; SelectedUserID: {{ .SelectedUserID }}; Message: {{ .SelectedMessageContent }} "
+```
+
+All features of [Go's templating engine](https://pkg.go.dev/text/template) are available to you.
+
+Here is an overview which data is available inside templates
+
+| Name | Situation | Description |
+| ---- | --------- | ----------- |
+| CurrentTime | Any | The current local time |
+| CurrentDateTime | Any | The current local date time |
+| BroadcastID | Any | The broadcaster ID |
+| BroadcastName | Any | The broadcaster name |
+| SelectedDisplayName | Chat Message Selected | The senders display name |
+| SelectedUserID | Chat Message Selected | The senders user ID |
+| SelectedMessageContent | Chat Message Selected | The senders message |
+| SubMessageCumulativeMonths | Sub Alert Message Selected | Chatters subbed months (cumulative) |
+| SubMessageStreakMonths | Sub Alert Message Selected | Chatters subbed streak |
+| SubMessageSubPlan | Sub Alert Message Selected | Chatters sub tier |
+| SubGiftReceiptDisplayName | Sub Gift Message Selected | Gift receipt display name |
+| SubGiftRecipientID | Sub Gift Message Selected | Gift receipt user id |
+| SubGiftMonths | Sub Gift Message Selected | Gift months |
+| SubGiftSubPlan | Sub Gift Message Selected | Gift sub tier |
+| SubGiftGiftMonths | Sub Gift Message Selected | Gift months |
+| RawMessage | Any | The complete internal message struct |
+| MessageType | Any | Type of message (PrivateMessage, SubMessage, SubGiftMessage) |
+
+The data is inserted on the accept suggestion keybind (default tab) press so the text can be viewed before sending the message.
+
+You can use the templating feature at any time when composing a message, the data will be inserted once the accept suggestion keybind is pressed.
+
+> **Note**: Templates are never rendered on enter pressed. Be sure to review your input before pressing send.
+
 ## A word about Chatuinos emote support
 
 ### Text emotes

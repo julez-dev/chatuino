@@ -8,7 +8,7 @@ on:
     paths-ignore:
       - "**/*.md"
   schedule:
-    - cron: "0 0 * * 0"
+    - cron: "30 2 * * *"
 
 permissions:
   actions: read # for github/codeql-action/init to get workflow details
@@ -23,16 +23,14 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.mod"
-
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: go
           queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
