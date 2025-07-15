@@ -53,7 +53,7 @@ Additionally you can also template dynamic commands like this
 custom_commands:
   - trigger: "/with-template"
     replacement: "CurrentTime: {{ .CurrentTime }}; CurrentDateTime: {{ .CurrentDateTime }}; BroadcastID: {{ .BroadcastID }}; BroadcastName: {{ .BroadcastName }}; SelectedDisplayName: {{ .SelectedDisplayName }}; SelectedUserID: {{ .SelectedUserID }}; Message: {{ .SelectedMessageContent }} "
-    # You can even create custom commands
+    # You can even create custom mod commands/shortcuts
   - trigger: "/custom-spam-timeout"
     replacement: "/timeout {{ .SelectedDisplayName }} 10 Please stop spamming."
 ```
