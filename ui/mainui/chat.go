@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -391,7 +390,8 @@ func (c *chatWindow) markSelectedMessage() {
 			continue
 		}
 
-		lines := c.lines[e.Position.CursorStart : e.Position.CursorEnd+1]
+		m := min(len(c.lines), e.Position.CursorEnd+1)
+		lines := c.lines[e.Position.CursorStart:m]
 
 		for i, s := range lines {
 			if strings.HasPrefix(s, c.indicator) {
@@ -460,8 +460,6 @@ func (c *chatWindow) cleanup() {
 }
 
 func (c *chatWindow) handleMessage(msg chatEventMessage) {
-	log.Logger.Info().Any("type", reflect.TypeOf(msg.message).String()).Msg("event")
-
 	switch msg.message.(type) {
 	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage, *command.ClearMessage: // supported Message types
 	default: // exit only on other types
@@ -483,7 +481,8 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 			if strings.EqualFold(privMsg.DisplayName, *timeoutMsg.UserName) && !e.IsDeleted {
 				hasDeleted = true
 				e.IsDeleted = true
-				e.Event.messageContentEmoteOverride = fmt.Sprintf("[deleted by moderator]\n%s", e.Event.messageContentEmoteOverride)
+
+				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
 			}
 		}
 
@@ -505,7 +504,7 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
 				hasDeleted = true
 				e.IsDeleted = true
-				e.Event.messageContentEmoteOverride = fmt.Sprintf("[deleted by moderator]\n%s", e.Event.messageContentEmoteOverride)
+				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
 			}
 		}
 
@@ -570,13 +569,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			}
 		}
 
-		// if render function not in cache yet, compute now
-		userRenderFunc, ok := c.userColorCache[strings.ToLower(msg.DisplayName)]
-
-		if !ok {
-			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
-			c.userColorCache[strings.ToLower(msg.DisplayName)] = userRenderFunc
-		}
+		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
 		var prefix string
 		if len(badges) == 0 {
@@ -603,16 +596,11 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	case *command.ClearMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Message") + "]: A message from "
 
-		userRenderFunc, ok := c.userColorCache[msg.Login]
+		userRenderFunc := c.getSetUserColorFunc(msg.Login, "")
 
 		var text string
 
-		if !ok {
-			text += msg.Login
-		} else {
-			text += userRenderFunc(msg.Login)
-		}
-
+		text += userRenderFunc(msg.Login)
 		text += " was removed."
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.ClearChat:
@@ -623,15 +611,10 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			return c.wordwrapMessage(prefix, c.colorMessage(text))
 		}
 
-		userRenderFunc, ok := c.userColorCache[*msg.UserName]
+		userRenderFunc := c.getSetUserColorFunc(*msg.UserName, "")
 
 		var text string
-
-		if !ok {
-			text += *msg.UserName
-		} else {
-			text += userRenderFunc(*msg.UserName)
-		}
+		text += userRenderFunc(*msg.UserName)
 
 		if msg.BanDuration != nil && *msg.BanDuration > 0 {
 			text += " was timed out for " + time.Duration(*msg.BanDuration*1e9).String()
@@ -648,13 +631,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			subResubText = "resubscribed"
 		}
 
-		// if render function not in cache yet, compute now
-		userRenderFunc, ok := c.userColorCache[msg.Login]
-
-		if !ok {
-			userRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
-			c.userColorCache[msg.Login] = userRenderFunc
-		}
+		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
 		text := fmt.Sprintf("%s just %s with a %s subscription. (%d Months, %d Month Streak)",
 			userRenderFunc(msg.DisplayName),
@@ -672,18 +649,8 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	case *command.SubGiftMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
 
-		gifterRenderFunc, ok := c.userColorCache[msg.Login]
-
-		if !ok {
-			gifterRenderFunc = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
-			c.userColorCache[msg.Login] = gifterRenderFunc
-		}
-
-		receiptRenderFunc, ok := c.userColorCache[msg.RecipientUserName]
-
-		if !ok {
-			receiptRenderFunc = lipgloss.NewStyle().Render
-		}
+		gifterRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
+		receiptRenderFunc := c.getSetUserColorFunc(msg.RecipientUserName, "")
 
 		text := fmt.Sprintf("%s gifted a %s sub to %s. (%d Months)",
 			gifterRenderFunc(msg.DisplayName),
@@ -698,12 +665,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
 
-		userRenderFn, ok := c.userColorCache[msg.Login]
-
-		if !ok {
-			userRenderFn = lipgloss.NewStyle().Foreground(lipgloss.Color(msg.Color)).Render
-			c.userColorCache[msg.Login] = userRenderFn
-		}
+		userRenderFn := c.getSetUserColorFunc(msg.Login, msg.Color)
 
 		text := fmt.Sprintf("%s: %s",
 			userRenderFn(msg.DisplayName),
@@ -714,6 +676,21 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	}
 
 	return []string{}
+}
+
+func (c *chatWindow) getSetUserColorFunc(name string, colorHex string) func(strs ...string) string {
+	_, ok := c.userColorCache[name]
+
+	if !ok {
+		if colorHex == "" {
+			colorHex = randomHexColor()
+		}
+
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+		c.userColorCache[name] = style.Render
+	}
+
+	return c.userColorCache[name]
 }
 
 func (c *chatWindow) colorMessage(content string) string {
@@ -883,7 +860,7 @@ func (c *chatWindow) applySearch() {
 	var last *chatEntry
 	for e := range slices.Values(c.entries) {
 		e.Selected = false
-		if c.entryMatchesSearch(e) {
+		if len(c.searchInput.Value()) > 2 && c.entryMatchesSearch(e) {
 			e.IsFiltered = false
 			last = e
 			continue

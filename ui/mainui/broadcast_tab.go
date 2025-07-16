@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/lithammer/fuzzysearch/fuzzy"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
 
@@ -56,6 +57,11 @@ type setChannelDataMessage struct {
 	channelID       string
 	initialMessages []twitch.IRCer
 	isUserMod       bool
+}
+
+type emoteSetRefreshedMessage struct {
+	targetID string
+	err      error
 }
 
 type setUserIdentityData struct {
@@ -214,53 +220,9 @@ func (t *broadcastTab) Init() tea.Cmd {
 			}
 		}
 
-		// refresh emote set for joined channel
-		if err := t.emoteStore.RefreshLocal(ctx, userData.Data[0].ID); err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not refresh emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
-			}
-		}
+		msg := t.InitWithUserData(userData.Data[0])()
 
-		if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not refresh global emote cache for %s (%s): %w", t.channel, userData.Data[0].ID, err),
-			}
-		}
-
-		modVips, err := t.modFetcher.GetModVIPList(ctx, t.channel)
-		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.channel, err),
-			}
-		}
-
-		var isUserMod bool
-		for _, mod := range modVips.Mods {
-			if mod.ID == t.account.ID {
-				isUserMod = true
-				break
-			}
-		}
-
-		// fetch recent messages
-		recentMessages, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
-		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      err,
-			}
-		}
-
-		return setChannelDataMessage{
-			targetID:        t.id,
-			channelID:       userData.Data[0].ID,
-			channel:         userData.Data[0].DisplayName,
-			initialMessages: recentMessages,
-			isUserMod:       isUserMod,
-		}
+		return msg
 	}
 
 	return cmd
@@ -271,43 +233,44 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
-		// refresh emote set for joined channel
-		if err := t.emoteStore.RefreshLocal(ctx, userData.ID); err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not refresh emote cache for %s (%s): %w", t.channel, userData.ID, err),
-			}
-		}
+		group, ctx := errgroup.WithContext(ctx)
 
-		if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not refresh global emote cache for %s (%s): %w", t.channel, userData.ID, err),
-			}
-		}
+		var recentMessages []twitch.IRCer
+		group.Go(func() error {
+			// fetch recent messages
+			msgs, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
 
-		// fetch recent messages
-		recentMessages, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
-		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      err,
+			// call sometimes timeouts, but recent message are not really that important to crash the tab, so ignore the error
+			if err != nil {
+				return nil
 			}
-		}
 
-		modVips, err := t.modFetcher.GetModVIPList(ctx, t.channel)
-		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not fetch mod/vip list for %s: %w", t.channel, err),
-			}
-		}
+			recentMessages = msgs
+
+			return nil
+		})
 
 		var isUserMod bool
-		for _, mod := range modVips.Mods {
-			if mod.ID == t.account.ID {
-				isUserMod = true
-				break
+		group.Go(func() error {
+			modVips, err := t.modFetcher.GetModVIPList(ctx, t.channel)
+			if err != nil {
+				return fmt.Errorf("could not fetch mods for %s (%s): %w", t.channel, userData.ID, err)
+			}
+
+			for _, mod := range modVips.Mods {
+				if mod.ID == t.account.ID {
+					isUserMod = true
+					break
+				}
+			}
+
+			return nil
+		})
+
+		if err := group.Wait(); err != nil {
+			return setErrorMessage{
+				targetID: t.id,
+				err:      fmt.Errorf("could not do initial fetching for %s: %w", t.channel, err),
 			}
 		}
 
@@ -371,22 +334,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.isUserMod = true
 			}
 
-			userEmoteSet := t.emoteStore.AllEmotesUsableByUser(t.account.ID)
-			channelEmoteSet := t.emoteStore.GetAllForUser(msg.channelID) // includes bttv, 7tv
-
-			unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
-
-			for _, emote := range userEmoteSet {
-				unique[emote.Text] = struct{}{}
-			}
-
-			for _, emote := range channelEmoteSet {
-				unique[emote.Text] = struct{}{}
-			}
-
-			suggestions := slices.Collect(maps.Keys(unique))
-			t.messageInput.SetSuggestions(suggestions)
-
 			// user is mod or broadcaster, include mod commands
 			if t.isUserMod {
 				t.messageInput.IncludeModeratorCommands = true
@@ -433,6 +380,41 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				messages:  msg.initialMessages,
 				tabID:     t.id,
 				accountID: t.account.ID,
+			}
+		})
+
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			defer cancel()
+
+			group, ctx := errgroup.WithContext(ctx)
+
+			group.Go(func() error {
+				if err := t.emoteStore.RefreshLocal(ctx, msg.channelID); err != nil {
+					return fmt.Errorf("could not refresh emote cache for %s (%s): %w", t.channel, msg.channelID, err)
+				}
+
+				return nil
+			})
+
+			group.Go(func() error {
+				if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
+					return fmt.Errorf("could not refresh global emote cache for %s (%s): %w", t.channel, msg.channelID, err)
+				}
+
+				return nil
+			})
+
+			err := group.Wait()
+			if err != nil {
+				return emoteSetRefreshedMessage{
+					targetID: t.id,
+					err:      err,
+				}
+			}
+
+			return emoteSetRefreshedMessage{
+				targetID: t.id,
 			}
 		})
 
@@ -521,6 +503,31 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.HandleResize()
 		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 		return t, tea.Batch(cmds...)
+	case emoteSetRefreshedMessage:
+		if !t.account.IsAnonymous && msg.targetID == t.id {
+			if msg.err != nil {
+				t.err = errors.Join(t.err, msg.err)
+				return t, nil
+			}
+
+			userEmoteSet := t.emoteStore.AllEmotesUsableByUser(t.account.ID)
+			channelEmoteSet := t.emoteStore.GetAllForUser(t.channelID) // includes bttv, 7tv
+
+			unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
+
+			for _, emote := range userEmoteSet {
+				unique[emote.Text] = struct{}{}
+			}
+
+			for _, emote := range channelEmoteSet {
+				unique[emote.Text] = struct{}{}
+			}
+
+			suggestions := slices.Collect(maps.Keys(unique))
+			t.messageInput.SetSuggestions(suggestions)
+		}
+
+		return t, nil
 	case setUserIdentityData:
 		if msg.targetID != t.id {
 			return t, nil
