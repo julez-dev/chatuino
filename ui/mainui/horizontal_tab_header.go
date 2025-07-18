@@ -1,6 +1,7 @@
 package mainui
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -202,7 +203,7 @@ func (h *horizontalTabHeader) Resize(width, _ int) {
 	h.width = width
 
 	entryWidth := h.maxEntryWidth()
-	h.perPage = h.width / entryWidth
+	h.perPage = int(math.Floor(float64(h.width-8) / float64(entryWidth))) // total width - 8 (4 for earch arrow display on side)
 
 	// in case of new page balance select to page with currently selected item
 	for i, e := range h.entries {

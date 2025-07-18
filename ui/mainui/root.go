@@ -1023,7 +1023,7 @@ func (r *Root) handleResize() {
 }
 
 func (r *Root) nextTab() {
-	if len(r.tabs) > r.tabCursor {
+	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
 		r.tabs[r.tabCursor].Blur()
 	}
 
@@ -1042,7 +1042,7 @@ func (r *Root) nextTab() {
 }
 
 func (r *Root) prevTab() {
-	if len(r.tabs) > r.tabCursor {
+	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
 		r.tabs[r.tabCursor].Blur()
 	}
 
@@ -1231,6 +1231,8 @@ func (r *Root) closeTab() {
 		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
 			return t.ID() == tabID
 		})
+
+		r.tabCursor--
 		r.nextTab()
 		r.handleResize()
 	}

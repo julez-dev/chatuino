@@ -36,8 +36,8 @@ import (
 )
 
 const (
-	twitchBaseURL = "https://www.twitch.tv"
-	popupFmt      = "https://www.twitch.tv/popout/%s/chat?popout=1"
+	streamWebFmt       = "https://player.twitch.tv/?channel=%s&enableExtensions=false&muted=false&parent=chatuino.net&player=popout&quality=chunked&volume=0.2"
+	streamChatPopUpFmt = "https://www.twitch.tv/popout/%s/chat?popout=1"
 )
 
 var modCommandAlternativeMapping = map[string]string{
@@ -865,7 +865,7 @@ func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 
 func (t *broadcastTab) handleOpenBrowserChatPopUp() tea.Cmd {
 	return func() tea.Msg {
-		url := fmt.Sprintf(popupFmt, t.channel)
+		url := fmt.Sprintf(streamChatPopUpFmt, t.channel)
 
 		if err := browser.OpenURL(url); err != nil {
 			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
@@ -876,7 +876,7 @@ func (t *broadcastTab) handleOpenBrowserChatPopUp() tea.Cmd {
 
 func (t *broadcastTab) handleOpenBrowserChannel() tea.Cmd {
 	return func() tea.Msg {
-		url := fmt.Sprintf("%s/%s", twitchBaseURL, t.channel)
+		url := fmt.Sprintf(streamWebFmt, t.channel)
 
 		if err := browser.OpenURL(url); err != nil {
 			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
