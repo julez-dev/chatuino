@@ -550,6 +550,16 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				return t, nil
 			}
 
+			if msg, ok := msg.message.(*command.PrivateMessage); ok {
+				if messageContainsCaseInsensitive(msg, t.account.DisplayName) {
+					cmds = append(cmds, func() tea.Msg {
+						return requestNotificationIconMessage{
+							tabID: t.id,
+						}
+					})
+				}
+			}
+
 			t.chatWindow, cmd = t.chatWindow.Update(msg)
 			cmds = append(cmds, cmd)
 
