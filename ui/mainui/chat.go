@@ -14,8 +14,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/muesli/reflow/wordwrap"
-	"github.com/muesli/reflow/wrap"
+	"github.com/julez-dev/reflow/wordwrap"
+	"github.com/julez-dev/reflow/wrap"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )

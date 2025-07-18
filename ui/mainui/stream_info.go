@@ -9,7 +9,7 @@ import (
 	"golang.org/x/text/message"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/muesli/reflow/wordwrap"
+	"github.com/julez-dev/reflow/wordwrap"
 )
 
 type setStreamInfo struct {
