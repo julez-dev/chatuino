@@ -106,6 +106,24 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	return api, nil
 }
 
+func (a *API) SendChatMessage(ctx context.Context, data SendChatMessageRequest) (SendChatMessageResponse, error) {
+	if a.provider == nil {
+		return SendChatMessageResponse{}, ErrNoUserAccess
+	}
+
+	body, err := json.Marshal(data)
+	if err != nil {
+		return SendChatMessageResponse{}, err
+	}
+
+	resp, err := doAuthenticatedUserRequest[SendChatMessageResponse](ctx, a, http.MethodPost, "/chat/messages", body)
+	if err != nil {
+		return SendChatMessageResponse{}, err
+	}
+
+	return resp, nil
+}
+
 func (a *API) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]ChannelChatBadges, error) {
 	if a.provider == nil {
 		return nil, ErrNoUserAccess

@@ -108,6 +108,7 @@ type moderationAPIClient interface {
 type userAuthenticatedAPIClient interface {
 	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitch.CreatedClip, error)
 	GetUserChatColor(ctx context.Context, userIDs []string) ([]twitch.UserChatColor, error)
+	SendChatMessage(ctx context.Context, data twitch.SendChatMessageRequest) (twitch.SendChatMessageResponse, error)
 }
 
 type ModStatusFetcher interface {
@@ -974,59 +975,70 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		}
 	}
 
-	var msgs []twitch.IRCer
-	for i := 1; i <= count; i++ {
-		msgs = append(msgs, &command.PrivateMessage{
-			ID:              uuid.Must(uuid.NewUUID()).String(),
-			ChannelUserName: t.channel,
-			Message:         strings.Repeat(word+" ", i),
-			DisplayName:     t.account.DisplayName,
-			TMISentTS:       time.Now(),
-		})
-	}
+	client := t.ttvAPI.(userAuthenticatedAPIClient)
+	broadcasterID := t.channelID
+	userID := t.account.ID
 
-	for i := count - 1; i > 0; i-- {
-		msgs = append(msgs, &command.PrivateMessage{
-			ID:              uuid.Must(uuid.NewUUID()).String(),
-			ChannelUserName: t.channel,
-			Message:         strings.Repeat(word+" ", i),
-			DisplayName:     t.account.DisplayName,
-			TMISentTS:       time.Now(),
-		})
-	}
+	return func() tea.Msg {
+		var msgs []string
 
-	var delay time.Duration
-	if accountIsStreamer {
-		delay = time.Millisecond * 500
-	} else {
-		delay = time.Millisecond * 1050
-	}
+		for i := 1; i <= count; i++ {
+			msgs = append(msgs, strings.Repeat(word+" ", i))
+		}
 
-	var cmds []tea.Cmd
-	for i, msg := range msgs {
-		cmds = append(cmds, func() tea.Msg {
-			time.Sleep(delay)
+		for i := count - 1; i > 0; i-- {
+			msgs = append(msgs, strings.Repeat(word+" ", i))
+		}
+
+		var delay time.Duration
+		if accountIsStreamer {
+			delay = time.Millisecond * 500
+		} else {
+			delay = time.Millisecond * 1050
+		}
+
+		notice := &command.Notice{
+			FakeTimestamp: time.Now(),
+		}
+
+		resp := chatEventMessage{
+			isFakeEvent: true,
+			accountID:   userID,
+			channel:     t.channel,
+			tabID:       t.id,
+			message:     notice,
+		}
+
+		for i, msg := range msgs {
+			if i > 0 {
+				time.Sleep(delay)
+			}
+
 			if i%2 == 0 {
-				msg.(*command.PrivateMessage).Message += string(duplicateBypass)
+				msg += string(duplicateBypass)
 			}
-			return forwardChatMessage{
-				msg: multiplex.InboundMessage{
-					AccountID: t.account.ID,
-					Msg:       msg,
-				},
-			}
-		})
 
-		cmds = append(cmds, func() tea.Msg {
-			return requestLocalMessageHandleMessage{
-				accountID: t.AccountID(),
-				message:   msg,
-			}
-		})
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
 
+			r, err := client.SendChatMessage(ctx, twitch.SendChatMessageRequest{
+				BroadcasterID: broadcasterID,
+				SenderID:      userID,
+				Message:       msg,
+			})
+			if err != nil {
+				notice.Message = fmt.Sprintf("Could not send message: %s", err.Error())
+				return resp
+			}
+
+			if len(r.Data) > 0 && !r.Data[0].IsSent {
+				notice.Message = fmt.Sprintf("Could not send message: %s", r.Data[0].DropReason.Message)
+				return resp
+			}
+		}
+
+		return nil
 	}
-
-	return tea.Sequence(cmds...)
 }
 
 func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
@@ -1260,43 +1272,55 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		input = input + " " + string(duplicateBypass)
 	}
 
-	msg := &command.PrivateMessage{
-		ID:              uuid.Must(uuid.NewUUID()).String(),
-		ChannelUserName: t.channel,
-		Message:         input,
-		DisplayName:     t.account.DisplayName,
-		TMISentTS:       time.Now(),
-		Color:           t.colorData.Color,
-	}
-
 	lastSent := t.lastMessageSentAt
-	cmds := []tea.Cmd{}
-	cmds = append(cmds, func() tea.Msg {
+	client := t.ttvAPI.(userAuthenticatedAPIClient)
+	broadcasterID := t.channelID
+	userID := t.account.ID
+
+	cmd := func() tea.Msg {
 		const delay = time.Second
 		diff := time.Since(lastSent)
 		if diff < delay {
 			time.Sleep(delay - diff)
 		}
 
-		return forwardChatMessage{
-			msg: multiplex.InboundMessage{
-				AccountID: t.account.ID,
-				Msg:       msg,
-			},
+		notice := &command.Notice{
+			FakeTimestamp: time.Now(),
 		}
-	})
 
-	cmds = append(cmds, func() tea.Msg {
-		return requestLocalMessageHandleMessage{
-			accountID: t.AccountID(),
-			message:   msg,
+		resp := chatEventMessage{
+			isFakeEvent: true,
+			accountID:   userID,
+			channel:     t.channel,
+			tabID:       t.id,
+			message:     notice,
 		}
-	})
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+
+		r, err := client.SendChatMessage(ctx, twitch.SendChatMessageRequest{
+			BroadcasterID: broadcasterID,
+			SenderID:      userID,
+			Message:       input,
+		})
+		if err != nil {
+			notice.Message = fmt.Sprintf("Could not send message: %s", err.Error())
+			return resp
+		}
+
+		if len(r.Data) > 0 && !r.Data[0].IsSent {
+			notice.Message = fmt.Sprintf("Could not send message: %s", r.Data[0].DropReason.Message)
+			return resp
+		}
+
+		return nil
+	}
 
 	t.lastMessageSent = input
 	t.lastMessageSentAt = time.Now()
 
-	return tea.Sequence(cmds...)
+	return cmd
 }
 
 func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
