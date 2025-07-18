@@ -394,10 +394,7 @@ func (r *Root) Init() tea.Cmd {
 					continue
 				}
 
-				wg.Add(1)
 				go func() {
-					defer wg.Done()
-
 					ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 					defer cancel()
 					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
@@ -1026,7 +1023,7 @@ func (r *Root) handleResize() {
 }
 
 func (r *Root) nextTab() {
-	if len(r.tabs) > r.tabCursor {
+	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
 		r.tabs[r.tabCursor].Blur()
 	}
 
@@ -1045,7 +1042,7 @@ func (r *Root) nextTab() {
 }
 
 func (r *Root) prevTab() {
-	if len(r.tabs) > r.tabCursor {
+	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
 		r.tabs[r.tabCursor].Blur()
 	}
 
@@ -1234,7 +1231,9 @@ func (r *Root) closeTab() {
 		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
 			return t.ID() == tabID
 		})
-		r.prevTab()
+
+		r.tabCursor--
+		r.nextTab()
 		r.handleResize()
 	}
 }

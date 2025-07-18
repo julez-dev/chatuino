@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"iter"
+	"math/rand/v2"
 	"regexp"
 	"slices"
 	"strings"
@@ -87,4 +88,17 @@ func centerTextGraphemeAware(width int, s string) string {
 
 func messageContainsCaseInsensitive(msg *command.PrivateMessage, sub string) bool {
 	return strings.Contains(strings.ToLower(msg.Message), strings.ToLower(sub))
+}
+
+// // hexToLuminance converts a r,g,b to its luminance.
+// func hexToLuminance(r, g, b uint32) float64 {
+// 	return (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 65535
+// }
+
+func randomHexColor() string {
+	red := rand.Int32N(256)
+	green := rand.Int32N(256)
+	blue := rand.Int32N(256)
+
+	return fmt.Sprintf("#%02x%02x%02x", red, green, blue)
 }

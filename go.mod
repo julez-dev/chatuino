@@ -9,7 +9,6 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/google/uuid v1.6.0
-	github.com/muesli/reflow v0.3.0
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.3.8
@@ -25,6 +24,7 @@ require (
 	github.com/coder/websocket v1.8.13
 	github.com/gen2brain/avif v0.4.4
 	github.com/jellydator/ttlcache/v3 v3.4.0
+	github.com/julez-dev/reflow v0.0.0-20250718145208-b4c12bfbd7f7
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mailru/easyjson v0.9.0
 	github.com/vbauerster/mpb/v8 v8.10.2

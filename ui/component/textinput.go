@@ -358,7 +358,7 @@ func (s *SuggestionTextInput) nextSuggestion() {
 func (s *SuggestionTextInput) previousSuggestion() {
 	s.suggestionIndex = s.suggestionIndex - 1
 	if s.suggestionIndex < 0 {
-		s.suggestionIndex = len(s.suggestions) - 1
+		s.suggestionIndex = max(0, len(s.suggestions)-1)
 	}
 }
 
