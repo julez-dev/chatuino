@@ -18,6 +18,30 @@ func (a APIError) Error() string {
 	return fmt.Sprintf("%s (%d): %s", a.ErrorText, a.Status, a.Message)
 }
 
+// https://dev.twitch.tv/docs/api/reference/#send-chat-message
+type (
+	SendChatMessageRequest struct {
+		BroadcasterID string `json:"broadcaster_id"`
+		SenderID      string `json:"sender_id"`
+		Message       string `json:"message"`
+
+		ReplyMessageID string `json:"reply_parent_message_id"`
+		ForSourceOnly  bool   `json:"for_source_only,omitempty"`
+	}
+	SendChatMessageResponse struct {
+		Data []SendChatMessageData `json:"data"`
+	}
+	SendChatMessageData struct {
+		MessageID  string     `json:"message_id"`
+		IsSent     bool       `json:"is_sent"`
+		DropReason DropReason `json:"drop_reason"`
+	}
+	DropReason struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+)
+
 // https://api.twitch.tv/helix/chat/emotes/global
 type (
 	//easyjson:json

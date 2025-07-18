@@ -72,7 +72,7 @@ func main() {
 		Name:        "Chatuino",
 		Description: "Chatuino twitch IRC Client. Before using Chatuino you may want to manage your accounts using the account command.",
 		Usage:       "A client for twitch's IRC service",
-		// HideVersion: true,
+		Version:     Version,
 		Authors: []any{
 			&mail.Address{
 				Name:    "julez-dev",
