@@ -233,7 +233,7 @@ func (t *broadcastTab) Init() tea.Cmd {
 		return msg
 	}
 
-	return cmd
+	return tea.Batch(cmd, t.spinner.Tick)
 }
 
 func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
@@ -291,7 +291,7 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 		}
 	}
 
-	return tea.Batch(cmd, t.spinner.Tick)
+	return cmd
 }
 
 func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
@@ -701,8 +701,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		t.chatWindow, cmd = t.chatWindow.Update(msg)
-		cmds = append(cmds, cmd)
+		if t.state != emoteOverviewMode && t.state != unbanRequestMode {
+			t.chatWindow, cmd = t.chatWindow.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 		t.streamInfo, cmd = t.streamInfo.Update(msg)
 		cmds = append(cmds, cmd)
@@ -1844,6 +1846,7 @@ func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
 	}
 
 	t.emoteOverview = NewEmoteOverview(t.channelID, t.emoteStore, t.emoteReplacer, t.width, t.height)
+	t.HandleResize()
 	return t.emoteOverview.Init()
 }
 

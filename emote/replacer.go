@@ -184,7 +184,7 @@ func (i *Replacer) Replace(channelID, content string) (string, string, error) {
 			i.placedEmotes.Store(emote.Text, cachedDecoded)
 			cmd.WriteString(cachedDecoded.PrepareCommand())
 			words[windex] = cachedDecoded.DisplayUnicodePlaceholder()
-			log.Logger.Info().Any("id", cachedDecoded.ID).Msg("cache fs hit")
+			//log.Logger.Info().Any("id", cachedDecoded.ID).Msg("cache fs hit")
 			continue
 		}
 

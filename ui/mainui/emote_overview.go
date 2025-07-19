@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -14,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/semaphore"
 )
 
 type emoteWithOverwrite struct {
@@ -68,31 +71,62 @@ func (e *emoteOverview) Init() tea.Cmd {
 	initCmd := func() tea.Msg {
 		set := e.store.GetAllForUser(e.channelID)
 
-		r := make(map[string][]emoteWithOverwrite)
-		sb := strings.Builder{}
-		for _, emote := range set {
-			if e.ctx.Err() != nil {
-				log.Logger.Error().Err(e.ctx.Err()).Msg("emote overview cancel early")
-
-				return emoteOverviewSetDataMessage{
-					id: e.id,
-				}
-			}
-
-			prepare, overwrite, err := e.emoteReplacer.Replace(e.channelID, emote.Text)
-			if err != nil {
-				log.Logger.Error().Err(err).Send()
-				continue
-			}
-
-			_, _ = io.WriteString(&sb, prepare)
-			r[emote.Platform.String()] = append(r[emote.Platform.String()], emoteWithOverwrite{
-				emote:     emote,
-				overwrite: overwrite,
-			})
+		type channelData struct {
+			emote   emoteWithOverwrite
+			prepare string
 		}
 
-		_, _ = io.WriteString(os.Stdout, sb.String())
+		ch := make(chan channelData)
+
+		r := make(map[string][]emoteWithOverwrite)
+
+		chunks := slices.Collect(slices.Chunk(set, 200))
+		wg := sync.WaitGroup{}
+		wg.Add(len(chunks))
+		sema := semaphore.NewWeighted(5) // no more than 5 goroutines at once
+
+		for _, chunk := range chunks {
+			go func(set emote.EmoteSet) {
+				defer wg.Done()
+
+				if err := sema.Acquire(e.ctx, 1); err != nil {
+					return
+				}
+
+				defer sema.Release(1)
+
+				for _, emote := range set {
+					if e.ctx.Err() != nil {
+						return
+					}
+
+					prepare, overwrite, err := e.emoteReplacer.Replace(e.channelID, emote.Text)
+					if err != nil {
+						log.Logger.Error().Err(err).Send()
+						continue
+					}
+
+					ch <- channelData{
+						emote: emoteWithOverwrite{
+							emote:     emote,
+							overwrite: overwrite,
+						},
+						prepare: prepare,
+					}
+				}
+
+			}(chunk)
+		}
+
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+
+		for d := range ch {
+			r[d.emote.emote.Platform.String()] = append(r[d.emote.emote.Platform.String()], d.emote)
+			_, _ = io.WriteString(os.Stdout, d.prepare)
+		}
 
 		return emoteOverviewSetDataMessage{
 			id:  e.id,
@@ -100,7 +134,7 @@ func (e *emoteOverview) Init() tea.Cmd {
 		}
 	}
 
-	return tea.Batch(initCmd, e.spinner.Tick)
+	return tea.Batch(e.spinner.Tick, initCmd)
 }
 
 func (e *emoteOverview) Update(msg tea.Msg) (*emoteOverview, tea.Cmd) {
@@ -165,7 +199,7 @@ func (e *emoteOverview) updateContent() {
 
 			emoteWidths[emoteData.emote.Platform.String()+emoteData.emote.ID] = emoteWidth
 
-			log.Logger.Info().Int("current-width-row", totalSpaceTakenInCurrentRow).Int("emote-width", emoteWidth).Int("max-width-row", maxWidthRow).Str("emote", emoteData.emote.Text).Msg("")
+			//log.Logger.Info().Int("current-width-row", totalSpaceTakenInCurrentRow).Int("emote-width", emoteWidth).Int("max-width-row", maxWidthRow).Str("emote", emoteData.emote.Text).Msg("")
 
 			// does not fit add to next row
 			if totalSpaceTakenInCurrentRow+emoteWidth+2 > maxWidthRow {
