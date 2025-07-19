@@ -227,6 +227,7 @@ func main() {
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
 				tea.WithFPS(120),
+				tea.WithoutCatchPanics(),
 			)
 
 			eventSubMultiplexer.BuildEventSub = func() multiplex.EventSub {
