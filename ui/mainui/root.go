@@ -36,7 +36,7 @@ type AccountProvider interface {
 }
 
 type EmoteStore interface {
-	GetByText(channel, text string) (emote.Emote, bool)
+	GetByText(channelID, text string) (emote.Emote, bool)
 	RefreshLocal(ctx context.Context, channelID string) error
 	RefreshGlobal(ctx context.Context) error
 	GetAllForUser(id string) emote.EmoteSet

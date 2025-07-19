@@ -28,7 +28,10 @@ func (s splash) view(loading bool, err error) string {
 
 	keyDisplay := strings.Join(s.keymap.Create.Keys(), ", ")
 
-	name := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render("Chatuino")
+	name := strings.Builder{}
+	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render("Cha"))
+	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.ChatuinoSplashColor)).Bold(true).Render("tui"))
+	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render("no"))
 
 	var help string
 	if loading {
@@ -41,7 +44,7 @@ func (s splash) view(loading bool, err error) string {
 	}
 
 	logo := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.ChatuinoSplashColor)).Render(figure.NewFigure("CHATUINO", "isometric1", true).String())
-	splash := style.Render(logo + "\n" + "Welcome to " + name + "!\n" + help)
+	splash := style.Render(logo + "\n" + "Welcome to " + name.String() + "!\n" + help)
 
 	return splash
 }

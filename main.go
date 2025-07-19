@@ -142,7 +142,7 @@ func main() {
 				return fmt.Errorf("failed to read keymap file: %w", err)
 			}
 
-			accountProvider := save.NewAccountProvider(save.KeyringWrapper{})
+			accountProvider := save.NewAccountProvider(save.NewKeyringWrapper())
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)

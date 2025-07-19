@@ -68,7 +68,8 @@ func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 
 func (s *streamInfo) View() string {
 	if !s.loaded {
-		return centerTextGraphemeAware(s.width, "loading stream info\n")
+		return ""
+		//return centerTextGraphemeAware(s.width, "loading stream info\n")
 	}
 
 	if s.game == "" && s.viewer == 0 && s.title == "" {

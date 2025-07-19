@@ -21,6 +21,7 @@ import (
 	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cli/browser"
@@ -81,6 +82,8 @@ func (t broadcastTabState) String() string {
 		return "Inspect / Insert"
 	case 4:
 		return "Unban"
+	case 5:
+		return "Emote Overview"
 	}
 
 	return "View"
@@ -92,6 +95,7 @@ const (
 	userInspectMode
 	userInspectInsertMode
 	unbanRequestMode
+	emoteOverviewMode
 )
 
 type moderationAPIClient interface {
@@ -150,13 +154,15 @@ type broadcastTab struct {
 	messageLogger        MessageLogger
 
 	// components
-	streamInfo   *streamInfo
-	poll         *poll
-	chatWindow   *chatWindow
-	userInspect  *userInspect
-	messageInput *component.SuggestionTextInput
-	statusInfo   *streamStatus
-	unbanWindow  *unbanrequest.UnbanWindow
+	streamInfo    *streamInfo
+	poll          *poll
+	chatWindow    *chatWindow
+	userInspect   *userInspect
+	messageInput  *component.SuggestionTextInput
+	statusInfo    *streamStatus
+	unbanWindow   *unbanrequest.UnbanWindow
+	emoteOverview *emoteOverview
+	spinner       spinner.Model
 
 	err error
 }
@@ -198,6 +204,7 @@ func newBroadcastTab(
 		lastMessages:         cache,
 		userConfiguration:    userConfiguration,
 		modFetcher:           ivr.NewAPI(http.DefaultClient),
+		spinner:              spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
 	}
 }
 
@@ -226,7 +233,7 @@ func (t *broadcastTab) Init() tea.Cmd {
 		return msg
 	}
 
-	return cmd
+	return tea.Batch(cmd, t.spinner.Tick)
 }
 
 func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
@@ -694,14 +701,26 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		t.chatWindow, cmd = t.chatWindow.Update(msg)
-		cmds = append(cmds, cmd)
+		if t.state != emoteOverviewMode && t.state != unbanRequestMode {
+			t.chatWindow, cmd = t.chatWindow.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 		t.streamInfo, cmd = t.streamInfo.Update(msg)
 		cmds = append(cmds, cmd)
 
 		t.statusInfo, cmd = t.statusInfo.Update(msg)
 		cmds = append(cmds, cmd)
+
+		if t.emoteOverview != nil {
+			_, ok := msg.(emoteOverviewSetDataMessage)
+
+			// allow emoteOverviewSetDataMessage even when no longer in state
+			if ok || t.state == emoteOverviewMode {
+				t.emoteOverview, cmd = t.emoteOverview.Update(msg)
+				cmds = append(cmds, cmd)
+			}
+		}
 
 		if t.state == unbanRequestMode {
 			t.unbanWindow, cmd = t.unbanWindow.Update(msg)
@@ -712,6 +731,9 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			t.userInspect, cmd = t.userInspect.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+	} else {
+		t.spinner, cmd = t.spinner.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return t, tea.Batch(cmds...)
@@ -737,7 +759,7 @@ func (t *broadcastTab) View() string {
 			MaxHeight(t.height).
 			AlignHorizontal(lipgloss.Center).
 			AlignVertical(lipgloss.Center).
-			Render("Fetching channel data...")
+			Render(t.spinner.View() + " Loading")
 	}
 
 	builder := strings.Builder{}
@@ -745,6 +767,18 @@ func (t *broadcastTab) View() string {
 	// In Unban Request Mode only render unban request window + status info
 	if t.state == unbanRequestMode {
 		builder.WriteString(t.unbanWindow.View())
+		statusInfo := t.statusInfo.View()
+		if statusInfo != "" {
+			builder.WriteString("\n")
+			builder.WriteString(statusInfo)
+		}
+
+		return builder.String()
+	}
+
+	// In Emote Overview Mode only render emote overview + status info
+	if t.state == emoteOverviewMode {
+		builder.WriteString(t.emoteOverview.View())
 		statusInfo := t.statusInfo.View()
 		if statusInfo != "" {
 			builder.WriteString("\n")
@@ -836,7 +870,7 @@ func (t *broadcastTab) SetSize(width, height int) {
 }
 
 func (t *broadcastTab) handleEscapePressed() {
-	if t.state == userInspectMode {
+	if t.state == userInspectMode || t.state == emoteOverviewMode {
 		t.state = inChatWindow
 		t.userInspect = nil
 		t.chatWindow.Focus()
@@ -1250,6 +1284,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleUniqueOnlyChatCommand(false)
 		case "createclip":
 			return t.handleCreateClipMessage()
+		case "emotes":
+			return t.handleOpenEmoteOverview()
 		}
 
 		if !t.isUserMod {
@@ -1592,6 +1628,11 @@ func (t *broadcastTab) HandleResize() {
 			t.unbanWindow.SetWidth(t.width)
 			t.unbanWindow.SetHeight(t.height - heightStatusInfo)
 		}
+
+		if t.state == emoteOverviewMode {
+			log.Logger.Info().Int("width", t.width).Int("height", t.height-heightStatusInfo).Msg("resize emoteOverview")
+			t.emoteOverview.resize(t.width, t.height-heightStatusInfo)
+		}
 	}
 }
 
@@ -1792,6 +1833,23 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 	return nil
 }
 
+func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
+	if t.account.IsAnonymous {
+		return nil
+	}
+
+	t.state = emoteOverviewMode
+
+	if t.emoteOverview != nil {
+		t.HandleResize()
+		return nil
+	}
+
+	t.emoteOverview = NewEmoteOverview(t.channelID, t.emoteStore, t.emoteReplacer, t.width, t.height)
+	t.HandleResize()
+	return t.emoteOverview.Init()
+}
+
 func (t *broadcastTab) Focus() {
 	t.focused = true
 
@@ -1824,4 +1882,9 @@ func (t *broadcastTab) close() {
 	t.lastMessages.DeleteAll()
 	t.lastMessages.Stop()
 	t.lastMessages = nil
+
+	if t.emoteOverview != nil {
+		t.emoteOverview.close()
+		t.emoteOverview = nil
+	}
 }
