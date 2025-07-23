@@ -128,8 +128,6 @@ SELECT_LOOP:
 			}
 
 			cloned := slices.Clone(batch)
-			b.logger.Info().Int("len-batch", len(cloned)).Msg("batching logger messages after max retry reached")
-
 			if err := b.createLogEntries(cloned); err != nil {
 				return fmt.Errorf("failed to batch insert %d messages after max entries was reached: %w", len(cloned), err)
 			}
@@ -150,7 +148,6 @@ SELECT_LOOP:
 			}
 
 			cloned := slices.Clone(batch)
-			b.logger.Info().Int("len-batch", len(cloned)).Dur("max-time", maxBatchWait).Msg("batching logger messages after max wait time reached")
 			if err := b.createLogEntries(cloned); err != nil {
 				return fmt.Errorf("failed to batch insert %d messages after max wait time was reached: %w", len(cloned), err)
 			}
