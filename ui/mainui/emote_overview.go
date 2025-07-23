@@ -83,7 +83,7 @@ func (e *emoteOverview) Init() tea.Cmd {
 		chunks := slices.Collect(slices.Chunk(set, 200))
 		wg := sync.WaitGroup{}
 		wg.Add(len(chunks))
-		sema := semaphore.NewWeighted(5) // no more than 5 goroutines at once
+		sema := semaphore.NewWeighted(3) // no more than 3 goroutines at once
 
 		for _, chunk := range chunks {
 			go func(set emote.EmoteSet) {
@@ -123,10 +123,15 @@ func (e *emoteOverview) Init() tea.Cmd {
 			close(ch)
 		}()
 
+		sb := strings.Builder{}
 		for d := range ch {
 			r[d.emote.emote.Platform.String()] = append(r[d.emote.emote.Platform.String()], d.emote)
-			_, _ = io.WriteString(os.Stdout, d.prepare)
+			sb.WriteString(d.prepare)
 		}
+
+		start := time.Now()
+		io.WriteString(os.Stdout, sb.String())
+		log.Logger.Info().Str("duration", time.Since(start).String()).Msg("emote overview loaded")
 
 		return emoteOverviewSetDataMessage{
 			id:  e.id,
