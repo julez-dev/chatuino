@@ -129,7 +129,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 			}
 
-			if !mentioned {
+			if !mentioned || messageMatchesBlocked(event.message, m.userConfiguration.Settings.BlockSettings) {
 				return m, nil
 			}
 
