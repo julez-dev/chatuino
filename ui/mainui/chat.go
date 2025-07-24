@@ -156,6 +156,9 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 			case key.Matches(msg, c.keymap.Escape) && c.state == searchChatWindowState:
 				c.handleStopSearchMode()
 				return c, nil
+			case key.Matches(msg, c.keymap.Confirm) && c.state == searchChatWindowState:
+				c.handleStopSearchModeKeepSelected()
+				return c, nil
 			// update search, allow up and down arrow keys for navigation in result
 			case c.state == searchChatWindowState && msg.String() != "up" && msg.String() != "down":
 				c.searchInput, cmd = c.searchInput.Update(msg)
@@ -192,6 +195,18 @@ func (c *chatWindow) handleStartSearchMode() tea.Cmd {
 	c.searchInput.Focus()
 	c.recalculateLines()
 	return c.searchInput.Focus()
+}
+
+func (c *chatWindow) handleStopSearchModeKeepSelected() {
+	_, e := c.entryForCurrentCursor()
+
+	if e == nil {
+		c.handleStopSearchMode()
+		return
+	}
+
+	c.handleStopSearchMode()
+	c.goToEntry(e)
 }
 
 func (c *chatWindow) handleStopSearchMode() {
@@ -296,6 +311,27 @@ func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
 	}
 
 	return -1, nil
+}
+
+func (c *chatWindow) goToEntry(entry *chatEntry) {
+	active := c.activeEntries()
+	if len(active) < 1 {
+		return
+	}
+
+	for i := range c.entries {
+		c.entries[i].Selected = false
+	}
+
+	for _, e := range active {
+		if e == entry {
+			e.Selected = true
+			c.cursor = e.Position.CursorEnd
+			c.updatePort()
+			c.markSelectedMessage()
+			return
+		}
+	}
 }
 
 func (c *chatWindow) messageDown(n int) {
@@ -874,7 +910,6 @@ func (c *chatWindow) applySearch() {
 	}
 
 	c.recalculateLines()
-	c.updatePort()
 	c.moveToBottom()
 }
 
