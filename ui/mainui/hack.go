@@ -112,12 +112,14 @@ func messageMatchesBlocked(msg twitch.IRCer, settings save.BlockSettings) bool {
 
 		senderUserName = msg.DisplayName
 		senderMessage = msg.Message
+		senderUserType = msg.UserType
 	case *command.SubGiftMessage:
 		if msg.Mod {
 			return false
 		}
 
 		senderUserName = msg.DisplayName
+		senderUserType = msg.UserType
 	case *command.SubMessage:
 		if msg.Mod {
 			return false
@@ -125,6 +127,7 @@ func messageMatchesBlocked(msg twitch.IRCer, settings save.BlockSettings) bool {
 
 		senderUserName = msg.DisplayName
 		senderMessage = msg.Message
+		senderUserType = msg.UserType
 	default:
 		return false
 	}
