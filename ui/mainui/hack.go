@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rivo/uniseg"
 )
@@ -94,6 +96,60 @@ func messageContainsCaseInsensitive(msg *command.PrivateMessage, sub string) boo
 // func hexToLuminance(r, g, b uint32) float64 {
 // 	return (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 65535
 // }
+
+func messageMatchesBlocked(msg twitch.IRCer, settings save.BlockSettings) bool {
+	var (
+		senderUserName string
+		senderMessage  string
+		senderUserType command.UserType
+	)
+
+	switch msg := msg.(type) {
+	case *command.PrivateMessage:
+		if msg.Mod {
+			return false
+		}
+
+		senderUserName = msg.DisplayName
+		senderMessage = msg.Message
+	case *command.SubGiftMessage:
+		if msg.Mod {
+			return false
+		}
+
+		senderUserName = msg.DisplayName
+	case *command.SubMessage:
+		if msg.Mod {
+			return false
+		}
+
+		senderUserName = msg.DisplayName
+		senderMessage = msg.Message
+	default:
+		return false
+	}
+
+	if senderUserType != command.Empty {
+		return false
+	}
+
+	senderUserName = strings.ToLower(senderUserName)
+	senderMessage = strings.ToLower(senderMessage)
+
+	for _, blockedUser := range settings.Users {
+		if strings.EqualFold(senderUserName, blockedUser) {
+			return true
+		}
+	}
+
+	for _, blockedWord := range settings.Words {
+		if strings.EqualFold(senderMessage, blockedWord) {
+			return true
+		}
+	}
+
+	return false
+}
 
 func randomHexColor() string {
 	red := rand.Int32N(256)

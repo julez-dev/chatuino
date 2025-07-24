@@ -19,6 +19,7 @@ type Settings struct {
 	Moderation      ModerationSettings `yaml:"moderation"`
 	Chat            ChatSettings       `yaml:"chat"`
 	CustomCommands  []CustomCommand    `yaml:"custom_commands"`
+	BlockSettings   BlockSettings      `yaml:"block_settings"`
 }
 
 type ModerationSettings struct {
@@ -29,6 +30,11 @@ type ModerationSettings struct {
 
 type ChatSettings struct {
 	GraphicEmotes bool `yaml:"graphic_emotes"`
+}
+
+type BlockSettings struct {
+	Users []string `yaml:"users"`
+	Words []string `yaml:"words"`
 }
 
 type CustomCommand struct {
@@ -60,6 +66,14 @@ func (s Settings) validate() error {
 		if slices.Contains(predefinedCommands, c.Trigger) {
 			return fmt.Errorf("custom command trigger %q is already a default command", c.Trigger)
 		}
+	}
+
+	if slices.Contains(s.BlockSettings.Users, "") {
+		return fmt.Errorf("block settings user entry can't be empty string")
+	}
+
+	if slices.Contains(s.BlockSettings.Words, "") {
+		return fmt.Errorf("block settings word entry can't be empty string")
 	}
 
 	return nil

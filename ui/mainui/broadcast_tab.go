@@ -1154,6 +1154,10 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 }
 
 func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
+	if messageMatchesBlocked(msg, t.userConfiguration.Settings.BlockSettings) {
+		return true
+	}
+
 	cast, ok := msg.(*command.PrivateMessage)
 
 	// all non private messages are okay

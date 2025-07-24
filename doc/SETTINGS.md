@@ -13,6 +13,12 @@ moderation:
   logs_channel_include: ["lirik", "sodapoppin"] # Chatuino will only log channels that are in this list, if set
   logs_channel_exclude: ["lec"] # Chatuino will not log channels that are in this list, but all others, if set
 
+# Globaly block specific users and words
+block_settings:
+  users:
+    - julezdev
+  words:
+    - Kappe
 chat:
   # NOTE: read the README for more information about how emote rendering works before enabling this feature
   graphic_emotes: true # EXPERIMENTAL: if Chatuino should display emotes as images instead of text; Default: false
