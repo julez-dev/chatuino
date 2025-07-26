@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
@@ -1290,6 +1291,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleCreateClipMessage()
 		case "emotes":
 			return t.handleOpenEmoteOverview()
+		case "mpv":
+			return t.handleStartMPV()
 		}
 
 		if !t.isUserMod {
@@ -1563,6 +1566,42 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 
 	t.messageInput.Focus()
 	t.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
+}
+
+func (t *broadcastTab) handleStartMPV() tea.Cmd {
+	return func() tea.Msg {
+		cmd := exec.Command("streamlink",
+			"--twitch-low-latency",
+			"--player", "mpv",
+			//"--player-args", "'--no-border --no-keepaspect-window'",
+			"https://www.twitch.tv/"+t.channel, "best")
+
+		notice := &command.Notice{
+			FakeTimestamp: time.Now(),
+		}
+
+		resp := chatEventMessage{
+			isFakeEvent: true,
+			accountID:   t.account.ID,
+			channel:     t.channel,
+			tabID:       t.id,
+			message:     notice,
+		}
+
+		err := cmd.Start()
+		if err != nil {
+			notice.Message = fmt.Sprintf("Could not start MPV stream: %s", err.Error())
+			return resp
+		}
+
+		go func() {
+			_ = cmd.Wait()
+		}()
+
+		notice.Message = fmt.Sprintf("Started MPV process (%d), loading might take a while because of pre-roll ads", cmd.Process.Pid)
+
+		return resp
+	}
 }
 
 func (t *broadcastTab) renderMessageInput() string {

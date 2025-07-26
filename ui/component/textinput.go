@@ -48,6 +48,7 @@ var CommandSuggestions = [...]string{
 	"/uniqueonlysoff",
 	"/createclip",
 	"/emotes",
+	"/mpv",
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
