@@ -286,17 +286,22 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			if key.Matches(msg, j.keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					j.selectedInput = tabSelect
+					if j.selectedInput == tabSelect {
+						j.selectedInput = confirmButton
+					} else {
+						j.selectedInput = tabSelect
+					}
+
 					return j, nil
 				}
 
 				switch j.selectedInput {
 				case tabSelect:
+					j.selectedInput = accountSelect
+				case accountSelect:
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
-					j.selectedInput = accountSelect
-				case accountSelect:
 					j.selectedInput = confirmButton
 				case confirmButton:
 					j.selectedInput = tabSelect
@@ -308,7 +313,12 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			if key.Matches(msg, j.keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					j.selectedInput = tabSelect
+					if j.selectedInput == tabSelect {
+						j.selectedInput = confirmButton
+					} else {
+						j.selectedInput = tabSelect
+					}
+
 					return j, nil
 				}
 
@@ -316,11 +326,11 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				case tabSelect:
 					j.selectedInput = confirmButton
 				case confirmButton:
-					j.selectedInput = accountSelect
-				case accountSelect:
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
+					j.selectedInput = accountSelect
+				case accountSelect:
 					j.selectedInput = tabSelect
 				}
 
@@ -405,8 +415,9 @@ func (j *join) View() string {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
-		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
+		// Move identity input above channel input
 		_, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
+		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
 	}
 
 	_, _ = b.WriteString(styleCenter.Render(confirmButton))
