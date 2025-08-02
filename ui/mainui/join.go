@@ -236,10 +236,6 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
-	if p, ok := msg.(tea.KeyMsg); ok {
-		log.Logger.Info().Str("type", p.String()).Msg("button")
-	}
-
 	if msg, ok := msg.(setJoinAccountsMessage); ok {
 		j.accounts = msg.accounts
 		listItems := make([]list.Item, 0, len(j.accounts))
