@@ -23,28 +23,29 @@ type followedFetcher interface {
 	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitch.FollowedChannel, error)
 }
 
-type joinState int
-
-const (
-	joinViewMode joinState = iota
-	joinInsertMode
-)
-
-func (j joinState) String() string {
-	if j == joinViewMode {
-		return "View/Select Input"
-	} else {
-		return "Insert"
-	}
-}
-
 type currentJoinInput int
 
 const (
 	channelInput currentJoinInput = iota
 	accountSelect
 	tabSelect
+	confirmButton
 )
+
+func (c currentJoinInput) String() string {
+	switch c {
+	case channelInput:
+		return "Channel Input"
+	case accountSelect:
+		return "Account Input"
+	case tabSelect:
+		return "Tab Input"
+	case confirmButton:
+		return "Confirm Button"
+	default:
+		return "Unknown"
+	}
+}
 
 type listItem struct {
 	title string
@@ -82,8 +83,6 @@ type join struct {
 	followedFetchers  map[string]followedFetcher
 	hasLoaded         bool
 	userConfiguration UserConfiguration
-
-	state joinState
 }
 
 func createDefaultList(height int, selectedColor string) list.Model {
@@ -124,8 +123,11 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 		return nil
 	}
 	input.IncludeCommandSuggestions = false
+	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.SetWidth(width)
+	input.KeyMap.AcceptSuggestion = keymap.Confirm
+	input.KeyMap.AcceptSuggestion.SetKeys("enter")
 
 	tabKindList := createDefaultList(height, userConfiguration.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
@@ -165,7 +167,6 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 		tabKindList:       tabKindList,
 		keymap:            keymap,
 		followedFetchers:  followedFetchers,
-		state:             joinInsertMode,
 		userConfiguration: userConfiguration,
 	}
 }
@@ -235,6 +236,10 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
+	if p, ok := msg.(tea.KeyMsg); ok {
+		log.Logger.Info().Str("type", p.String()).Msg("button")
+	}
+
 	if msg, ok := msg.(setJoinAccountsMessage); ok {
 		j.accounts = msg.accounts
 		listItems := make([]list.Item, 0, len(j.accounts))
@@ -278,25 +283,49 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, nil
 			}
 
-			if j.state == joinViewMode && key.Matches(msg, j.keymap.InsertMode) {
-				j.state = joinInsertMode
-				return j, nil
-			}
-
-			if j.state == joinInsertMode && key.Matches(msg, j.keymap.Escape) {
-				j.state = joinViewMode
-				return j, nil
-			}
-
-			if j.state == joinViewMode && key.Matches(msg, j.keymap.Up) {
+			if key.Matches(msg, j.keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					j.selectedInput = tabSelect
+					if j.selectedInput == tabSelect {
+						j.selectedInput = confirmButton
+					} else {
+						j.selectedInput = tabSelect
+					}
+
 					return j, nil
 				}
 
 				switch j.selectedInput {
 				case tabSelect:
+					j.selectedInput = accountSelect
+				case accountSelect:
+					j.selectedInput = channelInput
+					cmd = j.input.InputModel.Cursor.BlinkCmd()
+				case channelInput:
+					j.selectedInput = confirmButton
+				case confirmButton:
+					j.selectedInput = tabSelect
+				}
+
+				return j, cmd
+			}
+
+			if key.Matches(msg, j.keymap.Previous) {
+				// don't allow previous input when mention or live notification tab selected
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
+					if j.selectedInput == tabSelect {
+						j.selectedInput = confirmButton
+					} else {
+						j.selectedInput = tabSelect
+					}
+
+					return j, nil
+				}
+
+				switch j.selectedInput {
+				case tabSelect:
+					j.selectedInput = confirmButton
+				case confirmButton:
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
@@ -310,7 +339,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
-			if key.Matches(msg, j.keymap.Confirm) && (j.input.Value() != "" || kind == liveNotificationTabKind || kind == mentionTabKind) {
+			if key.Matches(msg, j.keymap.Confirm) && j.selectedInput == confirmButton && (j.input.Value() != "" || kind == liveNotificationTabKind || kind == mentionTabKind) {
 				return j, func() tea.Msg {
 					return joinChannelMessage{
 						tabKind: j.tabKindList.SelectedItem().(listItem).kind,
@@ -322,18 +351,16 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		}
 	}
 
-	if j.state == joinInsertMode {
-		switch j.selectedInput {
-		case channelInput:
-			j.input, cmd = j.input.Update(msg)
-			cmds = append(cmds, cmd)
-		case tabSelect:
-			j.tabKindList, cmd = j.tabKindList.Update(msg)
-			cmds = append(cmds, cmd)
-		default:
-			j.accountList, cmd = j.accountList.Update(msg)
-			cmds = append(cmds, cmd)
-		}
+	switch j.selectedInput {
+	case channelInput:
+		j.input, cmd = j.input.Update(msg)
+		cmds = append(cmds, cmd)
+	case tabSelect:
+		j.tabKindList, cmd = j.tabKindList.Update(msg)
+		cmds = append(cmds, cmd)
+	default:
+		j.accountList, cmd = j.accountList.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return j, tea.Batch(cmds...)
@@ -349,11 +376,13 @@ func (j *join) View() string {
 	styleCenter := lipgloss.NewStyle().Width(j.width - 2).AlignHorizontal(lipgloss.Center)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color(j.userConfiguration.Theme.ListLabelColor)).Render
+	buttonStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Padding(0, 3).Border(lipgloss.ASCIIBorder())
 
 	var (
 		labelTab      string
 		labelChannel  string
 		labelIdentity string
+		confirmButton string
 	)
 
 	switch j.selectedInput {
@@ -361,14 +390,22 @@ func (j *join) View() string {
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("> Channel")
 		labelIdentity = labelStyle("Identity")
+		confirmButton = buttonStyle.Render("Confirm")
 	case accountSelect:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("> Identity")
-	default:
+		confirmButton = buttonStyle.Render("Confirm")
+	case tabSelect:
 		labelTab = labelStyle("> Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
+		confirmButton = buttonStyle.Render("Confirm")
+	default:
+		labelTab = labelStyle("Tab type")
+		labelChannel = labelStyle("Channel")
+		labelIdentity = labelStyle("Identity")
+		confirmButton = buttonStyle.BorderForeground(lipgloss.Color(j.userConfiguration.Theme.ListLabelColor)).Render("Confirm")
 	}
 
 	b := strings.Builder{}
@@ -378,9 +415,11 @@ func (j *join) View() string {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
-		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
 		_, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
+		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
 	}
+
+	_, _ = b.WriteString(styleCenter.Render(confirmButton))
 
 	// show status at bottom
 	heightUntilNow := lipgloss.Height(b.String())
@@ -389,7 +428,7 @@ func (j *join) View() string {
 		_, _ = b.WriteString(strings.Repeat("\n", spacerHeight))
 	}
 
-	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.userConfiguration.Theme.StatusColor)).Render(j.state.String()))
+	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.userConfiguration.Theme.StatusColor)).Render(j.selectedInput.String()))
 	_, _ = b.WriteString(stateStr)
 
 	return style.Render(b.String())
@@ -403,6 +442,13 @@ func (c *join) focus() {
 func (c *join) blur() {
 	c.focused = false
 	c.input.Blur()
+}
+
+func (c *join) handleResize(width, height int) {
+	c.width = width
+	c.height = height
+
+	c.input.SetWidth(width)
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {

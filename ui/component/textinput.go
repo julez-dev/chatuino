@@ -79,6 +79,7 @@ type SuggestionTextInput struct {
 	IncludeCommandSuggestions  bool
 	IncludeModeratorCommands   bool
 	DisableAutoSpaceSuggestion bool
+	DisableHistory             bool
 
 	customSuggestions map[string]string
 
@@ -131,7 +132,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case msg.String() == "enter":
+		case msg.String() == "enter" && !s.DisableHistory:
 			s.history = append(s.history, s.InputModel.Value())
 			s.historyIndex = len(s.history)
 			return s, nil
