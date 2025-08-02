@@ -590,7 +590,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if key.Matches(msg, r.keymap.Escape) {
-			if (r.screenType == inputScreen && r.joinInput.state == joinViewMode) || r.screenType == helpScreen {
+			if r.screenType == inputScreen || r.screenType == helpScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].Focus()
 				}
@@ -990,9 +990,7 @@ func (r *Root) handleResize() {
 	r.splash.height = r.height
 
 	// channel join input
-	r.joinInput.width = r.width
-	r.joinInput.height = r.height
-	r.joinInput.accountList.SetHeight(r.height / 2)
+	r.joinInput.handleResize(r.width, r.height)
 
 	// help
 	r.help.handleResize(r.width, r.height)
