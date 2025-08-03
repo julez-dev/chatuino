@@ -29,7 +29,8 @@ type ModerationSettings struct {
 }
 
 type ChatSettings struct {
-	GraphicEmotes bool `yaml:"graphic_emotes"`
+	GraphicEmotes              bool `yaml:"graphic_emotes"`
+	DisablePaddingWrappedLines bool `yaml:"disable_padding_wrapped_lines"`
 }
 
 type BlockSettings struct {

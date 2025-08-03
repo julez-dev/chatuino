@@ -763,7 +763,11 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 
 	// if there are more lines, add prefixPadding spaces to the beginning of the line
 	for _, line := range splits[1:] {
-		lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
+		if c.userConfiguration.Settings.Chat.DisablePaddingWrappedLines {
+			lines = append(lines, strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))+3)+line)
+		} else {
+			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
+		}
 	}
 
 	return lines
