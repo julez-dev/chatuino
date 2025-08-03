@@ -69,3 +69,62 @@ changelog:
       order: 1
     - title: Misc
       order: 999
+
+aurs:
+  - # The package name.
+    name: chatuino-bin
+
+    # Your app's homepage.
+    #
+    # Default: inferred from global metadata.
+    homepage: "https://github.com/julez-dev/chatuino"
+
+    # Your app's description.
+    description: "A client for twitch's IRC service."
+
+    # The maintainers of the package.
+    maintainers:
+      - "julezdev <julez-dev@pm.me>"
+
+    # SPDX identifier of your app's license.
+    license: "MIT"
+
+    # The SSH private key that should be used to commit to the Git repository.
+    private_key: "{{ .Env.AUR_SSH_PRIVATE_KEY }}"
+
+    # The AUR Git URL for this package.
+    git_url: "ssh://aur@aur.archlinux.org/chatuino-bin.git"
+
+    # Setting this will prevent goreleaser to actually try to commit the updated
+    # formula - instead, the formula file will be stored on the dist directory
+    # only, leaving the responsibility of publishing it to the user.
+    #
+    # If set to auto, the release will not be uploaded to the AUR repo
+    # in case there is an indicator for prerelease in the tag e.g. v1.0.0-rc1.
+    skip_upload: auto
+
+    # List of additional packages that the software provides the features of.
+    #
+    # Default: the project name.
+    provides:
+      - chatuino-bin
+
+    # List of packages that conflict with, or cause problems with the package.
+    #
+    # Default: the project name.
+    conflicts:
+      - chatuino-bin
+
+    # List of files that can contain user-made changes and should be preserved
+    # during package upgrades and removals.
+    backup:
+      - ~/.config/chatuino/keymap.yaml
+      - ~/.config/chatuino/settings.yaml
+      - ~/.config/chatuino/theme.yaml
+      - ~/.config/chatuino/state.json
+      - ~/.local/share/chatuino/chatuino.db
+      - ~/.local/share/chatuino/emote
+
+    package: |
+      install -Dm755 "./chatuino" "${pkgdir}/usr/bin/chatuino"
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
