@@ -1,5 +1,7 @@
 # Chatuino
 
+[![chatuino-bin](https://img.shields.io/aur/version/chatuino-bin?color=1793d1&label=chatuino-bin&logo=arch-linux&style=for-the-badge)](https://aur.archlinux.org/packages/chatuino-bin/)
+
 Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich Twitch Chat Client to your terminal.
 
 > **Note**: This project is still in early development (colors may be weird, terminals may not work, panics may happen and resizing may cause issues/become glitchy etc.)
