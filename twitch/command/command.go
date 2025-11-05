@@ -72,6 +72,7 @@ type PrivateMessage struct {
 
 	RoomID          string
 	ChannelUserName string
+	LoginName       string
 	Subscriber      bool
 	TMISentTS       time.Time
 	Turbo           bool

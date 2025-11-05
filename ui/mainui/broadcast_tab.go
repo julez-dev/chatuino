@@ -54,6 +54,7 @@ type setErrorMessage struct {
 
 type setChannelDataMessage struct {
 	targetID        string
+	channelLogin    string
 	channel         string
 	channelID       string
 	initialMessages []twitch.IRCer
@@ -138,8 +139,10 @@ type broadcastTab struct {
 	lastMessageSent   string
 	lastMessageSentAt time.Time
 
-	channel    string
-	channelID  string
+	channel      string
+	channelID    string
+	channelLogin string
+
 	emoteStore EmoteStore
 
 	colorData twitch.UserChatColor
@@ -246,7 +249,7 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 		var recentMessages []twitch.IRCer
 		group.Go(func() error {
 			// fetch recent messages
-			msgs, err := t.recentMessageService.GetRecentMessagesFor(ctx, t.channel)
+			msgs, err := t.recentMessageService.GetRecentMessagesFor(ctx, userData.Login)
 
 			// call sometimes timeouts, but recent message are not really that important to crash the tab, so ignore the error
 			if err != nil {
@@ -260,9 +263,9 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 
 		var isUserMod bool
 		group.Go(func() error {
-			modVips, err := t.modFetcher.GetModVIPList(ctx, t.channel)
+			modVips, err := t.modFetcher.GetModVIPList(ctx, userData.Login)
 			if err != nil {
-				return fmt.Errorf("could not fetch mods for %s (%s): %w", t.channel, userData.ID, err)
+				return fmt.Errorf("could not fetch mods for %s (%s): %w", userData.Login, userData.ID, err)
 			}
 
 			for _, mod := range modVips.Mods {
@@ -278,7 +281,7 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 		if err := group.Wait(); err != nil {
 			return setErrorMessage{
 				targetID: t.id,
-				err:      fmt.Errorf("could not do initial fetching for %s: %w", t.channel, err),
+				err:      fmt.Errorf("could not do initial fetching for %s: %w", userData.Login, err),
 			}
 		}
 
@@ -286,6 +289,7 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 			targetID:        t.id,
 			channelID:       userData.ID,
 			channel:         userData.DisplayName,
+			channelLogin:    userData.Login,
 			initialMessages: recentMessages,
 			isUserMod:       isUserMod,
 		}
@@ -325,6 +329,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.channelDataLoaded = true
 
+		t.channelLogin = msg.channelLogin
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
@@ -368,7 +373,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				msg: multiplex.InboundMessage{
 					AccountID: t.account.ID,
 					Msg: command.JoinMessage{
-						Channel: msg.channel,
+						Channel: msg.channelLogin,
 					},
 				},
 			}
@@ -377,7 +382,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		// notify user about loaded messages
 		msg.initialMessages = append(msg.initialMessages, &command.Notice{
 			FakeTimestamp:   time.Now(),
-			ChannelUserName: t.channel,
+			ChannelUserName: t.channelLogin,
 			MsgID:           command.MsgID(uuid.NewString()),
 			Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
 		})
@@ -399,7 +404,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			group.Go(func() error {
 				if err := t.emoteStore.RefreshLocal(ctx, msg.channelID); err != nil {
-					return fmt.Errorf("could not refresh emote cache for %s (%s): %w", t.channel, msg.channelID, err)
+					return fmt.Errorf("could not refresh emote cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
 				}
 
 				return nil
@@ -407,7 +412,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			group.Go(func() error {
 				if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
-					return fmt.Errorf("could not refresh global emote cache for %s (%s): %w", t.channel, msg.channelID, err)
+					return fmt.Errorf("could not refresh global emote cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
 				}
 
 				return nil
@@ -548,7 +553,8 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, cmd
 	case chatEventMessage: // delegate message event to chat window
 		// ignore all messages that don't target this account and channel
-		if t.AccountID() != msg.accountID || t.Channel() != msg.channel && msg.channel != "" {
+
+		if t.AccountID() != msg.accountID || t.channelLogin != msg.channel && msg.channel != "" {
 			return t, nil
 		}
 
@@ -841,7 +847,7 @@ func (t *broadcastTab) AccountID() string {
 }
 
 func (t *broadcastTab) Channel() string {
-	return t.channel
+	return t.channelLogin
 }
 
 func (t *broadcastTab) ChannelID() string {
@@ -910,7 +916,7 @@ func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 
 func (t *broadcastTab) handleOpenBrowserChatPopUp() tea.Cmd {
 	return func() tea.Msg {
-		url := fmt.Sprintf(streamChatPopUpFmt, t.channel)
+		url := fmt.Sprintf(streamChatPopUpFmt, t.channelLogin)
 
 		if err := browser.OpenURL(url); err != nil {
 			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
@@ -921,7 +927,7 @@ func (t *broadcastTab) handleOpenBrowserChatPopUp() tea.Cmd {
 
 func (t *broadcastTab) handleOpenBrowserChannel() tea.Cmd {
 	return func() tea.Msg {
-		url := fmt.Sprintf(streamWebFmt, t.channel)
+		url := fmt.Sprintf(streamWebFmt, t.channelLogin)
 
 		if err := browser.OpenURL(url); err != nil {
 			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
@@ -953,7 +959,7 @@ func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
 	t.unbanWindow = unbanrequest.New(
 		t.ttvAPI.(moderationAPIClient),
 		t.keymap,
-		t.channel,
+		t.channelLogin,
 		t.channelID,
 		t.account.ID,
 		t.height,
@@ -979,7 +985,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -993,7 +999,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1009,7 +1015,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1048,7 +1054,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		resp := chatEventMessage{
 			isFakeEvent: true,
 			accountID:   userID,
-			channel:     t.channel,
+			channel:     t.channelLogin,
 			tabID:       t.id,
 			message:     notice,
 		}
@@ -1090,7 +1096,7 @@ func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1104,7 +1110,7 @@ func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1124,7 +1130,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1138,7 +1144,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
 				accountID: t.account.ID,
-				channel:   t.channel,
+				channel:   t.channelLogin,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1264,7 +1270,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		argStr := strings.TrimSpace(input[end:])
 		args := strings.SplitN(argStr, " ", 3)
 		channelID := t.channelID
-		channel := t.channel
+		channel := t.channelLogin
 		accountID := t.account.ID
 
 		switch commandName {
@@ -1341,7 +1347,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		resp := chatEventMessage{
 			isFakeEvent: true,
 			accountID:   userID,
-			channel:     t.channel,
+			channel:     t.channelLogin,
 			tabID:       t.id,
 			message:     notice,
 		}
@@ -1377,7 +1383,7 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 	return func() tea.Msg {
 		api, ok := t.ttvAPI.(userAuthenticatedAPIClient)
 		if !ok {
-			t.logger.Warn().Str("broadcast", t.channel).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
+			t.logger.Warn().Str("broadcast", t.channelLogin).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
 			return nil
 		}
 
@@ -1393,7 +1399,7 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 		resp := chatEventMessage{
 			isFakeEvent: true,
 			accountID:   t.account.ID,
-			channel:     t.channel,
+			channel:     t.channelLogin,
 			tabID:       t.id,
 			message:     notice,
 		}
@@ -1474,14 +1480,14 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channel, t.emoteStore, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.emoteStore, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
 
 	initialEvents := make([]chatEventMessage, 0, len(t.chatWindow.entries))
 	for e := range slices.Values(t.chatWindow.entries) {
 		initialEvents = append(initialEvents, chatEventMessage{
 			isFakeEvent:                 true,
 			accountID:                   t.account.ID,
-			channel:                     t.channel,
+			channel:                     t.channelLogin,
 			messageContentEmoteOverride: e.OverwrittenMessageContent,
 			message:                     e.Event.message,
 		})
@@ -1513,7 +1519,7 @@ func (t *broadcastTab) handleOpenUserInspectFromMessage() tea.Cmd {
 	var username string
 	switch msg := e.Event.message.(type) {
 	case *command.PrivateMessage:
-		username = msg.DisplayName
+		username = msg.LoginName
 	case *command.ClearChat:
 		if msg.UserName == nil {
 			return nil
@@ -1664,7 +1670,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		return createCMDFunc(
 			&command.Notice{
 				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channel,
+				ChannelUserName: t.channelLogin,
 				MsgID:           command.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
 			},
@@ -1693,7 +1699,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		return createCMDFunc(
 			&command.Notice{
 				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channel,
+				ChannelUserName: t.channelLogin,
 				MsgID:           command.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
 			},
@@ -1704,7 +1710,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 			return createCMDFunc(
 				&command.Notice{
 					FakeTimestamp:   time.Now(),
-					ChannelUserName: t.channel,
+					ChannelUserName: t.channelLogin,
 					MsgID:           command.MsgID(uuid.NewString()),
 					Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
 				},
@@ -1715,7 +1721,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		return createCMDFunc(
 			&command.Notice{
 				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channel,
+				ChannelUserName: t.channelLogin,
 				MsgID:           command.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
 			},
@@ -1732,7 +1738,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		return createCMDFunc(
 			&command.Notice{
 				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channel,
+				ChannelUserName: t.channelLogin,
 				MsgID:           command.MsgID(uuid.NewString()),
 				Message:         chatMsg,
 			},
@@ -1752,7 +1758,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 	resp := chatEventMessage{
 		isFakeEvent: true,
 		accountID:   t.account.ID,
-		channel:     t.channel,
+		channel:     t.channelLogin,
 		tabID:       t.id,
 		message:     notice,
 	}
@@ -1770,7 +1776,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 		"CurrentTime":     time.Now().Local().Format("15:04:05"),
 		"CurrentDateTime": time.Now().Local().Format("2006-01-02 15:04:05"),
 		"BroadcastID":     t.channelID,
-		"BroadcastName":   t.channel,
+		"BroadcastName":   t.channelLogin,
 	}
 
 	// if a row is currently selected

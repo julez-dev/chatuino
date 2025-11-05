@@ -134,6 +134,10 @@ func ParseIRC(message string) (IRCer, error) {
 		c.Params = nil
 	}
 
+	// var buff bytes.Buffer
+	// spew.Fdump(&buff, c)
+	// log.Log().Str("buff", buff.String()).Msg("opend")
+
 	switch c.Command {
 	case "PRIVMSG":
 		bits, err := strconv.Atoi(emptyStringZero(string(c.tags["bits"])))
@@ -157,6 +161,7 @@ func ParseIRC(message string) (IRCer, error) {
 			Bits:        bits,
 			Color:       string(c.tags["color"]),
 			DisplayName: string(c.tags["display-name"]),
+			LoginName:   c.prefix.Name,
 			Emotes:      parseEmotes(string(c.tags["emotes"])),
 			ID:          string(c.tags["id"]),
 			Mod:         c.tags["mod"] == "1",

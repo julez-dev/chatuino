@@ -794,51 +794,53 @@ func (c *chatWindow) colorMessageMentions(message string) string {
 }
 
 func (c *chatWindow) updatePort() {
-	// validate cursors position
-	c.cursor = clamp(c.cursor, 0, len(c.lines)-1)
-
 	height := c.height
 	if c.state == searchChatWindowState {
 		height--
 	}
 
-	if height < 0 {
+	if height <= 0 {
 		c.lineStart = 0
 		c.lineEnd = 0
 		return
 	}
 
-	switch {
-	case len(c.lines) < height: // all lines fit in the height
+	// Clamp cursor to valid range
+	if len(c.lines) > 0 {
+		c.cursor = clamp(c.cursor, 0, len(c.lines)-1)
+	} else {
+		c.cursor = 0
+		c.lineStart = 0
+		c.lineEnd = 0
+		return
+	}
+
+	// If viewport is larger than content, show everything
+	if height >= len(c.lines) {
 		c.lineStart = 0
 		c.lineEnd = len(c.lines)
-	case c.cursor <= c.lineStart: // cursor is before the viewport
-		// start new port from current cursor location
+		return
+	}
+
+	// Adjust viewport if cursor is outside
+	if c.cursor < c.lineStart {
+		// Cursor is above the viewport, so move viewport up to show cursor at the top
 		c.lineStart = c.cursor
+	} else if c.cursor >= c.lineStart+height {
+		// Cursor is below the viewport, so move viewport down to show cursor at the bottom
+		c.lineStart = c.cursor - height + 1
+	}
 
-		spaceAvailable := height // we can use this many space at most
-		// if we have less lines than height, set space to len
-		linesFromStart := len(c.lines[c.lineStart:])
-		if linesFromStart < spaceAvailable {
-			spaceAvailable = linesFromStart
-		}
+	// The viewport is defined by lineStart and height
+	c.lineEnd = c.lineStart + height
 
-		c.lineEnd = c.lineStart + spaceAvailable
-	case c.cursor+1 >= c.lineEnd: // the cursor is after the view
-		c.lineEnd = c.cursor + 1
+	// Final check to ensure lineEnd does not exceed the number of lines.
+	if c.lineEnd > len(c.lines) {
+		c.lineEnd = len(c.lines)
 		c.lineStart = c.lineEnd - height
-
 		if c.lineStart < 0 {
 			c.lineStart = 0
 		}
-	case c.cursor >= c.lineStart && c.cursor <= c.lineEnd: // validate cursor inside view
-		c.lineEnd = c.lineStart + height
-
-		// height is bigger than the number of lines, can only display x lines instead
-		if len(c.lines[c.lineStart:]) < height {
-			c.lineEnd = c.lineStart + len(c.lines[c.lineStart:])
-		}
-
 	}
 }
 
