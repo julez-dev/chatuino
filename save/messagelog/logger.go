@@ -142,7 +142,7 @@ SELECT_LOOP:
 			timer.Reset(maxBatchWait)
 		case <-timer.C:
 			if len(batch) == 0 {
-				b.logger.Info().Msg("logger max wait time was reached but batch is empty, resetting without batching")
+				//b.logger.Info().Msg("logger max wait time was reached but batch is empty, resetting without batching")
 				timer.Reset(maxBatchWait)
 				continue
 			}

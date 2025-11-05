@@ -80,6 +80,7 @@ type join struct {
 	accounts          []save.Account
 	keymap            save.KeyMap
 	provider          AccountProvider
+	clients           map[string]APIClient
 	followedFetchers  map[string]followedFetcher
 	hasLoaded         bool
 	userConfiguration UserConfiguration
@@ -167,6 +168,7 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 		tabKindList:       tabKindList,
 		keymap:            keymap,
 		followedFetchers:  followedFetchers,
+		clients:           clients,
 		userConfiguration: userConfiguration,
 	}
 }
@@ -178,20 +180,21 @@ func newJoin(provider AccountProvider, clients map[string]APIClient, width, heig
 // All done concurrently because fetching suggestions will most likely take the most time
 // So the user does not have to wait if they can type faster
 func (j *join) Init() tea.Cmd {
-	return tea.Batch(func() tea.Msg {
-		accounts, err := j.provider.GetAllAccounts()
-		if err != nil {
-			return nil
-		}
-
-		for i, a := range accounts {
-			if a.IsAnonymous {
-				accounts[i].DisplayName = "Anonymous"
+	return tea.Batch(
+		func() tea.Msg {
+			accounts, err := j.provider.GetAllAccounts()
+			if err != nil {
+				return nil
 			}
-		}
 
-		return setJoinAccountsMessage{accounts: accounts}
-	},
+			for i, a := range accounts {
+				if a.IsAnonymous {
+					accounts[i].DisplayName = "Anonymous"
+				}
+			}
+
+			return setJoinAccountsMessage{accounts: accounts}
+		},
 		func() tea.Msg {
 			accounts, err := j.provider.GetAllAccounts()
 			if err != nil {
@@ -336,11 +339,32 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
 			if key.Matches(msg, j.keymap.Confirm) && j.selectedInput == confirmButton && (j.input.Value() != "" || kind == liveNotificationTabKind || kind == mentionTabKind) {
+				channel := j.input.Value()
+				account := j.accounts[j.accountList.Cursor()]
+
 				return j, func() tea.Msg {
+
+					for accountID, client := range j.clients {
+						if accountID != account.ID {
+							continue
+						}
+
+						resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+						if err != nil {
+							break
+						}
+
+						if len(resp.Data) < 1 {
+							break
+						}
+
+						channel = resp.Data[0].Login
+					}
+
 					return joinChannelMessage{
 						tabKind: j.tabKindList.SelectedItem().(listItem).kind,
-						channel: j.input.Value(),
-						account: j.accounts[j.accountList.Cursor()],
+						channel: channel,
+						account: account,
 					}
 				}
 			}

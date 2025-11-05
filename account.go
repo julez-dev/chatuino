@@ -38,7 +38,7 @@ var accountCMD = &cli.Command{
 		}
 
 		p := tea.NewProgram(
-			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(save.KeyringWrapper{}), keys, theme),
+			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(save.NewKeyringWrapper()), keys, theme),
 			tea.WithContext(ctx),
 			tea.WithAltScreen(),
 		)

@@ -149,6 +149,11 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case setAccountsMessage:
 		l.err = msg.err
+
+		if l.err != nil {
+			return l, nil
+		}
+
 		rows := make([]table.Row, 0, len(msg.accounts))
 
 		for _, acc := range msg.accounts {
@@ -160,6 +165,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		l.table.SetRows(rows)
 		l.table.SetCursor(0)
 	case tea.KeyMsg:
+		l.err = nil
 		switch {
 		case key.Matches(msg, l.key.Create):
 			if l.state == inTable {
