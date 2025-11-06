@@ -8,6 +8,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/accountui"
 	"github.com/urfave/cli/v3"
+	"github.com/zalando/go-keyring"
 )
 
 var accountCMD = &cli.Command{
@@ -37,8 +38,16 @@ var accountCMD = &cli.Command{
 			return fmt.Errorf("failed to read theme file: %w", err)
 		}
 
+		var keyringBackend keyring.Keyring
+
+		if command.Bool("plain-auth-storage") {
+			keyringBackend = save.NewPlainKeyringFallback()
+		} else {
+			keyringBackend = save.NewKeyringWrapper()
+		}
+
 		p := tea.NewProgram(
-			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(save.NewKeyringWrapper()), keys, theme),
+			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(keyringBackend), keys, theme),
 			tea.WithContext(ctx),
 			tea.WithAltScreen(),
 		)

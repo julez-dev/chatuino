@@ -47,6 +47,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()
+	ti.Width = width - 2
 
 	s := spinner.New()
 
@@ -66,7 +67,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 }
 
 func (c createModel) Init() tea.Cmd {
-	return nil
+	return c.textinput.Focus()
 }
 
 func (c createModel) Update(msg tea.Msg) (createModel, tea.Cmd) {
@@ -109,7 +110,7 @@ func (c createModel) View() string {
 	switch c.state {
 	case input:
 		view = fmt.Sprintf(
-			"Please enter the Access Token + Refresh Token combination.\nAccess %s/auth/start to start auth flow\n%s\n", c.apiHost, c.textinput.View(),
+			"Please enter the Access Token + Refresh Token combination.\nAccess %s/auth/start to start auth flow\nDon't show on stream!\n%s\n", c.apiHost, c.textinput.View(),
 		)
 	case loading:
 		view = c.spinner.View() + " Loading user information"

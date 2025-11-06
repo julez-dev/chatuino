@@ -27,7 +27,7 @@ require (
 	github.com/julez-dev/reflow v0.0.0-20250718145208-b4c12bfbd7f7
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mailru/easyjson v0.9.1
-	github.com/vbauerster/mpb/v8 v8.10.2
+	github.com/vbauerster/mpb/v8 v8.11.1
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/image v0.32.0
 	modernc.org/sqlite v1.40.0

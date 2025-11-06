@@ -21,6 +21,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
+	"github.com/zalando/go-keyring"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/browser"
@@ -120,6 +121,12 @@ func main() {
 				Name:  "human-readable",
 				Usage: "If the log should be human readable",
 			},
+			&cli.BoolFlag{
+				Name:    "plain-auth-storage",
+				Usage:   "If your twitch authentication tokens should be stored in plain text. E.g. when no keyring is available on your system.",
+				Value:   false,
+				Sources: cli.EnvVars("CHATUINO_PLAIN_AUTH_STORAGE"),
+			},
 		},
 		Before: beforeAction,
 		Action: func(ctx context.Context, command *cli.Command) error {
@@ -142,7 +149,15 @@ func main() {
 				return fmt.Errorf("failed to read keymap file: %w", err)
 			}
 
-			accountProvider := save.NewAccountProvider(save.NewKeyringWrapper())
+			var keyringBackend keyring.Keyring
+
+			if command.Bool("plain-auth-storage") {
+				keyringBackend = save.NewPlainKeyringFallback()
+			} else {
+				keyringBackend = save.NewKeyringWrapper()
+			}
+
+			accountProvider := save.NewAccountProvider(keyringBackend)
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)

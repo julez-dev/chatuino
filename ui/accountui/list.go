@@ -171,6 +171,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if l.state == inTable {
 				l.state = inCreate
 				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost, l.key.KeyMap, l.theme)
+				return l, l.create.Init()
 			} else {
 				l.state = inTable
 			}
