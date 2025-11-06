@@ -41,6 +41,7 @@ func handleMarker(args []string, channelID string, channel string, userAccountID
 	respMsg := chatEventMessage{
 		accountID:   userAccountID,
 		channel:     channel,
+		channelID:   channelID,
 		message:     notice,
 		isFakeEvent: true,
 	}
@@ -93,6 +94,7 @@ func handleAnnouncement(args []string, channel string, channelID string, userAcc
 	respMsg := chatEventMessage{
 		accountID:   userAccountID,
 		channel:     channel,
+		channelID:   channelID,
 		message:     notice,
 		isFakeEvent: true,
 	}
@@ -168,6 +170,7 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 		isFakeEvent: true,
 		accountID:   userAccountID,
 		channel:     channel,
+		channelID:   channelID,
 		message: &command.Notice{
 			FakeTimestamp: time.Now(),
 		},
@@ -210,6 +213,7 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 	respMsg := chatEventMessage{
 		accountID: userAccountID,
 		channel:   channel,
+		channelID: channelID,
 		message:   &command.Notice{},
 	}
 
@@ -296,6 +300,7 @@ func handleDeleteMessages(name string, args []string, channel string, channelID 
 	respMsg := chatEventMessage{
 		accountID:   userAccountID,
 		channel:     channel,
+		channelID:   channelID,
 		message:     notice,
 		isFakeEvent: true,
 	}

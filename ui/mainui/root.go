@@ -166,9 +166,12 @@ type chatEventMessage struct {
 	// If the event was not created by twitch IRC connection but instead locally by message input chat load etc.
 	// This indicates that the root will not start a new wait message command.
 	// All messages requested by requestLocalMessageHandleMessage will have this flag set to true.
-	isFakeEvent bool
-	accountID   string
-	channel     string
+	isFakeEvent             bool
+	accountID               string
+	channel                 string
+	channelID               string
+	channelGuestID          string // source-room-id by twitch
+	channelGuestDisplayName string // set later when broadcast tab reads the message
 
 	message twitch.IRCer
 	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
@@ -1150,45 +1153,70 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channel          string
 		contentOverwrite string
 		prepare          string
+		channelID        string
+		channelGuestID   string
 	)
 
 	switch ircMessage := ircer.(type) {
 	case *command.PrivateMessage:
+		channelID = ircMessage.RoomID
+		channelGuestID = ircMessage.SourceRoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RoomState:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.UserNotice:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.UserState:
 		channel = ircMessage.ChannelUserName
 	case *command.ClearChat:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.ClearMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.SubMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RaidMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.SubGiftMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.RitualMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
 	case *command.AnnouncementMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
 		io.WriteString(os.Stdout, prepare)
+	}
+
+	var channelGuestDisplayName string
+	// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
+	if channelID != "" && channelGuestID != "" {
+		resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
+		if err == nil && len(resp.Data) > 0 {
+			channelGuestDisplayName = resp.Data[0].UserName
+		}
 	}
 
 	return chatEventMessage{
 		isFakeEvent:                 isFakeEvent,
 		accountID:                   accountID,
 		channel:                     channel,
+		channelID:                   channelID,
+		channelGuestID:              channelGuestID,
+		channelGuestDisplayName:     channelGuestDisplayName,
 		tabID:                       tabID,
 		message:                     ircer,
 		messageContentEmoteOverride: contentOverwrite,

@@ -193,7 +193,6 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 
 	s.m.Lock()
 	defer s.m.Unlock()
-	delete(s.channel, channelID)
 	s.channel[channelID] = set.(EmoteSet)
 
 	return nil

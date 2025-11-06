@@ -74,9 +74,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 
 				outChat, outErrChat := chat.ConnectWithRetry(ctx, in)
 
-				chatWG.Add(1)
-				go func() {
-					defer chatWG.Done()
+				chatWG.Go(func() {
 					defer close(done)
 
 					for {
@@ -103,7 +101,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 							}
 						}
 					}
-				}()
+				})
 			} else {
 				m.logger.Info().Msg("channel already exists, no need to start new one")
 			}
@@ -138,14 +136,14 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 			select {
 			case in <- msg.Msg.(twitch.IRCer): // we know it's an IRCer
 			case <-chatDones[accountID]:
-				cancels[accountID]()
-				close(chatIns[accountID])
+				// cancels[accountID]()
+				// close(chatIns[accountID])
 
-				delete(cancels, accountID)
-				delete(chatIns, accountID)
-				delete(chatDones, accountID)
-				delete(numListeners, accountID)
-				m.logger.Warn().Msgf("done for %s is closed", msg.AccountID)
+				// delete(cancels, accountID)
+				// delete(chatIns, accountID)
+				// delete(chatDones, accountID)
+				// delete(numListeners, accountID)
+				m.logger.Warn().Msgf("done for %s is closed, aborting send", msg.AccountID)
 			}
 		}
 

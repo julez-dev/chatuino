@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/julez-dev/chatuino/httputil"
@@ -389,7 +390,7 @@ func runProfilingServer(ctx context.Context, logger zerolog.Logger, host string)
 
 	go func() {
 		<-ctx.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 10)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
 		logger.Info().Msg("shutting down profiling server")

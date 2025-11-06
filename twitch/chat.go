@@ -129,9 +129,7 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 					}
 
 					// sometimes twitch sends multiple messages in one response
-					messages := bytes.Split(wsMessage, []byte("\r\n"))
-
-					for _, message := range messages {
+					for message := range bytes.SplitSeq(wsMessage, []byte("\r\n")) {
 						if len(message) == 0 {
 							continue
 						}
