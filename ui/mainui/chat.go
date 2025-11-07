@@ -52,7 +52,6 @@ type chatWindow struct {
 	logger            zerolog.Logger
 	keymap            save.KeyMap
 	width, height     int
-	emoteStore        EmoteStore
 	userConfiguration UserConfiguration
 	badgeMap          map[string]string
 	timeFormatFunc    func(time.Time) string
