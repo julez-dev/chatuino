@@ -30,11 +30,6 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand(in *jlexer.Lex
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "badge_info":
 			if in.IsNull() {
@@ -83,11 +78,23 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand(in *jlexer.Lex
 				in.Delim(']')
 			}
 		case "bits":
-			out.Bits = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Bits = int(in.Int())
+			}
 		case "color":
-			out.Color = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Color = string(in.String())
+			}
 		case "display_name":
-			out.DisplayName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.DisplayName = string(in.String())
+			}
 		case "emotes":
 			if in.IsNull() {
 				in.Skip()
@@ -96,7 +103,7 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand(in *jlexer.Lex
 				in.Delim('[')
 				if out.Emotes == nil {
 					if !in.IsDelim(']') {
-						out.Emotes = make([]Emote, 0, 2)
+						out.Emotes = make([]Emote, 0, 1)
 					} else {
 						out.Emotes = []Emote{}
 					}
@@ -112,57 +119,163 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand(in *jlexer.Lex
 				in.Delim(']')
 			}
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "mod":
-			out.Mod = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Mod = bool(in.Bool())
+			}
 		case "first_msg":
-			out.FirstMsg = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.FirstMsg = bool(in.Bool())
+			}
 		case "paid_amount":
-			out.PaidAmount = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.PaidAmount = int(in.Int())
+			}
 		case "paid_currency":
-			out.PaidCurrency = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.PaidCurrency = string(in.String())
+			}
 		case "paid_exponent":
-			out.PaidExponent = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.PaidExponent = int(in.Int())
+			}
 		case "paid_level":
-			out.PaidLevel = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.PaidLevel = string(in.String())
+			}
 		case "paid_is_system_message":
-			out.PaidIsSystemMessage = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.PaidIsSystemMessage = bool(in.Bool())
+			}
 		case "parent_msg_id":
-			out.ParentMsgID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ParentMsgID = string(in.String())
+			}
 		case "parent_user_id":
-			out.ParentUserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ParentUserID = string(in.String())
+			}
 		case "parent_user_login":
-			out.ParentUserLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ParentUserLogin = string(in.String())
+			}
 		case "parent_display_name":
-			out.ParentDisplayName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ParentDisplayName = string(in.String())
+			}
 		case "parent_msg_body":
-			out.ParentMsgBody = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ParentMsgBody = string(in.String())
+			}
 		case "thread_parent_msg_id":
-			out.ThreadParentMsgID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ThreadParentMsgID = string(in.String())
+			}
 		case "thread_parent_user_login":
-			out.ThreadParentUserLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ThreadParentUserLogin = string(in.String())
+			}
 		case "room_id":
-			out.RoomID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.RoomID = string(in.String())
+			}
 		case "channel_user_name":
-			out.ChannelUserName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ChannelUserName = string(in.String())
+			}
+		case "login_name":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.LoginName = string(in.String())
+			}
 		case "subscriber":
-			out.Subscriber = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Subscriber = bool(in.Bool())
+			}
 		case "tmi_sent_ts":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.TMISentTS).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.TMISentTS).UnmarshalJSON(data))
+				}
 			}
 		case "turbo":
-			out.Turbo = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Turbo = bool(in.Bool())
+			}
 		case "user_id":
-			out.UserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserID = string(in.String())
+			}
 		case "user_type":
-			out.UserType = UserType(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserType = UserType(in.String())
+			}
 		case "vip":
-			out.VIP = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.VIP = bool(in.Bool())
+			}
 		case "source_id":
-			out.SourceID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SourceID = string(in.String())
+			}
 		case "source_room_id":
-			out.SourceRoomID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SourceRoomID = string(in.String())
+			}
 		case "source_badges":
 			if in.IsNull() {
 				in.Skip()
@@ -187,7 +300,11 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand(in *jlexer.Lex
 				in.Delim(']')
 			}
 		case "message":
-			out.Message = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Message = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -351,6 +468,11 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand(out *jwriter.W
 		out.String(string(in.ChannelUserName))
 	}
 	{
+		const prefix string = ",\"login_name\":"
+		out.RawString(prefix)
+		out.String(string(in.LoginName))
+	}
+	{
 		const prefix string = ",\"subscriber\":"
 		out.RawString(prefix)
 		out.Bool(bool(in.Subscriber))
@@ -436,18 +558,36 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand2(in *jlexer.Le
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
-		case "start":
-			out.Start = int(in.Int())
-		case "end":
-			out.End = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
+		case "positions":
+			if in.IsNull() {
+				in.Skip()
+				out.Positions = nil
+			} else {
+				in.Delim('[')
+				if out.Positions == nil {
+					if !in.IsDelim(']') {
+						out.Positions = make([]EmotePosition, 0, 4)
+					} else {
+						out.Positions = []EmotePosition{}
+					}
+				} else {
+					out.Positions = (out.Positions)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v13 EmotePosition
+					easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand3(in, &v13)
+					out.Positions = append(out.Positions, v13)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -468,8 +608,66 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand2(out *jwriter.
 		out.String(string(in.ID))
 	}
 	{
-		const prefix string = ",\"start\":"
+		const prefix string = ",\"positions\":"
 		out.RawString(prefix)
+		if in.Positions == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v14, v15 := range in.Positions {
+				if v14 > 0 {
+					out.RawByte(',')
+				}
+				easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand3(out, v15)
+			}
+			out.RawByte(']')
+		}
+	}
+	out.RawByte('}')
+}
+func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand3(in *jlexer.Lexer, out *EmotePosition) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		if isTopLevel {
+			in.Consumed()
+		}
+		in.Skip()
+		return
+	}
+	in.Delim('{')
+	for !in.IsDelim('}') {
+		key := in.UnsafeFieldName(false)
+		in.WantColon()
+		switch key {
+		case "start":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Start = int(in.Int())
+			}
+		case "end":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.End = int(in.Int())
+			}
+		default:
+			in.SkipRecursive()
+		}
+		in.WantComma()
+	}
+	in.Delim('}')
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand3(out *jwriter.Writer, in EmotePosition) {
+	out.RawByte('{')
+	first := true
+	_ = first
+	{
+		const prefix string = ",\"start\":"
+		out.RawString(prefix[1:])
 		out.Int(int(in.Start))
 	}
 	{
@@ -492,16 +690,19 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand1(in *jlexer.Le
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "name":
-			out.Name = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Name = string(in.String())
+			}
 		case "version":
-			out.Version = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Version = int(in.Int())
+			}
 		default:
 			in.SkipRecursive()
 		}

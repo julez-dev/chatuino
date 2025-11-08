@@ -132,7 +132,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message)
+			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			io.WriteString(os.Stdout, prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{

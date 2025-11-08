@@ -25,6 +25,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gen2brain/avif"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 	_ "golang.org/x/image/webp"
@@ -139,7 +140,19 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 	}
 }
 
-func (i *Replacer) Replace(channelID, content string) (string, string, error) {
+func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote) (string, string, error) {
+	// twitch sends us a list of emotes used in the message, even emotes from other channels (sub emotes)
+	// parse the emote text with the index and replace it from the global store, since its guaranteed
+	// the user has access to the emote
+	emotesFromIRCTag := []string{}
+	for _, e := range emoteList {
+		c := strings.TrimPrefix(content, "\x01ACTION ")
+		r := []rune(c) // convert to runes for multi byte handling
+		emoteText := string(r[e.Positions[0].Start : e.Positions[0].End+1])
+
+		emotesFromIRCTag = append(emotesFromIRCTag, emoteText)
+	}
+
 	words := strings.Split(content, " ")
 
 	var cmd strings.Builder
@@ -150,6 +163,9 @@ func (i *Replacer) Replace(channelID, content string) (string, string, error) {
 		)
 
 		if channelID == "" {
+			emote, isEmote = i.store.GetByTextAllChannels(word)
+		} else if slices.Contains(emotesFromIRCTag, word) {
+			// current word is emote from tag, should be fetched and added
 			emote, isEmote = i.store.GetByTextAllChannels(word)
 		} else {
 			emote, isEmote = i.store.GetByText(channelID, word)

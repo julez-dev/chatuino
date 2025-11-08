@@ -30,11 +30,6 @@ func easyjson7985edb4DecodeGithubComJulezDevChatuinoTwitchRecentmessage(in *jlex
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "messages":
 			if in.IsNull() {
@@ -53,16 +48,28 @@ func easyjson7985edb4DecodeGithubComJulezDevChatuinoTwitchRecentmessage(in *jlex
 				}
 				for !in.IsDelim(']') {
 					var v1 string
-					v1 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v1 = string(in.String())
+					}
 					out.Messages = append(out.Messages, v1)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "error":
-			out.Error = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Error = string(in.String())
+			}
 		case "error_code":
-			out.ErrorCode = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ErrorCode = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sync"
 
 	"github.com/julez-dev/chatuino/twitch"
 )
@@ -16,7 +15,6 @@ import (
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
-	userInfos  *sync.Map
 }
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
@@ -27,7 +25,6 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 	return &Client{
 		baseURL:    baseURL,
 		httpClient: httpClient,
-		userInfos:  &sync.Map{},
 	}
 }
 
@@ -100,17 +97,11 @@ func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitc
 	}
 
 	if len(broadcastID) == 1 {
-		if v, ok := c.userInfos.Load(broadcastID[0]); ok {
-			return v.(twitch.GetStreamsResponse), nil
-		}
-
 		resp, err := do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
 		if err != nil {
-			c.userInfos.Delete(broadcastID[0])
 			return twitch.GetStreamsResponse{}, err
 		}
 
-		c.userInfos.Swap(broadcastID[0], resp)
 		return resp, nil
 	}
 

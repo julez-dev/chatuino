@@ -475,8 +475,8 @@ func emptyStringZero(s string) string {
 }
 
 func parseEmotes(emoteStr string) []command.Emote {
-	// emote format 79382:20-24
-	emoteSplit := strings.Split(string(emoteStr), ",")
+	// emote format 79382:20-24,40-44/{other emote}
+	emoteSplit := strings.Split(string(emoteStr), "/")
 	emotes := make([]command.Emote, 0, len(emoteSplit))
 
 	for _, emote := range emoteSplit {
@@ -485,28 +485,34 @@ func parseEmotes(emoteStr string) []command.Emote {
 			continue
 		}
 
-		positions := strings.Split(parts[1], "-")
-
-		if len(positions) != 2 {
-			continue
+		e := command.Emote{
+			ID: parts[0],
 		}
 
-		start, err := strconv.Atoi(positions[0])
-		if err != nil {
-			continue
+		for positionPair := range strings.SplitSeq(parts[1], ",") {
+			positions := strings.Split(positionPair, "-")
+
+			if len(positions) != 2 {
+				continue
+			}
+
+			start, err := strconv.Atoi(positions[0])
+			if err != nil {
+				continue
+			}
+
+			end, err := strconv.Atoi(positions[1])
+			if err != nil {
+				continue
+			}
+
+			e.Positions = append(e.Positions, command.EmotePosition{
+				Start: start,
+				End:   end,
+			})
 		}
 
-		end, err := strconv.Atoi(positions[1])
-		if err != nil {
-			continue
-		}
-
-		emotes = append(emotes, command.Emote{
-			ID:    parts[0],
-			Start: start,
-			End:   end,
-		})
-
+		emotes = append(emotes, e)
 	}
 
 	return emotes

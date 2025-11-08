@@ -45,7 +45,7 @@ type EmoteStore interface {
 }
 
 type EmoteReplacer interface {
-	Replace(channelID, content string) (string, string, error)
+	Replace(channelID, content string, emoteList []command.Emote) (string, string, error)
 }
 
 type APIClient interface {
@@ -224,6 +224,8 @@ type Root struct {
 	hasLoadedSession bool
 	screenType       activeScreen
 
+	userIDDisplayName *sync.Map
+
 	// dependencies
 	accounts             AccountProvider
 	emoteStore           EmoteStore
@@ -289,11 +291,12 @@ func NewUI(
 
 	clients := map[string]APIClient{}
 	return &Root{
-		clientID: clientID,
-		logger:   logger,
-		width:    10,
-		height:   10,
-		keymap:   keymap,
+		clientID:          clientID,
+		logger:            logger,
+		width:             10,
+		height:            10,
+		keymap:            keymap,
+		userIDDisplayName: &sync.Map{},
 
 		// components
 		splash: splash{
@@ -397,7 +400,7 @@ func (r *Root) Init() tea.Cmd {
 					continue
 				}
 
-				go func() {
+				wg.Go(func() {
 					ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 					defer cancel()
 					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
@@ -423,7 +426,7 @@ func (r *Root) Init() tea.Cmd {
 					}
 
 					r.emoteStore.AddUserEmotes(acc.ID, emotes)
-				}()
+				})
 			}
 
 			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
@@ -442,10 +445,7 @@ func (r *Root) Init() tea.Cmd {
 			var userDataErr error
 
 			if len(logins) > 0 {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 					defer cancel()
 
@@ -459,7 +459,7 @@ func (r *Root) Init() tea.Cmd {
 					for _, data := range resp.Data {
 						ttvUsers[data.Login] = data
 					}
-				}()
+				})
 			}
 
 			wg.Wait()
@@ -1162,7 +1162,14 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelID = ircMessage.RoomID
 		channelGuestID = ircMessage.SourceRoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+
+		// if is shared display emotes from guest channel, when message is from guest
+		emoteSourceRoom := channelID
+		if channelID != channelGuestID {
+			emoteSourceRoom = channelGuestID
+		}
+
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RoomState:
 		channelID = ircMessage.RoomID
@@ -1181,7 +1188,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	case *command.SubMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RaidMessage:
 		channelID = ircMessage.RoomID
@@ -1192,21 +1199,29 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	case *command.RitualMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	case *command.AnnouncementMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	}
 
 	var channelGuestDisplayName string
 	// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
 	if channelID != "" && channelGuestID != "" {
-		resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
-		if err == nil && len(resp.Data) > 0 {
-			channelGuestDisplayName = resp.Data[0].UserName
+		if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
+			channelGuestDisplayName = v.(string)
+		} else {
+			// try refresh emotes for guest
+			_ = r.emoteStore.RefreshLocal(context.Background(), channelGuestID)
+
+			resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
+			if err == nil && len(resp.Data) > 0 {
+				channelGuestDisplayName = resp.Data[0].UserName
+				r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
+			}
 		}
 	}
 

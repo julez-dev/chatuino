@@ -30,11 +30,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch(in *jlexer.Lexer, out
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -53,7 +48,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch(in *jlexer.Lexer, out
 				}
 				for !in.IsDelim(']') {
 					var v1 UserData
-					(v1).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v1).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v1)
 					in.WantComma()
 				}
@@ -128,18 +127,25 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch1(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "emote_set_id":
-			out.EmoteSetID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.EmoteSetID = string(in.String())
+			}
 		case "emote_type":
-			out.EmoteType = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.EmoteType = string(in.String())
+			}
 		case "format":
 			if in.IsNull() {
 				in.Skip()
@@ -157,16 +163,28 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch1(in *jlexer.Lexer, ou
 				}
 				for !in.IsDelim(']') {
 					var v4 string
-					v4 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v4 = string(in.String())
+					}
 					out.Format = append(out.Format, v4)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "name":
-			out.Name = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Name = string(in.String())
+			}
 		case "owner_id":
-			out.OwnerID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.OwnerID = string(in.String())
+			}
 		case "scale":
 			if in.IsNull() {
 				in.Skip()
@@ -184,7 +202,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch1(in *jlexer.Lexer, ou
 				}
 				for !in.IsDelim(']') {
 					var v5 string
-					v5 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v5 = string(in.String())
+					}
 					out.Scale = append(out.Scale, v5)
 					in.WantComma()
 				}
@@ -207,7 +229,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch1(in *jlexer.Lexer, ou
 				}
 				for !in.IsDelim(']') {
 					var v6 string
-					v6 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v6 = string(in.String())
+					}
 					out.ThemeMode = append(out.ThemeMode, v6)
 					in.WantComma()
 				}
@@ -339,35 +365,74 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch2(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "login":
-			out.Login = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Login = string(in.String())
+			}
 		case "display_name":
-			out.DisplayName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.DisplayName = string(in.String())
+			}
 		case "type":
-			out.Type = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = string(in.String())
+			}
 		case "broadcaster_type":
-			out.BroadcasterType = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterType = string(in.String())
+			}
 		case "description":
-			out.Description = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Description = string(in.String())
+			}
 		case "profile_image_url":
-			out.ProfileImageURL = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ProfileImageURL = string(in.String())
+			}
 		case "offline_image_url":
-			out.OfflineImageURL = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.OfflineImageURL = string(in.String())
+			}
 		case "view_count":
-			out.ViewCount = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ViewCount = int(in.Int())
+			}
 		case "email":
-			out.Email = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Email = string(in.String())
+			}
 		case "created_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.CreatedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.CreatedAt).UnmarshalJSON(data))
+				}
 			}
 		default:
 			in.SkipRecursive()
@@ -477,20 +542,31 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch3(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "color":
-			out.Color = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Color = string(in.String())
+			}
 		case "user_name":
-			out.UserName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserName = string(in.String())
+			}
 		case "user_login":
-			out.UserLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserLogin = string(in.String())
+			}
 		case "user_id":
-			out.UserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserID = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -564,46 +640,101 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch4(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "broadcaster_name":
-			out.BroadcasterName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterName = string(in.String())
+			}
 		case "broadcaster_login":
-			out.BroadcasterLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterLogin = string(in.String())
+			}
 		case "broadcaster_id":
-			out.BroadcasterID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterID = string(in.String())
+			}
 		case "moderator_id":
-			out.ModeratorID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ModeratorID = string(in.String())
+			}
 		case "moderator_login":
-			out.ModeratorLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ModeratorLogin = string(in.String())
+			}
 		case "moderator_name":
-			out.ModeratorName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ModeratorName = string(in.String())
+			}
 		case "user_id":
-			out.UserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserID = string(in.String())
+			}
 		case "user_login":
-			out.UserLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserLogin = string(in.String())
+			}
 		case "user_name":
-			out.UserName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserName = string(in.String())
+			}
 		case "text":
-			out.Text = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Text = string(in.String())
+			}
 		case "status":
-			out.Status = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Status = string(in.String())
+			}
 		case "created_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.CreatedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.CreatedAt).UnmarshalJSON(data))
+				}
 			}
 		case "resolved_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.ResolvedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.ResolvedAt).UnmarshalJSON(data))
+				}
 			}
 		case "resolution_text":
-			out.ResolutionText = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ResolutionText = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -732,22 +863,33 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch5(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "created_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.CreatedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.CreatedAt).UnmarshalJSON(data))
+				}
 			}
 		case "position_seconds":
-			out.PositionSeconds = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.PositionSeconds = int(in.Int())
+			}
 		case "description":
-			out.Description = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Description = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -821,28 +963,55 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "user_id":
-			out.UserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserID = string(in.String())
+			}
 		case "user_login":
-			out.UserLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserLogin = string(in.String())
+			}
 		case "user_name":
-			out.UserName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserName = string(in.String())
+			}
 		case "game_id":
-			out.GameID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.GameID = string(in.String())
+			}
 		case "game_name":
-			out.GameName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.GameName = string(in.String())
+			}
 		case "type":
-			out.Type = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = string(in.String())
+			}
 		case "title":
-			out.Title = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Title = string(in.String())
+			}
 		case "tags":
 			if in.IsNull() {
 				in.Skip()
@@ -860,22 +1029,42 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(in *jlexer.Lexer, ou
 				}
 				for !in.IsDelim(']') {
 					var v13 string
-					v13 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v13 = string(in.String())
+					}
 					out.Tags = append(out.Tags, v13)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "viewer_count":
-			out.ViewerCount = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ViewerCount = int(in.Int())
+			}
 		case "started_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.StartedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.StartedAt).UnmarshalJSON(data))
+				}
 			}
 		case "language":
-			out.Language = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Language = string(in.String())
+			}
 		case "thumbnail_url":
-			out.ThumbnailURL = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ThumbnailURL = string(in.String())
+			}
 		case "tag_ids":
 			if in.IsNull() {
 				in.Skip()
@@ -906,7 +1095,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch6(in *jlexer.Lexer, ou
 				in.Delim(']')
 			}
 		case "is_mature":
-			out.IsMature = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.IsMature = bool(in.Bool())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -1063,14 +1256,13 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch7(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "cursor":
-			out.Cursor = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Cursor = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -1129,11 +1321,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -1152,16 +1339,28 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch8(in *jlexer.Lexer, ou
 				}
 				for !in.IsDelim(']') {
 					var v19 UserEmoteImage
-					(v19).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v19).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v19)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "template":
-			out.Template = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Template = string(in.String())
+			}
 		case "pagination":
-			(out.Pagination).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Pagination).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -1241,11 +1440,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(in *jlexer.Lexer, ou
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -1264,7 +1458,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch9(in *jlexer.Lexer, ou
 				}
 				for !in.IsDelim(']') {
 					var v22 UserChatColor
-					(v22).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v22).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v22)
 					in.WantComma()
 				}
@@ -1339,11 +1537,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -1362,14 +1555,22 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch10(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v25 UnbanRequest
-					(v25).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v25).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v25)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "pagination":
-			(out.Pagination).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Pagination).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -1444,11 +1645,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -1467,14 +1663,22 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch11(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v28 StreamData
-					(v28).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v28).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v28)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "pagination":
-			(out.Pagination).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Pagination).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -1549,14 +1753,13 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "total":
-			out.Total = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Total = int(in.Int())
+			}
 		case "data":
 			if in.IsNull() {
 				in.Skip()
@@ -1574,14 +1777,22 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch12(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v31 FollowedChannel
-					(v31).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v31).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v31)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "pagination":
-			(out.Pagination).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Pagination).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -1661,20 +1872,31 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "total":
-			out.Total = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Total = int(in.Int())
+			}
 		case "total_cost":
-			out.TotalCost = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.TotalCost = int(in.Int())
+			}
 		case "max_total_cost":
-			out.MaxTotalCost = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.MaxTotalCost = int(in.Int())
+			}
 		case "pagination":
-			(out.Pagination).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Pagination).UnmarshalEasyJSON(in)
+			}
 		case "data":
 			if in.IsNull() {
 				in.Skip()
@@ -1692,7 +1914,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch13(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v34 EventSubData
-					(v34).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v34).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v34)
 					in.WantComma()
 				}
@@ -1787,11 +2013,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -1810,7 +2031,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch14(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v37 ChatSettingData
-					(v37).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v37).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v37)
 					in.WantComma()
 				}
@@ -1885,11 +2110,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -1908,7 +2128,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch15(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v40 ChannelChatBadges
-					(v40).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v40).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v40)
 					in.WantComma()
 				}
@@ -1983,21 +2207,32 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch16(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "broadcaster_id":
-			out.BroadcasterID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterID = string(in.String())
+			}
 		case "broadcaster_login":
-			out.BroadcasterLogin = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterLogin = string(in.String())
+			}
 		case "broadcaster_name":
-			out.BroadcasterName = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterName = string(in.String())
+			}
 		case "followed_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.FollowedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.FollowedAt).UnmarshalJSON(data))
+				}
 			}
 		default:
 			in.SkipRecursive()
@@ -2072,22 +2307,37 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch17(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "method":
-			out.Method = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Method = string(in.String())
+			}
 		case "callback":
-			out.Callback = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Callback = string(in.String())
+			}
 		case "conduit_id":
-			out.ConduitID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ConduitID = string(in.String())
+			}
 		case "secret":
-			out.Secret = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Secret = string(in.String())
+			}
 		case "session_id":
-			out.SessionID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SessionID = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -2166,16 +2416,19 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch18(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "method":
-			out.Method = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Method = string(in.String())
+			}
 		case "conduit_id":
-			out.ConduitID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ConduitID = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -2239,20 +2492,31 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "status":
-			out.Status = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Status = string(in.String())
+			}
 		case "type":
-			out.Type = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = string(in.String())
+			}
 		case "version":
-			out.Version = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Version = string(in.String())
+			}
 		case "condition":
 			if in.IsNull() {
 				in.Skip()
@@ -2263,20 +2527,36 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch19(in *jlexer.Lexer, o
 					key := string(in.String())
 					in.WantColon()
 					var v43 string
-					v43 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v43 = string(in.String())
+					}
 					(out.Condition)[key] = v43
 					in.WantComma()
 				}
 				in.Delim('}')
 			}
 		case "created_at":
-			if data := in.Raw(); in.Ok() {
-				in.AddError((out.CreatedAt).UnmarshalJSON(data))
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				if data := in.Raw(); in.Ok() {
+					in.AddError((out.CreatedAt).UnmarshalJSON(data))
+				}
 			}
 		case "transport":
-			(out.Transport).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Transport).UnmarshalEasyJSON(in)
+			}
 		case "cost":
-			out.Cost = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Cost = int(in.Int())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -2386,11 +2666,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -2409,14 +2684,22 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch20(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v45 EmoteData
-					(v45).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v45).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v45)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "template":
-			out.Template = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Template = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -2491,18 +2774,25 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch21(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "url_1x":
-			out.URL1X = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.URL1X = string(in.String())
+			}
 		case "url_2x":
-			out.URL2X = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.URL2X = string(in.String())
+			}
 		case "url_4x":
-			out.URL4X = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.URL4X = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -2571,18 +2861,25 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "name":
-			out.Name = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Name = string(in.String())
+			}
 		case "images":
-			(out.Images).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Images).UnmarshalEasyJSON(in)
+			}
 		case "format":
 			if in.IsNull() {
 				in.Skip()
@@ -2600,7 +2897,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v48 string
-					v48 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v48 = string(in.String())
+					}
 					out.Format = append(out.Format, v48)
 					in.WantComma()
 				}
@@ -2623,7 +2924,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v49 string
-					v49 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v49 = string(in.String())
+					}
 					out.Scale = append(out.Scale, v49)
 					in.WantComma()
 				}
@@ -2646,7 +2951,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch22(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v50 string
-					v50 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v50 = string(in.String())
+					}
 					out.ThemeMode = append(out.ThemeMode, v50)
 					in.WantComma()
 				}
@@ -2768,16 +3077,19 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch23(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "edit_url":
-			out.EditURL = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.EditURL = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -2841,11 +3153,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -2864,7 +3171,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch24(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v57 StreamMarker
-					(v57).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v57).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v57)
 					in.WantComma()
 				}
@@ -2939,16 +3250,19 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch25(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "user_id":
-			out.UserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserID = string(in.String())
+			}
 		case "description":
-			out.Description = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Description = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -3012,11 +3326,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -3035,18 +3344,34 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch26(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v60 EventSubData
-					(v60).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v60).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v60)
 					in.WantComma()
 				}
 				in.Delim(']')
 			}
 		case "total":
-			out.Total = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Total = int(in.Int())
+			}
 		case "total_cost":
-			out.TotalCost = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.TotalCost = int(in.Int())
+			}
 		case "max_total_cost":
-			out.MaxTotalCost = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.MaxTotalCost = int(in.Int())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -3131,16 +3456,19 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "type":
-			out.Type = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = string(in.String())
+			}
 		case "version":
-			out.Version = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Version = string(in.String())
+			}
 		case "condition":
 			if in.IsNull() {
 				in.Skip()
@@ -3151,14 +3479,22 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch27(in *jlexer.Lexer, o
 					key := string(in.String())
 					in.WantColon()
 					var v63 string
-					v63 = string(in.String())
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						v63 = string(in.String())
+					}
 					(out.Condition)[key] = v63
 					in.WantComma()
 				}
 				in.Delim('}')
 			}
 		case "transport":
-			(out.Transport).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Transport).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -3248,11 +3584,6 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
 			if in.IsNull() {
@@ -3271,7 +3602,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch28(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v65 CreatedClip
-					(v65).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v65).UnmarshalEasyJSON(in)
+					}
 					out.Data = append(out.Data, v65)
 					in.WantComma()
 				}
@@ -3346,32 +3681,67 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch29(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "broadcaster_id":
-			out.BroadcasterID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.BroadcasterID = string(in.String())
+			}
 		case "slow_mode":
-			out.SlowMode = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SlowMode = bool(in.Bool())
+			}
 		case "slow_mode_wait_time":
-			out.SlowModeWaitTime = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SlowModeWaitTime = int(in.Int())
+			}
 		case "follower_mode":
-			out.FollowerMode = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.FollowerMode = bool(in.Bool())
+			}
 		case "follower_mode_duration":
-			out.FollowerModeDuration = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.FollowerModeDuration = int(in.Int())
+			}
 		case "subscriber_mode":
-			out.SubscriberMode = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SubscriberMode = bool(in.Bool())
+			}
 		case "emote_mode":
-			out.EmoteMode = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.EmoteMode = bool(in.Bool())
+			}
 		case "unique_chat_mode":
-			out.UniqueChatMode = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UniqueChatMode = bool(in.Bool())
+			}
 		case "non_moderator_chat_delay":
-			out.NonModeratorChatDelay = bool(in.Bool())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.NonModeratorChatDelay = bool(in.Bool())
+			}
 		case "non_moderator_chat_delay_duration":
-			out.NonModeratorChatDelayDuration = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.NonModeratorChatDelayDuration = int(in.Int())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -3475,14 +3845,13 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch30(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "set_id":
-			out.SetID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.SetID = string(in.String())
+			}
 		case "versions":
 			if in.IsNull() {
 				in.Skip()
@@ -3500,7 +3869,11 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch30(in *jlexer.Lexer, o
 				}
 				for !in.IsDelim(']') {
 					var v68 ChannelChatBadgeVersion
-					(v68).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v68).UnmarshalEasyJSON(in)
+					}
 					out.Versions = append(out.Versions, v68)
 					in.WantComma()
 				}
@@ -3580,28 +3953,55 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch31(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "id":
-			out.ID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ID = string(in.String())
+			}
 		case "image_url_1x":
-			out.Image_URL_1x = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Image_URL_1x = string(in.String())
+			}
 		case "image_url_2x":
-			out.Image_URL_2x = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Image_URL_2x = string(in.String())
+			}
 		case "image_url_4x":
-			out.Image_URL_4x = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Image_URL_4x = string(in.String())
+			}
 		case "title":
-			out.Title = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Title = string(in.String())
+			}
 		case "description":
-			out.Description = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Description = string(in.String())
+			}
 		case "click_action":
-			out.ClickAction = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ClickAction = string(in.String())
+			}
 		case "click_url":
-			out.ClickURL = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ClickURL = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -3695,14 +4095,13 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch32(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "data":
-			(out.Data).UnmarshalEasyJSON(in)
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				(out.Data).UnmarshalEasyJSON(in)
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -3761,18 +4160,25 @@ func easyjson3f687995DecodeGithubComJulezDevChatuinoTwitch33(in *jlexer.Lexer, o
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "user_id":
-			out.UserID = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.UserID = string(in.String())
+			}
 		case "duration":
-			out.DurationInSeconds = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.DurationInSeconds = int(in.Int())
+			}
 		case "reason":
-			out.Reason = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Reason = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}

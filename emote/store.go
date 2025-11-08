@@ -40,7 +40,7 @@ type Store struct {
 
 	global  EmoteSet
 	channel map[string]EmoteSet
-	user    map[string]EmoteSet
+	user    map[string]EmoteSet // emoteset usable by a specific twitch ID (for exapmle subs.)
 
 	twitchEmotes  TwitchEmoteFetcher
 	sevenTVEmotes SevenTVEmoteFetcher
@@ -180,10 +180,6 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 			})
 		}
 
-		s.m.Lock()
-		s.channelsFetched[channelID] = struct{}{}
-		s.m.Unlock()
-
 		return emoteSet, nil
 	})
 
@@ -193,6 +189,7 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 
 	s.m.Lock()
 	defer s.m.Unlock()
+	s.channelsFetched[channelID] = struct{}{}
 	s.channel[channelID] = set.(EmoteSet)
 
 	return nil
@@ -289,10 +286,6 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 			})
 		}
 
-		s.m.Lock()
-		s.globalFetched = true
-		s.m.Unlock()
-
 		return emoteSet, nil
 	})
 
@@ -304,6 +297,7 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 
 	s.m.Lock()
 	defer s.m.Unlock()
+	s.globalFetched = true
 	s.global = set.(EmoteSet)
 
 	return nil
@@ -425,5 +419,6 @@ func (s *Store) AddUserEmotes(userID string, emotes []Emote) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
+	log.Logger.Info().Str("user-id", userID).Msg("added emote for user to storage")
 	s.user[userID] = append(s.user[userID], emotes...)
 }

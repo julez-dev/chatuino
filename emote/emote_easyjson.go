@@ -30,20 +30,31 @@ func easyjsonC0c766a6DecodeGithubComJulezDevChatuinoEmote(in *jlexer.Lexer, out 
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "width":
-			out.Width = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Width = int(in.Int())
+			}
 		case "height":
-			out.Height = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Height = int(in.Int())
+			}
 		case "encoded_path":
-			out.EncodedPath = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.EncodedPath = string(in.String())
+			}
 		case "delay_in_ms":
-			out.DelayInMS = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.DelayInMS = int(in.Int())
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -103,14 +114,13 @@ func easyjsonC0c766a6DecodeGithubComJulezDevChatuinoEmote1(in *jlexer.Lexer, out
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "cols":
-			out.Cols = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Cols = int(in.Int())
+			}
 		case "images":
 			if in.IsNull() {
 				in.Skip()
@@ -128,7 +138,11 @@ func easyjsonC0c766a6DecodeGithubComJulezDevChatuinoEmote1(in *jlexer.Lexer, out
 				}
 				for !in.IsDelim(']') {
 					var v1 DecodedImage
-					(v1).UnmarshalEasyJSON(in)
+					if in.IsNull() {
+						in.Skip()
+					} else {
+						(v1).UnmarshalEasyJSON(in)
+					}
 					out.Images = append(out.Images, v1)
 					in.WantComma()
 				}

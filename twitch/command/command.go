@@ -28,7 +28,11 @@ func (b Badge) String() string {
 }
 
 type Emote struct {
-	ID    string
+	ID        string
+	Positions []EmotePosition
+}
+
+type EmotePosition struct {
 	Start int
 	End   int
 }
