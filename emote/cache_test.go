@@ -59,7 +59,7 @@ func TestRefreshLocal(t *testing.T) {
 		},
 	}, nil)
 
-	store := emote.NewStore(
+	store := emote.NewCache(
 		zerolog.Nop(),
 		ttv,
 		seven,
@@ -70,7 +70,7 @@ func TestRefreshLocal(t *testing.T) {
 	err := store.RefreshLocal(context.Background(), "test-channel")
 	assert.Nil(t, err)
 
-	set := store.GetAllForUser("test-channel")
+	set := store.GetAllForChannel("test-channel")
 	_, ok := set.GetByText("Kappa")
 	assert.True(t, ok)
 

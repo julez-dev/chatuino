@@ -48,8 +48,8 @@ type userInspect struct {
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, emoteStore EmoteStore, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration) *userInspect {
-	c := newChatWindow(logger, width, height, emoteStore, keymap, userConfiguration)
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration) *userInspect {
+	c := newChatWindow(logger, width, height, keymap, userConfiguration)
 	c.timeFormatFunc = func(t time.Time) string {
 		return t.Local().Format("2006-01-02 15:04:05")
 	}
@@ -132,7 +132,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message)
+			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			io.WriteString(os.Stdout, prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{

@@ -52,7 +52,6 @@ type chatWindow struct {
 	logger            zerolog.Logger
 	keymap            save.KeyMap
 	width, height     int
-	emoteStore        EmoteStore
 	userConfiguration UserConfiguration
 	badgeMap          map[string]string
 	timeFormatFunc    func(time.Time) string
@@ -85,7 +84,7 @@ type chatWindow struct {
 	errorAlertStyle     lipgloss.Style
 }
 
-func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteStore, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
+func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
 	badgeMap := map[string]string{
 		"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatStreamerColor)).Render("Streamer"),
 		"no_audio":    "No Audio",
@@ -113,7 +112,6 @@ func newChatWindow(logger zerolog.Logger, width, height int, emoteStore EmoteSto
 		logger:         logger,
 		width:          width,
 		height:         height,
-		emoteStore:     emoteStore,
 		userColorCache: map[string]func(...string) string{},
 		timeFormatFunc: func(t time.Time) string {
 			return t.Local().Format("15:04:05")
@@ -608,19 +606,40 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
 		var prefix string
-		if len(badges) == 0 {
-			// start of the message (sent date + username)
-			prefix = fmt.Sprintf("  %s %s: ",
-				c.timeFormatFunc(msg.TMISentTS),
-				userRenderFunc(msg.DisplayName),
-			)
+
+		// if set it means the message is in context of a shared chat
+		if event.channelGuestDisplayName != "" {
+			if len(badges) == 0 {
+				// start of the message (sent date + username)
+				prefix = fmt.Sprintf("  %s |%s| %s: ",
+					c.timeFormatFunc(msg.TMISentTS),
+					event.channelGuestDisplayName,
+					userRenderFunc(msg.DisplayName),
+				)
+			} else {
+				// start of the message (sent date + badges + username)
+				prefix = fmt.Sprintf("  %s |%s| [%s] %s: ",
+					c.timeFormatFunc(msg.TMISentTS),
+					event.channelGuestDisplayName,
+					strings.Join(badges, ", "),
+					userRenderFunc(msg.DisplayName),
+				)
+			}
 		} else {
-			// start of the message (sent date + badges + username)
-			prefix = fmt.Sprintf("  %s [%s] %s: ",
-				c.timeFormatFunc(msg.TMISentTS),
-				strings.Join(badges, ", "),
-				userRenderFunc(msg.DisplayName),
-			)
+			if len(badges) == 0 {
+				// start of the message (sent date + username)
+				prefix = fmt.Sprintf("  %s %s: ",
+					c.timeFormatFunc(msg.TMISentTS),
+					userRenderFunc(msg.DisplayName),
+				)
+			} else {
+				// start of the message (sent date + badges + username)
+				prefix = fmt.Sprintf("  %s [%s] %s: ",
+					c.timeFormatFunc(msg.TMISentTS),
+					strings.Join(badges, ", "),
+					userRenderFunc(msg.DisplayName),
+				)
+			}
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))

@@ -9,6 +9,8 @@ import (
 
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/rs/zerolog/log"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -50,7 +52,7 @@ func TestReplacer_Replace(t *testing.T) {
 			return nil
 		}
 
-		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote")
+		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote", nil)
 		assert.Nil(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
 		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m emote", replacedText)
@@ -81,7 +83,7 @@ func TestReplacer_Replace(t *testing.T) {
 			return nil
 		}
 
-		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote")
+		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote", nil)
 		assert.Nil(t, err)
 		assert.Equal(t, "", command)
 		assert.Equal(t, "Test Message with Kappa emote", replacedText)
@@ -135,11 +137,61 @@ func TestReplacer_Replace(t *testing.T) {
 			return nil
 		}
 
-		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote")
+		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote", nil)
 		assert.True(t, cached, "should call saveCached")
 		assert.Nil(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=28,v=28;L3BhdGgvdG8va2FwcGEucG5n\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=1\x1b\\", command)
 		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\x1b[39m emote", replacedText)
+	})
+
+	t.Run("badge-list", func(t *testing.T) {
+		store := &mockEmoteStore{
+			emotes: map[string]Emote{
+				"KappaCustomID": {
+					Text:     "Kappa",
+					URL:      "https://example.com/kappa.png",
+					Platform: Twitch,
+				},
+			},
+		}
+
+		replacer := NewReplacer(nil, store, true, 10, 10, save.Theme{})
+		replacer.createEncodedImage = func(buff []byte, e Emote, offset int) (string, error) {
+			t.Log("should not call createEncodedImage")
+			return "", nil
+		}
+		replacer.openCached = func(e Emote) (DecodedEmote, bool, error) {
+			assert.Equal(t, "Kappa", e.Text)
+			return DecodedEmote{
+				Cols: 2,
+				Images: []DecodedImage{
+					{
+						Width:       10,
+						Height:      10,
+						EncodedPath: "/path/to/kappa.png",
+					},
+				},
+			}, true, nil
+		}
+		replacer.saveCached = func(e Emote, decoded DecodedEmote) error {
+			t.Log("should not call saveCached")
+			return nil
+		}
+
+		command, replacedText, err := replacer.Replace("123", "Test Message with Kappa emote", []command.Emote{
+			{
+				ID: "KappaCustomID",
+				Positions: []command.EmotePosition{
+					{
+						Start: 18,
+						End:   22,
+					},
+				},
+			},
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
+		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m emote", replacedText)
 	})
 }
 
@@ -185,4 +237,9 @@ func (m *mockEmoteStore) GetByTextAllChannels(text string) (Emote, bool) {
 
 func (m *mockEmoteStore) GetByText(_ string, text string) (Emote, bool) {
 	return m.GetByTextAllChannels(text)
+}
+
+func (m *mockEmoteStore) LoadSetForeignEmote(id, text string) Emote {
+	log.Logger.Info().Str("id", id).Str("text", text).Send()
+	return m.emotes[id]
 }

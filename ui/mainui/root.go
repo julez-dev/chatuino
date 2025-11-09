@@ -39,13 +39,15 @@ type EmoteStore interface {
 	GetByText(channelID, text string) (emote.Emote, bool)
 	RefreshLocal(ctx context.Context, channelID string) error
 	RefreshGlobal(ctx context.Context) error
-	GetAllForUser(id string) emote.EmoteSet
+	GetAllForChannel(id string) emote.EmoteSet
 	AddUserEmotes(userID string, emotes []emote.Emote)
 	AllEmotesUsableByUser(userID string) []emote.Emote
+	RemoveEmoteSetForChannel(channelID string)
+	LoadSetForeignEmote(emoteID, emoteText string) emote.Emote
 }
 
 type EmoteReplacer interface {
-	Replace(channelID, content string) (string, string, error)
+	Replace(channelID, content string, emoteList []command.Emote) (string, string, error)
 }
 
 type APIClient interface {
@@ -166,9 +168,12 @@ type chatEventMessage struct {
 	// If the event was not created by twitch IRC connection but instead locally by message input chat load etc.
 	// This indicates that the root will not start a new wait message command.
 	// All messages requested by requestLocalMessageHandleMessage will have this flag set to true.
-	isFakeEvent bool
-	accountID   string
-	channel     string
+	isFakeEvent             bool
+	accountID               string
+	channel                 string
+	channelID               string
+	channelGuestID          string // source-room-id by twitch
+	channelGuestDisplayName string // set later when broadcast tab reads the message
 
 	message twitch.IRCer
 	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
@@ -220,6 +225,8 @@ type Root struct {
 
 	hasLoadedSession bool
 	screenType       activeScreen
+
+	userIDDisplayName *sync.Map
 
 	// dependencies
 	accounts             AccountProvider
@@ -286,11 +293,12 @@ func NewUI(
 
 	clients := map[string]APIClient{}
 	return &Root{
-		clientID: clientID,
-		logger:   logger,
-		width:    10,
-		height:   10,
-		keymap:   keymap,
+		clientID:          clientID,
+		logger:            logger,
+		width:             10,
+		height:            10,
+		keymap:            keymap,
+		userIDDisplayName: &sync.Map{},
 
 		// components
 		splash: splash{
@@ -394,7 +402,7 @@ func (r *Root) Init() tea.Cmd {
 					continue
 				}
 
-				go func() {
+				wg.Go(func() {
 					ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 					defer cancel()
 					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
@@ -420,7 +428,7 @@ func (r *Root) Init() tea.Cmd {
 					}
 
 					r.emoteStore.AddUserEmotes(acc.ID, emotes)
-				}()
+				})
 			}
 
 			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
@@ -439,10 +447,7 @@ func (r *Root) Init() tea.Cmd {
 			var userDataErr error
 
 			if len(logins) > 0 {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 					defer cancel()
 
@@ -456,7 +461,7 @@ func (r *Root) Init() tea.Cmd {
 					for _, data := range resp.Data {
 						ttvUsers[data.Login] = data
 					}
-				}()
+				})
 			}
 
 			wg.Wait()
@@ -690,13 +695,18 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
-						hasOther := slices.ContainsFunc(r.tabs, func(t tab) bool {
+						hasTabsSameAccountAndChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.AccountID() == currentTab.AccountID() &&
-								t.Channel() == currentTab.Channel()
+								t.ChannelID() == currentTab.ChannelID()
 						})
 
-						if !hasOther {
+						hasTabsSameChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
+							return t.ID() != currentTab.ID() &&
+								t.ChannelID() == currentTab.ChannelID()
+						})
+
+						if !hasTabsSameAccountAndChannel {
 							// send part message
 							r.logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
 							cmds = append(cmds, func() tea.Msg {
@@ -708,6 +718,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								}
 								return nil
 							})
+						}
+
+						if !hasTabsSameChannel {
+							r.logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
+							r.emoteStore.RemoveEmoteSetForChannel(currentTab.ChannelID())
 						}
 
 						r.closerWG.Add(1)
@@ -1150,45 +1165,85 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channel          string
 		contentOverwrite string
 		prepare          string
+		channelID        string
+		channelGuestID   string
 	)
 
 	switch ircMessage := ircer.(type) {
 	case *command.PrivateMessage:
+		channelID = ircMessage.RoomID
+		channelGuestID = ircMessage.SourceRoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+
+		// if is shared display emotes from guest channel, when message is from guest
+		emoteSourceRoom := channelID
+		if channelGuestID != "" && channelID != channelGuestID {
+			emoteSourceRoom = channelGuestID
+		}
+
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RoomState:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.UserNotice:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.UserState:
 		channel = ircMessage.ChannelUserName
 	case *command.ClearChat:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.ClearMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.SubMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	case *command.RaidMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.SubGiftMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *command.RitualMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
 	case *command.AnnouncementMessage:
+		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message)
+		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 		io.WriteString(os.Stdout, prepare)
+	}
+
+	var channelGuestDisplayName string
+	// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
+	if channelID != "" && channelGuestID != "" {
+		if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
+			channelGuestDisplayName = v.(string)
+		} else {
+			// try refresh emotes for guest
+			_ = r.emoteStore.RefreshLocal(context.Background(), channelGuestID)
+
+			resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
+			if err == nil && len(resp.Data) > 0 {
+				channelGuestDisplayName = resp.Data[0].UserName
+				r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
+			}
+		}
 	}
 
 	return chatEventMessage{
 		isFakeEvent:                 isFakeEvent,
 		accountID:                   accountID,
 		channel:                     channel,
+		channelID:                   channelID,
+		channelGuestID:              channelGuestID,
+		channelGuestDisplayName:     channelGuestDisplayName,
 		tabID:                       tabID,
 		message:                     ircer,
 		messageContentEmoteOverride: contentOverwrite,

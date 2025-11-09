@@ -97,7 +97,12 @@ func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitc
 	}
 
 	if len(broadcastID) == 1 {
-		return do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
+		resp, err := do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
+		if err != nil {
+			return twitch.GetStreamsResponse{}, err
+		}
+
+		return resp, nil
 	}
 
 	userValues := url.Values{}

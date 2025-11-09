@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/julez-dev/chatuino/httputil"
@@ -164,7 +165,7 @@ func main() {
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
-			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
+			emoteStore := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
 
 			// message logger setup
 			db, err := openDB(false)
@@ -203,7 +204,7 @@ func main() {
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					emoteStore = emote.NewStore(log.Logger, ttvAPI, stvAPI, bttvAPI)
+					emoteStore = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
 				}
 			}
 
@@ -389,7 +390,7 @@ func runProfilingServer(ctx context.Context, logger zerolog.Logger, host string)
 
 	go func() {
 		<-ctx.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), 10)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
 		logger.Info().Msg("shutting down profiling server")

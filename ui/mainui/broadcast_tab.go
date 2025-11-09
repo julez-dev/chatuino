@@ -333,7 +333,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.channelID = msg.channelID
 		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
 		t.poll = newPoll(t.width)
-		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.emoteStore, t.keymap, t.userConfiguration)
+		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.keymap, t.userConfiguration)
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.userConfiguration.Settings.BuildCustomSuggestionMap())
 		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.userConfiguration.Theme.InputPromptColor))
 		t.statusInfo = newStreamStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID, t.userConfiguration)
@@ -524,7 +524,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			userEmoteSet := t.emoteStore.AllEmotesUsableByUser(t.account.ID)
-			channelEmoteSet := t.emoteStore.GetAllForUser(t.channelID) // includes bttv, 7tv
+
+			log.Info().Str("user-id", t.account.ID).Int("len", len(userEmoteSet)).Msg("fetched emotes for user")
+
+			channelEmoteSet := t.emoteStore.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
 			unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
 
@@ -986,6 +989,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1000,6 +1004,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1016,6 +1021,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1055,6 +1061,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			isFakeEvent: true,
 			accountID:   userID,
 			channel:     t.channelLogin,
+			channelID:   t.channelID,
 			tabID:       t.id,
 			message:     notice,
 		}
@@ -1097,6 +1104,7 @@ func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1111,6 +1119,7 @@ func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1131,6 +1140,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1145,6 +1155,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 			return chatEventMessage{
 				accountID: t.account.ID,
 				channel:   t.channelLogin,
+				channelID: t.channelID,
 				tabID:     t.id,
 				message: &command.Notice{
 					FakeTimestamp: time.Now(),
@@ -1169,11 +1180,6 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
 	// all non private messages are okay
 	if !ok {
 		return false
-	}
-
-	// TODO: shared chat; ignore for now
-	if cast.SourceRoomID != "" && cast.SourceRoomID != t.channelID {
-		return true
 	}
 
 	// never ignore messages from the user,broadcaster,subs,mods,vips,paid messages,staff,bits or message mentions user
@@ -1348,6 +1354,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			isFakeEvent: true,
 			accountID:   userID,
 			channel:     t.channelLogin,
+			channelID:   t.channelID,
 			tabID:       t.id,
 			message:     notice,
 		}
@@ -1400,6 +1407,7 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 			isFakeEvent: true,
 			accountID:   t.account.ID,
 			channel:     t.channelLogin,
+			channelID:   t.channelID,
 			tabID:       t.id,
 			message:     notice,
 		}
@@ -1480,16 +1488,19 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.emoteStore, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
 
-	initialEvents := make([]chatEventMessage, 0, len(t.chatWindow.entries))
+	initialEvents := make([]chatEventMessage, 0, 15)
 	for e := range slices.Values(t.chatWindow.entries) {
 		initialEvents = append(initialEvents, chatEventMessage{
 			isFakeEvent:                 true,
 			accountID:                   t.account.ID,
 			channel:                     t.channelLogin,
+			channelID:                   t.channelID,
 			messageContentEmoteOverride: e.OverwrittenMessageContent,
 			message:                     e.Event.message,
+			channelGuestID:              e.Event.channelGuestID,
+			channelGuestDisplayName:     e.Event.channelGuestDisplayName,
 		})
 	}
 
@@ -1759,6 +1770,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 		isFakeEvent: true,
 		accountID:   t.account.ID,
 		channel:     t.channelLogin,
+		channelID:   t.channelID,
 		tabID:       t.id,
 		message:     notice,
 	}

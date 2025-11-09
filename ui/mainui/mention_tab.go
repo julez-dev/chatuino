@@ -46,7 +46,7 @@ func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provide
 		width:             width,
 		height:            height,
 		userConfiguration: userConfiguration,
-		chatWindow:        newChatWindow(logger, width, height, emoteStore, keymap, userConfiguration),
+		chatWindow:        newChatWindow(logger, width, height, keymap, userConfiguration),
 	}
 }
 
