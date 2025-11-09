@@ -527,7 +527,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			log.Info().Str("user-id", t.account.ID).Int("len", len(userEmoteSet)).Msg("fetched emotes for user")
 
-			channelEmoteSet := t.emoteStore.GetAllForUser(t.channelID) // includes bttv, 7tv
+			channelEmoteSet := t.emoteStore.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
 			unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
 

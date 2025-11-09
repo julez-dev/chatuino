@@ -165,7 +165,7 @@ func main() {
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
-			emoteStore := emote.NewStore(log.Logger, serverAPI, stvAPI, bttvAPI)
+			emoteStore := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
 
 			// message logger setup
 			db, err := openDB(false)
@@ -204,7 +204,7 @@ func main() {
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					emoteStore = emote.NewStore(log.Logger, ttvAPI, stvAPI, bttvAPI)
+					emoteStore = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
 				}
 			}
 

@@ -59,7 +59,7 @@ func TestRefreshLocal(t *testing.T) {
 		},
 	}, nil)
 
-	store := emote.NewStore(
+	store := emote.NewCache(
 		zerolog.Nop(),
 		ttv,
 		seven,

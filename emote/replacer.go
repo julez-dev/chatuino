@@ -92,6 +92,7 @@ func intToRGB(i int) (byte, byte, byte) {
 type EmoteStore interface {
 	GetByTextAllChannels(text string) (Emote, bool)
 	GetByText(channelID, text string) (Emote, bool)
+	LoadSetForeignEmote(emoteID, emoteText string) Emote
 }
 
 type Replacer struct {
@@ -144,13 +145,13 @@ func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote)
 	// twitch sends us a list of emotes used in the message, even emotes from other channels (sub emotes)
 	// parse the emote text with the index and replace it from the global store, since its guaranteed
 	// the user has access to the emote
-	emotesFromIRCTag := []string{}
+	emotesFromIRCTag := map[string]string{} // emoteText:emoteID
 	for _, e := range emoteList {
 		c := strings.TrimPrefix(content, "\x01ACTION ")
 		r := []rune(c) // convert to runes for multi byte handling
 		emoteText := string(r[e.Positions[0].Start : e.Positions[0].End+1])
 
-		emotesFromIRCTag = append(emotesFromIRCTag, emoteText)
+		emotesFromIRCTag[emoteText] = e.ID
 	}
 
 	words := strings.Split(content, " ")
@@ -164,16 +165,22 @@ func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote)
 
 		if channelID == "" {
 			emote, isEmote = i.store.GetByTextAllChannels(word)
-		} else if slices.Contains(emotesFromIRCTag, word) {
-			// current word is emote from tag, should be fetched and added
-			emote, isEmote = i.store.GetByTextAllChannels(word)
 		} else {
 			emote, isEmote = i.store.GetByText(channelID, word)
+
+			// current word is emote from tag, not yet cached and not native to channelID
+			if emoteID, ok := emotesFromIRCTag[word]; !isEmote && ok {
+				emote = i.store.LoadSetForeignEmote(emoteID, word)
+				isEmote = true // always true
+				log.Info().Str("word", word).Str("channel", channelID).Str("url", emote.URL).Msg("replaced foreign emote")
+			}
 		}
 
 		if !isEmote {
 			continue
 		}
+
+		log.Info().Str("word", word).Str("channel", channelID).Bool("is-in-cache", isEmote).Msg("replaced emote")
 
 		// graphics not enabled, replace with colored emote
 		if !i.enableGraphics {
@@ -181,9 +188,9 @@ func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote)
 			continue
 		}
 
-		// emote was already placed before, reuse virtual placement and replace emote text with unicode placeholders
+		// if emote was already placed before, reuse virtual placement and replace emote text with unicode placeholders
 
-		if decoded, is := i.placedEmotes.Load(emote.Text); is {
+		if decoded, is := i.placedEmotes.Load(emote.Text + emote.ID); is {
 			words[windex] = decoded.(DecodedEmote).DisplayUnicodePlaceholder()
 			continue
 		}
@@ -197,7 +204,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote)
 
 		if isCached {
 			cachedDecoded.ID = int(incrementID)
-			i.placedEmotes.Store(emote.Text, cachedDecoded)
+			i.placedEmotes.Store(emote.Text+emote.ID, cachedDecoded)
 			cmd.WriteString(cachedDecoded.PrepareCommand())
 			words[windex] = cachedDecoded.DisplayUnicodePlaceholder()
 			//log.Logger.Info().Any("id", cachedDecoded.ID).Msg("cache fs hit")
@@ -224,7 +231,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote)
 		decoded.ID = int(incrementID)
 
 		// add to cache
-		i.placedEmotes.Store(emote.Text, decoded)
+		i.placedEmotes.Store(emote.Text+emote.ID, decoded)
 
 		//  - step4: Create kitty CMD to transfer emote data
 		//  - step5: Create Placement

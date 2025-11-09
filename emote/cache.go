@@ -34,13 +34,17 @@ type BTTVEmoteFetcher interface {
 	GetChannelEmotes(ctx context.Context, broadcaster string) (bttv.UserResponse, error)
 }
 
-type Store struct {
+type Cache struct {
 	logger zerolog.Logger
 	m      *sync.RWMutex
 
 	global  EmoteSet
 	channel map[string]EmoteSet
 	user    map[string]EmoteSet // emoteset usable by a specific twitch ID (for exapmle subs.)
+
+	// Emotes that were included in the emotes tag inside a twitch irc message but which are not included in the broadcasters EmoteSet.
+	// This can be sub emotes from other channels for example. This is only supported for twitch.
+	foreignEmotes map[string]Emote
 
 	twitchEmotes  TwitchEmoteFetcher
 	sevenTVEmotes SevenTVEmoteFetcher
@@ -52,8 +56,8 @@ type Store struct {
 	globalFetched   bool
 }
 
-func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher) *Store {
-	return &Store{
+func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher) *Cache {
+	return &Cache{
 		logger:          logger,
 		m:               &sync.RWMutex{},
 		channel:         map[string]EmoteSet{},
@@ -63,10 +67,11 @@ func NewStore(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 		single:          &singleflight.Group{},
 		channelsFetched: map[string]struct{}{},
 		user:            map[string]EmoteSet{},
+		foreignEmotes:   map[string]Emote{},
 	}
 }
 
-func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
+func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 	s.m.RLock()
 	if _, isCached := s.channelsFetched[channelID]; isCached {
 		s.m.RUnlock()
@@ -150,17 +155,6 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 			})
 		}
 
-		for _, bttvEmote := range bttvResp.ChannelEmotes {
-			emoteSet = append(emoteSet, Emote{
-				ID:         bttvEmote.ID,
-				Text:       bttvEmote.Code,
-				IsAnimated: bttvEmote.Animated,
-				Format:     bttvEmote.ImageType,
-				Platform:   BTTV,
-				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
-			})
-		}
-
 		for _, stvEmote := range stvResp.EmoteSet.Emotes {
 			var url string
 			if stvEmote.Data.Animated {
@@ -180,6 +174,17 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 			})
 		}
 
+		for _, bttvEmote := range bttvResp.ChannelEmotes {
+			emoteSet = append(emoteSet, Emote{
+				ID:         bttvEmote.ID,
+				Text:       bttvEmote.Code,
+				IsAnimated: bttvEmote.Animated,
+				Format:     bttvEmote.ImageType,
+				Platform:   BTTV,
+				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
+			})
+		}
+
 		return emoteSet, nil
 	})
 
@@ -195,7 +200,7 @@ func (s *Store) RefreshLocal(ctx context.Context, channelID string) error {
 	return nil
 }
 
-func (s *Store) RefreshGlobal(ctx context.Context) error {
+func (s *Cache) RefreshGlobal(ctx context.Context) error {
 	s.m.RLock()
 	if s.globalFetched {
 		s.m.RUnlock()
@@ -246,24 +251,13 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 			return nil, err
 		}
 
-		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes))
+		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes)+len(bttvResp))
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
 				ID:       ttvEmote.ID,
 				Text:     ttvEmote.Name,
 				Platform: Twitch,
 				URL:      ttvEmote.Images.URL1X,
-			})
-		}
-
-		for _, bttvEmote := range bttvResp {
-			emoteSet = append(emoteSet, Emote{
-				ID:         bttvEmote.ID,
-				Text:       bttvEmote.Code,
-				Platform:   BTTV,
-				IsAnimated: bttvEmote.Animated,
-				Format:     bttvEmote.ImageType,
-				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
 			})
 		}
 
@@ -286,6 +280,17 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 			})
 		}
 
+		for _, bttvEmote := range bttvResp {
+			emoteSet = append(emoteSet, Emote{
+				ID:         bttvEmote.ID,
+				Text:       bttvEmote.Code,
+				Platform:   BTTV,
+				IsAnimated: bttvEmote.Animated,
+				Format:     bttvEmote.ImageType,
+				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
+			})
+		}
+
 		return emoteSet, nil
 	})
 
@@ -303,7 +308,8 @@ func (s *Store) RefreshGlobal(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) GetAllForUser(id string) EmoteSet {
+// GetAllForChannel retrieves all emotes for a specific user.
+func (s *Cache) GetAllForChannel(id string) EmoteSet {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -316,7 +322,7 @@ func (s *Store) GetAllForUser(id string) EmoteSet {
 	return data
 }
 
-func (s *Store) GetAll() EmoteSet {
+func (s *Cache) GetAll() EmoteSet {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -350,7 +356,7 @@ func (s *Store) GetAll() EmoteSet {
 	return set
 }
 
-func (s *Store) GetByTextAllChannels(text string) (Emote, bool) {
+func (s *Cache) GetByTextAllChannels(text string) (Emote, bool) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -370,10 +376,14 @@ func (s *Store) GetByTextAllChannels(text string) (Emote, bool) {
 		}
 	}
 
+	if emote, ok := s.foreignEmotes[text]; ok {
+		return emote, true
+	}
+
 	return Emote{}, false
 }
 
-func (s *Store) GetByText(channelID, text string) (Emote, bool) {
+func (s *Cache) GetByText(channelID, text string) (Emote, bool) {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -400,7 +410,7 @@ func (s *Store) GetByText(channelID, text string) (Emote, bool) {
 	return Emote{}, false
 }
 
-func (s *Store) AllEmotesUsableByUser(userID string) []Emote {
+func (s *Cache) AllEmotesUsableByUser(userID string) []Emote {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
@@ -415,10 +425,44 @@ func (s *Store) AllEmotesUsableByUser(userID string) []Emote {
 	return copied
 }
 
-func (s *Store) AddUserEmotes(userID string, emotes []Emote) {
+func (s *Cache) RemoveEmoteSetForChannel(channelID string) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	delete(s.channel, channelID)
+	delete(s.channelsFetched, channelID)
+}
+
+func (s *Cache) AddUserEmotes(userID string, emotes []Emote) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
 	log.Logger.Info().Str("user-id", userID).Msg("added emote for user to storage")
 	s.user[userID] = append(s.user[userID], emotes...)
+}
+
+func (s *Cache) LoadSetForeignEmote(emoteID, emoteText string) Emote {
+	s.m.RLock()
+
+	// emote was already added, reuse
+	if e, ok := s.foreignEmotes[emoteID]; ok {
+		s.m.RUnlock()
+		return e
+	}
+	s.m.RUnlock()
+
+	// fake new emote entry, since we can't ask the API for a single emote, but also can't infer
+	// the channelID or the channel name of a sub emote
+	e := Emote{
+		ID:       emoteID,
+		Text:     emoteText,
+		Platform: Twitch, // only supported by twitch
+		URL:      fmt.Sprintf("https://static-cdn.jtvnw.net/emoticons/v2/%s/default/light/1.0", emoteID),
+	}
+
+	s.m.Lock()
+	defer s.m.Unlock()
+	s.foreignEmotes[emoteID] = e
+
+	return e
 }

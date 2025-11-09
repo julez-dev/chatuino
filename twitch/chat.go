@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -255,6 +256,8 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 
 		close(outErr)
 		close(out)
+
+		log.Logger.Info().Str("account-id", c.accountID).Msgf("internal chat connection is completly done")
 	}()
 
 	return out, outErr

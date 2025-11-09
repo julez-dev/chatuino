@@ -61,7 +61,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 
 			// if not exists, create new chat for the ID
 			if !ok {
-				m.logger.Warn().Msgf("received message for unknown channel %s joining channel", accountID)
+				m.logger.Warn().Str("account-id", accountID).Msgf("received message for unknown channel creating new chat connection for this account")
 				chat := m.BuildChatClient(m.logger, m.provider, accountID)
 				ctx, cancel := context.WithCancel(context.Background())
 
@@ -81,7 +81,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 						select {
 						case ircMessage, ok := <-outChat:
 							if !ok {
-								m.logger.Warn().Msgf("channel %s closed", msg.AccountID)
+								m.logger.Warn().Str("account-id", accountID).Msgf("irc message channel closed")
 								return
 							}
 
@@ -91,7 +91,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 							}
 						case err, ok := <-outErrChat:
 							if !ok {
-								m.logger.Warn().Msgf("channel %s closed", msg.AccountID)
+								m.logger.Warn().Str("account-id", accountID).Msgf("irc out err channel closed")
 								return
 							}
 
@@ -103,21 +103,21 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 					}
 				})
 			} else {
-				m.logger.Info().Msg("channel already exists, no need to start new one")
+				m.logger.Info().Str("account-id", accountID).Msg("channel already exists, no need to start new one")
 			}
 
 			// if message is IncrementCounter or DecrementCounter, handle it
 			switch msg.Msg.(type) {
 			case IncrementTabCounter:
 				numListeners[accountID]++
-				m.logger.Info().Msgf("incremented counter for %s to %d", accountID, numListeners[accountID])
+				m.logger.Info().Str("account-id", accountID).Int("num-listeners", numListeners[accountID]).Msgf("incremented tab listener counter")
 				continue // don't forward message
 			case DecrementTabCounter:
 				numListeners[accountID]--
-				m.logger.Info().Msgf("decremented counter for %s to %d", accountID, numListeners[accountID])
+				m.logger.Info().Str("account-id", accountID).Int("num-listeners", numListeners[accountID]).Msgf("decremented tab listener counter")
 
 				if numListeners[accountID] == 0 {
-					m.logger.Info().Msgf("no more listeners for %s, closing channel", accountID)
+					m.logger.Info().Str("account-id", accountID).Int("num-listeners", numListeners[accountID]).Msgf("closing because no more listeners")
 					cancels[accountID]()
 					close(chatIns[accountID])
 					<-chatDones[accountID]
@@ -126,8 +126,9 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 					delete(chatIns, accountID)
 					delete(chatDones, accountID)
 					delete(numListeners, accountID)
+					m.logger.Info().Str("account-id", accountID).Int("num-listeners", numListeners[accountID]).Msgf("done closing because no more listeners")
 				} else {
-					m.logger.Info().Msgf("still %d listeners for %s, not closing channel", numListeners[accountID], accountID)
+					m.logger.Info().Str("account-id", accountID).Int("num-listeners", numListeners[accountID]).Msgf("still listeners for this account, not closing connection")
 				}
 
 				continue // don't forward message
@@ -143,7 +144,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 				// delete(chatIns, accountID)
 				// delete(chatDones, accountID)
 				// delete(numListeners, accountID)
-				m.logger.Warn().Msgf("done for %s is closed, aborting send", msg.AccountID)
+				m.logger.Warn().Str("account-id", accountID).Int("num-listeners", numListeners[accountID]).Msgf("done channel for account closed, aborting sending")
 			}
 		}
 

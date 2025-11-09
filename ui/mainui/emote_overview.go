@@ -69,7 +69,7 @@ func NewEmoteOverview(channelID string, store EmoteStore, replacer EmoteReplacer
 
 func (e *emoteOverview) Init() tea.Cmd {
 	initCmd := func() tea.Msg {
-		set := e.store.GetAllForUser(e.channelID)
+		set := e.store.GetAllForChannel(e.channelID)
 
 		type channelData struct {
 			emote   emoteWithOverwrite

@@ -39,9 +39,11 @@ type EmoteStore interface {
 	GetByText(channelID, text string) (emote.Emote, bool)
 	RefreshLocal(ctx context.Context, channelID string) error
 	RefreshGlobal(ctx context.Context) error
-	GetAllForUser(id string) emote.EmoteSet
+	GetAllForChannel(id string) emote.EmoteSet
 	AddUserEmotes(userID string, emotes []emote.Emote)
 	AllEmotesUsableByUser(userID string) []emote.Emote
+	RemoveEmoteSetForChannel(channelID string)
+	LoadSetForeignEmote(emoteID, emoteText string) emote.Emote
 }
 
 type EmoteReplacer interface {
@@ -693,13 +695,18 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
-						hasOther := slices.ContainsFunc(r.tabs, func(t tab) bool {
+						hasTabsSameAccountAndChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.AccountID() == currentTab.AccountID() &&
-								t.Channel() == currentTab.Channel()
+								t.ChannelID() == currentTab.ChannelID()
 						})
 
-						if !hasOther {
+						hasTabsSameChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
+							return t.ID() != currentTab.ID() &&
+								t.ChannelID() == currentTab.ChannelID()
+						})
+
+						if !hasTabsSameAccountAndChannel {
 							// send part message
 							r.logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
 							cmds = append(cmds, func() tea.Msg {
@@ -711,6 +718,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								}
 								return nil
 							})
+						}
+
+						if !hasTabsSameChannel {
+							r.logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
+							r.emoteStore.RemoveEmoteSetForChannel(currentTab.ChannelID())
 						}
 
 						r.closerWG.Add(1)
@@ -1165,7 +1177,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 
 		// if is shared display emotes from guest channel, when message is from guest
 		emoteSourceRoom := channelID
-		if channelID != channelGuestID {
+		if channelGuestID != "" && channelID != channelGuestID {
 			emoteSourceRoom = channelGuestID
 		}
 

@@ -64,7 +64,7 @@ var rebuildCacheCMD = &cli.Command{
 		bttvAPI := bttv.NewAPI(http.DefaultClient)
 		ttvAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 
-		store := emote.NewStore(log.Logger, ttvAPI, sttvAPI, bttvAPI)
+		store := emote.NewCache(log.Logger, ttvAPI, sttvAPI, bttvAPI)
 		if err := store.RefreshGlobal(ctx); err != nil {
 			return err
 		}
