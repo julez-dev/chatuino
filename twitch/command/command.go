@@ -10,7 +10,7 @@ import (
 
 type Badge struct {
 	Name    string
-	Version int
+	Version string
 }
 
 func (b Badge) String() string {

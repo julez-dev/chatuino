@@ -155,6 +155,9 @@ func ParseIRC(message string) (IRCer, error) {
 			return nil, err
 		}
 
+		//log.Logger.Info().Str("badge-info", string(c.tags["badge-info"])).
+		//	Str("badges", string(c.tags["badges"])).Send()
+
 		p := command.PrivateMessage{
 			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
 			Badges:      parseBadges(string(c.tags["badges"])),
@@ -533,13 +536,7 @@ func parseBadges(badgeStr string) []command.Badge {
 			continue
 		}
 
-		count, err := strconv.Atoi(parts[1])
-		if err != nil {
-			badges = append(badges, command.Badge{Name: parts[0]})
-			continue
-		}
-
-		badges = append(badges, command.Badge{Name: parts[0], Version: count})
+		badges = append(badges, command.Badge{Name: parts[0], Version: parts[1]})
 	}
 
 	return badges

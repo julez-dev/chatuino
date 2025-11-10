@@ -76,7 +76,7 @@ type API struct {
 	m                   *sync.Mutex
 	singleRefresh       *singleflight.Group[string, string]
 	singleUserChatColor *singleflight.Group[string, []UserChatColor]
-	singleUserBadge     *singleflight.Group[string, []ChannelChatBadges]
+	singleUserBadge     *singleflight.Group[string, []BadgeSet]
 
 	appAccessToken string
 
@@ -89,7 +89,7 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 		clientID:            clientID,
 		m:                   &sync.Mutex{},
 		singleRefresh:       &singleflight.Group[string, string]{},
-		singleUserBadge:     &singleflight.Group[string, []ChannelChatBadges]{},
+		singleUserBadge:     &singleflight.Group[string, []BadgeSet]{},
 		singleUserChatColor: &singleflight.Group[string, []UserChatColor]{},
 	}
 
@@ -124,18 +124,53 @@ func (a *API) SendChatMessage(ctx context.Context, data SendChatMessageRequest) 
 	return resp, nil
 }
 
-func (a *API) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]ChannelChatBadges, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
+func (a *API) GetGlobalChatBadges(ctx context.Context) ([]BadgeSet, error) {
+	url := "/chat/badges/global"
+
+	data, _, err := a.singleUserBadge.Do(ctx, url, func(ctx context.Context) ([]BadgeSet, error) {
+		var (
+			resp GetGlobalBadgesResp
+			err  error
+		)
+
+		if a.provider != nil {
+			resp, err = doAuthenticatedUserRequest[GetGlobalBadgesResp](ctx, a, http.MethodGet, url, nil)
+		} else {
+			resp, err = doAuthenticatedAppRequest[GetGlobalBadgesResp](ctx, a, http.MethodGet, url, nil)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		return resp.Data, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
+	return data, nil
+}
+
+func (a *API) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]BadgeSet, error) {
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 
 	url := fmt.Sprintf("/chat/badges?%s", values.Encode())
 
-	data, _, err := a.singleUserBadge.Do(ctx, url, func(ctx context.Context) ([]ChannelChatBadges, error) {
-		resp, err := doAuthenticatedUserRequest[GetChannelChatBadgesResp](ctx, a, http.MethodGet, url, nil)
+	data, _, err := a.singleUserBadge.Do(ctx, url, func(ctx context.Context) ([]BadgeSet, error) {
+		var (
+			resp GetChannelChatBadgesResp
+			err  error
+		)
+
+		if a.provider != nil {
+			resp, err = doAuthenticatedUserRequest[GetChannelChatBadgesResp](ctx, a, http.MethodGet, url, nil)
+		} else {
+			resp, err = doAuthenticatedAppRequest[GetChannelChatBadgesResp](ctx, a, http.MethodGet, url, nil)
+		}
+
 		if err != nil {
 			return nil, err
 		}

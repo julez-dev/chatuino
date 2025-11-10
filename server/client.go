@@ -134,6 +134,14 @@ func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, mode
 	return do[twitch.GetChatSettingsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/settings")
 }
 
+func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitch.BadgeSet, error) {
+	return do[[]twitch.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges/global")
+}
+
+func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitch.BadgeSet, error) {
+	return do[[]twitch.BadgeSet](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/badges")
+}
+
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	var respData T
 
