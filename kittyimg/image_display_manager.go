@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	_ "golang.org/x/image/webp"
 
@@ -25,6 +26,10 @@ import (
 	easyjson "github.com/mailru/easyjson"
 	"github.com/spf13/afero"
 	"golang.org/x/sync/syncmap"
+)
+
+var (
+	BaseImageDirectory = filepath.Join(xdg.DataHome, "chatuino")
 )
 
 var ErrUnsupportedAnimatedFormat = errors.New("emote is animated but in non supported format")
@@ -39,6 +44,8 @@ type DecodedImage struct {
 	ID     int32               `json:"-"`
 	Cols   int                 `json:"cols"`
 	Images []DecodedImageFrame `json:"images"`
+
+	lastUsed time.Time `json:"-"`
 }
 
 //easyjson:json
@@ -94,7 +101,7 @@ type DisplayUnit struct {
 	ID         string
 	Directory  string
 	IsAnimated bool
-	Load       func() (io.ReadCloser, string, error)
+	Load       func() (io.ReadCloser, string, error) `json:"-"`
 }
 
 type KittyDisplayUnit struct {
@@ -119,6 +126,8 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	// 1st: image was already placed in this session, reusing placement
 	if cached, ok := globalPlacedImages.Load(unit.ID); ok {
 		i := cached.(DecodedImage)
+		i.lastUsed = time.Now()
+		globalPlacedImages.Swap(unit.ID, i)
 
 		return KittyDisplayUnit{
 			// don't resend placement command
@@ -136,6 +145,8 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 
 	if found {
 		cachedDecoded.ID = incrementID
+		cachedDecoded.lastUsed = time.Now()
+
 		globalPlacedImages.Store(unit.ID, cachedDecoded)
 		return KittyDisplayUnit{
 			PrepareCommand:  cachedDecoded.PrepareCommand(),
@@ -158,6 +169,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	}
 
 	decoded.ID = incrementID                                   // set id
+	decoded.lastUsed = time.Now()                              // last used for clean up
 	globalPlacedImages.Store(unit.ID, decoded)                 // store placement
 	if err := d.cacheDecodedImage(decoded, unit); err != nil { // cache decoded image
 		return KittyDisplayUnit{}, nil
@@ -167,6 +179,34 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 		PrepareCommand:  decoded.PrepareCommand(),
 		ReplacementText: decoded.DisplayUnicodePlaceholder(),
 	}, nil
+}
+
+func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
+	var cmd strings.Builder
+
+	globalPlacedImages.Range(func(key, value any) bool {
+		c := value.(DecodedImage)
+		if time.Now().Sub(c.lastUsed) > maxAge {
+			fmt.Fprintf(&cmd, "\x1b_Ga=d,i=%d,q=2\x1b\\", c.ID)
+			globalPlacedImages.Delete(key)
+		}
+		return true
+	})
+
+	return cmd.String()
+}
+
+func (d *DisplayManager) CleanupAllImagesCommand() string {
+	var cmd strings.Builder
+
+	globalPlacedImages.Range(func(key, value any) bool {
+		c := value.(DecodedImage)
+		fmt.Fprintf(&cmd, "\x1b_Ga=d,i=%d,q=2\x1b\\", c.ID)
+		globalPlacedImages.Delete(key)
+		return true
+	})
+
+	return cmd.String()
 }
 
 func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, contentType string) (DecodedImage, error) {
@@ -338,7 +378,7 @@ func (d *DisplayManager) openCached(unit DisplayUnit) (DecodedImage, bool, error
 }
 
 func (d *DisplayManager) createGetCacheDirectory(dir string) (string, error) {
-	path := filepath.Join(xdg.DataHome, "chatuino", dir)
+	path := filepath.Join(BaseImageDirectory, dir)
 
 	if err := d.fs.MkdirAll(path, 0o755); err != nil {
 		if errors.Is(err, fs.ErrExist) {

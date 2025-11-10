@@ -227,9 +227,13 @@ func main() {
 					return fmt.Errorf("failed to get terminal size: %w", err)
 				}
 
-				displayManger := kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
+				displayManager := kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManager)
 
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManger)
+				defer func() {
+					io.WriteString(os.Stdout, displayManager.CleanupAllImagesCommand())
+				}()
+
 			} else {
 				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, false, theme, nil)
 			}
