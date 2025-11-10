@@ -17,12 +17,14 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/httputil"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -58,6 +60,8 @@ var (
 
 var maybeLogFile *os.File
 
+//
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./kittyimg
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/command
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
@@ -223,9 +227,11 @@ func main() {
 					return fmt.Errorf("failed to get terminal size: %w", err)
 				}
 
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, cellWidth, cellHeight, theme)
+				displayManger := kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
+
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManger)
 			} else {
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, false, 0, 0, theme)
+				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, false, theme, nil)
 			}
 
 			p := tea.NewProgram(
