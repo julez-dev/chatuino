@@ -191,7 +191,7 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 
 	globalPlacedImages.Range(func(key, value any) bool {
 		c := value.(DecodedImage)
-		if time.Now().Sub(c.lastUsed) > maxAge {
+		if time.Since(c.lastUsed) > maxAge {
 			fmt.Fprintf(&cmd, "\x1b_Ga=D,i=%d,q=2\x1b\\", c.ID)
 			globalPlacedImages.Delete(key)
 		}

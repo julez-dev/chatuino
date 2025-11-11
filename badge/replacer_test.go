@@ -40,6 +40,8 @@ func (m *mockDisplayManager) Convert(unit kittyimg.DisplayUnit) (kittyimg.KittyD
 }
 
 func TestReplacer_Replace(t *testing.T) {
+	t.Parallel()
+
 	t.Run("empty badge list returns empty results", func(t *testing.T) {
 		cache := &mockBadgeCache{
 			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitch.BadgeVersion {
