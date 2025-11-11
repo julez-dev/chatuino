@@ -54,8 +54,6 @@ func TestDisplayManager_Convert_Cached(t *testing.T) {
 }
 
 func TestDisplayManager_Convert_SessionCache(t *testing.T) {
-	t.Parallel()
-
 	// Reset global state for this test
 	globalImagePlacementIDCounter.Store(0)
 	globalPlacedImages = &syncmap.Map{}
@@ -89,8 +87,6 @@ func TestDisplayManager_Convert_SessionCache(t *testing.T) {
 }
 
 func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
-	t.Parallel()
-
 	// Reset global state for this test
 	globalImagePlacementIDCounter.Store(0)
 	globalPlacedImages = &syncmap.Map{}
@@ -120,8 +116,6 @@ func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
 }
 
 func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
-	t.Parallel()
-
 	// Reset global state for this test
 	globalImagePlacementIDCounter.Store(0)
 	globalPlacedImages = &syncmap.Map{}
