@@ -1,6 +1,7 @@
 package kittyimg
 
 import (
+	"compress/zlib"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -59,7 +60,7 @@ type DecodedImageFrame struct {
 func (i DecodedImage) PrepareCommand() string {
 	// not animated
 	if len(i.Images) == 1 {
-		transmitCMD := fmt.Sprintf("\x1b_Gf=32,i=%d,t=f,q=2,s=%d,v=%d;%s\x1b\\", i.ID, i.Images[0].Width, i.Images[0].Height, i.Images[0].EncodedPath)
+		transmitCMD := fmt.Sprintf("\x1b_Gf=32,i=%d,t=f,q=2,s=%d,v=%d,o=z;%s\x1b\\", i.ID, i.Images[0].Width, i.Images[0].Height, i.Images[0].EncodedPath)
 		placementCMD := fmt.Sprintf("\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", i.ID, i.ID, i.Cols)
 		return transmitCMD + placementCMD
 	}
@@ -69,14 +70,14 @@ func (i DecodedImage) PrepareCommand() string {
 	var b strings.Builder
 
 	// transmit first image
-	fmt.Fprintf(&b, "\033_Gf=32,i=%d,t=f,q=2,s=%d,v=%d;%s\033\\", i.ID, i.Images[0].Width, i.Images[0].Height, i.Images[0].EncodedPath)
+	fmt.Fprintf(&b, "\033_Gf=32,i=%d,t=f,q=2,s=%d,v=%d,o=z;%s\033\\", i.ID, i.Images[0].Width, i.Images[0].Height, i.Images[0].EncodedPath)
 
 	// send first frame
 	fmt.Fprintf(&b, "\033_Ga=a,i=%d,r=1,z=%d,q=2;\033\\", i.ID, i.Images[0].DelayInMS)
 
 	// send each frame after first image
 	for img := range slices.Values(i.Images[1:]) {
-		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2;%s\033\\", i.ID, img.Width, img.Height, img.DelayInMS, img.EncodedPath)
+		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2,o=z;%s\033\\", i.ID, img.Width, img.Height, img.DelayInMS, img.EncodedPath)
 	}
 
 	// start animation
@@ -129,6 +130,8 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 		i.lastUsed = time.Now()
 		globalPlacedImages.Swap(unit.ID, i)
 
+		log.Logger.Info().Str("id", unit.ID).Int32("placement-id", i.ID).Msg("load image from session cache")
+
 		return KittyDisplayUnit{
 			// don't resend placement command
 			ReplacementText: i.DisplayUnicodePlaceholder(),
@@ -146,6 +149,8 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	if found {
 		cachedDecoded.ID = incrementID
 		cachedDecoded.lastUsed = time.Now()
+
+		log.Logger.Info().Str("id", unit.ID).Int32("placement-id", cachedDecoded.ID).Msg("load image from storage cache")
 
 		globalPlacedImages.Store(unit.ID, cachedDecoded)
 		return KittyDisplayUnit{
@@ -187,7 +192,7 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 	globalPlacedImages.Range(func(key, value any) bool {
 		c := value.(DecodedImage)
 		if time.Now().Sub(c.lastUsed) > maxAge {
-			fmt.Fprintf(&cmd, "\x1b_Ga=d,i=%d,q=2\x1b\\", c.ID)
+			fmt.Fprintf(&cmd, "\x1b_Ga=D,i=%d,q=2\x1b\\", c.ID)
 			globalPlacedImages.Delete(key)
 		}
 		return true
@@ -197,16 +202,7 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 }
 
 func (d *DisplayManager) CleanupAllImagesCommand() string {
-	var cmd strings.Builder
-
-	globalPlacedImages.Range(func(key, value any) bool {
-		c := value.(DecodedImage)
-		fmt.Fprintf(&cmd, "\x1b_Ga=d,i=%d,q=2\x1b\\", c.ID)
-		globalPlacedImages.Delete(key)
-		return true
-	})
-
-	return cmd.String()
+	return "\x1b_Ga=D\x1b\\"
 }
 
 func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, contentType string) (DecodedImage, error) {
@@ -224,7 +220,7 @@ func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, conten
 func (d *DisplayManager) convertAnimatedAvif(r io.Reader, unit DisplayUnit) (DecodedImage, error) {
 	images, err := avif.DecodeAll(r)
 	if err != nil {
-		return DecodedImage{}, err
+		return DecodedImage{}, fmt.Errorf("failed to convert avif: %w", err)
 	}
 
 	var cols int
@@ -266,7 +262,7 @@ func (d *DisplayManager) convertDefault(r io.Reader, unit DisplayUnit) (DecodedI
 	img, format, err := image.Decode(r)
 	if err != nil {
 		log.Logger.Error().Err(err).Str("format", format).Send()
-		return DecodedImage{}, err
+		return DecodedImage{}, fmt.Errorf("failed to convert %s: %w", format, err)
 	}
 
 	bounds := img.Bounds()
@@ -342,9 +338,14 @@ func (d *DisplayManager) saveKittyFormattedImage(buff []byte, unit DisplayUnit, 
 	}
 
 	defer f.Close()
-	_, err = f.Write(buff)
-	if err != nil {
-		return "", err
+
+	w := zlib.NewWriter(f)
+	if _, err := w.Write(buff); err != nil {
+		return "", fmt.Errorf("failed to write zlib compressed to %s: %w", path, err)
+	}
+
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("failed to close zlib compressed writer to %s: %w", path, err)
 	}
 
 	return f.Name(), nil

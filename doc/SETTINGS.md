@@ -5,9 +5,9 @@ Chatuino can be run without creating any settings file but you may want to confi
 Your settings file is read from ~/.config/chatuino/settings.yaml (config directory may be different depending on OS). You may want to create a new settings file if it doesn't exists already.
 
 ```yaml
-vertical_tab_list: false # if Chatuino should display tabs vertically instead of horizontally
+vertical_tab_list: false # If Chatuino should display tabs vertically instead of horizontally
 moderation:
-  store_chat_logs: true # if Chatuino should store chat logs in a sqlite database; Default: false
+  store_chat_logs: true # If Chatuino should store chat logs in a sqlite database; Default: false
 
   # NOTE: logs_channel_include and logs_channel_exclude are mutually exclusive.
   logs_channel_include: ["lirik", "sodapoppin"] # Chatuino will only log channels that are in this list, if set
@@ -18,7 +18,7 @@ block_settings:
   users:
     - julezdev
   words:
-    - Kappe
+    - Kappa
 chat:
   # NOTE: read the README for more information about how emote rendering works before enabling this feature
   graphic_emotes: true # EXPERIMENTAL: if Chatuino should display emotes as images instead of text; Default: false
@@ -122,14 +122,16 @@ There is a module to decode static and animated .avif files but it's not a nativ
 
 During development I noticed a high memory consumption (sometimes 10x over non graphic usage) by the avif decoder, which I could not resolve. Chatuino caches all decoded images so once an emote is decoded for the first it never needs to be decoded again.
 
-The emotes are cached at the same location Chatuino will put the message log sqlite database at: In the `$HOME/chatuino` directory. The format used to store the image data is the same format Kitty requires to be used to transmit images, which means that it's not very space efficient.
+The emotes are cached at the same location Chatuino will put the message log sqlite database at: In the `$HOME/chatuino` directory. The format used to store the image data is the same format Kitty requires to be used to transmit images, compressed with RFC 1950 ZLIB based deflate compression.
 
-But a lot of emotes are used on twitch so this process takes a long time. You can speed the caching up by pre loading all emotes for all chats you will most likely join in the future. For this you can use a sub command build inside Chatuino.
+You can query the current cache size usint
 
 ```sh
-chatuino rebuild-cache --channels=channel1,channel2,...
+chatuino cache
 ```
 
-This will pre decode all emotes for all the provided channels and all global emotes for SevenTV, BetterTTV and Twitch, drastically reducing memory consumption at the cost of disk space.
+You can delete cached data with
 
-Some animated emotes seem to not be animated even if nothing is wrong with the protocol commands or cached files, this is still an open bug.
+```sh
+chatuino cache prune --emotes --database --badges
+```

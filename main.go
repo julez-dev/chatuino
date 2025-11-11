@@ -90,7 +90,7 @@ func main() {
 			versionCMD,
 			accountCMD,
 			serverCMD,
-			rebuildCacheCMD,
+			cacheCMD,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -215,7 +215,11 @@ func main() {
 				}
 			}
 
-			var emoteReplacer *emote.Replacer
+			var (
+				emoteReplacer  *emote.Replacer
+				badgeReplacer  *badge.Replacer
+				displayManager *kittyimg.DisplayManager
+			)
 
 			if settings.Chat.GraphicEmotes {
 				if !hasEmoteSupport() {
@@ -227,8 +231,9 @@ func main() {
 					return fmt.Errorf("failed to get terminal size: %w", err)
 				}
 
-				displayManager := kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
+				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
 				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManager)
+				badgeReplacer = badge.NewReplacer(http.DefaultClient, badgeCache, true, theme, displayManager)
 
 				defer func() {
 					io.WriteString(os.Stdout, displayManager.CleanupAllImagesCommand())
@@ -253,6 +258,8 @@ func main() {
 					messageLogger,
 					mainui.UserConfiguration{Settings: settings, Theme: theme},
 					badgeCache,
+					badgeReplacer,
+					displayManager,
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),

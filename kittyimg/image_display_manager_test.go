@@ -164,7 +164,7 @@ func TestDecodedImage_PrepareCommand_Static(t *testing.T) {
 	}
 
 	cmd := decoded.PrepareCommand()
-	assert.Contains(t, cmd, "\x1b_Gf=32,i=1,t=f,q=2,s=20,v=20;dGVzdHBhdGg=\x1b\\")
+	assert.Contains(t, cmd, "\x1b_Gf=32,i=1,t=f,q=2,s=20,v=20,o=z;dGVzdHBhdGg=\x1b\\")
 	assert.Contains(t, cmd, "\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\")
 }
 
@@ -192,11 +192,11 @@ func TestDecodedImage_PrepareCommand_Animated(t *testing.T) {
 
 	cmd := decoded.PrepareCommand()
 	// Should contain transmit command for first frame
-	assert.Contains(t, cmd, "\033_Gf=32,i=5,t=f,q=2,s=30,v=30;ZnJhbWUx\033\\")
+	assert.Contains(t, cmd, "\033_Gf=32,i=5,t=f,q=2,s=30,v=30,o=z;ZnJhbWUx\033\\")
 	// Should contain animation start for first frame
 	assert.Contains(t, cmd, "\033_Ga=a,i=5,r=1,z=100,q=2;\033\\")
 	// Should contain subsequent frame
-	assert.Contains(t, cmd, "\033_Ga=f,i=5,t=t,f=32,s=30,v=30,z=100,q=2;ZnJhbWUy\033\\")
+	assert.Contains(t, cmd, "\033_Ga=f,i=5,t=t,f=32,s=30,v=30,z=100,q=2,o=z;ZnJhbWUy\033\\")
 	// Should start animation
 	assert.Contains(t, cmd, "\033_Ga=a,i=5,s=3,v=1,q=2;\033\\")
 	// Should create placement

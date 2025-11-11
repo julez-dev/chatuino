@@ -1505,6 +1505,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 			message:                     e.Event.message,
 			channelGuestID:              e.Event.channelGuestID,
 			channelGuestDisplayName:     e.Event.channelGuestDisplayName,
+			badgeReplacement:            e.Event.badgeReplacement,
 		})
 	}
 

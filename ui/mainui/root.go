@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/save/messagelog"
@@ -23,6 +24,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -50,6 +52,10 @@ type EmoteCache interface {
 
 type EmoteReplacer interface {
 	Replace(channelID, content string, emoteList []command.Emote) (string, string, error)
+}
+
+type BadgeReplacer interface {
+	Replace(broadcasterID string, badgeList []command.Badge) (string, []string, error)
 }
 
 type APIClient interface {
@@ -180,6 +186,7 @@ type chatEventMessage struct {
 	message twitch.IRCer
 	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
 	messageContentEmoteOverride string
+	badgeReplacement            []string
 
 	// if message should only be sent to a specific tab ID
 	// if empty send to all
@@ -217,6 +224,10 @@ type polledStreamInfo struct {
 
 type appStateSaveMessage struct{}
 
+type imageCleanupTickMessage struct {
+	deletionCommand string
+}
+
 type Root struct {
 	logger   zerolog.Logger
 	clientID string
@@ -235,6 +246,8 @@ type Root struct {
 	emoteCache           EmoteCache
 	badgeCache           *badge.Cache
 	emoteReplacer        EmoteReplacer
+	badgeReplacer        BadgeReplacer
+	imageDisplayManager  *kittyimg.DisplayManager
 	serverAPI            APIClientWithRefresh
 	recentMessageService RecentMessageService
 	messageLogger        MessageLogger
@@ -283,6 +296,8 @@ func NewUI(
 	messageLogger MessageLogger,
 	userConfig UserConfiguration,
 	badgeCache *badge.Cache,
+	badgeReplacer BadgeReplacer,
+	imageDisplayManager *kittyimg.DisplayManager,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := chatPool.ListenAndServe(inChat)
@@ -323,6 +338,8 @@ func NewUI(
 		eventSub:           eventSub,
 		eventSubIn:         inEventSub,
 
+		imageDisplayManager:  imageDisplayManager,
+		badgeReplacer:        badgeReplacer,
 		messageLogger:        messageLogger,
 		emoteReplacer:        emoteReplacer,
 		messageLoggerChan:    messageLoggerChan,
@@ -498,6 +515,7 @@ func (r *Root) Init() tea.Cmd {
 		},
 		r.waitChatEvents(),
 		r.tickPollStreamInfos(),
+		r.imageCleanUpCommand(),
 	)
 }
 
@@ -510,6 +528,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case persistedDataLoadedMessage:
 		return r, r.handlePersistedDataLoaded(msg)
+	case imageCleanupTickMessage:
+		io.WriteString(os.Stdout, msg.deletionCommand)
+		return r, r.imageCleanUpCommand()
 	case joinChannelMessage:
 		r.screenType = mainScreen
 		r.initErr = nil
@@ -1189,6 +1210,9 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		prepare          string
 		channelID        string
 		channelGuestID   string
+
+		badgePrepare     string
+		badgeReplacement []string
 	)
 
 	switch ircMessage := ircer.(type) {
@@ -1203,8 +1227,14 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 			emoteSourceRoom = channelGuestID
 		}
 
+		var err error
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
-		io.WriteString(os.Stdout, prepare)
+		badgePrepare, badgeReplacement, err = r.badgeReplacer.Replace(emoteSourceRoom, ircMessage.Badges)
+		if err != nil {
+			log.Logger.Err(err).Any("msg", ircMessage).Send()
+		}
+
+		prepare += badgePrepare
 	case *command.RoomState:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
@@ -1223,7 +1253,6 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
-		io.WriteString(os.Stdout, prepare)
 	case *command.RaidMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
@@ -1234,11 +1263,13 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
-		io.WriteString(os.Stdout, prepare)
 	case *command.AnnouncementMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+	}
+
+	if prepare != "" {
 		io.WriteString(os.Stdout, prepare)
 	}
 
@@ -1269,6 +1300,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		tabID:                       tabID,
 		message:                     ircer,
 		messageContentEmoteOverride: contentOverwrite,
+		badgeReplacement:            badgeReplacement,
 	}
 }
 
@@ -1294,6 +1326,25 @@ func (r *Root) waitChatEvents() tea.Cmd {
 
 		return r.buildChatEventMessage(msg.ID, "", msg.Msg, false)
 	}
+}
+
+// imageCleanUpCommand returns a command that ticks after 1 minute and
+// clean all images that were not used in the last 10 minutes
+func (r *Root) imageCleanUpCommand() tea.Cmd {
+	if !r.userConfig.Settings.Chat.GraphicEmotes {
+		return nil
+	}
+
+	return tea.Tick(time.Minute*1, func(t time.Time) tea.Msg {
+		log.Logger.Info().Msg("image clean up tick start")
+		defer log.Logger.Info().Msg("image clean up tick end")
+
+		data := r.imageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
+
+		return imageCleanupTickMessage{
+			deletionCommand: data,
+		}
+	})
 }
 
 func (r *Root) closeTab() {

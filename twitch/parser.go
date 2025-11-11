@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -155,9 +156,6 @@ func ParseIRC(message string) (IRCer, error) {
 			return nil, err
 		}
 
-		//log.Logger.Info().Str("badge-info", string(c.tags["badge-info"])).
-		//	Str("badges", string(c.tags["badges"])).Send()
-
 		p := command.PrivateMessage{
 			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
 			Badges:      parseBadges(string(c.tags["badges"])),
@@ -197,6 +195,9 @@ func ParseIRC(message string) (IRCer, error) {
 			SourceRoomID: string(c.tags["source-room-id"]),
 			SourceBadges: parseBadges(string(c.tags["source-badges"])),
 		}
+
+		log.Logger.Info().Str("badge-info", string(c.tags["badge-info"])).
+			Str("badges", string(c.tags["badges"])).Str("user", p.LoginName).Send()
 
 		if len(c.Params) > 1 {
 			p.Message = c.Params[1]

@@ -594,22 +594,13 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.PrivateMessage:
-		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
-
-		// format users badges
-		for _, badge := range msg.Badges {
-			if b, ok := c.badgeMap[badge.Name]; ok {
-				badges = append(badges, b)
-			}
-		}
-
 		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
 		var prefix string
 
 		// if set it means the message is in context of a shared chat
 		if event.channelGuestDisplayName != "" {
-			if len(badges) == 0 {
+			if len(event.badgeReplacement) == 0 {
 				// start of the message (sent date + username)
 				prefix = fmt.Sprintf("  %s |%s| %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
@@ -618,15 +609,15 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				)
 			} else {
 				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s |%s| [%s] %s: ",
+				prefix = fmt.Sprintf("  %s |%s| %s%s: ",
 					c.timeFormatFunc(msg.TMISentTS),
 					event.channelGuestDisplayName,
-					strings.Join(badges, ", "),
+					formatBadgeReplacement(event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
 		} else {
-			if len(badges) == 0 {
+			if len(event.badgeReplacement) == 0 {
 				// start of the message (sent date + username)
 				prefix = fmt.Sprintf("  %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
@@ -634,9 +625,9 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				)
 			} else {
 				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s [%s] %s: ",
+				prefix = fmt.Sprintf("  %s %s%s: ",
 					c.timeFormatFunc(msg.TMISentTS),
-					strings.Join(badges, ", "),
+					formatBadgeReplacement(event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
@@ -956,4 +947,8 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 	}
 
 	return false
+}
+
+func formatBadgeReplacement(replacements []string) string {
+	return strings.Join(replacements, "")
 }
