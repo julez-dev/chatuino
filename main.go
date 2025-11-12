@@ -15,13 +15,16 @@ import (
 	"time"
 
 	"github.com/adrg/xdg"
+	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/httputil"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,6 +60,8 @@ var (
 
 var maybeLogFile *os.File
 
+//
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./kittyimg
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/command
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
@@ -85,7 +90,7 @@ func main() {
 			versionCMD,
 			accountCMD,
 			serverCMD,
-			rebuildCacheCMD,
+			cacheCMD,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -165,7 +170,8 @@ func main() {
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
-			emoteStore := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
+			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
+			badgeCache := badge.NewCache(serverAPI)
 
 			// message logger setup
 			db, err := openDB(false)
@@ -200,19 +206,24 @@ func main() {
 			go runChatLogger(messageLogger, messageLoggerChan, loggerWaitSync, settings.Moderation.StoreChatLogs)
 
 			// If the user has provided an account we can use the users local authentication
-			// Instead of using Chatuino's server to handle requests for emote fetching.
+			// Instead of using Chatuino's server to handle requests for emote/badge fetching.
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					emoteStore = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
+					emoteCache = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
+					badgeCache = badge.NewCache(ttvAPI)
 				}
 			}
 
-			var emoteReplacer *emote.Replacer
+			var (
+				emoteReplacer  = emote.NewReplacer(http.DefaultClient, emoteCache, false, theme, nil)
+				badgeReplacer  = badge.NewReplacer(http.DefaultClient, badgeCache, false, theme, nil)
+				displayManager *kittyimg.DisplayManager
+			)
 
-			if settings.Chat.GraphicEmotes {
-				if !hasEmoteSupport() {
-					return fmt.Errorf("graphical emote support enabled but not available for this platform (unix & kitty terminal only)")
+			if settings.Chat.GraphicEmotes || settings.Chat.GraphicBadges {
+				if !hasImageSupport() {
+					return fmt.Errorf("graphical image support enabled but not available for this platform (unix & kitty terminal only)")
 				}
 
 				cellWidth, cellHeight, err := getTermCellWidthHeight()
@@ -220,16 +231,26 @@ func main() {
 					return fmt.Errorf("failed to get terminal size: %w", err)
 				}
 
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, true, cellWidth, cellHeight, theme)
-			} else {
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteStore, false, 0, 0, theme)
+				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
+
+				if settings.Chat.GraphicEmotes {
+					emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManager)
+				}
+
+				if settings.Chat.GraphicBadges {
+					badgeReplacer = badge.NewReplacer(http.DefaultClient, badgeCache, true, theme, displayManager)
+				}
+
+				defer func() {
+					io.WriteString(os.Stdout, displayManager.CleanupAllImagesCommand())
+				}()
 			}
 
 			p := tea.NewProgram(
 				mainui.NewUI(log.Logger,
 					accountProvider,
 					chatMultiplexer,
-					emoteStore,
+					emoteCache,
 					command.String("client-id"),
 					serverAPI,
 					keymap,
@@ -239,6 +260,9 @@ func main() {
 					emoteReplacer,
 					messageLogger,
 					mainui.UserConfiguration{Settings: settings, Theme: theme},
+					badgeCache,
+					badgeReplacer,
+					displayManager,
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),

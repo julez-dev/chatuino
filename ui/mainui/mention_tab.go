@@ -36,7 +36,7 @@ type mentionTab struct {
 	chatWindow *chatWindow
 }
 
-func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provider AccountProvider, emoteStore EmoteStore, width, height int, userConfiguration UserConfiguration) *mentionTab {
+func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provider AccountProvider, emoteCache EmoteCache, width, height int, userConfiguration UserConfiguration) *mentionTab {
 	return &mentionTab{
 		id:                id,
 		logger:            logger,

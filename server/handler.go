@@ -400,6 +400,55 @@ func (a *API) handleGetStreamUser() http.HandlerFunc {
 	})
 }
 
+func (a *API) handleGetGlobalBadges() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := a.getLoggerFrom(r.Context())
+
+		badges, err := a.ttvAPI.GetGlobalChatBadges(r.Context())
+		if err != nil {
+			logger.Err(err).Msg("could not get global badge list")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		jsonData, err := json.Marshal(badges)
+		if err != nil {
+			logger.Err(err).Msg("could not marshal global badge list")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonData)
+	})
+}
+
+func (a *API) handleGetChannelBadges() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := a.getLoggerFrom(r.Context())
+		channelID := chi.URLParam(r, "channelID")
+
+		badges, err := a.ttvAPI.GetChannelChatBadges(r.Context(), channelID)
+		if err != nil {
+			logger.Err(err).Str("channel-id", channelID).Msg("could not get channel badges")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		jsonData, err := json.Marshal(badges)
+		if err != nil {
+			logger.Err(err).Str("channel-id", channelID).Msg("could not marshal channel badges")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonData)
+	})
+}
+
 func (a *API) handleGetHealth() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

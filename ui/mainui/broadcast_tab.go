@@ -18,6 +18,7 @@ import (
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -143,7 +144,7 @@ type broadcastTab struct {
 	channelID    string
 	channelLogin string
 
-	emoteStore EmoteStore
+	emoteStore EmoteCache
 
 	colorData twitch.UserChatColor
 
@@ -154,7 +155,9 @@ type broadcastTab struct {
 	modFetcher           ModStatusFetcher
 	recentMessageService RecentMessageService
 	emoteReplacer        EmoteReplacer
+	badgeReplacer        BadgeReplacer
 	messageLogger        MessageLogger
+	badgeCache           *badge.Cache
 
 	// components
 	streamInfo    *streamInfo
@@ -176,7 +179,7 @@ func newBroadcastTab(
 	ttvAPI APIClient,
 	channel string,
 	width, height int,
-	emoteStore EmoteStore,
+	emoteStore EmoteCache,
 	account save.Account,
 	accountProvider AccountProvider,
 	recentMessageService RecentMessageService,
@@ -184,6 +187,8 @@ func newBroadcastTab(
 	emoteReplacer EmoteReplacer,
 	messageLogger MessageLogger,
 	userConfiguration UserConfiguration,
+	badgeCache *badge.Cache,
+	badgeReplacer BadgeReplacer,
 ) *broadcastTab {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](time.Second * 10),
@@ -208,6 +213,8 @@ func newBroadcastTab(
 		userConfiguration:    userConfiguration,
 		modFetcher:           ivr.NewAPI(http.DefaultClient),
 		spinner:              spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
+		badgeCache:           badgeCache,
+		badgeReplacer:        badgeReplacer,
 	}
 }
 
@@ -411,8 +418,8 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			})
 
 			group.Go(func() error {
-				if err := t.emoteStore.RefreshGlobal(ctx); err != nil {
-					return fmt.Errorf("could not refresh global emote cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
+				if err := t.badgeCache.RefreshChannel(ctx, msg.channelID); err != nil {
+					return fmt.Errorf("could not refresh badge cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
 				}
 
 				return nil
@@ -422,7 +429,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			if err != nil {
 				return emoteSetRefreshedMessage{
 					targetID: t.id,
-					err:      err,
+					err:      fmt.Errorf("could not refresh emote/badge cache for %s (%s): %w", msg.channelLogin, msg.channelID, err),
 				}
 			}
 
@@ -1488,7 +1495,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration, t.badgeReplacer)
 
 	initialEvents := make([]chatEventMessage, 0, 15)
 	for e := range slices.Values(t.chatWindow.entries) {
@@ -1501,6 +1508,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 			message:                     e.Event.message,
 			channelGuestID:              e.Event.channelGuestID,
 			channelGuestDisplayName:     e.Event.channelGuestDisplayName,
+			badgeReplacement:            e.Event.badgeReplacement,
 		})
 	}
 

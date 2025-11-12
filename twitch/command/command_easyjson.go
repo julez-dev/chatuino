@@ -701,7 +701,7 @@ func easyjson36cb9bedDecodeGithubComJulezDevChatuinoTwitchCommand1(in *jlexer.Le
 			if in.IsNull() {
 				in.Skip()
 			} else {
-				out.Version = int(in.Int())
+				out.Version = string(in.String())
 			}
 		default:
 			in.SkipRecursive()
@@ -725,7 +725,7 @@ func easyjson36cb9bedEncodeGithubComJulezDevChatuinoTwitchCommand1(out *jwriter.
 	{
 		const prefix string = ",\"version\":"
 		out.RawString(prefix)
-		out.Int(int(in.Version))
+		out.String(string(in.Version))
 	}
 	out.RawByte('}')
 }

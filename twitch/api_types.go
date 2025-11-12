@@ -354,18 +354,23 @@ type (
 )
 
 // https://dev.twitch.tv/docs/api/reference/#get-channel-chat-badges
+// https://dev.twitch.tv/docs/api/reference#get-global-emotes
 type (
 	//easyjson:json
 	GetChannelChatBadgesResp struct {
-		Data []ChannelChatBadges `json:"data"`
+		Data []BadgeSet `json:"data"`
 	}
 	//easyjson:json
-	ChannelChatBadges struct {
-		SetID    string                    `json:"set_id"`
-		Versions []ChannelChatBadgeVersion `json:"versions"`
+	GetGlobalBadgesResp struct {
+		Data []BadgeSet `json:"data"`
 	}
 	//easyjson:json
-	ChannelChatBadgeVersion struct {
+	BadgeSet struct {
+		ID       string         `json:"set_id"`
+		Versions []BadgeVersion `json:"versions"`
+	}
+	//easyjson:json
+	BadgeVersion struct {
 		ID           string `json:"id"`
 		Image_URL_1x string `json:"image_url_1x"`
 		Image_URL_2x string `json:"image_url_2x"`

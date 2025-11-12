@@ -53,7 +53,6 @@ type chatWindow struct {
 	keymap            save.KeyMap
 	width, height     int
 	userConfiguration UserConfiguration
-	badgeMap          map[string]string
 	timeFormatFunc    func(time.Time) string
 
 	focused bool
@@ -85,17 +84,6 @@ type chatWindow struct {
 }
 
 func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
-	badgeMap := map[string]string{
-		"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatStreamerColor)).Render("Streamer"),
-		"no_audio":    "No Audio",
-		"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatVIPColor)).Render("VIP"),
-		"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatSubColor)).Render("Sub"),
-		"admin":       "Admin",
-		"staff":       "Staff",
-		"Turbo":       lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatTurboColor)).Render("Turbo"),
-		"moderator":   lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatModeratorColor)).Render("Mod"),
-	}
-
 	input := textinput.New()
 	input.CharLimit = 25
 	input.Prompt = "  /"
@@ -108,7 +96,6 @@ func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap,
 
 	c := chatWindow{
 		keymap:         keymap,
-		badgeMap:       badgeMap,
 		logger:         logger,
 		width:          width,
 		height:         height,
@@ -594,22 +581,13 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *command.PrivateMessage:
-		badges := make([]string, 0, len(msg.Badges)) // Acts like all badges will be mappable
-
-		// format users badges
-		for _, badge := range msg.Badges {
-			if b, ok := c.badgeMap[badge.Name]; ok {
-				badges = append(badges, b)
-			}
-		}
-
 		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
 		var prefix string
 
 		// if set it means the message is in context of a shared chat
 		if event.channelGuestDisplayName != "" {
-			if len(badges) == 0 {
+			if len(event.badgeReplacement) == 0 {
 				// start of the message (sent date + username)
 				prefix = fmt.Sprintf("  %s |%s| %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
@@ -618,15 +596,15 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				)
 			} else {
 				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s |%s| [%s] %s: ",
+				prefix = fmt.Sprintf("  %s |%s| %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
 					event.channelGuestDisplayName,
-					strings.Join(badges, ", "),
+					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
 		} else {
-			if len(badges) == 0 {
+			if len(event.badgeReplacement) == 0 {
 				// start of the message (sent date + username)
 				prefix = fmt.Sprintf("  %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
@@ -634,9 +612,9 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				)
 			} else {
 				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s [%s] %s: ",
+				prefix = fmt.Sprintf("  %s %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
-					strings.Join(badges, ", "),
+					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
@@ -956,4 +934,12 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 	}
 
 	return false
+}
+
+func formatBadgeReplacement(settings save.Settings, replacements []string) string {
+	if !settings.Chat.GraphicBadges {
+		return fmt.Sprintf("[%s]", strings.Join(replacements, ","))
+	}
+
+	return strings.Join(replacements, "")
 }

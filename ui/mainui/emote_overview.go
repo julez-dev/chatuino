@@ -31,7 +31,7 @@ type emoteOverviewSetDataMessage struct {
 
 type emoteOverview struct {
 	id        string
-	store     EmoteStore
+	store     EmoteCache
 	channelID string
 
 	vp      viewport.Model
@@ -50,14 +50,14 @@ var customEllipsisSpinner = spinner.Spinner{
 	FPS:    time.Second / 3, //nolint:mnd
 }
 
-func NewEmoteOverview(channelID string, store EmoteStore, replacer EmoteReplacer, width, height int) *emoteOverview {
+func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer, width, height int) *emoteOverview {
 	vp := viewport.New(width, height)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &emoteOverview{
 		id:            uuid.New().String(),
-		store:         store,
+		store:         cache,
 		channelID:     channelID,
 		emoteReplacer: replacer,
 		vp:            vp,

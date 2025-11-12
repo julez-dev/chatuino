@@ -533,13 +533,7 @@ func parseBadges(badgeStr string) []command.Badge {
 			continue
 		}
 
-		count, err := strconv.Atoi(parts[1])
-		if err != nil {
-			badges = append(badges, command.Badge{Name: parts[0]})
-			continue
-		}
-
-		badges = append(badges, command.Badge{Name: parts[0], Version: count})
+		badges = append(badges, command.Badge{Name: parts[0], Version: parts[1]})
 	}
 
 	return badges

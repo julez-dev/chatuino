@@ -34,21 +34,23 @@ type userInspect struct {
 	isDataFetched     bool
 	userConfiguration UserConfiguration
 
-	width, height int
-	tabID         string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
-	user          string // the chatter
-	channel       string // the streamer
-	badges        []command.Badge
+	width, height   int
+	tabID           string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
+	user            string // the chatter
+	channel         string // the streamer
+	badges          []command.Badge
+	formattedBadges []string
 
 	ivr           *ivr.API
 	ttvAPI        APIClient
 	emoteReplacer EmoteReplacer
+	badgeReplacer BadgeReplacer
 	messageLogger MessageLogger
 
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration) *userInspect {
+func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration, badgeReplacer BadgeReplacer) *userInspect {
 	c := newChatWindow(logger, width, height, keymap, userConfiguration)
 	c.timeFormatFunc = func(t time.Time) string {
 		return t.Local().Format("2006-01-02 15:04:05")
@@ -65,6 +67,7 @@ func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width
 		userConfiguration: userConfiguration,
 		emoteReplacer:     emoteReplacer,
 		messageLogger:     messageLogger,
+		badgeReplacer:     badgeReplacer,
 	}
 }
 
@@ -135,10 +138,14 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			io.WriteString(os.Stdout, prepare)
 
+			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
+			io.WriteString(os.Stdout, prepare)
+
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
 				isFakeEvent:                 true,
 				message:                     loggedEntry.PrivateMessage,
 				messageContentEmoteOverride: contentOverwrite,
+				badgeReplacement:            badgeOverwrite,
 			})
 		}
 
@@ -250,6 +257,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	// update badges if user inspect user is sender
 	if msg, ok := chatEvent.message.(*command.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
 		u.badges = msg.Badges
+		u.formattedBadges = chatEvent.badgeReplacement
 	}
 
 	u.chatWindow, cmd = u.chatWindow.Update(msg)
@@ -304,15 +312,10 @@ func (u *userInspect) renderUserInfo() string {
 		return styleCentered.Render(fmt.Sprintf("Error while fetching data: %s", u.err.Error()))
 	}
 
-	bades := make([]string, 0, len(u.badges))
-	for _, badge := range u.badges {
-		bades = append(bades, badge.String())
-	}
-
 	b := &strings.Builder{}
 	_, _ = fmt.Fprintf(b, "User %s (%s)", u.subAge.User.DisplayName, u.subAge.User.ID)
-	if len(bades) > 0 {
-		_, _ = fmt.Fprintf(b, " - (%s)\n", strings.Join(bades, ", "))
+	if len(u.formattedBadges) > 0 {
+		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.userConfiguration.Settings, u.formattedBadges))
 	} else {
 		_, _ = fmt.Fprintf(b, "\n")
 	}

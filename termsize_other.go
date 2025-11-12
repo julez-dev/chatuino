@@ -6,9 +6,9 @@ import (
 	"errors"
 )
 
-var errUnsupported = errors.New("emote support not available for this platform")
+var errUnsupported = errors.New("image support not available for this platform")
 
-func hasEmoteSupport() bool {
+func hasImageSupport() bool {
 	return false
 }
 

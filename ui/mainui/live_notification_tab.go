@@ -27,7 +27,7 @@ type liveNotificationTab struct {
 	chatWindow   *chatWindow
 }
 
-func newLiveNotificationTab(id string, logger zerolog.Logger, keymap save.KeyMap, emoteStore EmoteStore, width, height int, userConfiguration UserConfiguration) *liveNotificationTab {
+func newLiveNotificationTab(id string, logger zerolog.Logger, keymap save.KeyMap, emoteCache EmoteCache, width, height int, userConfiguration UserConfiguration) *liveNotificationTab {
 	return &liveNotificationTab{
 		id:                id,
 		logger:            logger,
