@@ -133,5 +133,5 @@ chatuino cache
 You can delete cached data with
 
 ```sh
-chatuino cache prune --emotes --database --badges
+chatuino cache clear --emotes --database --badges
 ```

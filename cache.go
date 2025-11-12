@@ -17,7 +17,7 @@ var cacheCMD = &cli.Command{
 	Description: "Analyse cache data for images and message data used by Chatuino",
 	Commands: []*cli.Command{
 		{
-			Name:        "prune",
+			Name:        "clear",
 			Usage:       "Manage deletion of cached data",
 			Description: "Delete specified cached data",
 			Flags: []cli.Flag{
