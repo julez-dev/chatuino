@@ -1018,7 +1018,7 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) (ta
 
 		headerHeight := r.getHeaderHeight()
 
-		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteCache, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger, r.userConfig, r.badgeCache)
+		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteCache, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger, r.userConfig, r.badgeCache, r.badgeReplacer)
 		return nTab, cmd
 	case mentionTabKind:
 		id, cmd := r.header.AddTab("mentioned", "all")
@@ -1331,7 +1331,7 @@ func (r *Root) waitChatEvents() tea.Cmd {
 // imageCleanUpCommand returns a command that ticks after 1 minute and
 // clean all images that were not used in the last 10 minutes
 func (r *Root) imageCleanUpCommand() tea.Cmd {
-	if !r.userConfig.Settings.Chat.GraphicEmotes {
+	if !r.userConfig.Settings.Chat.GraphicEmotes && !r.userConfig.Settings.Chat.GraphicBadges {
 		return nil
 	}
 

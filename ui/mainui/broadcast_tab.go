@@ -155,6 +155,7 @@ type broadcastTab struct {
 	modFetcher           ModStatusFetcher
 	recentMessageService RecentMessageService
 	emoteReplacer        EmoteReplacer
+	badgeReplacer        BadgeReplacer
 	messageLogger        MessageLogger
 	badgeCache           *badge.Cache
 
@@ -187,6 +188,7 @@ func newBroadcastTab(
 	messageLogger MessageLogger,
 	userConfiguration UserConfiguration,
 	badgeCache *badge.Cache,
+	badgeReplacer BadgeReplacer,
 ) *broadcastTab {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](time.Second * 10),
@@ -212,6 +214,7 @@ func newBroadcastTab(
 		modFetcher:           ivr.NewAPI(http.DefaultClient),
 		spinner:              spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
 		badgeCache:           badgeCache,
+		badgeReplacer:        badgeReplacer,
 	}
 }
 
@@ -1492,7 +1495,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration)
+	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration, t.badgeReplacer)
 
 	initialEvents := make([]chatEventMessage, 0, 15)
 	for e := range slices.Values(t.chatWindow.entries) {

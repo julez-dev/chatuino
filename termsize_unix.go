@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func hasEmoteSupport() bool {
+func hasImageSupport() bool {
 	_, isKitty := os.LookupEnv("KITTY_WINDOW_ID") // always defined by kitty
 	term := os.Getenv("TERM")
 

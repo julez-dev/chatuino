@@ -53,7 +53,6 @@ type chatWindow struct {
 	keymap            save.KeyMap
 	width, height     int
 	userConfiguration UserConfiguration
-	badgeMap          map[string]string
 	timeFormatFunc    func(time.Time) string
 
 	focused bool
@@ -85,17 +84,6 @@ type chatWindow struct {
 }
 
 func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
-	badgeMap := map[string]string{
-		"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatStreamerColor)).Render("Streamer"),
-		"no_audio":    "No Audio",
-		"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatVIPColor)).Render("VIP"),
-		"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatSubColor)).Render("Sub"),
-		"admin":       "Admin",
-		"staff":       "Staff",
-		"Turbo":       lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatTurboColor)).Render("Turbo"),
-		"moderator":   lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatModeratorColor)).Render("Mod"),
-	}
-
 	input := textinput.New()
 	input.CharLimit = 25
 	input.Prompt = "  /"
@@ -108,7 +96,6 @@ func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap,
 
 	c := chatWindow{
 		keymap:         keymap,
-		badgeMap:       badgeMap,
 		logger:         logger,
 		width:          width,
 		height:         height,
@@ -609,10 +596,10 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				)
 			} else {
 				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s |%s| %s%s: ",
+				prefix = fmt.Sprintf("  %s |%s| %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
 					event.channelGuestDisplayName,
-					formatBadgeReplacement(event.badgeReplacement),
+					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
@@ -625,9 +612,9 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				)
 			} else {
 				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s %s%s: ",
+				prefix = fmt.Sprintf("  %s %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
-					formatBadgeReplacement(event.badgeReplacement),
+					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
@@ -949,6 +936,10 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 	return false
 }
 
-func formatBadgeReplacement(replacements []string) string {
+func formatBadgeReplacement(settings save.Settings, replacements []string) string {
+	if !settings.Chat.GraphicBadges {
+		return fmt.Sprintf("[%s]", strings.Join(replacements, ","))
+	}
+
 	return strings.Join(replacements, "")
 }

@@ -21,8 +21,8 @@ block_settings:
     - Kappa
 chat:
   # NOTE: read the README for more information about how emote rendering works before enabling this feature
-  graphic_emotes: true # EXPERIMENTAL: if Chatuino should display emotes as images instead of text; Default: false
-
+  graphic_emotes: true # If Chatuino should display emotes as images instead of text; Default: false
+  graphic_badges: true # If Chatuino should display badges as images instead of text; Default: false
 custom_commands:
   # Custom commands are available as command suggestions
   - trigger: "/ocean"

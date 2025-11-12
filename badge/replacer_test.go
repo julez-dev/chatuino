@@ -54,6 +54,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		prepare, formatted, err := replacer.Replace("broadcaster123", []command.Badge{})
@@ -88,6 +89,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		badgeList := []command.Badge{
@@ -139,6 +141,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		badgeList := []command.Badge{
@@ -178,6 +181,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		badgeList := []command.Badge{
@@ -223,6 +227,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		badgeList := []command.Badge{
@@ -263,6 +268,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		badgeList := []command.Badge{
@@ -300,6 +306,7 @@ func TestReplacer_Replace(t *testing.T) {
 		replacer := &Replacer{
 			cache:          cache,
 			displayManager: displayManager,
+			enableGraphics: true,
 		}
 
 		prepare, formatted, err := replacer.Replace("broadcaster123", nil)
@@ -351,6 +358,7 @@ func TestReplacer_Replace(t *testing.T) {
 			cache:          cache,
 			displayManager: displayManager,
 			httpClient:     client,
+			enableGraphics: true,
 		}
 
 		badgeList := []command.Badge{

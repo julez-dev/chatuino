@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
@@ -28,6 +28,7 @@ type Replacer struct {
 	enableGraphics bool
 	cache          BadgeCache
 	displayManager DisplayManager
+	badeColorMap   map[string]string
 }
 
 func NewReplacer(httpClient *http.Client, cache BadgeCache, enableGraphics bool, theme save.Theme, displayManager DisplayManager) *Replacer {
@@ -40,31 +41,48 @@ func NewReplacer(httpClient *http.Client, cache BadgeCache, enableGraphics bool,
 		cache:          cache,
 		httpClient:     httpClient,
 		displayManager: displayManager,
+		badeColorMap: map[string]string{
+			"broadcaster": lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatStreamerColor)).Render("Streamer"),
+			"no_audio":    "No Audio",
+			"vip":         lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatVIPColor)).Render("VIP"),
+			"subscriber":  lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatSubColor)).Render("Sub"),
+			"admin":       "Admin",
+			"staff":       "Staff",
+			"Turbo":       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatTurboColor)).Render("Turbo"),
+			"moderator":   lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatModeratorColor)).Render("Mod"),
+		},
 	}
 }
 
 func (r *Replacer) Replace(broadcasterID string, badgeList []command.Badge) (string, []string, error) {
 	badgeMap := r.cache.MatchBadgeSet(broadcasterID, badgeList)
-	log.Logger.Info().Str("broadcasterID", broadcasterID).Any("m", badgeMap).Send()
 
-	var (
-		prepare         = strings.Builder{}
-		formattedBadges = make([]string, 0, len(badgeMap))
-	)
+	formattedBadges := make([]string, 0, len(badgeMap))
+
+	if !r.enableGraphics {
+		for k, b := range badgeMap {
+			if colored, ok := r.badeColorMap[k]; ok {
+				formattedBadges = append(formattedBadges, colored)
+				continue
+			}
+
+			formattedBadges = append(formattedBadges, b.Title)
+		}
+		return "", formattedBadges, nil
+	}
+
+	prepare := strings.Builder{}
 
 	for k, b := range badgeMap {
 		u, err := r.displayManager.Convert(kittyimg.DisplayUnit{
 			ID:        broadcasterID + k + b.ID,
 			Directory: "badge",
 			Load: func() (io.ReadCloser, string, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-				defer cancel()
-
 				url := b.Image_URL_1x
 
 				log.Logger.Info().Str("id", b.ID).Str("set", k).Str("url", url).Msg("fetching badge")
 
-				return r.fetch(ctx, b.Image_URL_1x)
+				return r.fetch(context.Background(), b.Image_URL_1x)
 			},
 		})
 		if err != nil {

@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/kittyimg"
@@ -106,9 +105,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote)
 			ID:         strings.ToLower(fmt.Sprintf("%s.%s", emote.Platform.String(), emote.ID)),
 			IsAnimated: emote.IsAnimated,
 			Load: func() (io.ReadCloser, string, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-				defer cancel()
-				return i.fetchEmote(ctx, emote.URL)
+				return i.fetchEmote(context.Background(), emote.URL)
 			},
 		})
 

@@ -216,14 +216,14 @@ func main() {
 			}
 
 			var (
-				emoteReplacer  *emote.Replacer
-				badgeReplacer  *badge.Replacer
+				emoteReplacer  = emote.NewReplacer(http.DefaultClient, emoteCache, false, theme, nil)
+				badgeReplacer  = badge.NewReplacer(http.DefaultClient, badgeCache, false, theme, nil)
 				displayManager *kittyimg.DisplayManager
 			)
 
-			if settings.Chat.GraphicEmotes {
-				if !hasEmoteSupport() {
-					return fmt.Errorf("graphical emote support enabled but not available for this platform (unix & kitty terminal only)")
+			if settings.Chat.GraphicEmotes || settings.Chat.GraphicBadges {
+				if !hasImageSupport() {
+					return fmt.Errorf("graphical image support enabled but not available for this platform (unix & kitty terminal only)")
 				}
 
 				cellWidth, cellHeight, err := getTermCellWidthHeight()
@@ -232,15 +232,18 @@ func main() {
 				}
 
 				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManager)
-				badgeReplacer = badge.NewReplacer(http.DefaultClient, badgeCache, true, theme, displayManager)
+
+				if settings.Chat.GraphicEmotes {
+					emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManager)
+				}
+
+				if settings.Chat.GraphicBadges {
+					badgeReplacer = badge.NewReplacer(http.DefaultClient, badgeCache, true, theme, displayManager)
+				}
 
 				defer func() {
 					io.WriteString(os.Stdout, displayManager.CleanupAllImagesCommand())
 				}()
-
-			} else {
-				emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, false, theme, nil)
 			}
 
 			p := tea.NewProgram(

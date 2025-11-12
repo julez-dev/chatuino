@@ -271,7 +271,6 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 			url, _ = strings.CutPrefix(url, "//")
 			url = "https://" + url
 
-			log.Logger.Info().Str("text", stvEmote.Name).Send()
 			emoteSet = append(emoteSet, Emote{
 				ID:         stvEmote.ID,
 				Text:       stvEmote.Name,
