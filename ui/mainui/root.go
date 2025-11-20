@@ -1205,15 +1205,40 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 
 func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitch.IRCer, isFakeEvent bool) chatEventMessage {
 	var (
-		channel          string
-		contentOverwrite string
-		prepare          string
-		channelID        string
-		channelGuestID   string
+		channel                 string
+		contentOverwrite        string
+		prepare                 string
+		channelID               string
+		channelGuestID          string
+		channelGuestDisplayName string
 
 		badgePrepare     string
 		badgeReplacement []string
 	)
+
+	// Check when currently in shared session.
+	// If so then load emotes and badges for guest so the message content can be replaced
+	if msg, ok := ircer.(*command.PrivateMessage); ok {
+		channelID = msg.RoomID
+		channelGuestID = msg.SourceRoomID
+
+		// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
+		if channelID != "" && channelGuestID != "" {
+			if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
+				channelGuestDisplayName = v.(string)
+			} else {
+				// try refresh emotes for guest
+				_ = r.emoteCache.RefreshLocal(context.Background(), channelGuestID)
+				_ = r.badgeCache.RefreshChannel(context.Background(), channelGuestID)
+
+				resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
+				if err == nil && len(resp.Data) > 0 {
+					channelGuestDisplayName = resp.Data[0].UserName
+					r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
+				}
+			}
+		}
+	}
 
 	switch ircMessage := ircer.(type) {
 	case *command.PrivateMessage:
@@ -1223,13 +1248,17 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 
 		// if is shared display emotes from guest channel, when message is from guest
 		emoteSourceRoom := channelID
+		badges := ircMessage.Badges
+
 		if channelGuestID != "" && channelID != channelGuestID {
 			emoteSourceRoom = channelGuestID
+			badges = ircMessage.SourceBadges
 		}
 
 		var err error
 		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
-		badgePrepare, badgeReplacement, err = r.badgeReplacer.Replace(emoteSourceRoom, ircMessage.Badges)
+
+		badgePrepare, badgeReplacement, err = r.badgeReplacer.Replace(emoteSourceRoom, badges)
 		if err != nil {
 			log.Logger.Err(err).Any("msg", ircMessage).Send()
 		}
@@ -1271,23 +1300,6 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 
 	if prepare != "" {
 		io.WriteString(os.Stdout, prepare)
-	}
-
-	var channelGuestDisplayName string
-	// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
-	if channelID != "" && channelGuestID != "" {
-		if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
-			channelGuestDisplayName = v.(string)
-		} else {
-			// try refresh emotes for guest
-			_ = r.emoteCache.RefreshLocal(context.Background(), channelGuestID)
-
-			resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
-			if err == nil && len(resp.Data) > 0 {
-				channelGuestDisplayName = resp.Data[0].UserName
-				r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
-			}
-		}
 	}
 
 	return chatEventMessage{
