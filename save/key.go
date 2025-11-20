@@ -50,15 +50,6 @@ type KeyMap struct {
 	SearchMode   key.Binding `yaml:"search_mode"`
 	QuickSent    key.Binding `yaml:"quick_sent"`
 
-	// Unban Request
-	UnbanRequestMode key.Binding `yaml:"unban_request_mode"`
-	PrevPage         key.Binding `yaml:"prev_page"`
-	NextPage         key.Binding `yaml:"next_page"`
-	PrevFilter       key.Binding `yaml:"prev_filter"`
-	NextFilter       key.Binding `yaml:"next_filter"`
-	Deny             key.Binding `yaml:"deny"`
-	Approve          key.Binding `yaml:"approve"`
-
 	// Account Binds
 	MarkLeader key.Binding `yaml:"mark_leader"`
 }
@@ -198,37 +189,9 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+alt+c"),
 			key.WithHelp("ctrl+alt+c", "dump chat"),
 		),
-		PrevPage: key.NewBinding(
-			key.WithKeys("pgup", "left", "h"),
-			key.WithHelp("pgup/left/h", "previous page"),
-		),
-		NextPage: key.NewBinding(
-			key.WithKeys("pgdown", "right", "l"),
-			key.WithHelp("pgdown/right/l", "next page"),
-		),
-		Approve: key.NewBinding(
-			key.WithKeys("a"),
-			key.WithHelp("a", "approve unban request"),
-		),
-		Deny: key.NewBinding(
-			key.WithKeys("d"),
-			key.WithHelp("d", "deny unban request"),
-		),
-		NextFilter: key.NewBinding(
-			key.WithKeys("]"),
-			key.WithHelp("]", "next filter"),
-		),
-		PrevFilter: key.NewBinding(
-			key.WithKeys("["),
-			key.WithHelp("[", "previous filter"),
-		),
 		CopyMessage: key.NewBinding(
 			key.WithKeys("alt+c"),
 			key.WithHelp("alt+c", "copy selected message"),
-		),
-		UnbanRequestMode: key.NewBinding(
-			key.WithKeys("ctrl+u"),
-			key.WithHelp("ctrl+u", "open unban request mode in current channel"),
 		),
 		SearchMode: key.NewBinding(
 			key.WithKeys("/"),

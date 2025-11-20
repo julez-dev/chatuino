@@ -26,7 +26,6 @@ var ModeratorSuggestions = [...]string{
 	"/delete_all_messages",
 	`/delete_selected_message {{ if .MessageID }}{{ .MessageID }}{{ else }}<message_id>{{ end }}`,
 
-	"/banrequests",
 	"/announcement <blue|green|orange|purple|primary> <message>",
 	"/announcement blue <message>",
 	"/announcement green <message>",

@@ -53,7 +53,6 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 			[]key.Binding{
 				deps.Keymap.InsertMode,
 				deps.Keymap.InspectMode,
-				deps.Keymap.UnbanRequestMode,
 				deps.Keymap.ChatPopUp,
 				deps.Keymap.ChannelPopUp,
 				deps.Keymap.GoToTop,
@@ -63,17 +62,6 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 				deps.Keymap.CopyMessage,
 				deps.Keymap.SearchMode,
 				deps.Keymap.QuickSent,
-			},
-		},
-		{
-			"Unban Request",
-			[]key.Binding{
-				deps.Keymap.PrevPage,
-				deps.Keymap.NextPage,
-				deps.Keymap.PrevFilter,
-				deps.Keymap.NextFilter,
-				deps.Keymap.Deny,
-				deps.Keymap.Approve,
 			},
 		},
 		{

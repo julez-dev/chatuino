@@ -19,7 +19,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -81,8 +80,6 @@ func (t broadcastTabState) String() string {
 	case 3:
 		return "Inspect / Insert"
 	case 4:
-		return "Unban"
-	case 5:
 		return "Emote Overview"
 	}
 
@@ -94,7 +91,6 @@ const (
 	insertMode
 	userInspectMode
 	userInspectInsertMode
-	unbanRequestMode
 	emoteOverviewMode
 )
 
@@ -103,8 +99,6 @@ type moderationAPIClient interface {
 	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitch.BanUserData) error
 	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
 	DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error
-	FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]twitch.UnbanRequest, error)
-	ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (twitch.UnbanRequest, error)
 	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitch.CreateChatAnnouncementRequest) error
 	CreateStreamMarker(ctx context.Context, req twitch.CreateStreamMarkerRequest) (twitch.StreamMarker, error)
 }
@@ -153,7 +147,6 @@ type broadcastTab struct {
 	userInspect   *userInspect
 	messageInput  *component.SuggestionTextInput
 	statusInfo    *streamStatus
-	unbanWindow   *unbanrequest.UnbanWindow
 	emoteOverview *emoteOverview
 	spinner       spinner.Model
 
@@ -597,13 +590,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					return t, tea.Batch(cmds...)
 				}
 
-				// Overlay unban request window
-				if key.Matches(msg, t.deps.Keymap.UnbanRequestMode) && t.state == inChatWindow && !t.account.IsAnonymous {
-					cmd := t.handleOpenBanRequest()
-					cmds = append(cmds, cmd)
-					return t, tea.Batch(cmds...)
-				}
-
 				// Open user inspect mode, where only messages from a specific user are shown
 				if key.Matches(msg, t.deps.Keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
 					cmd := t.handleOpenUserInspectFromMessage()
@@ -686,7 +672,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, nil
 		}
 
-		if t.state != emoteOverviewMode && t.state != unbanRequestMode {
+		if t.state != emoteOverviewMode {
 			t.chatWindow, cmd = t.chatWindow.Update(msg)
 			cmds = append(cmds, cmd)
 		}
@@ -705,11 +691,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.emoteOverview, cmd = t.emoteOverview.Update(msg)
 				cmds = append(cmds, cmd)
 			}
-		}
-
-		if t.state == unbanRequestMode {
-			t.unbanWindow, cmd = t.unbanWindow.Update(msg)
-			cmds = append(cmds, cmd)
 		}
 
 		if t.state == userInspectMode {
@@ -748,18 +729,6 @@ func (t *broadcastTab) View() string {
 	}
 
 	builder := strings.Builder{}
-
-	// In Unban Request Mode only render unban request window + status info
-	if t.state == unbanRequestMode {
-		builder.WriteString(t.unbanWindow.View())
-		statusInfo := t.statusInfo.View()
-		if statusInfo != "" {
-			builder.WriteString("\n")
-			builder.WriteString(statusInfo)
-		}
-
-		return builder.String()
-	}
 
 	// In Emote Overview Mode only render emote overview + status info
 	if t.state == emoteOverviewMode {
@@ -876,8 +845,6 @@ func (t *broadcastTab) handleEscapePressed() {
 		t.chatWindow.Focus()
 		t.messageInput.Blur()
 	}
-
-	t.unbanWindow = nil
 }
 
 func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
@@ -931,23 +898,6 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 	}
 
 	return nil
-}
-
-func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
-	t.state = unbanRequestMode
-	t.unbanWindow = unbanrequest.New(
-		t.deps.APIUserClients[t.account.ID].(moderationAPIClient),
-		t.deps.Keymap,
-		t.channelLogin,
-		t.channelID,
-		t.account.ID,
-		t.height,
-		t.width,
-	)
-
-	t.HandleResize()
-
-	return t.unbanWindow.Init()
 }
 
 // handlePyramidMessagesCommand build a message pyramid with the given word and count
@@ -1262,8 +1212,6 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleOpenBrowserChatPopUp()
 		case "channel":
 			return t.handleOpenBrowserChannel()
-		case "banrequests":
-			return t.handleOpenBanRequest()
 		case "pyramid":
 			return t.handlePyramidMessagesCommand(args)
 		case "localsubscribers":
@@ -1619,11 +1567,6 @@ func (t *broadcastTab) HandleResize() {
 		}
 
 		t.messageInput.SetWidth(t.width)
-
-		if t.state == unbanRequestMode {
-			t.unbanWindow.SetWidth(t.width)
-			t.unbanWindow.SetHeight(t.height - heightStatusInfo)
-		}
 
 		if t.state == emoteOverviewMode {
 			log.Logger.Info().Int("width", t.width).Int("height", t.height-heightStatusInfo).Msg("resize emoteOverview")
