@@ -11,8 +11,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
@@ -55,7 +55,7 @@ func handleMarker(args []string, channelID string, channel string, userAccountID
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		resp, err := ttv.CreateStreamMarker(ctx, twitch.CreateStreamMarkerRequest{
+		resp, err := ttv.CreateStreamMarker(ctx, twitchapi.CreateStreamMarkerRequest{
 			UserID:      channelID,
 			Description: description,
 		})
@@ -63,7 +63,7 @@ func handleMarker(args []string, channelID string, channel string, userAccountID
 		notice.FakeTimestamp = time.Now()
 
 		if err != nil {
-			var apiErr twitch.APIError
+			var apiErr twitchapi.APIError
 			if errors.As(err, &apiErr) {
 				switch apiErr.Status {
 				case http.StatusBadRequest:
@@ -109,11 +109,11 @@ func handleAnnouncement(args []string, channel string, channelID string, userAcc
 	color := args[0]
 
 	allowed := []string{
-		string(twitch.ChatAnnouncementColorBlue),
-		string(twitch.ChatAnnouncementColorGreen),
-		string(twitch.ChatAnnouncementColorOrange),
-		string(twitch.ChatAnnouncementColorPurple),
-		string(twitch.ChatAnnouncementColorPrimary),
+		string(twitchapi.ChatAnnouncementColorBlue),
+		string(twitchapi.ChatAnnouncementColorGreen),
+		string(twitchapi.ChatAnnouncementColorOrange),
+		string(twitchapi.ChatAnnouncementColorPurple),
+		string(twitchapi.ChatAnnouncementColorPrimary),
 	}
 
 	if !slices.Contains(allowed, color) {
@@ -136,15 +136,15 @@ func handleAnnouncement(args []string, channel string, channelID string, userAcc
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		err := ttv.SendChatAnnouncement(ctx, channelID, userAccountID, twitch.CreateChatAnnouncementRequest{
-			Color:   twitch.ChatAnnouncementColor(color),
+		err := ttv.SendChatAnnouncement(ctx, channelID, userAccountID, twitchapi.CreateChatAnnouncementRequest{
+			Color:   twitchapi.ChatAnnouncementColor(color),
 			Message: annoucementMessage,
 		})
 
 		notice.FakeTimestamp = time.Now()
 
 		if err != nil {
-			var apiErr twitch.APIError
+			var apiErr twitchapi.APIError
 			if errors.As(err, &apiErr) {
 				switch apiErr.Status {
 				case http.StatusBadRequest:
@@ -273,7 +273,7 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 			}
 		}
 
-		err = ttv.BanUser(ctx, channelID, userAccountID, twitch.BanUserData{
+		err = ttv.BanUser(ctx, channelID, userAccountID, twitchapi.BanUserData{
 			UserID:            users.Data[0].ID,
 			DurationInSeconds: duration,
 			Reason:            args[2],
@@ -320,7 +320,7 @@ func handleDeleteMessages(name string, args []string, channel string, channelID 
 
 		err := ttv.DeleteMessage(ctx, channelID, userAccountID, messageID)
 		if err != nil {
-			var apiErr twitch.APIError
+			var apiErr twitchapi.APIError
 			if errors.As(err, &apiErr) {
 				switch apiErr.Status {
 				case http.StatusBadRequest:

@@ -4,19 +4,19 @@ import (
 	"context"
 	"sync"
 
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"golang.org/x/sync/singleflight"
 )
 
 type BadgeFetcher interface {
-	GetGlobalChatBadges(ctx context.Context) ([]twitch.BadgeSet, error)
-	GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitch.BadgeSet, error)
+	GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet, error)
+	GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error)
 }
 
 type Cache struct {
-	globalBadges  []twitch.BadgeSet
-	channelBadges map[string][]twitch.BadgeSet // channelID:badgeSet
+	globalBadges  []twitchapi.BadgeSet
+	channelBadges map[string][]twitchapi.BadgeSet // channelID:badgeSet
 
 	single *singleflight.Group
 	l      *sync.RWMutex
@@ -29,7 +29,7 @@ func NewCache(fetcher BadgeFetcher) *Cache {
 		l:             &sync.RWMutex{},
 		fetcher:       fetcher,
 		single:        &singleflight.Group{},
-		channelBadges: make(map[string][]twitch.BadgeSet),
+		channelBadges: make(map[string][]twitchapi.BadgeSet),
 	}
 }
 
@@ -65,7 +65,7 @@ func (c *Cache) RefreshChannel(ctx context.Context, broadcasterID string) error 
 // badges=subscriber/6,arc-raiders-launch-2025/1
 // MatchBadgeSet uses the irc badge tag data to find and match the global and channel badges.
 // The key of the result map is the badge set id with the matched version.
-func (c *Cache) MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitch.BadgeVersion {
+func (c *Cache) MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
 	// preprocess for more efficient look ups
 	flattenIRCBadges := make(map[string]string, len(ircBadge))
 	for _, b := range ircBadge {
@@ -75,7 +75,7 @@ func (c *Cache) MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) ma
 	c.l.RLock()
 	defer c.l.RUnlock()
 
-	result := make(map[string]twitch.BadgeVersion)
+	result := make(map[string]twitchapi.BadgeVersion)
 
 	c.findAndAdd(flattenIRCBadges, c.globalBadges, result)
 
@@ -93,7 +93,7 @@ func (c *Cache) MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) ma
 	return result
 }
 
-func (c *Cache) findAndAdd(ircBadges map[string]string, badgeSets []twitch.BadgeSet, result map[string]twitch.BadgeVersion) {
+func (c *Cache) findAndAdd(ircBadges map[string]string, badgeSets []twitchapi.BadgeSet, result map[string]twitchapi.BadgeVersion) {
 	for _, b := range badgeSets {
 		version, ok := ircBadges[b.ID]
 		if !ok {

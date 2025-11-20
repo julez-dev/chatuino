@@ -26,10 +26,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/multiplex"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/ivr"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/rs/zerolog/log"
 )
@@ -55,7 +56,7 @@ type setChannelDataMessage struct {
 	channelLogin    string
 	channel         string
 	channelID       string
-	initialMessages []twitch.IRCer
+	initialMessages []twitchirc.IRCer
 	isUserMod       bool
 }
 
@@ -66,7 +67,7 @@ type emoteSetRefreshedMessage struct {
 
 type setUserIdentityData struct {
 	targetID  string
-	colorData twitch.UserChatColor
+	colorData twitchapi.UserChatColor
 }
 
 type broadcastTabState int
@@ -96,17 +97,17 @@ const (
 
 type moderationAPIClient interface {
 	APIClient
-	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitch.BanUserData) error
+	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitchapi.BanUserData) error
 	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
 	DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error
-	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitch.CreateChatAnnouncementRequest) error
-	CreateStreamMarker(ctx context.Context, req twitch.CreateStreamMarkerRequest) (twitch.StreamMarker, error)
+	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitchapi.CreateChatAnnouncementRequest) error
+	CreateStreamMarker(ctx context.Context, req twitchapi.CreateStreamMarkerRequest) (twitchapi.StreamMarker, error)
 }
 
 type userAuthenticatedAPIClient interface {
-	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitch.CreatedClip, error)
-	GetUserChatColor(ctx context.Context, userIDs []string) ([]twitch.UserChatColor, error)
-	SendChatMessage(ctx context.Context, data twitch.SendChatMessageRequest) (twitch.SendChatMessageResponse, error)
+	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitchapi.CreatedClip, error)
+	GetUserChatColor(ctx context.Context, userIDs []string) ([]twitchapi.UserChatColor, error)
+	SendChatMessage(ctx context.Context, data twitchapi.SendChatMessageRequest) (twitchapi.SendChatMessageResponse, error)
 }
 
 type ModStatusFetcher interface {
@@ -133,7 +134,7 @@ type broadcastTab struct {
 	channelID    string
 	channelLogin string
 
-	colorData twitch.UserChatColor
+	colorData twitchapi.UserChatColor
 
 	width, height int
 
@@ -206,14 +207,14 @@ func (t *broadcastTab) Init() tea.Cmd {
 	return tea.Batch(cmd, t.spinner.Tick)
 }
 
-func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
+func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 	cmd := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
 		group, ctx := errgroup.WithContext(ctx)
 
-		var recentMessages []twitch.IRCer
+		var recentMessages []twitchirc.IRCer
 		group.Go(func() error {
 			// fetch recent messages
 			msgs, err := t.deps.RecentMessageService.GetRecentMessagesFor(ctx, userData.Login)
@@ -411,7 +412,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 						accountID: t.account.ID,
 						msg: eventsub.InboundMessage{
 							Service: eventSubAPI,
-							Req: twitch.CreateEventSubSubscriptionRequest{
+							Req: twitchapi.CreateEventSubSubscriptionRequest{
 								Type:    subType,
 								Version: "1",
 								Condition: map[string]string{
@@ -428,7 +429,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					accountID: t.account.ID,
 					msg: eventsub.InboundMessage{
 						Service: eventSubAPI,
-						Req: twitch.CreateEventSubSubscriptionRequest{
+						Req: twitchapi.CreateEventSubSubscriptionRequest{
 							Type:    "channel.raid",
 							Version: "1",
 							Condition: map[string]string{
@@ -444,7 +445,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					accountID: t.account.ID,
 					msg: eventsub.InboundMessage{
 						Service: eventSubAPI,
-						Req: twitch.CreateEventSubSubscriptionRequest{
+						Req: twitchapi.CreateEventSubSubscriptionRequest{
 							Type:    "channel.raid",
 							Version: "1",
 							Condition: map[string]string{
@@ -567,7 +568,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		if err, ok := msg.message.(error); ok {
 			// if is error returned from final retry, don't wait again and return early
-			var matchErr twitch.RetryReachedError
+			var matchErr twitchirc.RetryReachedError
 
 			if errors.As(err, &matchErr) {
 				log.Logger.Info().Err(err).Msg("retry limit reached error matched, don't wait for next message")
@@ -1004,7 +1005,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			defer cancel()
 
-			r, err := client.SendChatMessage(ctx, twitch.SendChatMessageRequest{
+			r, err := client.SendChatMessage(ctx, twitchapi.SendChatMessageRequest{
 				BroadcasterID: broadcasterID,
 				SenderID:      userID,
 				Message:       msg,
@@ -1096,7 +1097,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 	return nil
 }
 
-func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
+func (t *broadcastTab) shouldIgnoreMessage(msg twitchirc.IRCer) bool {
 	if messageMatchesBlocked(msg, t.deps.UserConfig.Settings.BlockSettings) {
 		return true
 	}
@@ -1284,7 +1285,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
-		r, err := client.SendChatMessage(ctx, twitch.SendChatMessageRequest{
+		r, err := client.SendChatMessage(ctx, twitchapi.SendChatMessageRequest{
 			BroadcasterID: broadcasterID,
 			SenderID:      userID,
 			Message:       input,
@@ -1335,7 +1336,7 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 		}
 
 		if err != nil {
-			apiErr := twitch.APIError{}
+			apiErr := twitchapi.APIError{}
 			if errors.As(err, &apiErr) {
 				switch apiErr.Status {
 				case http.StatusUnauthorized:
@@ -1582,7 +1583,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		return nil
 	}
 
-	createCMDFunc := func(ircer twitch.IRCer) tea.Cmd {
+	createCMDFunc := func(ircer twitchirc.IRCer) tea.Cmd {
 		return func() tea.Msg {
 			return requestLocalMessageHandleMessage{
 				message:   ircer,

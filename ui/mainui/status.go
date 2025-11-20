@@ -8,13 +8,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type setSteamStatusDataMessage struct {
 	target   string
 	err      error
-	settings twitch.ChatSettingData
+	settings twitchapi.ChatSettingData
 }
 
 type streamStatus struct {
@@ -26,7 +26,7 @@ type streamStatus struct {
 
 	userConfig UserConfiguration
 
-	settings      twitch.ChatSettingData
+	settings      twitchapi.ChatSettingData
 	err           error
 	isDataFetched bool
 }

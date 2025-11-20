@@ -3,14 +3,15 @@ package mainui
 import (
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 // persistedDataLoadedMessage comes when state and user data is loaded
 type persistedDataLoadedMessage struct {
 	err      error
-	ttvUsers map[string]twitch.UserData
+	ttvUsers map[string]twitchapi.UserData
 	state    save.AppState
 }
 
@@ -26,7 +27,7 @@ type chatEventMessage struct {
 	channelGuestID          string // source-room-id by twitch
 	channelGuestDisplayName string // set later when broadcast tab reads the message
 
-	message twitch.IRCer
+	message twitchirc.IRCer
 	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
 	messageContentEmoteOverride string
 	badgeReplacement            []string
@@ -39,14 +40,14 @@ type chatEventMessage struct {
 // requestLocalMessageHandleMessage comes when the program requests a message to be handled by the IRC message handler which
 // then converts it into a chatEventMessage
 type requestLocalMessageHandleMessage struct {
-	message   twitch.IRCer
+	message   twitchirc.IRCer
 	accountID string
 	tabID     string
 }
 
 // requestLocalMessageHandleBatchMessage is the same as requestLocalMessageHandleMessage but for multiple message
 type requestLocalMessageHandleBatchMessage struct {
-	messages  []twitch.IRCer
+	messages  []twitchirc.IRCer
 	accountID string
 	tabID     string
 }

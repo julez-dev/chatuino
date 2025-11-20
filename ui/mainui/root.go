@@ -17,8 +17,9 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
@@ -46,7 +47,7 @@ func (t tabKind) String() string {
 
 type tab interface {
 	Init() tea.Cmd
-	InitWithUserData(twitch.UserData) tea.Cmd
+	InitWithUserData(twitchapi.UserData) tea.Cmd
 	Update(tea.Msg) (tab, tea.Cmd)
 	View() string
 	Focus()
@@ -265,7 +266,7 @@ func (r *Root) Init() tea.Cmd {
 			}
 
 			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
-			ttvUsers := make(map[string]twitch.UserData, len(state.Tabs))
+			ttvUsers := make(map[string]twitchapi.UserData, len(state.Tabs))
 			usersLock := &sync.Mutex{}
 
 			loginsUnique := make(map[string]struct{}, len(state.Tabs))
@@ -982,7 +983,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitch.IRCer, isFakeEvent bool) chatEventMessage {
+func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitchirc.IRCer, isFakeEvent bool) chatEventMessage {
 	var (
 		channel                 string
 		contentOverwrite        string

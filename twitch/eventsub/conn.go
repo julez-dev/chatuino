@@ -11,7 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/jellydator/ttlcache/v3"
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
 )
 
@@ -22,11 +22,11 @@ const (
 )
 
 type EventSubService interface {
-	CreateEventSubSubscription(ctx context.Context, reqData twitch.CreateEventSubSubscriptionRequest) (twitch.CreateEventSubSubscriptionResponse, error)
+	CreateEventSubSubscription(ctx context.Context, reqData twitchapi.CreateEventSubSubscriptionRequest) (twitchapi.CreateEventSubSubscriptionResponse, error)
 }
 
 type InboundMessage struct {
-	Req     twitch.CreateEventSubSubscriptionRequest
+	Req     twitchapi.CreateEventSubSubscriptionRequest
 	Service EventSubService
 }
 
@@ -241,8 +241,8 @@ func (c *Conn) listenInboundMessages(wg *sync.WaitGroup, done <-chan struct{}, m
 	}
 }
 
-func addTransportFunc(input twitch.CreateEventSubSubscriptionRequest, sessionID string) twitch.CreateEventSubSubscriptionRequest {
-	input.Transport = twitch.EventSubTransportRequest{
+func addTransportFunc(input twitchapi.CreateEventSubSubscriptionRequest, sessionID string) twitchapi.CreateEventSubSubscriptionRequest {
+	input.Transport = twitchapi.EventSubTransportRequest{
 		Method:    "websocket",
 		SessionID: sessionID,
 	}

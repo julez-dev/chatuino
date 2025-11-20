@@ -4,23 +4,24 @@ import (
 	"context"
 	"sync"
 
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog"
 )
 
 type Chat interface {
-	ConnectWithRetry(ctx context.Context, messages <-chan twitch.IRCer) (<-chan twitch.IRCer, <-chan error)
+	ConnectWithRetry(ctx context.Context, messages <-chan twitchirc.IRCer) (<-chan twitchirc.IRCer, <-chan error)
 }
 
 type OutboundMessage struct {
 	ID  string
-	Msg twitch.IRCer
+	Msg twitchirc.IRCer
 	Err error
 }
 
 type InboundMessage struct {
 	AccountID string
-	Msg       any // Type of IncrementCounter, DecrementCounter, or twitch.IRCer
+	Msg       any // Type of IncrementCounter, DecrementCounter, or twitchirc.IRCer
 }
 
 type IncrementTabCounter struct{}
@@ -29,16 +30,16 @@ type DecrementTabCounter struct{}
 
 type ChatMultiplexer struct {
 	logger          zerolog.Logger
-	provider        twitch.AccountProvider
-	BuildChatClient func(logger zerolog.Logger, provider twitch.AccountProvider, accountID string) Chat
+	provider        twitchapi.AccountProvider
+	BuildChatClient func(logger zerolog.Logger, provider twitchapi.AccountProvider, accountID string) Chat
 }
 
-func NewChatMultiplexer(logger zerolog.Logger, provider twitch.AccountProvider) *ChatMultiplexer {
+func NewChatMultiplexer(logger zerolog.Logger, provider twitchapi.AccountProvider) *ChatMultiplexer {
 	return &ChatMultiplexer{
 		logger:   logger,
 		provider: provider,
-		BuildChatClient: func(logger zerolog.Logger, provider twitch.AccountProvider, accountID string) Chat {
-			return twitch.NewChat(logger, provider, accountID)
+		BuildChatClient: func(logger zerolog.Logger, provider twitchapi.AccountProvider, accountID string) Chat {
+			return twitchirc.NewChat(logger, provider, accountID)
 		},
 	}
 }
@@ -48,7 +49,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 
 	go func() {
 		cancels := make(map[string]context.CancelFunc)
-		chatIns := make(map[string]chan twitch.IRCer)
+		chatIns := make(map[string]chan twitchirc.IRCer)
 		chatDones := make(map[string]chan struct{}) // to unblock pending sends
 		numListeners := make(map[string]int)
 
@@ -66,7 +67,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 				ctx, cancel := context.WithCancel(context.Background())
 
 				cancels[accountID] = cancel
-				chatIns[accountID] = make(chan twitch.IRCer)
+				chatIns[accountID] = make(chan twitchirc.IRCer)
 				chatDones[accountID] = make(chan struct{})
 
 				in = chatIns[accountID]
@@ -135,7 +136,7 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 			}
 
 			select {
-			case in <- msg.Msg.(twitch.IRCer): // we know it's an IRCer
+			case in <- msg.Msg.(twitchirc.IRCer): // we know it's an IRCer
 			case <-chatDones[accountID]:
 				// cancels[accountID]()
 				// close(chatIns[accountID])

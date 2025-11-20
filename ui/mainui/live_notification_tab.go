@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type liveNotificationTab struct {
@@ -39,7 +39,7 @@ func (l *liveNotificationTab) Init() tea.Cmd {
 	return nil
 }
 
-func (l *liveNotificationTab) InitWithUserData(twitch.UserData) tea.Cmd {
+func (l *liveNotificationTab) InitWithUserData(twitchapi.UserData) tea.Cmd {
 	return nil
 }
 

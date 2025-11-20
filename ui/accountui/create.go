@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type createState int
@@ -147,9 +147,9 @@ func (c createModel) handleSent(input string) tea.Cmd {
 			RefreshToken: split[1],
 		}
 
-		api, err := twitch.NewAPI(
+		api, err := twitchapi.NewAPI(
 			c.clientID,
-			twitch.WithUserAuthentication(newStaticAccountProvider(tmpAccount),
+			twitchapi.WithUserAuthentication(newStaticAccountProvider(tmpAccount),
 				server.NewClient(c.apiHost, nil),
 				tmpAccount.ID,
 			),

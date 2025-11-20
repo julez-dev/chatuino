@@ -14,13 +14,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/rs/zerolog/log"
 )
 
 type followedFetcher interface {
-	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitch.FollowedChannel, error)
+	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.FollowedChannel, error)
 }
 
 type currentJoinInput int

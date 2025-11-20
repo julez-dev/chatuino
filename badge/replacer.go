@@ -12,13 +12,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog/log"
 )
 
 type BadgeCache interface {
-	MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitch.BadgeVersion
+	MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion
 }
 
 type DisplayManager interface {

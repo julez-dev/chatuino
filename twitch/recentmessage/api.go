@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 )
@@ -32,7 +32,7 @@ func NewAPI(client *http.Client) *API {
 	}
 }
 
-func (a API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error) {
+func (a API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitchirc.IRCer, error) {
 	reqURL, err := url.JoinPath(baseURL, channelLogin)
 	if err != nil {
 		return nil, err
@@ -50,10 +50,10 @@ func (a API) GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]t
 		return nil, fmt.Errorf("could not fetch recent messages for %s: %w", channelLogin, err)
 	}
 
-	messages := make([]twitch.IRCer, 0, len(data.Messages))
+	messages := make([]twitchirc.IRCer, 0, len(data.Messages))
 
 	for _, message := range data.Messages {
-		parsed, err := twitch.ParseIRC(message)
+		parsed, err := twitchirc.ParseIRC(message)
 		if err != nil {
 			log.Logger.Error().Err(err).Str("message", message).Msg("failed to parse message")
 			continue

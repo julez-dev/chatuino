@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rivo/uniseg"
 )
 
@@ -97,7 +97,7 @@ func messageContainsCaseInsensitive(msg *command.PrivateMessage, sub string) boo
 // 	return (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 65535
 // }
 
-func messageMatchesBlocked(msg twitch.IRCer, settings save.BlockSettings) bool {
+func messageMatchesBlocked(msg twitchirc.IRCer, settings save.BlockSettings) bool {
 	var (
 		senderUserName string
 		senderMessage  string

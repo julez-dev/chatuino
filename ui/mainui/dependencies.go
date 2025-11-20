@@ -9,8 +9,9 @@ import (
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/save/messagelog"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type UserConfiguration struct {
@@ -44,9 +45,9 @@ type BadgeReplacer interface {
 }
 
 type APIClient interface {
-	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
-	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
-	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
+	GetUsers(ctx context.Context, logins []string, ids []string) (twitchapi.UserResponse, error)
+	GetStreamInfo(ctx context.Context, broadcastID []string) (twitchapi.GetStreamsResponse, error)
+	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitchapi.GetChatSettingsResponse, error)
 }
 
 type APIClientWithRefresh interface {
@@ -55,7 +56,7 @@ type APIClientWithRefresh interface {
 }
 
 type UserEmoteClient interface {
-	FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]twitch.UserEmoteImage, string, error)
+	FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.UserEmoteImage, string, error)
 }
 
 type ChatPool interface {
@@ -67,7 +68,7 @@ type EventSubPool interface {
 }
 
 type RecentMessageService interface {
-	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error)
+	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitchirc.IRCer, error)
 }
 
 type MessageLogger interface {

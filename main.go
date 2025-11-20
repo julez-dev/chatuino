@@ -23,6 +23,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
@@ -33,7 +34,6 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
-	"github.com/julez-dev/chatuino/twitch"
 	ttvCommand "github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
@@ -207,9 +207,11 @@ func main() {
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote/badge fetching.
+			clients := make(map[string]mainui.APIClient)
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
-				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
+				ttvAPI, err := twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
+					clients[mainAccount.ID] = ttvAPI
 					emoteCache = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
 					badgeCache = badge.NewCache(ttvAPI)
 				}
@@ -264,7 +266,7 @@ func main() {
 				MessageLogger:        messageLogger,
 				ChatPool:             chatMultiplexer,
 				EventSubPool:         eventSubMultiplexer,
-				APIUserClients:       make(map[string]mainui.APIClient),
+				APIUserClients:       clients,
 			}
 
 			// Fetch all Accounts
@@ -273,12 +275,15 @@ func main() {
 				return fmt.Errorf("failed to open accounts: %w", err)
 			}
 
-			clients := make(map[string]mainui.APIClient, len(accounts))
 			for _, acc := range accounts {
+				if _, ok := clients[acc.ID]; ok {
+					continue
+				}
+
 				var api mainui.APIClient
 
 				if !acc.IsAnonymous {
-					api, err = twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, acc.ID))
+					api, err = twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, acc.ID))
 					if err != nil {
 						return fmt.Errorf("failed to build api client for %s: %w", acc.DisplayName, err)
 					}
@@ -289,7 +294,6 @@ func main() {
 				clients[acc.ID] = api
 			}
 
-			deps.APIUserClients = clients
 			deps.Accounts = accounts
 
 			p := tea.NewProgram(
@@ -308,7 +312,7 @@ func main() {
 					p.Send(mainui.EventSubMessage{Payload: msg})
 				}
 				eventSub.HandleError = func(err error) {
-					var twitchApiErr twitch.APIError
+					var twitchApiErr twitchapi.APIError
 					if errors.As(err, &twitchApiErr) {
 						log.Logger.Info().Any("twitch-error", twitchApiErr).Send()
 					}

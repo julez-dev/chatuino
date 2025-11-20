@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type setMentionTabData struct {
@@ -68,7 +68,7 @@ func (m *mentionTab) Init() tea.Cmd {
 	}
 }
 
-func (m *mentionTab) InitWithUserData(twitch.UserData) tea.Cmd {
+func (m *mentionTab) InitWithUserData(twitchapi.UserData) tea.Cmd {
 	return m.Init()
 }
 

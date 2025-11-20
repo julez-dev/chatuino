@@ -12,22 +12,22 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/ivr"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type setUserInspectData struct {
 	target        string
 	err           error
 	ivrResp       ivr.SubAgeResponse
-	userData      twitch.UserData
+	userData      twitchapi.UserData
 	initialEvents []chatEventMessage
 }
 
 type userInspect struct {
 	subAge        ivr.SubAgeResponse
-	userData      twitch.UserData
+	userData      twitchapi.UserData
 	err           error
 	isDataFetched bool
 

@@ -1,4 +1,4 @@
-package twitch
+package twitchirc
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/coder/websocket"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -23,6 +24,11 @@ const (
 	maxMessageSize = 1 * 1024 * 1024 // 1MiB
 	ircWSURL       = "wss://irc-ws.chat.twitch.tv:443"
 )
+
+type AccountProvider interface {
+	GetAccountBy(id string) (save.Account, error)
+	UpdateTokensFor(id, accessToken, refreshToken string) error
+}
 
 // IRCer are types that can be turned into an IRC command
 type IRCer interface {
