@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -56,11 +58,14 @@ func NewReplacer(httpClient *http.Client, cache BadgeCache, enableGraphics bool,
 
 func (r *Replacer) Replace(broadcasterID string, badgeList []command.Badge) (string, []string, error) {
 	badgeMap := r.cache.MatchBadgeSet(broadcasterID, badgeList)
+	badgesSortedKeys := slices.Sorted(maps.Keys(badgeMap))
 
 	formattedBadges := make([]string, 0, len(badgeMap))
 
 	if !r.enableGraphics {
-		for k, b := range badgeMap {
+		for _, k := range badgesSortedKeys {
+			b := badgeMap[k]
+
 			if colored, ok := r.badeColorMap[k]; ok {
 				formattedBadges = append(formattedBadges, colored)
 				continue
@@ -73,7 +78,9 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []command.Badge) (str
 
 	prepare := strings.Builder{}
 
-	for k, b := range badgeMap {
+	for _, k := range badgesSortedKeys {
+		b := badgeMap[k]
+
 		u, err := r.displayManager.Convert(kittyimg.DisplayUnit{
 			ID:        broadcasterID + k + b.ID,
 			Directory: "badge",
