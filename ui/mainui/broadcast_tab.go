@@ -279,7 +279,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.err = errors.Join(t.err, msg.err)
 		return t, nil
-	case setStreamInfo:
+	case setStreamInfoMessage:
 		if t.channelDataLoaded {
 			if msg.target != t.channelID {
 				return t, nil
@@ -358,7 +358,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		// pass recent messages, recorded before the application was started, to chat window
 		ircCmds = append(ircCmds, func() tea.Msg {
-			return requestLocalMessageHandleMessageBatch{
+			return requestLocalMessageHandleBatchMessage{
 				messages:  msg.initialMessages,
 				tabID:     t.id,
 				accountID: t.account.ID,

@@ -56,12 +56,6 @@ func (i listItem) Title() string       { return i.title }
 func (i listItem) Description() string { return "" }
 func (i listItem) FilterValue() string { return i.title }
 
-type joinChannelMessage struct {
-	tabKind tabKind
-	channel string
-	account save.Account
-}
-
 type setJoinAccountsMessage struct {
 	accounts []save.Account
 }

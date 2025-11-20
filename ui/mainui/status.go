@@ -11,7 +11,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch"
 )
 
-type setSteamStatusData struct {
+type setSteamStatusDataMessage struct {
 	target   string
 	err      error
 	settings twitch.ChatSettingData
@@ -49,20 +49,20 @@ func (s *streamStatus) Init() tea.Cmd {
 
 		settingsResp, err := s.deps.APIUserClients[s.accountID].GetChatSettings(ctx, s.channelID, "")
 		if err != nil {
-			return setSteamStatusData{
+			return setSteamStatusDataMessage{
 				target: s.tab.id,
 				err:    err,
 			}
 		}
 
 		if len(settingsResp.Data) == 0 {
-			return setSteamStatusData{
+			return setSteamStatusDataMessage{
 				target: s.tab.id,
 				err:    fmt.Errorf("no chat status settings found for channel: %s", s.tab.channelLogin),
 			}
 		}
 
-		return setSteamStatusData{
+		return setSteamStatusDataMessage{
 			target:   s.tab.id,
 			settings: settingsResp.Data[0],
 			err:      err,
@@ -72,7 +72,7 @@ func (s *streamStatus) Init() tea.Cmd {
 
 func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
 	switch msg := msg.(type) {
-	case setSteamStatusData:
+	case setSteamStatusDataMessage:
 		if msg.target != s.tab.id {
 			return s, nil
 		}

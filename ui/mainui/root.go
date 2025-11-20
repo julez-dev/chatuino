@@ -19,7 +19,6 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
@@ -97,68 +96,6 @@ func (e ircConnectionError) Unwrap() error {
 
 func (e ircConnectionError) IRC() string {
 	return e.Error()
-}
-
-type persistedDataLoadedMessage struct {
-	err      error
-	ttvUsers map[string]twitch.UserData
-	state    save.AppState
-}
-
-type chatEventMessage struct {
-	// If the event was not created by twitch IRC connection but instead locally by message input chat load etc.
-	// This indicates that the root will not start a new wait message command.
-	// All messages requested by requestLocalMessageHandleMessage will have this flag set to true.
-	isFakeEvent             bool
-	accountID               string
-	channel                 string
-	channelID               string
-	channelGuestID          string // source-room-id by twitch
-	channelGuestDisplayName string // set later when broadcast tab reads the message
-
-	message twitch.IRCer
-	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
-	messageContentEmoteOverride string
-	badgeReplacement            []string
-
-	// if message should only be sent to a specific tab ID
-	// if empty send to all
-	tabID string
-}
-
-type requestLocalMessageHandleMessage struct {
-	message   twitch.IRCer
-	accountID string
-	tabID     string
-}
-
-type requestLocalMessageHandleMessageBatch struct {
-	messages  []twitch.IRCer
-	accountID string
-	tabID     string
-}
-
-type forwardChatMessage struct {
-	msg multiplex.InboundMessage
-}
-
-type forwardEventSubMessage struct {
-	accountID string
-	msg       eventsub.InboundMessage
-}
-
-type EventSubMessage struct {
-	Payload eventsub.Message[eventsub.NotificationPayload]
-}
-
-type polledStreamInfo struct {
-	streamInfos []setStreamInfo
-}
-
-type appStateSaveMessage struct{}
-
-type imageCleanupTickMessage struct {
-	deletionCommand string
 }
 
 type Root struct {
@@ -435,7 +372,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, func() tea.Msg {
 			return r.buildChatEventMessage(msg.accountID, msg.tabID, msg.message, true)
 		}
-	case requestLocalMessageHandleMessageBatch:
+	case requestLocalMessageHandleBatchMessage:
 		batched := make([]tea.Cmd, 0, len(msg.messages))
 
 		for ircer := range slices.Values(msg.messages) {
@@ -455,7 +392,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return r, cmd
-	case polledStreamInfo:
+	case polledStreamInfoMessage:
 		return r, r.handlePolledStreamInfo(msg)
 	case appStateSaveMessage:
 		return r, r.tickSaveAppState()
@@ -731,18 +668,15 @@ func (r *Root) Close() error {
 func (r *Root) tickSaveAppState() tea.Cmd {
 	state := r.TakeStateSnapshot()
 
-	return func() tea.Msg {
+	return tea.Tick(time.Second*15, func(_ time.Time) tea.Msg {
 		log.Logger.Info().Msg("saving app state inside ticker")
+
 		if err := state.Save(); err != nil {
 			log.Logger.Err(err).Msg("failed to save app state")
 		}
 
-		timer := time.NewTimer(time.Second * 15)
-		defer timer.Stop()
-
-		<-timer.C
 		return appStateSaveMessage{}
-	}
+	})
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
@@ -761,10 +695,9 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	}
 
 	if len(openBroadcasts) == 0 {
-		return func() tea.Msg {
-			time.Sleep(time.Second * 90)
-			return polledStreamInfo{}
-		}
+		return tea.Tick(time.Second*90, func(_ time.Time) tea.Msg {
+			return polledStreamInfoMessage{}
+		})
 	}
 
 	broadcastIDs := []string{}
@@ -772,10 +705,10 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		broadcastIDs = append(broadcastIDs, broadcast)
 	}
 
-	return func() tea.Msg {
+	return tea.Tick(time.Second*90, func(_ time.Time) tea.Msg {
 		accounts, err := r.dependencies.AccountProvider.GetAllAccounts()
 		if err != nil {
-			return polledStreamInfo{}
+			return polledStreamInfoMessage{}
 		}
 
 		var mainAccountID string
@@ -793,31 +726,23 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 			fetcher = r.dependencies.ServerAPI
 		}
 
-		timer := time.NewTimer(time.Second * 90)
-
-		defer func() {
-			timer.Stop()
-		}()
-
-		<-timer.C
-
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 		resp, err := fetcher.GetStreamInfo(ctx, broadcastIDs)
 		if err != nil {
 			log.Logger.Err(err).Msg("failed polling streamer info")
-			return polledStreamInfo{}
+			return polledStreamInfoMessage{}
 		}
 
-		polled := polledStreamInfo{
-			streamInfos: make([]setStreamInfo, 0, len(broadcastIDs)),
+		polled := polledStreamInfoMessage{
+			streamInfos: make([]setStreamInfoMessage, 0, len(broadcastIDs)),
 		}
 
 		// Update status for all streams
 		// If a stream is offline the twitch API does not return any item for this broadcaster_id
 		// To still update the title etc. to empty value, send an empty info to component.
 		for ib := range broadcastIDs {
-			info := setStreamInfo{
+			info := setStreamInfoMessage{
 				target:   broadcastIDs[ib],
 				username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
 			}
@@ -839,10 +764,10 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		}
 
 		return polled
-	}
+	})
 }
 
-func (r *Root) handlePolledStreamInfo(polled polledStreamInfo) tea.Cmd {
+func (r *Root) handlePolledStreamInfo(polled polledStreamInfoMessage) tea.Cmd {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -1202,7 +1127,7 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 		return nil
 	}
 
-	return tea.Tick(time.Minute*1, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Minute*1, func(_ time.Time) tea.Msg {
 		log.Logger.Info().Msg("image clean up tick start")
 		defer log.Logger.Info().Msg("image clean up tick end")
 

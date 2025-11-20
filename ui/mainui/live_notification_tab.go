@@ -46,7 +46,7 @@ func (l *liveNotificationTab) InitWithUserData(twitch.UserData) tea.Cmd {
 func (l *liveNotificationTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	var cmd tea.Cmd
 
-	if info, ok := msg.(setStreamInfo); ok {
+	if info, ok := msg.(setStreamInfoMessage); ok {
 		// If broadcaster already exists in open streamer map, see if prevoiusly was live/offline, then notify user and save new state
 		// Else add broadcaster
 		wasAlreadyLive, alreadyMonitored := l.streamerLive[info.target]
