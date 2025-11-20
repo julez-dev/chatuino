@@ -14,80 +14,15 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
-
-type UserConfiguration struct {
-	Settings save.Settings
-	Theme    save.Theme
-}
-
-type AccountProvider interface {
-	GetAllAccounts() ([]save.Account, error)
-	UpdateTokensFor(id, accessToken, refreshToken string) error
-	GetAccountBy(id string) (save.Account, error)
-}
-
-type EmoteCache interface {
-	GetByText(channelID, text string) (emote.Emote, bool)
-	RefreshLocal(ctx context.Context, channelID string) error
-	RefreshGlobal(ctx context.Context) error
-	GetAllForChannel(id string) emote.EmoteSet
-	AddUserEmotes(userID string, emotes []emote.Emote)
-	AllEmotesUsableByUser(userID string) []emote.Emote
-	RemoveEmoteSetForChannel(channelID string)
-	LoadSetForeignEmote(emoteID, emoteText string) emote.Emote
-}
-
-type EmoteReplacer interface {
-	Replace(channelID, content string, emoteList []command.Emote) (string, string, error)
-}
-
-type BadgeReplacer interface {
-	Replace(broadcasterID string, badgeList []command.Badge) (string, []string, error)
-}
-
-type APIClient interface {
-	GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error)
-	GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error)
-	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error)
-}
-
-type APIClientWithRefresh interface {
-	APIClient
-	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
-}
-
-type UserEmoteClient interface {
-	FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]twitch.UserEmoteImage, string, error)
-}
-
-type ChatPool interface {
-	ListenAndServe(inbound <-chan multiplex.InboundMessage) <-chan multiplex.OutboundMessage
-}
-
-type EventSubPool interface {
-	ListenAndServe(inbound <-chan multiplex.EventSubInboundMessage) error
-}
-
-type RecentMessageService interface {
-	GetRecentMessagesFor(ctx context.Context, channelLogin string) ([]twitch.IRCer, error)
-}
-
-type MessageLogger interface {
-	MessagesFromUserInChannel(username string, broadcasterChannel string) ([]messagelog.LogEntry, error)
-}
 
 type tabKind int
 
@@ -168,8 +103,6 @@ type persistedDataLoadedMessage struct {
 	err      error
 	ttvUsers map[string]twitch.UserData
 	state    save.AppState
-	accounts []save.Account
-	clients  map[string]APIClient
 }
 
 type chatEventMessage struct {
@@ -229,12 +162,7 @@ type imageCleanupTickMessage struct {
 }
 
 type Root struct {
-	logger   zerolog.Logger
-	clientID string
-
 	width, height int
-	keymap        save.KeyMap
-	userConfig    UserConfiguration
 
 	hasLoadedSession bool
 	screenType       activeScreen
@@ -242,20 +170,8 @@ type Root struct {
 	userIDDisplayName *sync.Map
 
 	// dependencies
-	accounts             AccountProvider
-	emoteCache           EmoteCache
-	badgeCache           *badge.Cache
-	emoteReplacer        EmoteReplacer
-	badgeReplacer        BadgeReplacer
-	imageDisplayManager  *kittyimg.DisplayManager
-	serverAPI            APIClientWithRefresh
-	recentMessageService RecentMessageService
-	messageLogger        MessageLogger
-	buildTTVClient       func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error)
-	loadSaveState        func() (save.AppState, error)
-
-	// One API Client per Chatuino User Tab
-	ttvAPIUserClients map[string]APIClient
+	dependencies  *DependencyContainer
+	loadSaveState func() (save.AppState, error)
 
 	// chat multiplexer channels
 	closerWG *sync.WaitGroup
@@ -282,51 +198,34 @@ type Root struct {
 }
 
 func NewUI(
-	logger zerolog.Logger,
-	provider AccountProvider,
-	chatPool ChatPool,
-	emoteCache EmoteCache,
-	clientID string,
-	serverClient APIClientWithRefresh,
-	keymap save.KeyMap,
-	recentMessageService RecentMessageService,
-	eventSub EventSubPool,
 	messageLoggerChan chan<- *command.PrivateMessage,
-	emoteReplacer EmoteReplacer,
-	messageLogger MessageLogger,
-	userConfig UserConfiguration,
-	badgeCache *badge.Cache,
-	badgeReplacer BadgeReplacer,
-	imageDisplayManager *kittyimg.DisplayManager,
+	dependencies *DependencyContainer,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
-	outChat := chatPool.ListenAndServe(inChat)
+	outChat := dependencies.ChatPool.ListenAndServe(inChat)
 	inEventSub := make(chan multiplex.EventSubInboundMessage)
 
 	var header header
-	if userConfig.Settings.VerticalTabList {
-		header = newVerticalTabHeader(10, 10, userConfig)
+	if dependencies.UserConfig.Settings.VerticalTabList {
+		header = newVerticalTabHeader(10, 10, dependencies)
 	} else {
-		header = newHorizontalTabHeader(10, userConfig)
+		header = newHorizontalTabHeader(10, dependencies)
 	}
 
-	clients := map[string]APIClient{}
 	return &Root{
-		clientID:          clientID,
-		logger:            logger,
+		dependencies:      dependencies,
 		width:             10,
 		height:            10,
-		keymap:            keymap,
 		userIDDisplayName: &sync.Map{},
 
 		// components
 		splash: splash{
-			keymap:            keymap,
-			userConfiguration: userConfig,
+			keymap:            dependencies.Keymap,
+			userConfiguration: dependencies.UserConfig,
 		},
 		header:    header,
-		help:      newHelp(10, 10, keymap),
-		joinInput: newJoin(provider, clients, 10, 10, keymap, userConfig),
+		help:      newHelp(10, 10, dependencies),
+		joinInput: newJoin(10, 10, dependencies),
 
 		// chat multiplex channels
 		closerWG: &sync.WaitGroup{},
@@ -335,25 +234,11 @@ func NewUI(
 
 		// event sub
 		eventSubInInFlight: &sync.WaitGroup{},
-		eventSub:           eventSub,
+		eventSub:           dependencies.EventSubPool,
 		eventSubIn:         inEventSub,
 
-		imageDisplayManager:  imageDisplayManager,
-		badgeReplacer:        badgeReplacer,
-		messageLogger:        messageLogger,
-		emoteReplacer:        emoteReplacer,
-		messageLoggerChan:    messageLoggerChan,
-		accounts:             provider,
-		ttvAPIUserClients:    clients,
-		emoteCache:           emoteCache,
-		badgeCache:           badgeCache,
-		serverAPI:            serverClient,
-		recentMessageService: recentMessageService,
-		buildTTVClient: func(clientID string, opts ...twitch.APIOptionFunc) (APIClient, error) {
-			return twitch.NewAPI(clientID, opts...)
-		},
-		loadSaveState: save.AppStateFromDisk,
-		userConfig:    userConfig,
+		messageLoggerChan: messageLoggerChan,
+		loadSaveState:     save.AppStateFromDisk,
 	}
 }
 
@@ -365,44 +250,17 @@ func (r *Root) Init() tea.Cmd {
 			go func() {
 				defer r.closerWG.Done()
 				if err := r.eventSub.ListenAndServe(r.eventSubIn); err != nil {
-					r.logger.Err(err).Msg("failed to connect to eventsub")
+					log.Logger.Err(err).Msg("failed to connect to eventsub")
 					return
 				}
 
-				r.logger.Info().Msg("init event sub routine done")
+				log.Logger.Info().Msg("init event sub routine done")
 			}()
 
-			accounts, err := r.accounts.GetAllAccounts()
+			state, err := save.AppStateFromDisk()
 			if err != nil {
 				return persistedDataLoadedMessage{
-					err: fmt.Errorf("failed to load accounts: %w", err),
-				}
-			}
-
-			// pre populate the API clients for each account
-			clients := make(map[string]APIClient, len(accounts))
-			for _, acc := range accounts {
-				var api APIClient
-
-				if !acc.IsAnonymous {
-					api, err = r.buildTTVClient(r.clientID, twitch.WithUserAuthentication(r.accounts, r.serverAPI, acc.ID))
-					if err != nil {
-						r.logger.Error().Err(err).Msg("failed to build twitch client")
-						continue
-					}
-				} else {
-					api = r.serverAPI
-				}
-
-				clients[acc.ID] = api
-			}
-
-			state, err := r.loadSaveState()
-			if err != nil {
-				return persistedDataLoadedMessage{
-					accounts: accounts,
-					clients:  clients,
-					err:      fmt.Errorf("failed to load save state: %w", err),
+					err: fmt.Errorf("failed to load save state: %w", err),
 				}
 			}
 
@@ -411,7 +269,7 @@ func (r *Root) Init() tea.Cmd {
 			wg, ctx := errgroup.WithContext(ctx)
 
 			wg.Go(func() error {
-				if err := r.badgeCache.RefreshGlobal(ctx); err != nil {
+				if err := r.dependencies.BadgeCache.RefreshGlobal(ctx); err != nil {
 					return err
 				}
 
@@ -419,7 +277,7 @@ func (r *Root) Init() tea.Cmd {
 			})
 
 			wg.Go(func() error {
-				if err := r.emoteCache.RefreshGlobal(ctx); err != nil {
+				if err := r.dependencies.EmoteCache.RefreshGlobal(ctx); err != nil {
 					return err
 				}
 
@@ -427,19 +285,19 @@ func (r *Root) Init() tea.Cmd {
 			})
 
 			// fetch usable emotes for all users
-			for _, acc := range accounts {
+			for _, acc := range r.dependencies.Accounts {
 				if acc.IsAnonymous {
 					continue
 				}
 
-				client, has := clients[acc.ID]
+				client, has := r.dependencies.APIUserClients[acc.ID]
 				if !has {
 					continue
 				}
 
 				fetcher, ok := client.(UserEmoteClient)
 				if !ok {
-					r.logger.Error().Msg("failed to parse user emote client")
+					log.Logger.Error().Msg("failed to parse user emote client")
 					continue
 				}
 
@@ -465,7 +323,7 @@ func (r *Root) Init() tea.Cmd {
 						})
 					}
 
-					r.emoteCache.AddUserEmotes(acc.ID, emotes)
+					r.dependencies.EmoteCache.AddUserEmotes(acc.ID, emotes)
 					return nil
 				})
 			}
@@ -488,7 +346,7 @@ func (r *Root) Init() tea.Cmd {
 
 			if len(logins) > 0 {
 				wg.Go(func() error {
-					resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
+					resp, err := r.dependencies.ServerAPI.GetUsers(ctx, logins, nil)
 					if err != nil {
 						return fmt.Errorf("failed to fetch users: %w", err)
 					}
@@ -507,8 +365,6 @@ func (r *Root) Init() tea.Cmd {
 
 			return persistedDataLoadedMessage{
 				state:    state,
-				accounts: accounts,
-				clients:  clients,
 				ttvUsers: ttvUsers,
 				err:      err,
 			}
@@ -609,7 +465,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.handleResize()
 		return r, nil
 	case tea.KeyMsg:
-		if key.Matches(msg, r.keymap.Quit) {
+		if key.Matches(msg, r.dependencies.Keymap.Quit) {
 			return r, tea.Quit
 		}
 
@@ -617,7 +473,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, tea.Batch(cmds...)
 		}
 
-		if key.Matches(msg, r.keymap.Help) {
+		if key.Matches(msg, r.dependencies.Keymap.Help) {
 			var isInsertMode bool
 			if len(r.tabs) > r.tabCursor {
 				isInsertMode = (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode)
@@ -637,7 +493,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if key.Matches(msg, r.keymap.Escape) {
+		if key.Matches(msg, r.dependencies.Keymap.Escape) {
 			if r.screenType == inputScreen || r.screenType == helpScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].Focus()
@@ -650,7 +506,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if key.Matches(msg, r.keymap.DumpScreen) {
+		if key.Matches(msg, r.dependencies.Keymap.DumpScreen) {
 			f, err := os.Create(fmt.Sprintf("%s_dump.txt", time.Now().Format("2006-01-02_15_04_05")))
 			if err != nil {
 				return r, nil
@@ -665,7 +521,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 
-		if key.Matches(msg, r.keymap.Create) {
+		if key.Matches(msg, r.dependencies.Keymap.Create) {
 			switch r.screenType {
 			case mainScreen:
 				if len(r.tabs) > r.tabCursor {
@@ -673,7 +529,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.screenType = inputScreen
-				r.joinInput = newJoin(r.accounts, r.ttvAPIUserClients, r.width, r.height, r.keymap, r.userConfig)
+				r.joinInput = newJoin(r.width, r.height, r.dependencies)
 				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
 					return t.Kind() == mentionTabKind
 				})
@@ -710,7 +566,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if r.screenType == mainScreen {
 
-			if key.Matches(msg, r.keymap.Next) {
+			if key.Matches(msg, r.dependencies.Keymap.Next) {
 				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
 					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
 					return r, cmd
@@ -719,7 +575,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.nextTab()
 			}
 
-			if key.Matches(msg, r.keymap.Previous) {
+			if key.Matches(msg, r.dependencies.Keymap.Previous) {
 				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
 					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
 					return r, cmd
@@ -728,7 +584,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.prevTab()
 			}
 
-			if key.Matches(msg, r.keymap.CloseTab) {
+			if key.Matches(msg, r.dependencies.Keymap.CloseTab) {
 				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
 					currentTab := r.tabs[r.tabCursor]
 					r.closeTab()
@@ -751,7 +607,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 						if !hasTabsSameAccountAndChannel {
 							// send part message
-							r.logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
+							log.Logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
 							cmds = append(cmds, func() tea.Msg {
 								r.in <- multiplex.InboundMessage{
 									AccountID: currentTab.AccountID(),
@@ -764,8 +620,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 
 						if !hasTabsSameChannel {
-							r.logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
-							r.emoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
+							log.Logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
+							r.dependencies.EmoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
 						}
 
 						r.closerWG.Add(1)
@@ -823,7 +679,7 @@ func (r *Root) View() string {
 			return r.splash.View()
 		}
 
-		if r.userConfig.Settings.VerticalTabList {
+		if r.dependencies.UserConfig.Settings.VerticalTabList {
 			return lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
 		}
 
@@ -876,9 +732,9 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 	state := r.TakeStateSnapshot()
 
 	return func() tea.Msg {
-		r.logger.Info().Msg("saving app state inside ticker")
+		log.Logger.Info().Msg("saving app state inside ticker")
 		if err := state.Save(); err != nil {
-			r.logger.Err(err).Msg("failed to save app state")
+			log.Logger.Err(err).Msg("failed to save app state")
 		}
 
 		timer := time.NewTimer(time.Second * 15)
@@ -890,7 +746,7 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
-	clients := maps.Clone(r.ttvAPIUserClients)
+	clients := maps.Clone(r.dependencies.APIUserClients)
 
 	// collect all open broadcasters
 	openBroadcasts := map[string]struct{}{}
@@ -917,7 +773,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		accounts, err := r.accounts.GetAllAccounts()
+		accounts, err := r.dependencies.AccountProvider.GetAllAccounts()
 		if err != nil {
 			return polledStreamInfo{}
 		}
@@ -934,7 +790,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		if _, has := clients[mainAccountID]; has {
 			fetcher = clients[mainAccountID]
 		} else {
-			fetcher = r.serverAPI
+			fetcher = r.dependencies.ServerAPI
 		}
 
 		timer := time.NewTimer(time.Second * 90)
@@ -949,7 +805,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		defer cancel()
 		resp, err := fetcher.GetStreamInfo(ctx, broadcastIDs)
 		if err != nil {
-			r.logger.Err(err).Msg("failed polling streamer info")
+			log.Logger.Err(err).Msg("failed polling streamer info")
 			return polledStreamInfo{}
 		}
 
@@ -1018,17 +874,17 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) (ta
 
 		headerHeight := r.getHeaderHeight()
 
-		nTab := newBroadcastTab(id, r.logger, r.ttvAPIUserClients[account.ID], channel, r.width, r.height-headerHeight, r.emoteCache, account, r.accounts, r.recentMessageService, r.keymap, r.emoteReplacer, r.messageLogger, r.userConfig, r.badgeCache, r.badgeReplacer)
+		nTab := newBroadcastTab(id, r.width, r.height-headerHeight, account, channel, r.dependencies)
 		return nTab, cmd
 	case mentionTabKind:
 		id, cmd := r.header.AddTab("mentioned", "all")
 		headerHeight := r.getHeaderHeight()
-		nTab := newMentionTab(id, r.logger, r.keymap, r.accounts, r.emoteCache, r.width, r.height-headerHeight, r.userConfig)
+		nTab := newMentionTab(id, r.width, r.height-headerHeight, r.dependencies)
 		return nTab, cmd
 	case liveNotificationTabKind:
 		id, cmd := r.header.AddTab("live notifications", "all")
 		headerHeight := r.getHeaderHeight()
-		nTab := newLiveNotificationTab(id, r.logger, r.keymap, r.emoteCache, r.width, r.height-headerHeight, r.userConfig)
+		nTab := newLiveNotificationTab(id, r.width, r.height-headerHeight, r.dependencies)
 		return nTab, cmd
 	}
 
@@ -1053,7 +909,7 @@ func (r *Root) handleResize() {
 	// help
 	r.help.handleResize(r.width, r.height)
 
-	if r.userConfig.Settings.VerticalTabList {
+	if r.dependencies.UserConfig.Settings.VerticalTabList {
 		minWidth := r.header.MinWidth()
 		r.header.Resize(minWidth, r.height)
 
@@ -1122,7 +978,6 @@ func (r *Root) prevTab() {
 
 func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd {
 	cmds := make([]tea.Cmd, 0, len(msg.state.Tabs))
-	r.ttvAPIUserClients = msg.clients
 	r.hasLoadedSession = true
 
 	if msg.err != nil {
@@ -1143,7 +998,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		case broadcastTabKind:
 			var account save.Account
 
-			for _, a := range msg.accounts {
+			for _, a := range r.dependencies.Accounts {
 				if a.ID == t.IdentityID {
 					account = a
 				}
@@ -1158,7 +1013,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
 		case mentionTabKind:
 			// don't load mention tab, when there are no longer any non-anonymous accounts
-			hasNormalAccount := slices.ContainsFunc(msg.accounts, func(e save.Account) bool {
+			hasNormalAccount := slices.ContainsFunc(r.dependencies.Accounts, func(e save.Account) bool {
 				return !e.IsAnonymous
 			})
 
@@ -1223,17 +1078,17 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelGuestID = msg.SourceRoomID
 
 		// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
-		if channelID != "" && channelGuestID != "" {
+		if channelID != "" && channelGuestID != "" && channelID != channelGuestID {
 			if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
 				channelGuestDisplayName = v.(string)
 			} else {
 				// try refresh emotes for guest
-				_ = r.emoteCache.RefreshLocal(context.Background(), channelGuestID)
-				_ = r.badgeCache.RefreshChannel(context.Background(), channelGuestID)
+				_ = r.dependencies.EmoteCache.RefreshLocal(context.Background(), channelGuestID)
+				_ = r.dependencies.BadgeCache.RefreshChannel(context.Background(), channelGuestID)
 
-				resp, err := r.serverAPI.GetStreamInfo(context.Background(), []string{channelGuestID})
+				resp, err := r.dependencies.ServerAPI.GetUsers(context.Background(), nil, []string{channelGuestID})
 				if err == nil && len(resp.Data) > 0 {
-					channelGuestDisplayName = resp.Data[0].UserName
+					channelGuestDisplayName = resp.Data[0].DisplayName
 					r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
 				}
 			}
@@ -1256,9 +1111,9 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		}
 
 		var err error
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
+		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
 
-		badgePrepare, badgeReplacement, err = r.badgeReplacer.Replace(emoteSourceRoom, badges)
+		badgePrepare, badgeReplacement, err = r.dependencies.BadgeReplacer.Replace(emoteSourceRoom, badges)
 		if err != nil {
 			log.Logger.Err(err).Any("msg", ircMessage).Send()
 		}
@@ -1281,7 +1136,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	case *command.SubMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 	case *command.RaidMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
@@ -1291,11 +1146,11 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	case *command.RitualMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 	case *command.AnnouncementMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.emoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
 	}
 
 	if prepare != "" {
@@ -1343,7 +1198,7 @@ func (r *Root) waitChatEvents() tea.Cmd {
 // imageCleanUpCommand returns a command that ticks after 1 minute and
 // clean all images that were not used in the last 10 minutes
 func (r *Root) imageCleanUpCommand() tea.Cmd {
-	if !r.userConfig.Settings.Chat.GraphicEmotes && !r.userConfig.Settings.Chat.GraphicBadges {
+	if !r.dependencies.UserConfig.Settings.Chat.GraphicEmotes && !r.dependencies.UserConfig.Settings.Chat.GraphicBadges {
 		return nil
 	}
 
@@ -1351,7 +1206,7 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 		log.Logger.Info().Msg("image clean up tick start")
 		defer log.Logger.Info().Msg("image clean up tick end")
 
-		data := r.imageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
+		data := r.dependencies.ImageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
 
 		return imageCleanupTickMessage{
 			deletionCommand: data,

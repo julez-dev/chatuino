@@ -12,11 +12,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/ivr"
-	"github.com/rs/zerolog"
 )
 
 type setUserInspectData struct {
@@ -28,46 +26,40 @@ type setUserInspectData struct {
 }
 
 type userInspect struct {
-	subAge            ivr.SubAgeResponse
-	userData          twitch.UserData
-	err               error
-	isDataFetched     bool
-	userConfiguration UserConfiguration
+	subAge        ivr.SubAgeResponse
+	userData      twitch.UserData
+	err           error
+	isDataFetched bool
 
 	width, height   int
 	tabID           string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
 	user            string // the chatter
 	channel         string // the streamer
+	accountID       string // account id from chatuino user
 	badges          []command.Badge
 	formattedBadges []string
 
-	ivr           *ivr.API
-	ttvAPI        APIClient
-	emoteReplacer EmoteReplacer
-	badgeReplacer BadgeReplacer
-	messageLogger MessageLogger
+	ivr  *ivr.API
+	deps *DependencyContainer
 
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration, badgeReplacer BadgeReplacer) *userInspect {
-	c := newChatWindow(logger, width, height, keymap, userConfiguration)
+func newUserInspect(tabID string, width, height int, user, channel string, accountID string, deps *DependencyContainer) *userInspect {
+	c := newChatWindow(width, height, deps)
 	c.timeFormatFunc = func(t time.Time) string {
 		return t.Local().Format("2006-01-02 15:04:05")
 	}
 
 	return &userInspect{
-		tabID:   tabID,
-		channel: channel,
-		user:    user,
-		ivr:     ivr.NewAPI(http.DefaultClient),
-		ttvAPI:  ttvAPI,
+		tabID:     tabID,
+		channel:   channel,
+		accountID: accountID,
+		user:      user,
+		ivr:       ivr.NewAPI(http.DefaultClient),
+		deps:      deps,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow:        c,
-		userConfiguration: userConfiguration,
-		emoteReplacer:     emoteReplacer,
-		messageLogger:     messageLogger,
-		badgeReplacer:     badgeReplacer,
+		chatWindow: c,
 	}
 }
 
@@ -94,7 +86,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		ttvResp, err := u.ttvAPI.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
+		ttvResp, err := u.deps.APIUserClients[u.accountID].GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
@@ -110,7 +102,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		}
 
 		// get all recent messages for user
-		loggedEntries, err := u.messageLogger.MessagesFromUserInChannel(u.user, u.channel)
+		loggedEntries, err := u.deps.MessageLogger.MessagesFromUserInChannel(u.user, u.channel)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
@@ -135,10 +127,10 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
+			prepare, contentOverwrite, _ := u.deps.EmoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			io.WriteString(os.Stdout, prepare)
 
-			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
+			prepare, badgeOverwrite, _ := u.deps.BadgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
 			io.WriteString(os.Stdout, prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
@@ -298,7 +290,7 @@ func (u *userInspect) renderUserInfo() string {
 	style := lipgloss.NewStyle().
 		Padding(0).
 		Border(border, true).
-		BorderForeground(lipgloss.Color(u.userConfiguration.Theme.InspectBorderColor)).
+		BorderForeground(lipgloss.Color(u.deps.UserConfig.Theme.InspectBorderColor)).
 		Width(u.width - 2)
 
 	styleCentered := style.MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
@@ -315,7 +307,7 @@ func (u *userInspect) renderUserInfo() string {
 	b := &strings.Builder{}
 	_, _ = fmt.Fprintf(b, "User %s (%s)", u.subAge.User.DisplayName, u.subAge.User.ID)
 	if len(u.formattedBadges) > 0 {
-		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.userConfiguration.Settings, u.formattedBadges))
+		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.deps.UserConfig.Settings, u.formattedBadges))
 	} else {
 		_, _ = fmt.Fprintf(b, "\n")
 	}

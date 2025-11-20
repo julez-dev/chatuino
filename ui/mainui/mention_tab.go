@@ -7,10 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/rs/zerolog"
 )
 
 type setMentionTabData struct {
@@ -19,11 +17,8 @@ type setMentionTabData struct {
 }
 
 type mentionTab struct {
-	id                string
-	keymap            save.KeyMap
-	logger            zerolog.Logger
-	provider          AccountProvider
-	userConfiguration UserConfiguration
+	id   string
+	deps *DependencyContainer
 
 	focused bool
 
@@ -36,24 +31,21 @@ type mentionTab struct {
 	chatWindow *chatWindow
 }
 
-func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provider AccountProvider, emoteCache EmoteCache, width, height int, userConfiguration UserConfiguration) *mentionTab {
+func newMentionTab(id string, width, height int, deps *DependencyContainer) *mentionTab {
 	return &mentionTab{
-		id:                id,
-		logger:            logger,
-		keymap:            keymap,
-		provider:          provider,
-		state:             inChatWindow,
-		width:             width,
-		height:            height,
-		userConfiguration: userConfiguration,
-		chatWindow:        newChatWindow(logger, width, height, keymap, userConfiguration),
+		id:         id,
+		deps:       deps,
+		state:      inChatWindow,
+		width:      width,
+		height:     height,
+		chatWindow: newChatWindow(width, height, deps),
 	}
 }
 
 func (m *mentionTab) Init() tea.Cmd {
 	return func() tea.Msg {
 		// fetch all of users account names
-		accounts, err := m.provider.GetAllAccounts()
+		accounts, err := m.deps.AccountProvider.GetAllAccounts()
 		if err != nil {
 			return setMentionTabData{
 				err: err,
@@ -129,7 +121,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 			}
 
-			if !mentioned || messageMatchesBlocked(event.message, m.userConfiguration.Settings.BlockSettings) {
+			if !mentioned || messageMatchesBlocked(event.message, m.deps.UserConfig.Settings.BlockSettings) {
 				return m, nil
 			}
 

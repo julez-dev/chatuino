@@ -60,7 +60,6 @@ var (
 
 var maybeLogFile *os.File
 
-//
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./kittyimg
 //go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/command
@@ -246,23 +245,55 @@ func main() {
 				}()
 			}
 
+			deps := &mainui.DependencyContainer{
+				UserConfig: mainui.UserConfiguration{
+					Settings: settings,
+					Theme:    theme,
+				},
+				Keymap:               keymap,
+				ServerAPI:            serverAPI,
+				AccountProvider:      accountProvider,
+				EmoteCache:           emoteCache,
+				BadgeCache:           badgeCache,
+				EmoteReplacer:        emoteReplacer,
+				BadgeReplacer:        badgeReplacer,
+				ImageDisplayManager:  displayManager,
+				RecentMessageService: recentMessageService,
+				MessageLogger:        messageLogger,
+				ChatPool:             chatMultiplexer,
+				EventSubPool:         eventSubMultiplexer,
+				APIUserClients:       make(map[string]mainui.APIClient),
+			}
+
+			// Fetch all Accounts
+			accounts, err := accountProvider.GetAllAccounts()
+			if err != nil {
+				return fmt.Errorf("failed to open accounts: %w", err)
+			}
+
+			clients := make(map[string]mainui.APIClient, len(accounts))
+			for _, acc := range accounts {
+				var api mainui.APIClient
+
+				if !acc.IsAnonymous {
+					api, err = twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, acc.ID))
+					if err != nil {
+						return fmt.Errorf("failed to build api client for %s: %w", acc.DisplayName, err)
+					}
+				} else {
+					api = serverAPI
+				}
+
+				clients[acc.ID] = api
+			}
+
+			deps.APIUserClients = clients
+			deps.Accounts = accounts
+
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger,
-					accountProvider,
-					chatMultiplexer,
-					emoteCache,
-					command.String("client-id"),
-					serverAPI,
-					keymap,
-					recentMessageService,
-					eventSubMultiplexer,
+				mainui.NewUI(
 					messageLoggerChan,
-					emoteReplacer,
-					messageLogger,
-					mainui.UserConfiguration{Settings: settings, Theme: theme},
-					badgeCache,
-					badgeReplacer,
-					displayManager,
+					deps,
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),

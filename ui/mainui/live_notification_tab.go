@@ -6,17 +6,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/rs/zerolog"
 )
 
 type liveNotificationTab struct {
-	id                string
-	keymap            save.KeyMap
-	logger            zerolog.Logger
-	userConfiguration UserConfiguration
+	id   string
+	deps *DependencyContainer
 
 	focused bool
 
@@ -27,17 +23,15 @@ type liveNotificationTab struct {
 	chatWindow   *chatWindow
 }
 
-func newLiveNotificationTab(id string, logger zerolog.Logger, keymap save.KeyMap, emoteCache EmoteCache, width, height int, userConfiguration UserConfiguration) *liveNotificationTab {
+func newLiveNotificationTab(id string, width, height int, deps *DependencyContainer) *liveNotificationTab {
 	return &liveNotificationTab{
-		id:                id,
-		logger:            logger,
-		keymap:            keymap,
-		state:             inChatWindow,
-		width:             width,
-		height:            height,
-		userConfiguration: userConfiguration,
-		chatWindow:        newChatWindow(logger, width, height, keymap, userConfiguration),
-		streamerLive:      map[string]bool{},
+		id:           id,
+		deps:         deps,
+		state:        inChatWindow,
+		width:        width,
+		height:       height,
+		chatWindow:   newChatWindow(width, height, deps),
+		streamerLive: map[string]bool{},
 	}
 }
 

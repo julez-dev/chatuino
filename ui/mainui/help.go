@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/save"
 )
 
 type helpSection struct {
@@ -20,67 +19,67 @@ type help struct {
 	port        viewport.Model
 }
 
-func newHelp(height, width int, keymap save.KeyMap) *help {
+func newHelp(height, width int, deps *DependencyContainer) *help {
 	sections := []helpSection{
 		{
 			"General",
 			[]key.Binding{
-				keymap.Up,
-				keymap.Down,
-				keymap.Escape,
-				keymap.Confirm,
-				keymap.Help,
+				deps.Keymap.Up,
+				deps.Keymap.Down,
+				deps.Keymap.Escape,
+				deps.Keymap.Confirm,
+				deps.Keymap.Help,
 			},
 		},
 		{
 			"App Binds",
 			[]key.Binding{
-				keymap.Quit,
-				keymap.Create,
-				keymap.Remove,
-				keymap.CloseTab,
-				keymap.DumpScreen,
+				deps.Keymap.Quit,
+				deps.Keymap.Create,
+				deps.Keymap.Remove,
+				deps.Keymap.CloseTab,
+				deps.Keymap.DumpScreen,
 			},
 		},
 		{
 			"Tab Binds",
 			[]key.Binding{
-				keymap.Next,
-				keymap.Previous,
+				deps.Keymap.Next,
+				deps.Keymap.Previous,
 			},
 		},
 		{
 			"Chat Binds",
 			[]key.Binding{
-				keymap.InsertMode,
-				keymap.InspectMode,
-				keymap.UnbanRequestMode,
-				keymap.ChatPopUp,
-				keymap.ChannelPopUp,
-				keymap.GoToTop,
-				keymap.GoToBottom,
-				keymap.DumpChat,
-				keymap.QuickTimeout,
-				keymap.CopyMessage,
-				keymap.SearchMode,
-				keymap.QuickSent,
+				deps.Keymap.InsertMode,
+				deps.Keymap.InspectMode,
+				deps.Keymap.UnbanRequestMode,
+				deps.Keymap.ChatPopUp,
+				deps.Keymap.ChannelPopUp,
+				deps.Keymap.GoToTop,
+				deps.Keymap.GoToBottom,
+				deps.Keymap.DumpChat,
+				deps.Keymap.QuickTimeout,
+				deps.Keymap.CopyMessage,
+				deps.Keymap.SearchMode,
+				deps.Keymap.QuickSent,
 			},
 		},
 		{
 			"Unban Request",
 			[]key.Binding{
-				keymap.PrevPage,
-				keymap.NextPage,
-				keymap.PrevFilter,
-				keymap.NextFilter,
-				keymap.Deny,
-				keymap.Approve,
+				deps.Keymap.PrevPage,
+				deps.Keymap.NextPage,
+				deps.Keymap.PrevFilter,
+				deps.Keymap.NextFilter,
+				deps.Keymap.Deny,
+				deps.Keymap.Approve,
 			},
 		},
 		{
 			"Account Binds",
 			[]key.Binding{
-				keymap.MarkLeader,
+				deps.Keymap.MarkLeader,
 			},
 		},
 	}

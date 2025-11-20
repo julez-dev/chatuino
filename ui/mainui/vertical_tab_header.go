@@ -13,9 +13,8 @@ import (
 )
 
 type verticalTabHeader struct {
-	width             int
-	height            int
-	userConfiguration UserConfiguration
+	width  int
+	height int
 
 	list     list.Model
 	delegate verticalTabDelegate
@@ -68,10 +67,10 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 	fmt.Fprint(w, d.tabHeaderStyle.Render(title))
 }
 
-func newVerticalTabHeader(width, height int, userConfiguration UserConfiguration) *verticalTabHeader {
+func newVerticalTabHeader(width, height int, deps *DependencyContainer) *verticalTabHeader {
 	delegate := verticalTabDelegate{
-		tabHeaderStyle:       lipgloss.NewStyle().Background(lipgloss.Color(userConfiguration.Theme.TabHeaderBackgroundColor)),
-		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(userConfiguration.Theme.TabHeaderActiveBackgroundColor)),
+		tabHeaderStyle:       lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderBackgroundColor)),
+		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderActiveBackgroundColor)),
 	}
 
 	l := list.New(nil, delegate, width, height)
@@ -88,11 +87,10 @@ func newVerticalTabHeader(width, height int, userConfiguration UserConfiguration
 	l.KeyMap = list.KeyMap{}
 
 	return &verticalTabHeader{
-		width:             width,
-		height:            height,
-		list:              l,
-		userConfiguration: userConfiguration,
-		delegate:          delegate,
+		width:    width,
+		height:   height,
+		list:     l,
+		delegate: delegate,
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/julez-dev/chatuino/badge"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/mainui/unbanrequest"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -27,13 +27,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/multiplex"
-	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/ui/component"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -122,9 +120,8 @@ type ModStatusFetcher interface {
 }
 
 type broadcastTab struct {
-	id     string
-	logger zerolog.Logger
-	keymap save.KeyMap
+	id      string
+	account save.Account
 
 	state            broadcastTabState
 	isLocalSub       bool
@@ -132,8 +129,6 @@ type broadcastTab struct {
 	lastMessages     *ttlcache.Cache[string, struct{}]
 
 	isUserMod bool
-	provider  AccountProvider
-	account   save.Account // the account for this tab, should not rely on access token & refresh token, should be fetched each time used
 	focused   bool
 
 	channelDataLoaded bool
@@ -144,20 +139,12 @@ type broadcastTab struct {
 	channelID    string
 	channelLogin string
 
-	emoteStore EmoteCache
-
 	colorData twitch.UserChatColor
 
-	width, height     int
-	userConfiguration UserConfiguration
+	width, height int
 
-	ttvAPI               APIClient
-	modFetcher           ModStatusFetcher
-	recentMessageService RecentMessageService
-	emoteReplacer        EmoteReplacer
-	badgeReplacer        BadgeReplacer
-	messageLogger        MessageLogger
-	badgeCache           *badge.Cache
+	deps       *DependencyContainer
+	modFetcher ModStatusFetcher
 
 	// components
 	streamInfo    *streamInfo
@@ -174,21 +161,11 @@ type broadcastTab struct {
 }
 
 func newBroadcastTab(
-	id string,
-	logger zerolog.Logger,
-	ttvAPI APIClient,
-	channel string,
+	tabID string,
 	width, height int,
-	emoteStore EmoteCache,
 	account save.Account,
-	accountProvider AccountProvider,
-	recentMessageService RecentMessageService,
-	keymap save.KeyMap,
-	emoteReplacer EmoteReplacer,
-	messageLogger MessageLogger,
-	userConfiguration UserConfiguration,
-	badgeCache *badge.Cache,
-	badgeReplacer BadgeReplacer,
+	channel string,
+	deps *DependencyContainer,
 ) *broadcastTab {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](time.Second * 10),
@@ -196,25 +173,15 @@ func newBroadcastTab(
 	go cache.Start()
 
 	return &broadcastTab{
-		id:                   id,
-		logger:               logger,
-		keymap:               keymap,
-		width:                width,
-		height:               height,
-		account:              account,
-		provider:             accountProvider,
-		channel:              channel,
-		emoteStore:           emoteStore,
-		ttvAPI:               ttvAPI,
-		recentMessageService: recentMessageService,
-		emoteReplacer:        emoteReplacer,
-		messageLogger:        messageLogger,
-		lastMessages:         cache,
-		userConfiguration:    userConfiguration,
-		modFetcher:           ivr.NewAPI(http.DefaultClient),
-		spinner:              spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
-		badgeCache:           badgeCache,
-		badgeReplacer:        badgeReplacer,
+		id:           tabID,
+		width:        width,
+		height:       height,
+		account:      account,
+		channel:      channel,
+		lastMessages: cache,
+		deps:         deps,
+		modFetcher:   ivr.NewAPI(http.DefaultClient),
+		spinner:      spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
 	}
 }
 
@@ -223,7 +190,7 @@ func (t *broadcastTab) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
-		userData, err := t.ttvAPI.GetUsers(ctx, []string{t.channel}, nil)
+		userData, err := t.deps.APIUserClients[t.account.ID].GetUsers(ctx, []string{t.channel}, nil)
 		if err != nil {
 			return setErrorMessage{
 				targetID: t.id,
@@ -256,7 +223,7 @@ func (t *broadcastTab) InitWithUserData(userData twitch.UserData) tea.Cmd {
 		var recentMessages []twitch.IRCer
 		group.Go(func() error {
 			// fetch recent messages
-			msgs, err := t.recentMessageService.GetRecentMessagesFor(ctx, userData.Login)
+			msgs, err := t.deps.RecentMessageService.GetRecentMessagesFor(ctx, userData.Login)
 
 			// call sometimes timeouts, but recent message are not really that important to crash the tab, so ignore the error
 			if err != nil {
@@ -338,12 +305,14 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.channelLogin = msg.channelLogin
 		t.channelID = msg.channelID
-		t.streamInfo = newStreamInfo(msg.channelID, t.ttvAPI, t.width)
+		t.streamInfo = newStreamInfo(msg.channelID, t.deps.APIUserClients[t.account.ID], t.width)
 		t.poll = newPoll(t.width)
-		t.chatWindow = newChatWindow(t.logger, t.width, t.height, t.keymap, t.userConfiguration)
-		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.userConfiguration.Settings.BuildCustomSuggestionMap())
-		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.userConfiguration.Theme.InputPromptColor))
-		t.statusInfo = newStreamStatus(t.logger, t.ttvAPI, t, t.width, t.height, t.account.ID, msg.channelID, t.userConfiguration)
+		t.chatWindow = newChatWindow(t.width, t.height, t.deps)
+
+		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap())
+		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
+
+		t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.deps)
 
 		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
@@ -410,7 +379,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			group, ctx := errgroup.WithContext(ctx)
 
 			group.Go(func() error {
-				if err := t.emoteStore.RefreshLocal(ctx, msg.channelID); err != nil {
+				if err := t.deps.EmoteCache.RefreshLocal(ctx, msg.channelID); err != nil {
 					return fmt.Errorf("could not refresh emote cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
 				}
 
@@ -418,7 +387,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			})
 
 			group.Go(func() error {
-				if err := t.badgeCache.RefreshChannel(ctx, msg.channelID); err != nil {
+				if err := t.deps.BadgeCache.RefreshChannel(ctx, msg.channelID); err != nil {
 					return fmt.Errorf("could not refresh badge cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
 				}
 
@@ -442,7 +411,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		//  - if authenticated user
 		//  - if channel belongs to user
 		// sadly due to cost limits, we only allow this events users channel not other channels
-		if eventSubAPI, ok := t.ttvAPI.(eventsub.EventSubService); ok && t.account.ID == msg.channelID {
+		if eventSubAPI, ok := t.deps.APIUserClients[t.account.ID].(eventsub.EventSubService); ok && t.account.ID == msg.channelID {
 			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end", "channel.ad_break.begin"} {
 				cmds = append(cmds, func() tea.Msg {
 					return forwardEventSubMessage{
@@ -496,7 +465,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		if !t.account.IsAnonymous {
 			cmds = append(cmds, func() tea.Msg {
-				api, ok := t.ttvAPI.(userAuthenticatedAPIClient)
+				api, ok := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
 				if !ok {
 					return nil
 				}
@@ -506,7 +475,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				colorData, err := api.GetUserChatColor(ctx, []string{t.account.ID})
 				if err != nil {
-					t.logger.Error().Err(err).Str("account-id", t.account.ID).Msg("failed to fetch user chat color")
+					log.Logger.Error().Err(err).Str("account-id", t.account.ID).Msg("failed to fetch user chat color")
 					return nil
 				}
 
@@ -530,11 +499,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				return t, nil
 			}
 
-			userEmoteSet := t.emoteStore.AllEmotesUsableByUser(t.account.ID)
+			userEmoteSet := t.deps.EmoteCache.AllEmotesUsableByUser(t.account.ID)
 
 			log.Info().Str("user-id", t.account.ID).Int("len", len(userEmoteSet)).Msg("fetched emotes for user")
 
-			channelEmoteSet := t.emoteStore.GetAllForChannel(t.channelID) // includes bttv, 7tv
+			channelEmoteSet := t.deps.EmoteCache.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
 			unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
 
@@ -608,7 +577,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			var matchErr twitch.RetryReachedError
 
 			if errors.As(err, &matchErr) {
-				t.logger.Info().Err(err).Msg("retry limit reached error matched, don't wait for next message")
+				log.Logger.Info().Err(err).Msg("retry limit reached error matched, don't wait for next message")
 				return t, tea.Batch(cmds...)
 			}
 		}
@@ -621,7 +590,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			switch msg := msg.(type) {
 			case tea.KeyMsg:
 				// Focus message input, when not in insert mode and not in search mode inside chat window, depending on the current active chat window
-				if key.Matches(msg, t.keymap.InsertMode) &&
+				if key.Matches(msg, t.deps.Keymap.InsertMode) &&
 					(t.state == inChatWindow && t.chatWindow.state != searchChatWindowState || t.state == userInspectMode && t.userInspect.chatWindow.state != searchChatWindowState) {
 					cmd := t.handleStartInsertMode()
 					cmds = append(cmds, cmd)
@@ -629,32 +598,32 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 
 				// Overlay unban request window
-				if key.Matches(msg, t.keymap.UnbanRequestMode) && t.state == inChatWindow && !t.account.IsAnonymous {
+				if key.Matches(msg, t.deps.Keymap.UnbanRequestMode) && t.state == inChatWindow && !t.account.IsAnonymous {
 					cmd := t.handleOpenBanRequest()
 					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
 				}
 
 				// Open user inspect mode, where only messages from a specific user are shown
-				if key.Matches(msg, t.keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
+				if key.Matches(msg, t.deps.Keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
 					cmd := t.handleOpenUserInspectFromMessage()
 					cmds = append(cmds, cmd)
 					return t, tea.Batch(cmds...)
 				}
 
 				// Open chat in browser
-				if key.Matches(msg, t.keymap.ChatPopUp, t.keymap.ChannelPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
+				if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
 					return t, t.handleOpenBrowser(msg)
 				}
 
 				// Send message
-				if key.Matches(msg, t.keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+				if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
 					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
 					return t, t.handleMessageSent(false)
 				}
 
 				// Send message - quick send
-				if key.Matches(msg, t.keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+				if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
 					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
 					return t, t.handleMessageSent(true)
 				}
@@ -668,19 +637,19 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 
 				// Set quick time out message to message input
-				if key.Matches(msg, t.keymap.QuickTimeout) && (t.state == inChatWindow || t.state == userInspectMode) {
+				if key.Matches(msg, t.deps.Keymap.QuickTimeout) && (t.state == inChatWindow || t.state == userInspectMode) {
 					t.handleTimeoutShortcut()
 					return t, nil
 				}
 
 				// Copy selected message to message input
-				if key.Matches(msg, t.keymap.CopyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
+				if key.Matches(msg, t.deps.Keymap.CopyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
 					t.handleCopyMessage()
 					return t, nil
 				}
 
 				// Close overlay windows
-				if key.Matches(msg, t.keymap.Escape) {
+				if key.Matches(msg, t.deps.Keymap.Escape) {
 					// first end search in user inspect sub window
 					if t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState {
 						t.userInspect.chatWindow, cmd = t.userInspect.chatWindow.Update(msg)
@@ -914,7 +883,7 @@ func (t *broadcastTab) handleEscapePressed() {
 func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
 	return func() tea.Msg {
 		// open popup chat if modifier is pressed
-		if key.Matches(msg, t.keymap.ChatPopUp) {
+		if key.Matches(msg, t.deps.Keymap.ChatPopUp) {
 			t.handleOpenBrowserChatPopUp()()
 			return nil
 		}
@@ -929,7 +898,7 @@ func (t *broadcastTab) handleOpenBrowserChatPopUp() tea.Cmd {
 		url := fmt.Sprintf(streamChatPopUpFmt, t.channelLogin)
 
 		if err := browser.OpenURL(url); err != nil {
-			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
+			log.Logger.Error().Err(err).Msg("error while opening twitch channel in browser")
 		}
 		return nil
 	}
@@ -940,7 +909,7 @@ func (t *broadcastTab) handleOpenBrowserChannel() tea.Cmd {
 		url := fmt.Sprintf(streamWebFmt, t.channelLogin)
 
 		if err := browser.OpenURL(url); err != nil {
-			t.logger.Error().Err(err).Msg("error while opening twitch channel in browser")
+			log.Logger.Error().Err(err).Msg("error while opening twitch channel in browser")
 		}
 		return nil
 	}
@@ -967,8 +936,8 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 func (t *broadcastTab) handleOpenBanRequest() tea.Cmd {
 	t.state = unbanRequestMode
 	t.unbanWindow = unbanrequest.New(
-		t.ttvAPI.(moderationAPIClient),
-		t.keymap,
+		t.deps.APIUserClients[t.account.ID].(moderationAPIClient),
+		t.deps.Keymap,
 		t.channelLogin,
 		t.channelID,
 		t.account.ID,
@@ -1038,7 +1007,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		}
 	}
 
-	client := t.ttvAPI.(userAuthenticatedAPIClient)
+	client := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
@@ -1178,7 +1147,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 }
 
 func (t *broadcastTab) shouldIgnoreMessage(msg twitch.IRCer) bool {
-	if messageMatchesBlocked(msg, t.userConfiguration.Settings.BlockSettings) {
+	if messageMatchesBlocked(msg, t.deps.UserConfig.Settings.BlockSettings) {
 		return true
 	}
 
@@ -1328,9 +1297,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 
 		// Message input is only allowed for authenticated users
 		// so ttvAPI is guaranteed to be a moderationAPIClient
-		// we sadly can't know if the user is actually a moderator in the channel
-		// so operations that require moderation privileges will fail
-		client := t.ttvAPI.(moderationAPIClient)
+		client := t.deps.APIUserClients[t.account.ID].(moderationAPIClient)
 
 		return handleCommand(commandName, args, channelID, channel, accountID, client)
 	}
@@ -1342,7 +1309,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	}
 
 	lastSent := t.lastMessageSentAt
-	client := t.ttvAPI.(userAuthenticatedAPIClient)
+	client := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
@@ -1395,9 +1362,9 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 
 func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 	return func() tea.Msg {
-		api, ok := t.ttvAPI.(userAuthenticatedAPIClient)
+		api, ok := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
 		if !ok {
-			t.logger.Warn().Str("broadcast", t.channelLogin).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
+			log.Logger.Warn().Str("broadcast", t.channelLogin).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
 			return nil
 		}
 
@@ -1495,7 +1462,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 	var cmds []tea.Cmd
 
 	t.state = userInspectMode
-	t.userInspect = newUserInspect(t.logger, t.ttvAPI, t.id, t.width, t.height, username, t.channelLogin, t.keymap, t.emoteReplacer, t.messageLogger, t.userConfiguration, t.badgeReplacer)
+	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID, t.deps)
 
 	initialEvents := make([]chatEventMessage, 0, 15)
 	for e := range slices.Values(t.chatWindow.entries) {
@@ -1875,7 +1842,7 @@ func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
 		return nil
 	}
 
-	t.emoteOverview = NewEmoteOverview(t.channelID, t.emoteStore, t.emoteReplacer, t.width, t.height)
+	t.emoteOverview = NewEmoteOverview(t.channelID, t.deps.EmoteCache, t.deps.EmoteReplacer, t.width, t.height)
 	t.HandleResize()
 	return t.emoteOverview.Init()
 }

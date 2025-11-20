@@ -114,17 +114,20 @@ func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitc
 }
 
 func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error) {
-	if len(logins) == 0 {
-		return twitch.UserResponse{}, fmt.Errorf("expected at least one login")
+	if len(logins) == 0 && len(ids) == 0 {
+		return twitch.UserResponse{}, fmt.Errorf("expected at least one login or id")
 	}
 
-	if len(logins) == 1 {
+	if len(logins) == 1 && len(ids) == 0 {
 		return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
 	}
 
 	userValues := url.Values{}
 	for _, login := range logins {
 		userValues.Add("logins", login)
+	}
+	for _, id := range ids {
+		userValues.Add("ids", id)
 	}
 
 	return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channels?"+userValues.Encode())

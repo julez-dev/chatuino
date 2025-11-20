@@ -9,7 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/twitch"
-	"github.com/rs/zerolog"
 )
 
 type setSteamStatusData struct {
@@ -19,28 +18,27 @@ type setSteamStatusData struct {
 }
 
 type streamStatus struct {
-	logger            zerolog.Logger
-	ttvAPI            APIClient
-	tab               *broadcastTab
-	width, height     int
-	userID, channelID string
-	userConfig        UserConfiguration
+	width, height int
+	accountID     string
+	channelID     string
+	tab           *broadcastTab
+	deps          *DependencyContainer
+
+	userConfig UserConfiguration
 
 	settings      twitch.ChatSettingData
 	err           error
 	isDataFetched bool
 }
 
-func newStreamStatus(logger zerolog.Logger, ttvAPI APIClient, tab *broadcastTab, width, height int, userID, channelID string, userConfig UserConfiguration) *streamStatus {
+func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID string, deps *DependencyContainer) *streamStatus {
 	return &streamStatus{
-		logger:     logger,
-		ttvAPI:     ttvAPI,
-		tab:        tab,
-		width:      width,
-		height:     height,
-		userID:     userID,
-		channelID:  channelID,
-		userConfig: userConfig,
+		deps:      deps,
+		tab:       tab,
+		accountID: accountID,
+		width:     width,
+		height:    height,
+		channelID: channelID,
 	}
 }
 
@@ -49,7 +47,7 @@ func (s *streamStatus) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		settingsResp, err := s.ttvAPI.GetChatSettings(ctx, s.channelID, "")
+		settingsResp, err := s.deps.APIUserClients[s.accountID].GetChatSettings(ctx, s.channelID, "")
 		if err != nil {
 			return setSteamStatusData{
 				target: s.tab.id,
@@ -60,7 +58,7 @@ func (s *streamStatus) Init() tea.Cmd {
 		if len(settingsResp.Data) == 0 {
 			return setSteamStatusData{
 				target: s.tab.id,
-				err:    fmt.Errorf("no settings found for channel %s", s.userID),
+				err:    fmt.Errorf("no chat status settings found for channel: %s", s.tab.channelLogin),
 			}
 		}
 

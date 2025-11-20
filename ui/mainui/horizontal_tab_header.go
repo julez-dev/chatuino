@@ -14,7 +14,7 @@ type horizontalTabHeader struct {
 	width   int
 	entries []tabHeaderEntry
 
-	userConfig           UserConfiguration
+	deps                 *DependencyContainer
 	tabHeaderStyle       lipgloss.Style
 	tabHeaderActiveStyle lipgloss.Style
 
@@ -22,12 +22,12 @@ type horizontalTabHeader struct {
 	page    int // current page
 }
 
-func newHorizontalTabHeader(width int, userConfiguration UserConfiguration) *horizontalTabHeader {
+func newHorizontalTabHeader(width int, deps *DependencyContainer) *horizontalTabHeader {
 	return &horizontalTabHeader{
 		width:                width,
-		userConfig:           userConfiguration,
-		tabHeaderStyle:       lipgloss.NewStyle().Background(lipgloss.Color(userConfiguration.Theme.TabHeaderBackgroundColor)).MarginRight(1),
-		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(userConfiguration.Theme.TabHeaderActiveBackgroundColor)).MarginRight(1),
+		deps:                 deps,
+		tabHeaderStyle:       lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderBackgroundColor)).MarginRight(1),
+		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderActiveBackgroundColor)).MarginRight(1),
 	}
 }
 
@@ -95,7 +95,7 @@ func (h *horizontalTabHeader) View() string {
 		}
 
 		if hasNotification {
-			out += lipgloss.NewStyle().Foreground(lipgloss.Color(h.userConfig.Theme.ChatNoticeAlertColor)).Render("< ")
+			out += lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.ChatNoticeAlertColor)).Render("< ")
 		} else {
 			out += "< "
 		}
@@ -121,7 +121,7 @@ func (h *horizontalTabHeader) View() string {
 		out += strings.Repeat(" ", spaces)
 
 		if hasNotification {
-			out += lipgloss.NewStyle().Foreground(lipgloss.Color(h.userConfig.Theme.ChatNoticeAlertColor)).Render(" >")
+			out += lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.ChatNoticeAlertColor)).Render(" >")
 		} else {
 			out += " >"
 		}

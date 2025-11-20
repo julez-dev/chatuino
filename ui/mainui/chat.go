@@ -16,7 +16,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/reflow/wordwrap"
 	"github.com/julez-dev/reflow/wrap"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -49,11 +48,10 @@ const (
 )
 
 type chatWindow struct {
-	logger            zerolog.Logger
-	keymap            save.KeyMap
-	width, height     int
-	userConfiguration UserConfiguration
-	timeFormatFunc    func(time.Time) string
+	deps          *DependencyContainer
+	width, height int
+
+	timeFormatFunc func(time.Time) string
 
 	focused bool
 	state   chatWindowState
@@ -83,35 +81,33 @@ type chatWindow struct {
 	errorAlertStyle     lipgloss.Style
 }
 
-func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
+func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	input := textinput.New()
 	input.CharLimit = 25
 	input.Prompt = "  /"
 	input.Placeholder = "search"
-	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.InputPromptColor))
+	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
 	input.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.Width = width
 
-	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Background(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Render("@")
+	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render("@")
 
 	c := chatWindow{
-		keymap:         keymap,
-		logger:         logger,
+		deps:           deps,
 		width:          width,
 		height:         height,
 		userColorCache: map[string]func(...string) string{},
 		timeFormatFunc: func(t time.Time) string {
 			return t.Local().Format("15:04:05")
 		},
-		searchInput:       input,
-		userConfiguration: userConfiguration,
+		searchInput: input,
 
 		indicator:           indicator,
 		indicatorWidth:      lipgloss.Width(indicator) + 1,
-		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatSubAlertColor)).Bold(true),
-		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatNoticeAlertColor)).Bold(true),
-		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatClearChatColor)).Bold(true),
-		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatErrorColor)).Bold(true),
+		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatSubAlertColor)).Bold(true),
+		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)).Bold(true),
+		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatClearChatColor)).Bold(true),
+		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatErrorColor)).Bold(true),
 	}
 
 	return &c
@@ -135,13 +131,13 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		if c.focused {
 			switch {
 			// start search
-			case key.Matches(msg, c.keymap.SearchMode):
+			case key.Matches(msg, c.deps.Keymap.SearchMode):
 				return c, c.handleStartSearchMode()
 			// stop search
-			case key.Matches(msg, c.keymap.Escape) && c.state == searchChatWindowState:
+			case key.Matches(msg, c.deps.Keymap.Escape) && c.state == searchChatWindowState:
 				c.handleStopSearchMode()
 				return c, nil
-			case key.Matches(msg, c.keymap.Confirm) && c.state == searchChatWindowState:
+			case key.Matches(msg, c.deps.Keymap.Confirm) && c.state == searchChatWindowState:
 				c.handleStopSearchModeKeepSelected()
 				return c, nil
 			// update search, allow up and down arrow keys for navigation in result
@@ -150,16 +146,16 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.applySearch()
 				cmds = append(cmds, cmd)
 				return c, tea.Batch(cmds...)
-			case key.Matches(msg, c.keymap.Down):
+			case key.Matches(msg, c.deps.Keymap.Down):
 				c.messageDown(1)
-			case key.Matches(msg, c.keymap.Up):
+			case key.Matches(msg, c.deps.Keymap.Up):
 				c.messageUp(1)
 				return c, nil
-			case key.Matches(msg, c.keymap.GoToBottom):
+			case key.Matches(msg, c.deps.Keymap.GoToBottom):
 				c.moveToBottom()
-			case key.Matches(msg, c.keymap.GoToTop):
+			case key.Matches(msg, c.deps.Keymap.GoToTop):
 				c.moveToTop()
-			case key.Matches(msg, c.keymap.DumpChat):
+			case key.Matches(msg, c.deps.Keymap.DumpChat):
 				c.debugDumpChat()
 			}
 		}
@@ -437,11 +433,11 @@ func (c *chatWindow) cleanup() {
 	}
 
 	if e := c.getNewestEntry(); e == nil || !e.Selected {
-		c.logger.Info().Msg("skip cleanup because not on newest message")
+		log.Logger.Info().Msg("skip cleanup because not on newest message")
 		return
 	}
 
-	c.logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
+	log.Logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
 	c.entries = c.entries[int(cleanupAfterMessage):]
 	c.recalculateLines()
 
@@ -599,7 +595,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				prefix = fmt.Sprintf("  %s |%s| %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
 					event.channelGuestDisplayName,
-					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
+					formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
@@ -614,7 +610,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 				// start of the message (sent date + badges + username)
 				prefix = fmt.Sprintf("  %s %s %s: ",
 					c.timeFormatFunc(msg.TMISentTS),
-					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
+					formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement),
 					userRenderFunc(msg.DisplayName),
 				)
 			}
@@ -760,7 +756,7 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 
 	// if there are more lines, add prefixPadding spaces to the beginning of the line
 	for _, line := range splits[1:] {
-		if c.userConfiguration.Settings.Chat.DisablePaddingWrappedLines {
+		if c.deps.UserConfig.Settings.Chat.DisablePaddingWrappedLines {
 			lines = append(lines, strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))+3)+line)
 		} else {
 			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
