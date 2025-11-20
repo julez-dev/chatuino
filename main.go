@@ -157,7 +157,7 @@ func main() {
 			var keyringBackend keyring.Keyring
 
 			if command.Bool("plain-auth-storage") {
-				keyringBackend = save.NewPlainKeyringFallback()
+				keyringBackend = save.NewPlainKeyringFallback(afero.NewOsFs())
 			} else {
 				keyringBackend = save.NewKeyringWrapper()
 			}
@@ -171,6 +171,7 @@ func main() {
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
 			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
 			badgeCache := badge.NewCache(serverAPI)
+			appStateManager := save.NewAppStateManager(afero.NewOsFs())
 
 			// message logger setup
 			db, err := openDB(false)
@@ -250,6 +251,7 @@ func main() {
 					Settings: settings,
 					Theme:    theme,
 				},
+				AppStateManager:      appStateManager,
 				Keymap:               keymap,
 				ServerAPI:            serverAPI,
 				AccountProvider:      accountProvider,
@@ -330,7 +332,7 @@ func main() {
 				// persist open tabs on disk
 				state := final.TakeStateSnapshot()
 
-				if err := state.Save(); err != nil {
+				if err := appStateManager.SaveAppState(state); err != nil {
 					return fmt.Errorf("error while saving state: %w", err)
 				}
 			}

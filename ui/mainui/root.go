@@ -175,7 +175,6 @@ func NewUI(
 		eventSubIn:         inEventSub,
 
 		messageLoggerChan: messageLoggerChan,
-		loadSaveState:     save.AppStateFromDisk,
 	}
 }
 
@@ -194,7 +193,7 @@ func (r *Root) Init() tea.Cmd {
 				log.Logger.Info().Msg("init event sub routine done")
 			}()
 
-			state, err := save.AppStateFromDisk()
+			state, err := r.dependencies.AppStateManager.LoadAppState()
 			if err != nil {
 				return persistedDataLoadedMessage{
 					err: fmt.Errorf("failed to load save state: %w", err),
@@ -671,7 +670,7 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 	return tea.Tick(time.Second*15, func(_ time.Time) tea.Msg {
 		log.Logger.Info().Msg("saving app state inside ticker")
 
-		if err := state.Save(); err != nil {
+		if err := r.dependencies.AppStateManager.SaveAppState(state); err != nil {
 			log.Logger.Err(err).Msg("failed to save app state")
 		}
 

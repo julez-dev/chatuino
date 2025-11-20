@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )
 
@@ -205,7 +206,7 @@ func BuildDefaultKeyMap() KeyMap {
 }
 
 func CreateReadKeyMap() (KeyMap, error) {
-	f, err := openCreateConfigFile(keyMapFileName)
+	f, err := openCreateConfigFile(afero.NewOsFs(), keyMapFileName)
 	if err != nil {
 		return KeyMap{}, err
 	}

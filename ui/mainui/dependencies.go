@@ -74,6 +74,11 @@ type MessageLogger interface {
 	MessagesFromUserInChannel(username string, broadcasterChannel string) ([]messagelog.LogEntry, error)
 }
 
+type AppStateManager interface {
+	LoadAppState() (save.AppState, error)
+	SaveAppState(save.AppState) error
+}
+
 type DependencyContainer struct {
 	UserConfig UserConfiguration
 	Keymap     save.KeyMap
@@ -92,4 +97,5 @@ type DependencyContainer struct {
 	MessageLogger        MessageLogger
 	ChatPool             ChatPool
 	EventSubPool         EventSubPool
+	AppStateManager      AppStateManager
 }

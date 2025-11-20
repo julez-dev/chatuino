@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/spf13/afero"
 )
 
 const (
 	chatuinoConfigDir = "chatuino"
 	stateFileName     = "state.json"
-	messageDBFileName = "messages.db"
 )
 
 type AppState struct {
@@ -29,15 +29,23 @@ type TabState struct {
 	Kind          int    `json:"kind"`
 }
 
-func (a *AppState) Save() error {
-	f, err := openCreateConfigFile(stateFileName)
+type AppStateManager struct {
+	fs afero.Fs
+}
+
+func NewAppStateManager(fs afero.Fs) *AppStateManager {
+	return &AppStateManager{fs: fs}
+}
+
+func (a *AppStateManager) SaveAppState(state AppState) error {
+	f, err := openCreateConfigFile(a.fs, stateFileName)
 	if err != nil {
 		return err
 	}
 
 	defer f.Close()
 
-	data, err := json.Marshal(a)
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
@@ -55,8 +63,8 @@ func (a *AppState) Save() error {
 	return nil
 }
 
-func AppStateFromDisk() (AppState, error) {
-	f, err := openCreateConfigFile(stateFileName)
+func (a *AppStateManager) LoadAppState() (AppState, error) {
+	f, err := openCreateConfigFile(a.fs, stateFileName)
 	if err != nil {
 		return AppState{}, err
 	}
@@ -81,14 +89,14 @@ func AppStateFromDisk() (AppState, error) {
 	return state, nil
 }
 
-func openCreateFile(base string, file string) (*os.File, error) {
+func openCreateFile(fs afero.Fs, base string, file string) (afero.File, error) {
 	// ensure dir config dir exists
 	configDirChatuino := filepath.Join(base, chatuinoConfigDir)
 	err := os.Mkdir(configDirChatuino, 0o755)
 	var alreadyExistsError bool
 
 	if err != nil {
-		if errors.Is(err, fs.ErrExist) {
+		if errors.Is(err, afero.ErrFileExists) {
 			alreadyExistsError = true
 		} else {
 			return nil, err
@@ -101,7 +109,7 @@ func openCreateFile(base string, file string) (*os.File, error) {
 
 	path := filepath.Join(configDirChatuino, file)
 
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	f, err := fs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +117,11 @@ func openCreateFile(base string, file string) (*os.File, error) {
 	return f, nil
 }
 
-func openCreateConfigFile(file string) (*os.File, error) {
+func openCreateConfigFile(fs afero.Fs, file string) (afero.File, error) {
 	configDir, err := os.UserConfigDir() // get users config directory, depending on OS
 	if err != nil {
 		return nil, err
 	}
 
-	return openCreateFile(configDir, file)
+	return openCreateFile(fs, configDir, file)
 }

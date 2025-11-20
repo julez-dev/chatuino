@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/accountui"
+	"github.com/spf13/afero"
 	"github.com/urfave/cli/v3"
 	"github.com/zalando/go-keyring"
 )
@@ -41,7 +42,7 @@ var accountCMD = &cli.Command{
 		var keyringBackend keyring.Keyring
 
 		if command.Bool("plain-auth-storage") {
-			keyringBackend = save.NewPlainKeyringFallback()
+			keyringBackend = save.NewPlainKeyringFallback(afero.NewOsFs())
 		} else {
 			keyringBackend = save.NewKeyringWrapper()
 		}

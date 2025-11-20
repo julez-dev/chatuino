@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )
 
@@ -91,7 +92,7 @@ func (s Settings) BuildCustomSuggestionMap() map[string]string {
 }
 
 func SettingsFromDisk() (Settings, error) {
-	f, err := openCreateConfigFile(settingsFileName)
+	f, err := openCreateConfigFile(afero.NewOsFs(), settingsFileName)
 	if err != nil {
 		return Settings{}, err
 	}
