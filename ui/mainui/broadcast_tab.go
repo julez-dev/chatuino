@@ -64,11 +64,6 @@ type emoteSetRefreshedMessage struct {
 	err      error
 }
 
-type setUserIdentityData struct {
-	targetID  string
-	colorData twitchapi.UserChatColor
-}
-
 type broadcastTabState int
 
 func (t broadcastTabState) String() string {
@@ -132,8 +127,6 @@ type broadcastTab struct {
 	channel      string
 	channelID    string
 	channelLogin string
-
-	colorData twitchapi.UserChatColor
 
 	width, height int
 
@@ -303,6 +296,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.chatWindow = newChatWindow(t.width, t.height, t.deps)
 
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap())
+		t.messageInput.EmoteReplacer = t.deps.EmoteReplacer // enable emote replacement
 		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
 
 		t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.deps)
@@ -456,32 +450,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			})
 		}
 
-		if !t.account.IsAnonymous {
-			cmds = append(cmds, func() tea.Msg {
-				api, ok := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
-				if !ok {
-					return nil
-				}
-
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-				defer cancel()
-
-				colorData, err := api.GetUserChatColor(ctx, []string{t.account.ID})
-				if err != nil {
-					log.Logger.Error().Err(err).Str("account-id", t.account.ID).Msg("failed to fetch user chat color")
-					return nil
-				}
-
-				resp := setUserIdentityData{}
-				if len(colorData) > 0 {
-					resp.colorData = colorData[0]
-				}
-
-				resp.targetID = t.id
-				return resp
-			})
-		}
-
 		t.HandleResize()
 		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 		return t, tea.Batch(cmds...)
@@ -512,13 +480,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			t.messageInput.SetSuggestions(suggestions)
 		}
 
-		return t, nil
-	case setUserIdentityData:
-		if msg.targetID != t.id {
-			return t, nil
-		}
-
-		t.colorData = msg.colorData
 		return t, nil
 	case EventSubMessage:
 		cmd = t.handleEventSubMessage(msg.Payload)
@@ -1419,7 +1380,7 @@ func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
 			accountID:                   t.account.ID,
 			channel:                     t.channelLogin,
 			channelID:                   t.channelID,
-			messageContentEmoteOverride: e.OverwrittenMessageContent,
+			messageContentEmoteOverride: e.Event.messageContentEmoteOverride,
 			message:                     e.Event.message,
 			channelGuestID:              e.Event.channelGuestID,
 			channelGuestDisplayName:     e.Event.channelGuestDisplayName,

@@ -1000,7 +1000,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelGuestID = msg.SourceRoomID
 
 		// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
-		if channelID != "" && channelGuestID != "" && channelID != channelGuestID {
+		if channelID != "" && channelGuestID != "" {
 			if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
 				channelGuestDisplayName = v.(string)
 			} else {

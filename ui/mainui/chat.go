@@ -27,12 +27,11 @@ const (
 )
 
 type chatEntry struct {
-	Position                  position
-	Selected                  bool
-	IsDeleted                 bool
-	OverwrittenMessageContent string
-	Event                     chatEventMessage
-	IsFiltered                bool // message is filtered out by search
+	Position   position
+	Selected   bool
+	IsDeleted  bool
+	Event      chatEventMessage
+	IsFiltered bool // message is filtered out by search
 }
 
 type position struct {
@@ -484,51 +483,8 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	}
 
 	c.cleanup()
-
-	// if timeout message, rewrite all messages from user
-	if timeoutMsg, ok := msg.message.(*twitchirc.ClearChat); ok && timeoutMsg.UserName != nil {
-		var hasDeleted bool
-		for _, e := range c.entries {
-			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
-
-			if !ok {
-				continue
-			}
-
-			if strings.EqualFold(privMsg.DisplayName, *timeoutMsg.UserName) && !e.IsDeleted {
-				hasDeleted = true
-				e.IsDeleted = true
-
-				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
-			}
-		}
-
-		if hasDeleted {
-			c.recalculateLines()
-		}
-	}
-
-	// if specific message deleted
-	if clearMsg, ok := msg.message.(*twitchirc.ClearMessage); ok {
-		var hasDeleted bool
-		for _, e := range c.entries {
-			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
-
-			if !ok {
-				continue
-			}
-
-			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
-				hasDeleted = true
-				e.IsDeleted = true
-				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
-			}
-		}
-
-		if hasDeleted {
-			c.recalculateLines()
-		}
-	}
+	c.handleTimeoutMessage(msg)
+	c.handleMessageDeletion(msg)
 
 	lines := c.messageToText(msg)
 
@@ -549,9 +505,8 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 			CursorStart: positionStart + 1,
 			CursorEnd:   positionStart + len(lines),
 		},
-		Selected:                  wasLatestMessage,
-		OverwrittenMessageContent: msg.messageContentEmoteOverride,
-		Event:                     msg,
+		Selected: wasLatestMessage,
+		Event:    msg,
 	}
 
 	// we are currently searching and the new entry does not match the search, then ignore new entry
@@ -567,6 +522,52 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 
 	if wasLatestMessage {
 		c.moveToBottom()
+	}
+}
+
+func (c *chatWindow) handleTimeoutMessage(msg chatEventMessage) {
+	if timeoutMsg, ok := msg.message.(*twitchirc.ClearChat); ok && timeoutMsg.UserName != nil {
+		var hasDeleted bool
+		for _, e := range c.entries {
+			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
+
+			if !ok {
+				continue
+			}
+
+			if strings.EqualFold(privMsg.LoginName, *timeoutMsg.UserName) && !e.IsDeleted {
+				hasDeleted = true
+				e.IsDeleted = true
+				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
+			}
+		}
+
+		if hasDeleted {
+			c.recalculateLines()
+		}
+	}
+}
+
+func (c *chatWindow) handleMessageDeletion(msg chatEventMessage) {
+	if clearMsg, ok := msg.message.(*twitchirc.ClearMessage); ok {
+		var hasDeleted bool
+		for _, e := range c.entries {
+			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
+
+			if !ok {
+				continue
+			}
+
+			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
+				hasDeleted = true
+				e.IsDeleted = true
+				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
+			}
+		}
+
+		if hasDeleted {
+			c.recalculateLines()
+		}
 	}
 }
 
@@ -727,6 +728,31 @@ func (c *chatWindow) colorMessage(content string) string {
 	return content
 }
 
+func (c *chatWindow) colorMessageMentions(message string) string {
+	words := strings.Split(message, " ")
+	for i, word := range words {
+		cleaned := strings.ToLower(stripDisplayNameEdges(word))
+		renderFn, ok := c.userColorCache[cleaned]
+
+		if !ok {
+			// fallback try if empty
+			if f, ok := c.userColorCache[word]; ok {
+				renderFn = f
+			} else {
+				continue
+			}
+		}
+
+		if start := strings.Index(word, cleaned); start != -1 {
+			word = word[:start] + renderFn(cleaned) + word[start+len(cleaned):]
+		}
+
+		words[i] = word
+	}
+
+	return strings.Join(words, " ")
+}
+
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	content = strings.Map(func(r rune) rune {
 		// this rune is commonly used to bypass the twitch spam detection
@@ -764,26 +790,6 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	}
 
 	return lines
-}
-
-func (c *chatWindow) colorMessageMentions(message string) string {
-	words := strings.Split(message, " ")
-	for i, word := range words {
-		cleaned := strings.ToLower(stripDisplayNameEdges(word))
-		renderFn, ok := c.userColorCache[cleaned]
-
-		if !ok {
-			continue
-		}
-
-		if start := strings.Index(word, cleaned); start != -1 {
-			word = word[:start] + renderFn(cleaned) + word[start+len(cleaned):]
-		}
-
-		words[i] = word
-	}
-
-	return strings.Join(words, " ")
 }
 
 func (c *chatWindow) updatePort() {

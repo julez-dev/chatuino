@@ -2,6 +2,8 @@ package component
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -11,42 +13,19 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/rs/zerolog/log"
 )
 
-var ModeratorSuggestions = [...]string{
-	"/ban <user> [reason]",
-	`/ban_selected {{ if .SelectedDisplayName }}{{ .SelectedDisplayName }}{{ else }}<user>{{ end }} [reason]`,
-
-	"/unban <user>",
-	`/unban_selected {{ if .SelectedDisplayName }}{{ .SelectedDisplayName }}{{ else }}<user>{{ end }}`,
-
-	"/timeout <username> [duration] [reason]",
-	`/timeout_selected {{ if .SelectedDisplayName }}{{ .SelectedDisplayName }}{{ else }}<user>{{ end }} [duration] [reason]`,
-
-	"/delete_all_messages",
-	`/delete_selected_message {{ if .MessageID }}{{ .MessageID }}{{ else }}<message_id>{{ end }}`,
-
-	"/announcement <blue|green|orange|purple|primary> <message>",
-	"/announcement blue <message>",
-	"/announcement green <message>",
-	"/announcement orange <message>",
-	"/announcement purple <message>",
-	"/announcement primary <message>",
-
-	"/marker [description]",
+type emoteReplacementMessage struct {
+	word        string
+	prepare     string
+	replaceCode string
 }
 
-var CommandSuggestions = [...]string{
-	"/inspect <username>",
-	"/popupchat",
-	"/channel",
-	"/pyramid <word> <count>",
-	"/localsubscribers",
-	"/localsubscribersoff",
-	"/uniqueonly",
-	"/uniqueonlysoff",
-	"/createclip",
-	"/emotes",
+type Replacer interface {
+	Replace(channelID, content string, emoteList []twitchirc.Emote) (string, string, error)
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
@@ -79,8 +58,10 @@ type SuggestionTextInput struct {
 	IncludeModeratorCommands   bool
 	DisableAutoSpaceSuggestion bool
 	DisableHistory             bool
+	EmoteReplacer              Replacer
 
 	customSuggestions map[string]string
+	emoteReplacements map[string]string // emoteText:unicode
 
 	userCache map[string]func(...string) string // [username]render func
 }
@@ -118,6 +99,7 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string, customS
 		IncludeCommandSuggestions: true,
 		IncludeModeratorCommands:  false,
 		customSuggestions:         customSuggestions,
+		emoteReplacements:         map[string]string{},
 	}
 }
 
@@ -129,6 +111,9 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case emoteReplacementMessage:
+		_, _ = io.WriteString(os.Stdout, msg.prepare)
+		s.emoteReplacements[msg.word] = msg.replaceCode
 	case tea.KeyMsg:
 		switch {
 		case msg.String() == "enter" && !s.DisableHistory:
@@ -189,11 +174,27 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			return s, nil
 		case key.Matches(msg, s.KeyMap.NextSuggestion):
 			s.nextSuggestion()
+
+			// if emote replacer is enabled we try to display the actual emote, before that we need to fetch the emote
+			if s.EmoteReplacer != nil && s.canAcceptSuggestion() {
+				return s, s.loadEmoteImageCommand()
+			}
 		case key.Matches(msg, s.KeyMap.PrevSuggestion):
 			s.previousSuggestion()
+
+			// if emote replacer is enabled we try to display the actual emote, before that we need to fetch the emote
+			if s.EmoteReplacer != nil && s.canAcceptSuggestion() {
+				return s, s.loadEmoteImageCommand()
+			}
 		default:
 			s.InputModel, cmd = s.InputModel.Update(msg)
 			s.updateSuggestions()
+
+			// if emote replacer is enabled we try to display the actual emote, before that we need to fetch the emote
+			if s.EmoteReplacer != nil && s.canAcceptSuggestion() {
+				return s, tea.Batch(cmd, s.loadEmoteImageCommand())
+			}
+
 			return s, cmd
 		}
 	}
@@ -203,6 +204,39 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	return s, cmd
 }
 
+func (s *SuggestionTextInput) loadEmoteImageCommand() tea.Cmd {
+	suggestion := s.suggestions[s.suggestionIndex]
+
+	// command should never be emotes, same as users
+	if strings.HasPrefix(suggestion, "/") || strings.HasPrefix(suggestion, "@") {
+		return nil
+	}
+
+	if _, ok := s.userCache[strings.TrimPrefix(suggestion, "@")]; ok {
+		return nil
+	}
+
+	return func() tea.Msg {
+		prepare, replace, err := s.EmoteReplacer.Replace("", suggestion, nil)
+		if err != nil {
+			return nil
+		}
+
+		log.Logger.Info().Str("sugg", suggestion).Str("replace", replace).Msg("suggestion emote replaced")
+
+		// skip when empty
+		if replace == "" {
+			return nil
+		}
+
+		return emoteReplacementMessage{
+			prepare:     prepare,
+			replaceCode: replace,
+			word:        suggestion,
+		}
+	}
+}
+
 func (s *SuggestionTextInput) View() string {
 	if s.canAcceptSuggestion() {
 		suggestion := s.suggestions[s.suggestionIndex]
@@ -210,6 +244,11 @@ func (s *SuggestionTextInput) View() string {
 		// If the suggestion is a username, render it with the users color function
 		if renderFunc, ok := s.userCache[strings.TrimPrefix(suggestion, "@")]; ok {
 			suggestion = renderFunc(suggestion)
+		}
+
+		// current suggestion is emote and has a relacement
+		if replace, ok := s.emoteReplacements[suggestion]; ok && replace != suggestion {
+			return fmt.Sprintf(" %s %s (%dx)\n%s", suggestion, replace, len(s.suggestions), s.InputModel.View())
 		}
 
 		return fmt.Sprintf(" %s (%dx)\n%s", suggestion, len(s.suggestions), s.InputModel.View())
@@ -286,7 +325,7 @@ func (s *SuggestionTextInput) updateSuggestions() {
 	// If the current word is a command and is at the start of the message, add command help to suggestions
 	if strings.HasPrefix(currWord, "/") && startIndex == 0 {
 		if s.IncludeCommandSuggestions {
-			for _, suggestion := range CommandSuggestions {
+			for _, suggestion := range command.CommandSuggestions {
 				if strings.Contains(suggestion, currWord) {
 					s.suggestions = append(s.suggestions, suggestion)
 				}
@@ -294,7 +333,7 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		}
 
 		if s.IncludeModeratorCommands {
-			for _, suggestion := range ModeratorSuggestions {
+			for _, suggestion := range command.ModeratorSuggestions {
 				if strings.Contains(suggestion, currWord) {
 					s.suggestions = append(s.suggestions, suggestion)
 				}
