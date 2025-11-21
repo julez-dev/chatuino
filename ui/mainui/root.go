@@ -106,9 +106,7 @@ type Root struct {
 
 	userIDDisplayName *sync.Map
 
-	// dependencies
-	dependencies  *DependencyContainer
-	loadSaveState func() (save.AppState, error)
+	dependencies *DependencyContainer
 
 	// chat multiplexer channels
 	closerWG *sync.WaitGroup
