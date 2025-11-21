@@ -580,43 +580,24 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	case *twitchirc.PrivateMessage:
 		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
-		var prefix string
+		// Build prefix components: time, [guest channel], [badges], username
+		var parts []string
+		parts = append(parts, "  "+c.timeFormatFunc(msg.TMISentTS))
 
-		// if set it means the message is in context of a shared chat
+		// Add guest channel if message is in context of shared chat
 		if event.channelGuestDisplayName != "" {
-			if len(event.badgeReplacement) == 0 {
-				// start of the message (sent date + username)
-				prefix = fmt.Sprintf("  %s |%s| %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					event.channelGuestDisplayName,
-					userRenderFunc(msg.DisplayName),
-				)
-			} else {
-				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s |%s| %s %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					event.channelGuestDisplayName,
-					formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement),
-					userRenderFunc(msg.DisplayName),
-				)
-			}
-		} else {
-			if len(event.badgeReplacement) == 0 {
-				// start of the message (sent date + username)
-				prefix = fmt.Sprintf("  %s %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					userRenderFunc(msg.DisplayName),
-				)
-			} else {
-				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s %s %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement),
-					userRenderFunc(msg.DisplayName),
-				)
-			}
+			parts = append(parts, "|"+event.channelGuestDisplayName+"|")
 		}
 
+		// Add badges if present
+		if len(event.badgeReplacement) > 0 {
+			parts = append(parts, formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement))
+		}
+
+		// Add username
+		parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
+
+		prefix := strings.Join(parts, " ")
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *twitchirc.Notice:
 		title := "Notice"
