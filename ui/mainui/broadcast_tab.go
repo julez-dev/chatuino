@@ -320,7 +320,26 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			t.chatWindow.Focus()
 		}
 
-		ircCmds := make([]tea.Cmd, 0, 4)
+		ircCmds := make([]tea.Cmd, 0, 3)
+
+		// notify user about loaded messages
+		msg.initialMessages = append(msg.initialMessages, &twitchirc.Notice{
+			FakeTimestamp:   time.Now(),
+			ChannelUserName: t.channelLogin,
+			MsgID:           twitchirc.MsgID(uuid.NewString()),
+			Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
+		})
+
+		// Pass recent messages, recorded before the application was started, to chat window
+		// all irc commands will be processed as a sequence. This means all remote messages should be handled before the join irc command
+		// is sent. This should keep the message order consistent.
+		ircCmds = append(ircCmds, func() tea.Msg {
+			return requestLocalMessageHandleBatchMessage{
+				messages:  msg.initialMessages,
+				tabID:     t.id,
+				accountID: t.account.ID,
+			}
+		})
 
 		ircCmds = append(ircCmds, func() tea.Msg {
 			return forwardChatMessage{
@@ -339,23 +358,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 						Channel: msg.channelLogin,
 					},
 				},
-			}
-		})
-
-		// notify user about loaded messages
-		msg.initialMessages = append(msg.initialMessages, &twitchirc.Notice{
-			FakeTimestamp:   time.Now(),
-			ChannelUserName: t.channelLogin,
-			MsgID:           twitchirc.MsgID(uuid.NewString()),
-			Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
-		})
-
-		// pass recent messages, recorded before the application was started, to chat window
-		ircCmds = append(ircCmds, func() tea.Msg {
-			return requestLocalMessageHandleBatchMessage{
-				messages:  msg.initialMessages,
-				tabID:     t.id,
-				accountID: t.account.ID,
 			}
 		})
 
