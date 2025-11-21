@@ -26,7 +26,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/multiplex"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -342,7 +341,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return forwardChatMessage{
 				msg: multiplex.InboundMessage{
 					AccountID: t.account.ID,
-					Msg: command.JoinMessage{
+					Msg: twitchirc.JoinMessage{
 						Channel: msg.channelLogin,
 					},
 				},
@@ -350,10 +349,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		})
 
 		// notify user about loaded messages
-		msg.initialMessages = append(msg.initialMessages, &command.Notice{
+		msg.initialMessages = append(msg.initialMessages, &twitchirc.Notice{
 			FakeTimestamp:   time.Now(),
 			ChannelUserName: t.channelLogin,
-			MsgID:           command.MsgID(uuid.NewString()),
+			MsgID:           twitchirc.MsgID(uuid.NewString()),
 			Message:         fmt.Sprintf("Loaded %d recent messages; powered by https://recent-messages.robotty.de", len(msg.initialMessages)),
 		})
 
@@ -536,7 +535,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				return t, nil
 			}
 
-			if msg, ok := msg.message.(*command.PrivateMessage); ok {
+			if msg, ok := msg.message.(*twitchirc.PrivateMessage); ok {
 				if messageContainsCaseInsensitive(msg, t.account.DisplayName) {
 					cmds = append(cmds, func() tea.Msg {
 						return requestNotificationIconMessage{
@@ -550,7 +549,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			cmds = append(cmds, cmd)
 
 			// if room state update, update status info
-			if _, ok := msg.message.(*command.RoomState); ok {
+			if _, ok := msg.message.(*twitchirc.RoomState); ok {
 				cmds = append(cmds, t.statusInfo.Init()) // resend init command
 			}
 
@@ -560,7 +559,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			// add message content to cache
-			if cast, ok := msg.message.(*command.PrivateMessage); ok {
+			if cast, ok := msg.message.(*twitchirc.PrivateMessage); ok {
 				t.lastMessages.Set(cast.Message, struct{}{}, ttlcache.DefaultTTL)
 			}
 
@@ -918,7 +917,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Pyramid command is disabled in slow mode",
 				},
@@ -933,7 +932,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Expected Usage: /pyramid <word> <count>",
 				},
@@ -950,7 +949,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Failed to convert count to integer",
 				},
@@ -980,7 +979,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			delay = time.Millisecond * 1050
 		}
 
-		notice := &command.Notice{
+		notice := &twitchirc.Notice{
 			FakeTimestamp: time.Now(),
 		}
 
@@ -1033,7 +1032,7 @@ func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Already in local submode",
 				},
@@ -1048,7 +1047,7 @@ func (t *broadcastTab) handleLocalSubCommand(enable bool) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Already out of local submode",
 				},
@@ -1069,7 +1068,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Already in unique only chat",
 				},
@@ -1084,7 +1083,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 				channel:   t.channelLogin,
 				channelID: t.channelID,
 				tabID:     t.id,
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					Message:       "Already out of unique only chat",
 				},
@@ -1102,7 +1101,7 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitchirc.IRCer) bool {
 		return true
 	}
 
-	cast, ok := msg.(*command.PrivateMessage)
+	cast, ok := msg.(*twitchirc.PrivateMessage)
 
 	// all non private messages are okay
 	if !ok {
@@ -1112,7 +1111,7 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitchirc.IRCer) bool {
 	// never ignore messages from the user,broadcaster,subs,mods,vips,paid messages,staff,bits or message mentions user
 	if cast.UserID == t.account.ID || cast.UserID == t.channelID || cast.Mod || cast.PaidAmount != 0 || cast.VIP ||
 		messageContainsCaseInsensitive(cast, t.account.DisplayName) || cast.Bits != 0 ||
-		cast.UserType == command.Admin || cast.UserType == command.GlobalMod || cast.UserType == command.Staff {
+		cast.UserType == twitchirc.Admin || cast.UserType == twitchirc.GlobalMod || cast.UserType == twitchirc.Staff {
 		return false
 	}
 
@@ -1235,7 +1234,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 					isFakeEvent: true,
 					accountID:   t.account.ID,
 					tabID:       t.id,
-					message: &command.Notice{
+					message: &twitchirc.Notice{
 						FakeTimestamp: time.Now(),
 						Message:       "Moderator commands are not available since you are not a moderator",
 					},
@@ -1269,7 +1268,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			time.Sleep(delay - diff)
 		}
 
-		notice := &command.Notice{
+		notice := &twitchirc.Notice{
 			FakeTimestamp: time.Now(),
 		}
 
@@ -1322,7 +1321,7 @@ func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 
 		clip, err := api.CreateClip(ctx, t.channelID, false)
 
-		notice := &command.Notice{
+		notice := &twitchirc.Notice{
 			FakeTimestamp: time.Now(),
 		}
 
@@ -1391,7 +1390,7 @@ func (t *broadcastTab) handleCopyMessage() {
 		t.userInspect.chatWindow.Blur()
 	}
 
-	msg, ok := entry.Event.message.(*command.PrivateMessage)
+	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
 
 	if !ok {
 		return
@@ -1453,9 +1452,9 @@ func (t *broadcastTab) handleOpenUserInspectFromMessage() tea.Cmd {
 
 	var username string
 	switch msg := e.Event.message.(type) {
-	case *command.PrivateMessage:
+	case *twitchirc.PrivateMessage:
 		username = msg.LoginName
-	case *command.ClearChat:
+	case *twitchirc.ClearChat:
 		if msg.UserName == nil {
 			return nil
 		}
@@ -1486,7 +1485,7 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 		return
 	}
 
-	msg, ok := entry.Event.message.(*command.PrivateMessage)
+	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
 
 	if !ok {
 		return
@@ -1598,10 +1597,10 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		t.poll.enabled = true
 		t.HandleResize()
 		return createCMDFunc(
-			&command.Notice{
+			&twitchirc.Notice{
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channelLogin,
-				MsgID:           command.MsgID(uuid.NewString()),
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
 			},
 		)
@@ -1627,10 +1626,10 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		t.HandleResize()
 
 		return createCMDFunc(
-			&command.Notice{
+			&twitchirc.Notice{
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channelLogin,
-				MsgID:           command.MsgID(uuid.NewString()),
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
 			},
 		)
@@ -1638,10 +1637,10 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		// broadcaster raided another channel
 		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {
 			return createCMDFunc(
-				&command.Notice{
+				&twitchirc.Notice{
 					FakeTimestamp:   time.Now(),
 					ChannelUserName: t.channelLogin,
-					MsgID:           command.MsgID(uuid.NewString()),
+					MsgID:           twitchirc.MsgID(uuid.NewString()),
 					Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
 				},
 			)
@@ -1649,10 +1648,10 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 
 		// broadcaster gets raided
 		return createCMDFunc(
-			&command.Notice{
+			&twitchirc.Notice{
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channelLogin,
-				MsgID:           command.MsgID(uuid.NewString()),
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
 			},
 		)
@@ -1666,10 +1665,10 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 		}
 
 		return createCMDFunc(
-			&command.Notice{
+			&twitchirc.Notice{
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channelLogin,
-				MsgID:           command.MsgID(uuid.NewString()),
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
 				Message:         chatMsg,
 			},
 		)
@@ -1681,7 +1680,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 	input := t.messageInput.Value()
 
-	notice := &command.Notice{
+	notice := &twitchirc.Notice{
 		FakeTimestamp: time.Now(),
 	}
 
@@ -1713,7 +1712,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 	// if a row is currently selected
 	if _, e := t.chatWindow.entryForCurrentCursor(); e != nil {
 		switch msg := e.Event.message.(type) {
-		case *command.PrivateMessage:
+		case *twitchirc.PrivateMessage:
 			data["SelectedDisplayName"] = msg.DisplayName
 			data["SelectedMessageContent"] = msg.Message
 			data["SelectedUserID"] = msg.UserID
@@ -1721,7 +1720,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 
 			data["RawMessage"] = msg
 			data["MessageType"] = "PrivateMessage"
-		case *command.SubMessage:
+		case *twitchirc.SubMessage:
 			data["SelectedDisplayName"] = msg.DisplayName
 			data["SelectedMessageContent"] = msg.Message
 			data["SelectedUserID"] = msg.UserID
@@ -1733,7 +1732,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 
 			data["RawMessage"] = msg
 			data["MessageType"] = "SubMessage"
-		case *command.SubGiftMessage:
+		case *twitchirc.SubGiftMessage:
 			data["SelectedDisplayName"] = msg.DisplayName
 			data["SelectedMessageContent"] = msg
 			data["SelectedUserID"] = msg.UserID

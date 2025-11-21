@@ -13,7 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/reflow/wordwrap"
 	"github.com/julez-dev/reflow/wrap"
 	"github.com/rs/zerolog/log"
@@ -444,7 +444,7 @@ func (c *chatWindow) cleanup() {
 	// users that should not be removed from the color cache
 	usersLeft := make(map[string]struct{}, len(c.entries))
 	for _, e := range c.entries {
-		if privMsg, ok := e.Event.message.(*command.PrivateMessage); ok {
+		if privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage); ok {
 			usersLeft[strings.ToLower(privMsg.DisplayName)] = struct{}{}
 		}
 	}
@@ -478,7 +478,7 @@ func (c *chatWindow) cleanup() {
 
 func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	switch msg.message.(type) {
-	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage, *command.ClearMessage: // supported Message types
+	case error, *twitchirc.PrivateMessage, *twitchirc.Notice, *twitchirc.ClearChat, *twitchirc.SubMessage, *twitchirc.SubGiftMessage, *twitchirc.AnnouncementMessage, *twitchirc.ClearMessage: // supported Message types
 	default: // exit only on other types
 		return
 	}
@@ -486,10 +486,10 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	c.cleanup()
 
 	// if timeout message, rewrite all messages from user
-	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok && timeoutMsg.UserName != nil {
+	if timeoutMsg, ok := msg.message.(*twitchirc.ClearChat); ok && timeoutMsg.UserName != nil {
 		var hasDeleted bool
 		for _, e := range c.entries {
-			privMsg, ok := e.Event.message.(*command.PrivateMessage)
+			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
 
 			if !ok {
 				continue
@@ -509,10 +509,10 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	}
 
 	// if specific message deleted
-	if clearMsg, ok := msg.message.(*command.ClearMessage); ok {
+	if clearMsg, ok := msg.message.(*twitchirc.ClearMessage); ok {
 		var hasDeleted bool
 		for _, e := range c.entries {
-			privMsg, ok := e.Event.message.(*command.PrivateMessage)
+			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
 
 			if !ok {
 				continue
@@ -576,7 +576,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		prefix := "  " + strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.PrivateMessage:
+	case *twitchirc.PrivateMessage:
 		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
 
 		var prefix string
@@ -617,12 +617,12 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
-	case *command.Notice:
+	case *twitchirc.Notice:
 		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render("Notice") + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(styled))
-	case *command.ClearMessage:
+	case *twitchirc.ClearMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Message") + "]: A message from "
 
 		userRenderFunc := c.getSetUserColorFunc(msg.Login, "")
@@ -632,7 +632,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text += userRenderFunc(msg.Login)
 		text += " was removed."
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.ClearChat:
+	case *twitchirc.ClearChat:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
 
 		if msg.TargetUserID == nil {
@@ -652,7 +652,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.SubMessage:
+	case *twitchirc.SubMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Alert") + "]: "
 
 		subResubText := "subscribed"
@@ -675,7 +675,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.SubGiftMessage:
+	case *twitchirc.SubGiftMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
 
 		gifterRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
@@ -689,7 +689,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.AnnouncementMessage:
+	case *twitchirc.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
@@ -913,7 +913,7 @@ func (c *chatWindow) applySearch() {
 }
 
 func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
-	cast, ok := e.Event.message.(*command.PrivateMessage)
+	cast, ok := e.Event.message.(*twitchirc.PrivateMessage)
 
 	if !ok {
 		return false

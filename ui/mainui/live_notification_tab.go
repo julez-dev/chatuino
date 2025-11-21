@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type liveNotificationTab struct {
@@ -79,9 +79,9 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		l.chatWindow.handleMessage(chatEventMessage{
-			message: &command.Notice{
+			message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
-				MsgID:         command.MsgID(uuid.NewString()),
+				MsgID:         twitchirc.MsgID(uuid.NewString()),
 				Message:       msg,
 			},
 			isFakeEvent:                 true,

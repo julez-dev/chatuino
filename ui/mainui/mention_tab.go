@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type setMentionTabData struct {
@@ -83,9 +83,9 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		if msg.err != nil {
 			msg := fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error())
 			m.chatWindow.handleMessage(chatEventMessage{
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
-					MsgID:         command.MsgID(uuid.NewString()),
+					MsgID:         twitchirc.MsgID(uuid.NewString()),
 					Message:       msg,
 				},
 				isFakeEvent:                 true,
@@ -97,9 +97,9 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		notice := fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", "))
 		m.chatWindow.handleMessage(chatEventMessage{
-			message: &command.Notice{
+			message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
-				MsgID:         command.MsgID(uuid.NewString()),
+				MsgID:         twitchirc.MsgID(uuid.NewString()),
 				Message:       notice,
 			},
 			isFakeEvent:                 true,
@@ -110,7 +110,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	}
 
 	if event, ok := msg.(chatEventMessage); ok {
-		if privMsg, ok := event.message.(*command.PrivateMessage); ok {
+		if privMsg, ok := event.message.(*twitchirc.PrivateMessage); ok {
 			var mentioned bool
 
 			for iu := range m.usernames {

@@ -10,7 +10,7 @@ import (
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
 
 	"github.com/stretchr/testify/assert"
@@ -232,10 +232,10 @@ func TestReplacer_Replace_WithBadgeList(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacedText, err := replacer.Replace("123", "Test Message with Kappa emote", []command.Emote{
+	command, replacedText, err := replacer.Replace("123", "Test Message with Kappa emote", []twitchirc.Emote{
 		{
 			ID: "KappaCustomID",
-			Positions: []command.EmotePosition{
+			Positions: []twitchirc.EmotePosition{
 				{
 					Start: 18,
 					End:   22,
@@ -274,10 +274,10 @@ func TestReplacer_Replace_ForeignEmote(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacedText, err := replacer.Replace("channel123", "Check out ForeignEmote here", []command.Emote{
+	command, replacedText, err := replacer.Replace("channel123", "Check out ForeignEmote here", []twitchirc.Emote{
 		{
 			ID: "ForeignEmoteID",
-			Positions: []command.EmotePosition{
+			Positions: []twitchirc.EmotePosition{
 				{
 					Start: 10,
 					End:   21,

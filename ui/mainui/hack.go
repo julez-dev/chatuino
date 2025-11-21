@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rivo/uniseg"
 )
@@ -88,7 +87,7 @@ func centerTextGraphemeAware(width int, s string) string {
 	return b.String()
 }
 
-func messageContainsCaseInsensitive(msg *command.PrivateMessage, sub string) bool {
+func messageContainsCaseInsensitive(msg *twitchirc.PrivateMessage, sub string) bool {
 	return strings.Contains(strings.ToLower(msg.Message), strings.ToLower(sub))
 }
 
@@ -101,11 +100,11 @@ func messageMatchesBlocked(msg twitchirc.IRCer, settings save.BlockSettings) boo
 	var (
 		senderUserName string
 		senderMessage  string
-		senderUserType command.UserType
+		senderUserType twitchirc.UserType
 	)
 
 	switch msg := msg.(type) {
-	case *command.PrivateMessage:
+	case *twitchirc.PrivateMessage:
 		if msg.Mod {
 			return false
 		}
@@ -113,14 +112,14 @@ func messageMatchesBlocked(msg twitchirc.IRCer, settings save.BlockSettings) boo
 		senderUserName = msg.DisplayName
 		senderMessage = msg.Message
 		senderUserType = msg.UserType
-	case *command.SubGiftMessage:
+	case *twitchirc.SubGiftMessage:
 		if msg.Mod {
 			return false
 		}
 
 		senderUserName = msg.DisplayName
 		senderUserType = msg.UserType
-	case *command.SubMessage:
+	case *twitchirc.SubMessage:
 		if msg.Mod {
 			return false
 		}
@@ -132,7 +131,7 @@ func messageMatchesBlocked(msg twitchirc.IRCer, settings save.BlockSettings) boo
 		return false
 	}
 
-	if senderUserType != command.Empty {
+	if senderUserType != twitchirc.Empty {
 		return false
 	}
 

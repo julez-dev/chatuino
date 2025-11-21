@@ -11,8 +11,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
@@ -35,7 +35,7 @@ func handleCommand(name string, args []string, channelID string, channel string,
 }
 
 func handleMarker(args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
-	notice := &command.Notice{
+	notice := &twitchirc.Notice{
 		FakeTimestamp: time.Now(),
 	}
 	respMsg := chatEventMessage{
@@ -88,7 +88,7 @@ func handleMarker(args []string, channelID string, channel string, userAccountID
 }
 
 func handleAnnouncement(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
-	notice := &command.Notice{
+	notice := &twitchirc.Notice{
 		FakeTimestamp: time.Now(),
 	}
 	respMsg := chatEventMessage{
@@ -171,14 +171,14 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 		accountID:   userAccountID,
 		channel:     channel,
 		channelID:   channelID,
-		message: &command.Notice{
+		message: &twitchirc.Notice{
 			FakeTimestamp: time.Now(),
 		},
 	}
 
 	if len(args) < 1 {
 		return func() tea.Msg {
-			respMsg.message.(*command.Notice).Message = "Expected Usage: /unban <username>"
+			respMsg.message.(*twitchirc.Notice).Message = "Expected Usage: /unban <username>"
 			return respMsg
 		}
 	}
@@ -189,22 +189,22 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 
 		users, err := ttv.GetUsers(ctx, []string{args[0]}, nil)
 		if err != nil {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error())
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error())
 			return respMsg
 		}
 
 		if len(users.Data) < 1 {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s can not be found", args[0])
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("User %s can not be found", args[0])
 			return respMsg
 		}
 
 		err = ttv.UnbanUser(ctx, channelID, userAccountID, users.Data[0].ID)
 		if err != nil {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while sending unban request: %s", err.Error())
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("Error while sending unban request: %s", err.Error())
 			return respMsg
 		}
 
-		respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s received an unban by you", users.Data[0].DisplayName)
+		respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("User %s received an unban by you", users.Data[0].DisplayName)
 		return respMsg
 	}
 }
@@ -214,19 +214,19 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 		accountID: userAccountID,
 		channel:   channel,
 		channelID: channelID,
-		message:   &command.Notice{},
+		message:   &twitchirc.Notice{},
 	}
 
 	if len(args) < 1 && (name == "timeout" || name == "timeout_selected") {
 		return func() tea.Msg {
-			respMsg.message.(*command.Notice).Message = "Expected Usage: /timeout <username> [duration] [reason]"
+			respMsg.message.(*twitchirc.Notice).Message = "Expected Usage: /timeout <username> [duration] [reason]"
 			return respMsg
 		}
 	}
 
 	if len(args) < 1 && (name == "ban" || name == "ban_selected") {
 		return func() tea.Msg {
-			respMsg.message.(*command.Notice).Message = "Expected Usage: /ban <username> [reason]"
+			respMsg.message.(*twitchirc.Notice).Message = "Expected Usage: /ban <username> [reason]"
 			return respMsg
 		}
 	}
@@ -243,12 +243,12 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 
 		users, err := ttv.GetUsers(ctx, []string{args[0]}, nil)
 		if err != nil {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error())
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("Error while fetching user ID %s: %s", args[0], err.Error())
 			return respMsg
 		}
 
 		if len(users.Data) < 1 {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s can not be found", args[0])
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("User %s can not be found", args[0])
 			return respMsg
 		}
 
@@ -263,7 +263,7 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 				var err error
 				duration, err = strconv.Atoi(args[1])
 				if err != nil {
-					respMsg.message.(*command.Notice).Message = fmt.Sprintf("Could not convert %s to integer: %s", args[1], err.Error())
+					respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("Could not convert %s to integer: %s", args[1], err.Error())
 					return respMsg
 				}
 
@@ -279,22 +279,22 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 			Reason:            args[2],
 		})
 		if err != nil {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("Error while sending ban request: %s", err.Error())
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("Error while sending ban request: %s", err.Error())
 			return respMsg
 		}
 
 		if name == "ban" || name == "ban_selected" {
-			respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s received a ban by you because: %s", users.Data[0].DisplayName, args[2])
+			respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("User %s received a ban by you because: %s", users.Data[0].DisplayName, args[2])
 			return respMsg
 		}
 
-		respMsg.message.(*command.Notice).Message = fmt.Sprintf("User %s received a timeout by you for %d seconds because: %s", users.Data[0].DisplayName, duration, args[2])
+		respMsg.message.(*twitchirc.Notice).Message = fmt.Sprintf("User %s received a timeout by you for %d seconds because: %s", users.Data[0].DisplayName, duration, args[2])
 		return respMsg
 	}
 }
 
 func handleDeleteMessages(name string, args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
-	notice := &command.Notice{
+	notice := &twitchirc.Notice{
 		FakeTimestamp: time.Now(),
 	}
 	respMsg := chatEventMessage{

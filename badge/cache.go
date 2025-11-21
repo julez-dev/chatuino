@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -65,7 +65,7 @@ func (c *Cache) RefreshChannel(ctx context.Context, broadcasterID string) error 
 // badges=subscriber/6,arc-raiders-launch-2025/1
 // MatchBadgeSet uses the irc badge tag data to find and match the global and channel badges.
 // The key of the result map is the badge set id with the matched version.
-func (c *Cache) MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+func (c *Cache) MatchBadgeSet(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 	// preprocess for more efficient look ups
 	flattenIRCBadges := make(map[string]string, len(ircBadge))
 	for _, b := range ircBadge {

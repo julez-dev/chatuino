@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog"
 )
@@ -20,7 +20,7 @@ type LogEntry struct {
 	BroadcastChannel string
 	SentAt           time.Time
 	SenderDisplay    string
-	PrivateMessage   *command.PrivateMessage
+	PrivateMessage   *twitchirc.PrivateMessage
 }
 
 const sqlMigration = `BEGIN;
@@ -87,10 +87,10 @@ func (b *BatchedMessageLogger) PrepareDatabase() error {
 	return nil
 }
 
-func (b *BatchedMessageLogger) LogMessages(twitchMsgChan <-chan *command.PrivateMessage) error {
+func (b *BatchedMessageLogger) LogMessages(twitchMsgChan <-chan *twitchirc.PrivateMessage) error {
 	defer b.logger.Info().Msg("batched logger done")
 
-	var batch []*command.PrivateMessage
+	var batch []*twitchirc.PrivateMessage
 
 	timer := time.NewTimer(maxBatchWait)
 	defer func() {
@@ -133,7 +133,7 @@ SELECT_LOOP:
 			}
 
 			// clear batch
-			batch = []*command.PrivateMessage{}
+			batch = []*twitchirc.PrivateMessage{}
 
 			// reset timer, drain channel if needed
 			if !timer.Stop() {
@@ -153,7 +153,7 @@ SELECT_LOOP:
 			}
 
 			// clear batch
-			batch = []*command.PrivateMessage{}
+			batch = []*twitchirc.PrivateMessage{}
 			timer.Reset(maxBatchWait)
 		}
 	}
@@ -202,7 +202,7 @@ func (b *BatchedMessageLogger) scanRows(rows *sql.Rows) ([]LogEntry, error) {
 			return logEntries, err
 		}
 
-		entry.PrivateMessage = &command.PrivateMessage{}
+		entry.PrivateMessage = &twitchirc.PrivateMessage{}
 		if err := easyjson.Unmarshal(rawPayload, entry.PrivateMessage); err != nil {
 			return logEntries, err
 		}
@@ -217,7 +217,7 @@ func (b *BatchedMessageLogger) scanRows(rows *sql.Rows) ([]LogEntry, error) {
 	return logEntries, nil
 }
 
-func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*command.PrivateMessage) error {
+func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*twitchirc.PrivateMessage) error {
 	if len(twitchMsgs) == 0 {
 		return fmt.Errorf("expected at least 1 element, got %d", len(twitchMsgs))
 	}

@@ -12,9 +12,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type setUserInspectData struct {
@@ -36,7 +36,7 @@ type userInspect struct {
 	user            string // the chatter
 	channel         string // the streamer
 	accountID       string // account id from chatuino user
-	badges          []command.Badge
+	badges          []twitchirc.Badge
 	formattedBadges []string
 
 	ivr  *ivr.API
@@ -114,7 +114,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		for loggedEntry := range slices.Values(loggedEntries) {
 			// remove duplicate messages
 			isAlreadyStored := slices.ContainsFunc(initialEvents, func(e chatEventMessage) bool {
-				privMSG, ok := e.message.(*command.PrivateMessage)
+				privMSG, ok := e.message.(*twitchirc.PrivateMessage)
 
 				if !ok {
 					return false
@@ -152,16 +152,16 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 			)
 
 			switch msg := e1.message.(type) {
-			case *command.PrivateMessage:
+			case *twitchirc.PrivateMessage:
 				t1 = msg.TMISentTS
-			case *command.ClearChat:
+			case *twitchirc.ClearChat:
 				t1 = msg.TMISentTS
 			}
 
 			switch msg := e2.message.(type) {
-			case *command.PrivateMessage:
+			case *twitchirc.PrivateMessage:
 				t2 = msg.TMISentTS
-			case *command.ClearChat:
+			case *twitchirc.ClearChat:
 				t2 = msg.TMISentTS
 			}
 
@@ -216,12 +216,12 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	}
 
 	switch msg := chatEvent.message.(type) {
-	case *command.PrivateMessage:
+	case *twitchirc.PrivateMessage:
 		// user inspect user is not sender and message does not contain current user
 		if !strings.EqualFold(msg.DisplayName, u.user) && !messageContainsCaseInsensitive(msg, u.user) {
 			return u, nil
 		}
-	case *command.ClearChat:
+	case *twitchirc.ClearChat:
 		// let all clear chat messages through if affect user inspect user or sender
 		// of message in user inspect chat window
 		var affectsUserInChat bool
@@ -231,7 +231,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		}
 
 		for _, e := range u.chatWindow.entries {
-			if priv, ok := e.Event.message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, *msg.UserName) {
+			if priv, ok := e.Event.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, *msg.UserName) {
 				affectsUserInChat = true
 				break
 			}
@@ -247,7 +247,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 
 	// set badges, update for each message
 	// update badges if user inspect user is sender
-	if msg, ok := chatEvent.message.(*command.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
+	if msg, ok := chatEvent.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
 		u.badges = msg.Badges
 		u.formattedBadges = chatEvent.badgeReplacement
 	}

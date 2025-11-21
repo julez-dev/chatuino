@@ -17,7 +17,6 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
@@ -123,7 +122,7 @@ type Root struct {
 	eventSubIn         chan multiplex.EventSubInboundMessage
 
 	// message logge
-	messageLoggerChan chan<- *command.PrivateMessage
+	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
 	// components
 	splash    splash
@@ -136,7 +135,7 @@ type Root struct {
 }
 
 func NewUI(
-	messageLoggerChan chan<- *command.PrivateMessage,
+	messageLoggerChan chan<- *twitchirc.PrivateMessage,
 	dependencies *DependencyContainer,
 ) *Root {
 	inChat := make(chan multiplex.InboundMessage)
@@ -548,7 +547,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							cmds = append(cmds, func() tea.Msg {
 								r.in <- multiplex.InboundMessage{
 									AccountID: currentTab.AccountID(),
-									Msg: command.PartMessage{
+									Msg: twitchirc.PartMessage{
 										Channel: currentTab.Channel(),
 									},
 								}
@@ -998,7 +997,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 
 	// Check when currently in shared session.
 	// If so then load emotes and badges for guest so the message content can be replaced
-	if msg, ok := ircer.(*command.PrivateMessage); ok {
+	if msg, ok := ircer.(*twitchirc.PrivateMessage); ok {
 		channelID = msg.RoomID
 		channelGuestID = msg.SourceRoomID
 
@@ -1021,7 +1020,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	}
 
 	switch ircMessage := ircer.(type) {
-	case *command.PrivateMessage:
+	case *twitchirc.PrivateMessage:
 		channelID = ircMessage.RoomID
 		channelGuestID = ircMessage.SourceRoomID
 		channel = ircMessage.ChannelUserName
@@ -1044,35 +1043,35 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		}
 
 		prepare += badgePrepare
-	case *command.RoomState:
+	case *twitchirc.RoomState:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-	case *command.UserNotice:
+	case *twitchirc.UserNotice:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-	case *command.UserState:
+	case *twitchirc.UserState:
 		channel = ircMessage.ChannelUserName
-	case *command.ClearChat:
+	case *twitchirc.ClearChat:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-	case *command.ClearMessage:
+	case *twitchirc.ClearMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-	case *command.SubMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
-	case *command.RaidMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *command.SubGiftMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *command.RitualMessage:
+	case *twitchirc.SubMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
-	case *command.AnnouncementMessage:
+	case *twitchirc.RaidMessage:
+		channelID = ircMessage.RoomID
+		channel = ircMessage.ChannelUserName
+	case *twitchirc.SubGiftMessage:
+		channelID = ircMessage.RoomID
+		channel = ircMessage.ChannelUserName
+	case *twitchirc.RitualMessage:
+		channelID = ircMessage.RoomID
+		channel = ircMessage.ChannelUserName
+		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+	case *twitchirc.AnnouncementMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
@@ -1112,7 +1111,7 @@ func (r *Root) waitChatEvents() tea.Cmd {
 			}
 		}
 
-		if privateMsg, ok := msg.Msg.(*command.PrivateMessage); ok {
+		if privateMsg, ok := msg.Msg.(*twitchirc.PrivateMessage); ok {
 			r.messageLoggerChan <- privateMsg.Clone()
 		}
 

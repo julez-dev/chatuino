@@ -9,7 +9,6 @@ import (
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/save/messagelog"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
@@ -37,11 +36,11 @@ type EmoteCache interface {
 }
 
 type EmoteReplacer interface {
-	Replace(channelID, content string, emoteList []command.Emote) (string, string, error)
+	Replace(channelID, content string, emoteList []twitchirc.Emote) (string, string, error)
 }
 
 type BadgeReplacer interface {
-	Replace(broadcasterID string, badgeList []command.Badge) (string, []string, error)
+	Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, []string, error)
 }
 
 type APIClient interface {

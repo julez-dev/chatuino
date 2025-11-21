@@ -9,8 +9,8 @@ import (
 
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/kittyimg"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,10 +18,10 @@ import (
 // Mock implementations for testing
 
 type mockBadgeCache struct {
-	matchBadgeSetFunc func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion
+	matchBadgeSetFunc func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion
 }
 
-func (m *mockBadgeCache) MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+func (m *mockBadgeCache) MatchBadgeSet(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 	if m.matchBadgeSetFunc != nil {
 		return m.matchBadgeSetFunc(broadcasterID, ircBadge)
 	}
@@ -44,7 +44,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("empty badge list returns empty results", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{}
 			},
 		}
@@ -57,7 +57,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		prepare, formatted, err := replacer.Replace("broadcaster123", []command.Badge{})
+		prepare, formatted, err := replacer.Replace("broadcaster123", []twitchirc.Badge{})
 
 		require.NoError(t, err)
 		assert.Empty(t, prepare)
@@ -66,7 +66,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("single badge returns correct results", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{
 					"subscriber": {
 						ID:           "1",
@@ -92,7 +92,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		badgeList := []command.Badge{
+		badgeList := []twitchirc.Badge{
 			{Name: "subscriber", Version: "1"},
 		}
 
@@ -106,7 +106,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("multiple badges returns concatenated results", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{
 					"subscriber": {
 						ID:           "1",
@@ -144,7 +144,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		badgeList := []command.Badge{
+		badgeList := []twitchirc.Badge{
 			{Name: "subscriber", Version: "1"},
 			{Name: "moderator", Version: "1"},
 			{Name: "vip", Version: "1"},
@@ -160,7 +160,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("display manager error returns error", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{
 					"subscriber": {
 						ID:           "1",
@@ -184,7 +184,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		badgeList := []command.Badge{
+		badgeList := []twitchirc.Badge{
 			{Name: "subscriber", Version: "1"},
 		}
 
@@ -202,7 +202,7 @@ func TestReplacer_Replace(t *testing.T) {
 		const badgeID = "1"
 
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{
 					badgeSetKey: {
 						ID:           badgeID,
@@ -230,7 +230,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		badgeList := []command.Badge{
+		badgeList := []twitchirc.Badge{
 			{Name: "subscriber", Version: "1"},
 		}
 
@@ -246,7 +246,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("preserves badge order in formatted output", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				// Note: maps don't preserve order, but we can test that all badges are present
 				return map[string]twitchapi.BadgeVersion{
 					"badge1": {ID: "1", Image_URL_1x: "url1"},
@@ -271,7 +271,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		badgeList := []command.Badge{
+		badgeList := []twitchirc.Badge{
 			{Name: "badge1", Version: "1"},
 			{Name: "badge2", Version: "2"},
 			{Name: "badge3", Version: "3"},
@@ -296,7 +296,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("nil badge list is handled gracefully", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{}
 			},
 		}
@@ -318,7 +318,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 	t.Run("Load function can be invoked without panic", func(t *testing.T) {
 		cache := &mockBadgeCache{
-			matchBadgeSetFunc: func(broadcasterID string, ircBadge []command.Badge) map[string]twitchapi.BadgeVersion {
+			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				return map[string]twitchapi.BadgeVersion{
 					"subscriber": {
 						ID:           "1",
@@ -361,7 +361,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		badgeList := []command.Badge{
+		badgeList := []twitchirc.Badge{
 			{Name: "subscriber", Version: "1"},
 		}
 
