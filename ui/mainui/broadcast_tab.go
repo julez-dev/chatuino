@@ -1163,14 +1163,14 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		commandName := input[1:end]
 
 		argStr := strings.TrimSpace(input[end:])
-		args := strings.SplitN(argStr, " ", 3)
+		args := strings.Split(argStr, " ")
 		channelID := t.channelID
 		channel := t.channelLogin
 		accountID := t.account.ID
 
 		switch commandName {
 		case "inspect":
-			return t.handleOpenUserInspect(args[0])
+			return t.handleOpenUserInspect(args)
 		case "popupchat":
 			return t.handleOpenBrowserChatPopUp()
 		case "channel":
@@ -1369,8 +1369,14 @@ func (t *broadcastTab) handleCopyMessage() {
 	t.messageInput.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
 }
 
-func (t *broadcastTab) handleOpenUserInspect(username string) tea.Cmd {
+func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
 	var cmds []tea.Cmd
+
+	if len(args) < 1 {
+		return nil
+	}
+
+	username := args[0]
 
 	t.state = userInspectMode
 	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID, t.deps)
@@ -1427,7 +1433,7 @@ func (t *broadcastTab) handleOpenUserInspectFromMessage() tea.Cmd {
 		return nil
 	}
 
-	return t.handleOpenUserInspect(username)
+	return t.handleOpenUserInspect([]string{username})
 }
 
 func (t *broadcastTab) handleTimeoutShortcut() {

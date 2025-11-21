@@ -619,7 +619,12 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *twitchirc.Notice:
-		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render("Notice") + "]: "
+		title := "Notice"
+		if event.isFakeEvent {
+			title = "Fake-Notice"
+		}
+
+		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render(title) + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(styled))

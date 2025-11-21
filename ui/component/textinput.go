@@ -120,7 +120,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			s.history = append(s.history, s.InputModel.Value())
 			s.historyIndex = len(s.history)
 			return s, nil
-		case key.Matches(msg, s.KeyMap.PrevSuggestion) && (slices.Contains(s.history, s.InputModel.Value()) || s.InputModel.Value() == ""):
+		case key.Matches(msg, s.KeyMap.PrevSuggestion) && s.InputModel.Value() == "":
 			s.historyIndex--
 
 			if s.historyIndex < 0 {
@@ -137,7 +137,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			}
 
 			return s, nil
-		case key.Matches(msg, s.KeyMap.NextSuggestion) && (slices.Contains(s.history, s.InputModel.Value()) || s.InputModel.Value() == ""):
+		case key.Matches(msg, s.KeyMap.NextSuggestion) && s.InputModel.Value() == "":
 			s.historyIndex++
 
 			if s.historyIndex >= len(s.history) {

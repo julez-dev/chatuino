@@ -108,9 +108,9 @@ When the graphic_emotes setting is disabled, Chatuino will display emotes as col
 
 ### Graphic emotes
 
-Chatuino can display rendered images and animated images as twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by the Kitty and some other terminals. **However** it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders) which as of right now is only implemented by Kitty.
+Chatuino can display rendered images and animated images as twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by the Kitty and some other terminals. **However** it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders) which as of right now is only implemented by Kitty. It's also works with Ghostty, but sadly animated emotes are displayed as static images.
 
-Right now this feature is **only** available in Kitty terminals on Unix platforms. This may change in the future.
+Right now this feature is **only** available in Kitty and Ghostty terminals on Unix platforms. This may change in the future.
 
 #### Drawbacks and workarounds
 
