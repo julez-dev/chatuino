@@ -5,19 +5,18 @@ before:
     - go mod verify
     - go generate ./...
 
-dockers:
-  - image_templates:
-      - "ghcr.io/julez-dev/chatuino:latest"
-      - "ghcr.io/julez-dev/chatuino:{{ .Tag }}"
-    goos: linux
-    goarch: amd64
+dockers_v2:
+  - images:
+      - "ghcr.io/julez-dev/chatuino"
+    tags:
+      - "latest"
+      - "{{ .Tag }}"
     dockerfile: docker/Dockerfile
-    build_flag_templates:
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--platform=linux/amd64"
+    labels:
+      "org.opencontainers.image.created": "{{.Date}}"
+      "org.opencontainers.image.title": "{{.ProjectName}}"
+      "org.opencontainers.image.revision": "{{.FullCommit}}"
+      "org.opencontainers.image.version": "{{.Version}}"
 
 builds:
   - env:
@@ -103,27 +102,14 @@ aurs:
     # in case there is an indicator for prerelease in the tag e.g. v1.0.0-rc1.
     skip_upload: auto
 
-    # List of additional packages that the software provides the features of.
-    #
-    # Default: the project name.
-    provides:
-      - chatuino-bin
+    optdepends:
+      - "kitty: for graphical emote display"
 
     # List of packages that conflict with, or cause problems with the package.
     #
     # Default: the project name.
     conflicts:
       - chatuino-bin
-
-    # List of files that can contain user-made changes and should be preserved
-    # during package upgrades and removals.
-    backup:
-      - ~/.config/chatuino/keymap.yaml
-      - ~/.config/chatuino/settings.yaml
-      - ~/.config/chatuino/theme.yaml
-      - ~/.config/chatuino/state.json
-      - ~/.local/share/chatuino/chatuino.db
-      - ~/.local/share/chatuino/emote
 
     package: |
       install -Dm755 "./chatuino" "${pkgdir}/usr/bin/chatuino"
