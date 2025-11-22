@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/gif"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -21,6 +22,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/gen2brain/avif"
+	awebp "github.com/gen2brain/webp"
 	"github.com/rs/zerolog/log"
 
 	"github.com/adrg/xdg"
@@ -210,6 +212,16 @@ func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, conten
 		return d.convertAnimatedAvif(r, unit)
 	}
 
+	if unit.IsAnimated && contentType == "image/webp" {
+		log.Logger.Info().Any("unit", unit).Msg("converting animated webp")
+		return d.convertAnimatedWebP(r, unit)
+	}
+
+	if unit.IsAnimated && contentType == "image/gif" {
+		log.Logger.Info().Any("unit", unit).Msg("converting animated gif")
+		return d.convertAnimatedGif(r, unit)
+	}
+
 	if unit.IsAnimated {
 		return DecodedImage{}, fmt.Errorf("%w: got content type: %s with animated flag", ErrUnsupportedAnimatedFormat, contentType)
 	}
@@ -226,31 +238,71 @@ func (d *DisplayManager) convertAnimatedAvif(r io.Reader, unit DisplayUnit) (Dec
 	var cols int
 	var decodedEmote DecodedImage
 	for i, img := range images.Image {
-		encodedBytes := imageToKittyBytes(img)
-		p, err := d.saveKittyFormattedImage(encodedBytes, unit, i)
+		frame, c, err := d.convertImageFrame(img, unit, i)
 		if err != nil {
 			return DecodedImage{}, err
 		}
 
-		bounds := img.Bounds()
-		height := bounds.Dy()
-		width := bounds.Dx()
-
-		ratio := d.cellHeight / float32(height)
-		width = int(math.Round(float64(float32(width) * ratio)))
-
-		encodedPath := base64.StdEncoding.EncodeToString([]byte(p))
-
 		if i == 0 {
-			cols = int(math.Ceil(float64(float32(width) / d.cellWidth)))
+			cols = c
 		}
 
-		decodedEmote.Images = append(decodedEmote.Images, DecodedImageFrame{
-			Width:       bounds.Dx(),
-			Height:      bounds.Dy(),
-			EncodedPath: encodedPath,
-			DelayInMS:   int(images.Delay[i] * 1000),
-		})
+		frame.DelayInMS = int(images.Delay[i] * 1000)
+		decodedEmote.Images = append(decodedEmote.Images, frame)
+	}
+
+	decodedEmote.Cols = cols
+
+	return decodedEmote, nil
+}
+
+func (d *DisplayManager) convertAnimatedGif(r io.Reader, unit DisplayUnit) (DecodedImage, error) {
+	images, err := gif.DecodeAll(r)
+	if err != nil {
+		return DecodedImage{}, fmt.Errorf("failed to convert animated gif: %w", err)
+	}
+
+	var cols int
+	var decodedEmote DecodedImage
+	for i, img := range images.Image {
+		frame, c, err := d.convertImageFrame(img, unit, i)
+		if err != nil {
+			return DecodedImage{}, err
+		}
+
+		if i == 0 {
+			cols = c
+		}
+
+		frame.DelayInMS = int(images.Delay[i] * 1000)
+		decodedEmote.Images = append(decodedEmote.Images, frame)
+	}
+
+	decodedEmote.Cols = cols
+
+	return decodedEmote, nil
+}
+
+func (d *DisplayManager) convertAnimatedWebP(r io.Reader, unit DisplayUnit) (DecodedImage, error) {
+	images, err := awebp.DecodeAll(r)
+	if err != nil {
+		return DecodedImage{}, fmt.Errorf("failed to convert animated webp: %w", err)
+	}
+
+	var cols int
+	var decodedEmote DecodedImage
+	for i, img := range images.Image {
+		frame, cols, err := d.convertImageFrame(img, unit, i)
+		if err != nil {
+			return DecodedImage{}, err
+		}
+
+		if i == 0 {
+			cols = cols
+		}
+
+		frame.DelayInMS = int(images.Delay[i] * 1000)
+		decodedEmote.Images = append(decodedEmote.Images, frame)
 	}
 
 	decodedEmote.Cols = cols
@@ -265,6 +317,20 @@ func (d *DisplayManager) convertDefault(r io.Reader, unit DisplayUnit) (DecodedI
 		return DecodedImage{}, fmt.Errorf("failed to convert %s: %w", format, err)
 	}
 
+	frame, cols, err := d.convertImageFrame(img, unit, 0)
+	if err != nil {
+		return DecodedImage{}, err
+	}
+
+	return DecodedImage{
+		Cols: cols,
+		Images: []DecodedImageFrame{
+			frame,
+		},
+	}, nil
+}
+
+func (d *DisplayManager) convertImageFrame(img image.Image, unit DisplayUnit, offset int) (DecodedImageFrame, int, error) {
 	bounds := img.Bounds()
 	height := bounds.Dy()
 	width := bounds.Dx()
@@ -274,24 +340,19 @@ func (d *DisplayManager) convertDefault(r io.Reader, unit DisplayUnit) (DecodedI
 	cols := int(math.Ceil(float64(float32(width) / d.cellWidth)))
 
 	encodedBytes := imageToKittyBytes(img)
-	p, err := d.saveKittyFormattedImage(encodedBytes, unit, 0)
+	p, err := d.saveKittyFormattedImage(encodedBytes, unit, offset)
 	if err != nil {
 		log.Logger.Err(err).Send()
-		return DecodedImage{}, err
+		return DecodedImageFrame{}, 0, err
 	}
 
 	encodedPath := base64.StdEncoding.EncodeToString([]byte(p))
 
-	return DecodedImage{
-		Cols: cols,
-		Images: []DecodedImageFrame{
-			{
-				Width:       bounds.Dx(),
-				Height:      bounds.Dy(),
-				EncodedPath: encodedPath,
-			},
-		},
-	}, nil
+	return DecodedImageFrame{
+		Width:       bounds.Dx(),
+		Height:      bounds.Dy(),
+		EncodedPath: encodedPath,
+	}, cols, nil
 }
 
 func (d *DisplayManager) cacheDecodedImage(decoded DecodedImage, unit DisplayUnit) error {

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -152,6 +154,8 @@ func ParseIRC(message string) (IRCer, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		log.Logger.Info().Str("badge", string(c.tags["badges"])).Send()
 
 		p := PrivateMessage{
 			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),

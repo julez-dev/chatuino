@@ -24,6 +24,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gen2brain/avif v0.4.4
+	github.com/gen2brain/webp v0.5.5
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/julez-dev/reflow v0.0.0-20250718145208-b4c12bfbd7f7
 	github.com/lithammer/fuzzysearch v1.1.8
