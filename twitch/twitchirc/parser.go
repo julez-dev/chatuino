@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -154,8 +152,6 @@ func ParseIRC(message string) (IRCer, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		log.Logger.Info().Str("badge", string(c.tags["badges"])).Send()
 
 		p := PrivateMessage{
 			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
@@ -603,8 +599,7 @@ func parseTagValue(v string) tagValue {
 func parseTags(line string) tags {
 	ret := tags{}
 
-	tags := strings.Split(line, ";")
-	for _, tag := range tags {
+	for tag := range strings.SplitSeq(line, ";") {
 		parts := strings.SplitN(tag, "=", 2)
 		if len(parts) < 2 {
 			ret[parts[0]] = ""
