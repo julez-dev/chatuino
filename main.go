@@ -23,6 +23,8 @@ import (
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
@@ -33,8 +35,6 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
-	"github.com/julez-dev/chatuino/twitch"
-	ttvCommand "github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
 	_ "github.com/mailru/easyjson"
@@ -60,13 +60,12 @@ var (
 
 var maybeLogFile *os.File
 
-//
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./kittyimg
-//go:generate go run github.com/vektra/mockery/v2@latest --dir=./ui/mainui --dir=./emote --dir=./save/messagelog --with-expecter=true --all
-//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/command
+//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/twitchirc
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
-//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -pkg ./twitch
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -pkg ./twitch/recentmessage
+
+//go:generate go run github.com/vektra/mockery/v3@v3.6.1
 func main() {
 	defer func() {
 		if maybeLogFile != nil {
@@ -158,7 +157,7 @@ func main() {
 			var keyringBackend keyring.Keyring
 
 			if command.Bool("plain-auth-storage") {
-				keyringBackend = save.NewPlainKeyringFallback()
+				keyringBackend = save.NewPlainKeyringFallback(afero.NewOsFs())
 			} else {
 				keyringBackend = save.NewKeyringWrapper()
 			}
@@ -172,6 +171,7 @@ func main() {
 			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
 			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
 			badgeCache := badge.NewCache(serverAPI)
+			appStateManager := save.NewAppStateManager(afero.NewOsFs())
 
 			// message logger setup
 			db, err := openDB(false)
@@ -195,7 +195,7 @@ func main() {
 			}()
 
 			messageLogger := messagelog.NewBatchedMessageLogger(log.Logger, db, roDB, settings.Moderation.LogsChannelInclude, settings.Moderation.LogsChannelExclude)
-			messageLoggerChan := make(chan *ttvCommand.PrivateMessage)
+			messageLoggerChan := make(chan *twitchirc.PrivateMessage)
 			loggerWaitSync := make(chan struct{})
 
 			if err := messageLogger.PrepareDatabase(); err != nil {
@@ -207,9 +207,11 @@ func main() {
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote/badge fetching.
+			clients := make(map[string]mainui.APIClient)
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
-				ttvAPI, err := twitch.NewAPI(command.String("client-id"), twitch.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
+				ttvAPI, err := twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
+					clients[mainAccount.ID] = ttvAPI
 					emoteCache = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
 					badgeCache = badge.NewCache(ttvAPI)
 				}
@@ -246,23 +248,58 @@ func main() {
 				}()
 			}
 
+			deps := &mainui.DependencyContainer{
+				UserConfig: mainui.UserConfiguration{
+					Settings: settings,
+					Theme:    theme,
+				},
+				AppStateManager:      appStateManager,
+				Keymap:               keymap,
+				ServerAPI:            serverAPI,
+				AccountProvider:      accountProvider,
+				EmoteCache:           emoteCache,
+				BadgeCache:           badgeCache,
+				EmoteReplacer:        emoteReplacer,
+				BadgeReplacer:        badgeReplacer,
+				ImageDisplayManager:  displayManager,
+				RecentMessageService: recentMessageService,
+				MessageLogger:        messageLogger,
+				ChatPool:             chatMultiplexer,
+				EventSubPool:         eventSubMultiplexer,
+				APIUserClients:       clients,
+			}
+
+			// Fetch all Accounts
+			accounts, err := accountProvider.GetAllAccounts()
+			if err != nil {
+				return fmt.Errorf("failed to open accounts: %w", err)
+			}
+
+			for _, acc := range accounts {
+				if _, ok := clients[acc.ID]; ok {
+					continue
+				}
+
+				var api mainui.APIClient
+
+				if !acc.IsAnonymous {
+					api, err = twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, acc.ID))
+					if err != nil {
+						return fmt.Errorf("failed to build api client for %s: %w", acc.DisplayName, err)
+					}
+				} else {
+					api = serverAPI
+				}
+
+				clients[acc.ID] = api
+			}
+
+			deps.Accounts = accounts
+
 			p := tea.NewProgram(
-				mainui.NewUI(log.Logger,
-					accountProvider,
-					chatMultiplexer,
-					emoteCache,
-					command.String("client-id"),
-					serverAPI,
-					keymap,
-					recentMessageService,
-					eventSubMultiplexer,
+				mainui.NewUI(
 					messageLoggerChan,
-					emoteReplacer,
-					messageLogger,
-					mainui.UserConfiguration{Settings: settings, Theme: theme},
-					badgeCache,
-					badgeReplacer,
-					displayManager,
+					deps,
 				),
 				tea.WithContext(ctx),
 				tea.WithAltScreen(),
@@ -275,7 +312,7 @@ func main() {
 					p.Send(mainui.EventSubMessage{Payload: msg})
 				}
 				eventSub.HandleError = func(err error) {
-					var twitchApiErr twitch.APIError
+					var twitchApiErr twitchapi.APIError
 					if errors.As(err, &twitchApiErr) {
 						log.Logger.Info().Any("twitch-error", twitchApiErr).Send()
 					}
@@ -296,11 +333,14 @@ func main() {
 					return err
 				}
 
-				// persist open tabs on disk
-				state := final.TakeStateSnapshot()
+				// persist open tabs on disk when session was actually loaded
+				// to prevent saving empty state when Chatuino was closed while loading
+				if final.HasSessionLoaded() {
+					state := final.TakeStateSnapshot()
 
-				if err := state.Save(); err != nil {
-					return fmt.Errorf("error while saving state: %w", err)
+					if err := appStateManager.SaveAppState(state); err != nil {
+						return fmt.Errorf("error while saving state: %w", err)
+					}
 				}
 			}
 
@@ -342,7 +382,7 @@ func openDB(readonly bool) (*sql.DB, error) {
 	return db, nil
 }
 
-func runChatLogger(messageLogger *messagelog.BatchedMessageLogger, messageLoggerChan chan *ttvCommand.PrivateMessage, loggerWaitSync chan struct{}, enabled bool) {
+func runChatLogger(messageLogger *messagelog.BatchedMessageLogger, messageLoggerChan chan *twitchirc.PrivateMessage, loggerWaitSync chan struct{}, enabled bool) {
 	defer func() {
 		for range messageLoggerChan {
 		}

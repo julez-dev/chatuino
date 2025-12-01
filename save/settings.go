@@ -6,7 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/julez-dev/chatuino/command"
+	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )
 
@@ -63,7 +64,7 @@ func (s Settings) validate() error {
 		}
 
 		// combine CommandSuggestions and CustomCommands to check for collisions for custom commands
-		predefinedCommands := append(component.CommandSuggestions[:], component.ModeratorSuggestions[:]...)
+		predefinedCommands := append(command.CommandSuggestions[:], command.ModeratorSuggestions[:]...)
 
 		if slices.Contains(predefinedCommands, c.Trigger) {
 			return fmt.Errorf("custom command trigger %q is already a default command", c.Trigger)
@@ -91,7 +92,7 @@ func (s Settings) BuildCustomSuggestionMap() map[string]string {
 }
 
 func SettingsFromDisk() (Settings, error) {
-	f, err := openCreateConfigFile(settingsFileName)
+	f, err := openCreateConfigFile(afero.NewOsFs(), settingsFileName)
 	if err != nil {
 		return Settings{}, err
 	}

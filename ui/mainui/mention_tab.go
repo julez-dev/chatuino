@@ -7,10 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
-	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/rs/zerolog"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type setMentionTabData struct {
@@ -19,11 +17,8 @@ type setMentionTabData struct {
 }
 
 type mentionTab struct {
-	id                string
-	keymap            save.KeyMap
-	logger            zerolog.Logger
-	provider          AccountProvider
-	userConfiguration UserConfiguration
+	id   string
+	deps *DependencyContainer
 
 	focused bool
 
@@ -36,24 +31,21 @@ type mentionTab struct {
 	chatWindow *chatWindow
 }
 
-func newMentionTab(id string, logger zerolog.Logger, keymap save.KeyMap, provider AccountProvider, emoteCache EmoteCache, width, height int, userConfiguration UserConfiguration) *mentionTab {
+func newMentionTab(id string, width, height int, deps *DependencyContainer) *mentionTab {
 	return &mentionTab{
-		id:                id,
-		logger:            logger,
-		keymap:            keymap,
-		provider:          provider,
-		state:             inChatWindow,
-		width:             width,
-		height:            height,
-		userConfiguration: userConfiguration,
-		chatWindow:        newChatWindow(logger, width, height, keymap, userConfiguration),
+		id:         id,
+		deps:       deps,
+		state:      inChatWindow,
+		width:      width,
+		height:     height,
+		chatWindow: newChatWindow(width, height, deps),
 	}
 }
 
 func (m *mentionTab) Init() tea.Cmd {
 	return func() tea.Msg {
 		// fetch all of users account names
-		accounts, err := m.provider.GetAllAccounts()
+		accounts, err := m.deps.AccountProvider.GetAllAccounts()
 		if err != nil {
 			return setMentionTabData{
 				err: err,
@@ -76,7 +68,7 @@ func (m *mentionTab) Init() tea.Cmd {
 	}
 }
 
-func (m *mentionTab) InitWithUserData(twitch.UserData) tea.Cmd {
+func (m *mentionTab) InitWithUserData(twitchapi.UserData) tea.Cmd {
 	return m.Init()
 }
 
@@ -91,9 +83,9 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		if msg.err != nil {
 			msg := fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error())
 			m.chatWindow.handleMessage(chatEventMessage{
-				message: &command.Notice{
+				message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
-					MsgID:         command.MsgID(uuid.NewString()),
+					MsgID:         twitchirc.MsgID(uuid.NewString()),
 					Message:       msg,
 				},
 				isFakeEvent:                 true,
@@ -105,9 +97,9 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		notice := fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", "))
 		m.chatWindow.handleMessage(chatEventMessage{
-			message: &command.Notice{
+			message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
-				MsgID:         command.MsgID(uuid.NewString()),
+				MsgID:         twitchirc.MsgID(uuid.NewString()),
 				Message:       notice,
 			},
 			isFakeEvent:                 true,
@@ -118,7 +110,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	}
 
 	if event, ok := msg.(chatEventMessage); ok {
-		if privMsg, ok := event.message.(*command.PrivateMessage); ok {
+		if privMsg, ok := event.message.(*twitchirc.PrivateMessage); ok {
 			var mentioned bool
 
 			for iu := range m.usernames {
@@ -129,7 +121,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 			}
 
-			if !mentioned || messageMatchesBlocked(event.message, m.userConfiguration.Settings.BlockSettings) {
+			if !mentioned || messageMatchesBlocked(event.message, m.deps.UserConfig.Settings.BlockSettings) {
 				return m, nil
 			}
 

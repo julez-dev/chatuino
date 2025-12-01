@@ -12,15 +12,6 @@ import (
 	"github.com/julez-dev/reflow/wordwrap"
 )
 
-type setStreamInfo struct {
-	target   string
-	username string // is broadcasters display name
-	viewer   int
-	title    string
-	game     string
-	isLive   bool
-}
-
 type streamInfo struct {
 	channelID string
 	ttvAPI    APIClient
@@ -52,7 +43,7 @@ func (s *streamInfo) Init() tea.Cmd {
 
 func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 	switch msg := msg.(type) {
-	case setStreamInfo:
+	case setStreamInfoMessage:
 		if msg.target != s.channelID {
 			return s, nil
 		}
@@ -96,12 +87,12 @@ func (s *streamInfo) refreshStreamInfo() tea.Msg {
 	}
 
 	if len(info.Data) < 1 {
-		return setStreamInfo{
+		return setStreamInfoMessage{
 			target: s.channelID,
 		}
 	}
 
-	return setStreamInfo{
+	return setStreamInfoMessage{
 		target:   s.channelID,
 		viewer:   info.Data[0].ViewerCount,
 		title:    info.Data[0].Title,

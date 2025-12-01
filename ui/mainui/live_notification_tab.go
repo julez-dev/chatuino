@@ -6,17 +6,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
-	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
-	"github.com/julez-dev/chatuino/twitch/command"
-	"github.com/rs/zerolog"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type liveNotificationTab struct {
-	id                string
-	keymap            save.KeyMap
-	logger            zerolog.Logger
-	userConfiguration UserConfiguration
+	id   string
+	deps *DependencyContainer
 
 	focused bool
 
@@ -27,17 +23,15 @@ type liveNotificationTab struct {
 	chatWindow   *chatWindow
 }
 
-func newLiveNotificationTab(id string, logger zerolog.Logger, keymap save.KeyMap, emoteCache EmoteCache, width, height int, userConfiguration UserConfiguration) *liveNotificationTab {
+func newLiveNotificationTab(id string, width, height int, deps *DependencyContainer) *liveNotificationTab {
 	return &liveNotificationTab{
-		id:                id,
-		logger:            logger,
-		keymap:            keymap,
-		state:             inChatWindow,
-		width:             width,
-		height:            height,
-		userConfiguration: userConfiguration,
-		chatWindow:        newChatWindow(logger, width, height, keymap, userConfiguration),
-		streamerLive:      map[string]bool{},
+		id:           id,
+		deps:         deps,
+		state:        inChatWindow,
+		width:        width,
+		height:       height,
+		chatWindow:   newChatWindow(width, height, deps),
+		streamerLive: map[string]bool{},
 	}
 }
 
@@ -45,14 +39,14 @@ func (l *liveNotificationTab) Init() tea.Cmd {
 	return nil
 }
 
-func (l *liveNotificationTab) InitWithUserData(twitch.UserData) tea.Cmd {
+func (l *liveNotificationTab) InitWithUserData(twitchapi.UserData) tea.Cmd {
 	return nil
 }
 
 func (l *liveNotificationTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	var cmd tea.Cmd
 
-	if info, ok := msg.(setStreamInfo); ok {
+	if info, ok := msg.(setStreamInfoMessage); ok {
 		// If broadcaster already exists in open streamer map, see if prevoiusly was live/offline, then notify user and save new state
 		// Else add broadcaster
 		wasAlreadyLive, alreadyMonitored := l.streamerLive[info.target]
@@ -85,9 +79,9 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		l.chatWindow.handleMessage(chatEventMessage{
-			message: &command.Notice{
+			message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
-				MsgID:         command.MsgID(uuid.NewString()),
+				MsgID:         twitchirc.MsgID(uuid.NewString()),
 				Message:       msg,
 			},
 			isFakeEvent:                 true,

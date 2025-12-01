@@ -8,7 +8,7 @@ Chatuino allows you to manage multiple account additionally to an anonymous acco
 
 ## State persistence
 
-Chatuino saves your open tab when you exist the application. When you start Chatuino again the application tries to restore the last session with all open tabs.
+Chatuino saves your open tab when you exit the application. When you start Chatuino again the application tries to restore the last session with all open tabs.
 
 Chatuino is designed for Chatters who use multiple channels at once and for a long time.
 
@@ -22,7 +22,7 @@ Tap the / key to start a fuzzy search for messages or usernames which you can na
 
 Insert mode (aka writing a chat message/command) can be enabled with key-bind i and disabled with escape. Enter is used to send a message while alt+enter is used to send a messages but keep it in text input.
 A simple message duplication bypass is also added when your message is the same as the last message.
-You can also copy a message to you message input by pressing alt+c on a message.
+You can also copy a message to your message input by pressing alt+c on a message.
 
 Use t to go to top of buffer and b to go down.
 

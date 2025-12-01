@@ -8,7 +8,7 @@ Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich T
 
 ![Demo of chatuino.](doc/demo.gif)
 
-![Demo of chatuino with emotes enables.](doc/emote-demo.gif)
+![Demo of chatuino with emotes enabled.](doc/emote-demo.gif)
 
 ## Table of Contents
 
@@ -34,7 +34,6 @@ The name and idea to create a Twitch Chat Client and many features are inspired 
 - Graphical display of emotes (kitty terminal only; ghostty only non-animated emotes)
 - Emote and User Suggestions/Autocompletion
 - Local save state to persist sessions
-- Manage ban requests
 - View detailed user data with user inspect mode
 - Quick ban users with ctrl+shift+t
 - Copy and Paste messages with alt+c

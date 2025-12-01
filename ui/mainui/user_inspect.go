@@ -12,62 +12,54 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
-	"github.com/julez-dev/chatuino/twitch/command"
 	"github.com/julez-dev/chatuino/twitch/ivr"
-	"github.com/rs/zerolog"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type setUserInspectData struct {
 	target        string
 	err           error
 	ivrResp       ivr.SubAgeResponse
-	userData      twitch.UserData
+	userData      twitchapi.UserData
 	initialEvents []chatEventMessage
 }
 
 type userInspect struct {
-	subAge            ivr.SubAgeResponse
-	userData          twitch.UserData
-	err               error
-	isDataFetched     bool
-	userConfiguration UserConfiguration
+	subAge        ivr.SubAgeResponse
+	userData      twitchapi.UserData
+	err           error
+	isDataFetched bool
 
 	width, height   int
 	tabID           string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
 	user            string // the chatter
 	channel         string // the streamer
-	badges          []command.Badge
+	accountID       string // account id from chatuino user
+	badges          []twitchirc.Badge
 	formattedBadges []string
 
-	ivr           *ivr.API
-	ttvAPI        APIClient
-	emoteReplacer EmoteReplacer
-	badgeReplacer BadgeReplacer
-	messageLogger MessageLogger
+	ivr  *ivr.API
+	deps *DependencyContainer
 
 	chatWindow *chatWindow
 }
 
-func newUserInspect(logger zerolog.Logger, ttvAPI APIClient, tabID string, width, height int, user, channel string, keymap save.KeyMap, emoteReplacer EmoteReplacer, messageLogger MessageLogger, userConfiguration UserConfiguration, badgeReplacer BadgeReplacer) *userInspect {
-	c := newChatWindow(logger, width, height, keymap, userConfiguration)
+func newUserInspect(tabID string, width, height int, user, channel string, accountID string, deps *DependencyContainer) *userInspect {
+	c := newChatWindow(width, height, deps)
 	c.timeFormatFunc = func(t time.Time) string {
 		return t.Local().Format("2006-01-02 15:04:05")
 	}
 
 	return &userInspect{
-		tabID:   tabID,
-		channel: channel,
-		user:    user,
-		ivr:     ivr.NewAPI(http.DefaultClient),
-		ttvAPI:  ttvAPI,
+		tabID:     tabID,
+		channel:   channel,
+		accountID: accountID,
+		user:      user,
+		ivr:       ivr.NewAPI(http.DefaultClient),
+		deps:      deps,
 		// start chat window in full size, will be resized once data is fetched
-		chatWindow:        c,
-		userConfiguration: userConfiguration,
-		emoteReplacer:     emoteReplacer,
-		messageLogger:     messageLogger,
-		badgeReplacer:     badgeReplacer,
+		chatWindow: c,
 	}
 }
 
@@ -94,7 +86,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		ttvResp, err := u.ttvAPI.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
+		ttvResp, err := u.deps.APIUserClients[u.accountID].GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
@@ -110,7 +102,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		}
 
 		// get all recent messages for user
-		loggedEntries, err := u.messageLogger.MessagesFromUserInChannel(u.user, u.channel)
+		loggedEntries, err := u.deps.MessageLogger.MessagesFromUserInChannel(u.user, u.channel)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
@@ -122,7 +114,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		for loggedEntry := range slices.Values(loggedEntries) {
 			// remove duplicate messages
 			isAlreadyStored := slices.ContainsFunc(initialEvents, func(e chatEventMessage) bool {
-				privMSG, ok := e.message.(*command.PrivateMessage)
+				privMSG, ok := e.message.(*twitchirc.PrivateMessage)
 
 				if !ok {
 					return false
@@ -135,10 +127,10 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
+			prepare, contentOverwrite, _ := u.deps.EmoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			io.WriteString(os.Stdout, prepare)
 
-			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
+			prepare, badgeOverwrite, _ := u.deps.BadgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
 			io.WriteString(os.Stdout, prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
@@ -160,16 +152,16 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 			)
 
 			switch msg := e1.message.(type) {
-			case *command.PrivateMessage:
+			case *twitchirc.PrivateMessage:
 				t1 = msg.TMISentTS
-			case *command.ClearChat:
+			case *twitchirc.ClearChat:
 				t1 = msg.TMISentTS
 			}
 
 			switch msg := e2.message.(type) {
-			case *command.PrivateMessage:
+			case *twitchirc.PrivateMessage:
 				t2 = msg.TMISentTS
-			case *command.ClearChat:
+			case *twitchirc.ClearChat:
 				t2 = msg.TMISentTS
 			}
 
@@ -224,12 +216,12 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	}
 
 	switch msg := chatEvent.message.(type) {
-	case *command.PrivateMessage:
+	case *twitchirc.PrivateMessage:
 		// user inspect user is not sender and message does not contain current user
 		if !strings.EqualFold(msg.DisplayName, u.user) && !messageContainsCaseInsensitive(msg, u.user) {
 			return u, nil
 		}
-	case *command.ClearChat:
+	case *twitchirc.ClearChat:
 		// let all clear chat messages through if affect user inspect user or sender
 		// of message in user inspect chat window
 		var affectsUserInChat bool
@@ -239,7 +231,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		}
 
 		for _, e := range u.chatWindow.entries {
-			if priv, ok := e.Event.message.(*command.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, *msg.UserName) {
+			if priv, ok := e.Event.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, *msg.UserName) {
 				affectsUserInChat = true
 				break
 			}
@@ -255,7 +247,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 
 	// set badges, update for each message
 	// update badges if user inspect user is sender
-	if msg, ok := chatEvent.message.(*command.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
+	if msg, ok := chatEvent.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
 		u.badges = msg.Badges
 		u.formattedBadges = chatEvent.badgeReplacement
 	}
@@ -298,7 +290,7 @@ func (u *userInspect) renderUserInfo() string {
 	style := lipgloss.NewStyle().
 		Padding(0).
 		Border(border, true).
-		BorderForeground(lipgloss.Color(u.userConfiguration.Theme.InspectBorderColor)).
+		BorderForeground(lipgloss.Color(u.deps.UserConfig.Theme.InspectBorderColor)).
 		Width(u.width - 2)
 
 	styleCentered := style.MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
@@ -315,7 +307,7 @@ func (u *userInspect) renderUserInfo() string {
 	b := &strings.Builder{}
 	_, _ = fmt.Fprintf(b, "User %s (%s)", u.subAge.User.DisplayName, u.subAge.User.ID)
 	if len(u.formattedBadges) > 0 {
-		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.userConfiguration.Settings, u.formattedBadges))
+		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.deps.UserConfig.Settings, u.formattedBadges))
 	} else {
 		_, _ = fmt.Fprintf(b, "\n")
 	}

@@ -123,15 +123,12 @@ func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	dm := NewDisplayManager(fs, 400, 400)
 
-	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
-	require.NoError(t, err)
-
 	unit := DisplayUnit{
 		ID:         "animated-webp",
 		Directory:  "emote",
-		IsAnimated: true, // webp is not supported for animation
+		IsAnimated: true, // png is not supported for animation
 		Load: func() (io.ReadCloser, string, error) {
-			return io.NopCloser(bytes.NewReader(emoteData)), "image/webp", nil
+			return io.NopCloser(bytes.NewReader([]byte{})), "image/png", nil
 		},
 	}
 

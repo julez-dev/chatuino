@@ -13,10 +13,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/reflow/wordwrap"
 	"github.com/julez-dev/reflow/wrap"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -28,12 +27,11 @@ const (
 )
 
 type chatEntry struct {
-	Position                  position
-	Selected                  bool
-	IsDeleted                 bool
-	OverwrittenMessageContent string
-	Event                     chatEventMessage
-	IsFiltered                bool // message is filtered out by search
+	Position   position
+	Selected   bool
+	IsDeleted  bool
+	Event      chatEventMessage
+	IsFiltered bool // message is filtered out by search
 }
 
 type position struct {
@@ -49,11 +47,10 @@ const (
 )
 
 type chatWindow struct {
-	logger            zerolog.Logger
-	keymap            save.KeyMap
-	width, height     int
-	userConfiguration UserConfiguration
-	timeFormatFunc    func(time.Time) string
+	deps          *DependencyContainer
+	width, height int
+
+	timeFormatFunc func(time.Time) string
 
 	focused bool
 	state   chatWindowState
@@ -83,35 +80,33 @@ type chatWindow struct {
 	errorAlertStyle     lipgloss.Style
 }
 
-func newChatWindow(logger zerolog.Logger, width, height int, keymap save.KeyMap, userConfiguration UserConfiguration) *chatWindow {
+func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	input := textinput.New()
 	input.CharLimit = 25
 	input.Prompt = "  /"
 	input.Placeholder = "search"
-	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.InputPromptColor))
+	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
 	input.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.Width = width
 
-	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Background(lipgloss.Color(userConfiguration.Theme.ChatIndicatorColor)).Render("@")
+	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render("@")
 
 	c := chatWindow{
-		keymap:         keymap,
-		logger:         logger,
+		deps:           deps,
 		width:          width,
 		height:         height,
 		userColorCache: map[string]func(...string) string{},
 		timeFormatFunc: func(t time.Time) string {
 			return t.Local().Format("15:04:05")
 		},
-		searchInput:       input,
-		userConfiguration: userConfiguration,
+		searchInput: input,
 
 		indicator:           indicator,
 		indicatorWidth:      lipgloss.Width(indicator) + 1,
-		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatSubAlertColor)).Bold(true),
-		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatNoticeAlertColor)).Bold(true),
-		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatClearChatColor)).Bold(true),
-		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(userConfiguration.Theme.ChatErrorColor)).Bold(true),
+		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatSubAlertColor)).Bold(true),
+		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)).Bold(true),
+		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatClearChatColor)).Bold(true),
+		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatErrorColor)).Bold(true),
 	}
 
 	return &c
@@ -135,13 +130,13 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		if c.focused {
 			switch {
 			// start search
-			case key.Matches(msg, c.keymap.SearchMode):
+			case key.Matches(msg, c.deps.Keymap.SearchMode):
 				return c, c.handleStartSearchMode()
 			// stop search
-			case key.Matches(msg, c.keymap.Escape) && c.state == searchChatWindowState:
+			case key.Matches(msg, c.deps.Keymap.Escape) && c.state == searchChatWindowState:
 				c.handleStopSearchMode()
 				return c, nil
-			case key.Matches(msg, c.keymap.Confirm) && c.state == searchChatWindowState:
+			case key.Matches(msg, c.deps.Keymap.Confirm) && c.state == searchChatWindowState:
 				c.handleStopSearchModeKeepSelected()
 				return c, nil
 			// update search, allow up and down arrow keys for navigation in result
@@ -150,16 +145,16 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.applySearch()
 				cmds = append(cmds, cmd)
 				return c, tea.Batch(cmds...)
-			case key.Matches(msg, c.keymap.Down):
+			case key.Matches(msg, c.deps.Keymap.Down):
 				c.messageDown(1)
-			case key.Matches(msg, c.keymap.Up):
+			case key.Matches(msg, c.deps.Keymap.Up):
 				c.messageUp(1)
 				return c, nil
-			case key.Matches(msg, c.keymap.GoToBottom):
+			case key.Matches(msg, c.deps.Keymap.GoToBottom):
 				c.moveToBottom()
-			case key.Matches(msg, c.keymap.GoToTop):
+			case key.Matches(msg, c.deps.Keymap.GoToTop):
 				c.moveToTop()
-			case key.Matches(msg, c.keymap.DumpChat):
+			case key.Matches(msg, c.deps.Keymap.DumpChat):
 				c.debugDumpChat()
 			}
 		}
@@ -252,12 +247,12 @@ func (c *chatWindow) debugDumpChat() {
 	}
 
 	dump := state{
-		Lines:     c.lines,
+		//Lines:     c.lines,
 		Cursor:    c.cursor,
 		LineEnd:   c.lineEnd,
 		LineStart: c.lineStart,
-		View:      c.View(),
-		Entries:   c.entries,
+		//View:      c.View(),
+		Entries: c.entries,
 	}
 
 	dump.UserCache = make([]string, 0, len(c.userColorCache))
@@ -437,18 +432,18 @@ func (c *chatWindow) cleanup() {
 	}
 
 	if e := c.getNewestEntry(); e == nil || !e.Selected {
-		c.logger.Info().Msg("skip cleanup because not on newest message")
+		log.Logger.Info().Msg("skip cleanup because not on newest message")
 		return
 	}
 
-	c.logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
+	log.Logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
 	c.entries = c.entries[int(cleanupAfterMessage):]
 	c.recalculateLines()
 
 	// users that should not be removed from the color cache
 	usersLeft := make(map[string]struct{}, len(c.entries))
 	for _, e := range c.entries {
-		if privMsg, ok := e.Event.message.(*command.PrivateMessage); ok {
+		if privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage); ok {
 			usersLeft[strings.ToLower(privMsg.DisplayName)] = struct{}{}
 		}
 	}
@@ -482,57 +477,14 @@ func (c *chatWindow) cleanup() {
 
 func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	switch msg.message.(type) {
-	case error, *command.PrivateMessage, *command.Notice, *command.ClearChat, *command.SubMessage, *command.SubGiftMessage, *command.AnnouncementMessage, *command.ClearMessage: // supported Message types
+	case error, *twitchirc.PrivateMessage, *twitchirc.Notice, *twitchirc.ClearChat, *twitchirc.SubMessage, *twitchirc.SubGiftMessage, *twitchirc.AnnouncementMessage, *twitchirc.ClearMessage: // supported Message types
 	default: // exit only on other types
 		return
 	}
 
 	c.cleanup()
-
-	// if timeout message, rewrite all messages from user
-	if timeoutMsg, ok := msg.message.(*command.ClearChat); ok && timeoutMsg.UserName != nil {
-		var hasDeleted bool
-		for _, e := range c.entries {
-			privMsg, ok := e.Event.message.(*command.PrivateMessage)
-
-			if !ok {
-				continue
-			}
-
-			if strings.EqualFold(privMsg.DisplayName, *timeoutMsg.UserName) && !e.IsDeleted {
-				hasDeleted = true
-				e.IsDeleted = true
-
-				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
-			}
-		}
-
-		if hasDeleted {
-			c.recalculateLines()
-		}
-	}
-
-	// if specific message deleted
-	if clearMsg, ok := msg.message.(*command.ClearMessage); ok {
-		var hasDeleted bool
-		for _, e := range c.entries {
-			privMsg, ok := e.Event.message.(*command.PrivateMessage)
-
-			if !ok {
-				continue
-			}
-
-			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
-				hasDeleted = true
-				e.IsDeleted = true
-				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
-			}
-		}
-
-		if hasDeleted {
-			c.recalculateLines()
-		}
-	}
+	c.handleTimeoutMessage(msg)
+	c.handleMessageDeletion(msg)
 
 	lines := c.messageToText(msg)
 
@@ -553,9 +505,8 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 			CursorStart: positionStart + 1,
 			CursorEnd:   positionStart + len(lines),
 		},
-		Selected:                  wasLatestMessage,
-		OverwrittenMessageContent: msg.messageContentEmoteOverride,
-		Event:                     msg,
+		Selected: wasLatestMessage,
+		Event:    msg,
 	}
 
 	// we are currently searching and the new entry does not match the search, then ignore new entry
@@ -574,59 +525,91 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 	}
 }
 
+func (c *chatWindow) handleTimeoutMessage(msg chatEventMessage) {
+	if timeoutMsg, ok := msg.message.(*twitchirc.ClearChat); ok && timeoutMsg.UserName != nil {
+		var hasDeleted bool
+		for _, e := range c.entries {
+			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
+
+			if !ok {
+				continue
+			}
+
+			if strings.EqualFold(privMsg.LoginName, *timeoutMsg.UserName) && !e.IsDeleted {
+				hasDeleted = true
+				e.IsDeleted = true
+				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
+			}
+		}
+
+		if hasDeleted {
+			c.recalculateLines()
+		}
+	}
+}
+
+func (c *chatWindow) handleMessageDeletion(msg chatEventMessage) {
+	if clearMsg, ok := msg.message.(*twitchirc.ClearMessage); ok {
+		var hasDeleted bool
+		for _, e := range c.entries {
+			privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage)
+
+			if !ok {
+				continue
+			}
+
+			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
+				hasDeleted = true
+				e.IsDeleted = true
+				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
+			}
+		}
+
+		if hasDeleted {
+			c.recalculateLines()
+		}
+	}
+}
+
 func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	switch msg := event.message.(type) {
 	case error:
 		prefix := "  " + strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.PrivateMessage:
-		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
+	case *twitchirc.PrivateMessage:
+		userRenderFunc := c.getSetUserColorFunc(msg.LoginName, msg.Color)
 
-		var prefix string
+		// Build prefix components: time, [guest channel], [badges], username
+		var parts []string
+		parts = append(parts, "  "+c.timeFormatFunc(msg.TMISentTS))
 
-		// if set it means the message is in context of a shared chat
+		// Add guest channel if message is in context of shared chat
 		if event.channelGuestDisplayName != "" {
-			if len(event.badgeReplacement) == 0 {
-				// start of the message (sent date + username)
-				prefix = fmt.Sprintf("  %s |%s| %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					event.channelGuestDisplayName,
-					userRenderFunc(msg.DisplayName),
-				)
-			} else {
-				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s |%s| %s %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					event.channelGuestDisplayName,
-					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
-					userRenderFunc(msg.DisplayName),
-				)
-			}
-		} else {
-			if len(event.badgeReplacement) == 0 {
-				// start of the message (sent date + username)
-				prefix = fmt.Sprintf("  %s %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					userRenderFunc(msg.DisplayName),
-				)
-			} else {
-				// start of the message (sent date + badges + username)
-				prefix = fmt.Sprintf("  %s %s %s: ",
-					c.timeFormatFunc(msg.TMISentTS),
-					formatBadgeReplacement(c.userConfiguration.Settings, event.badgeReplacement),
-					userRenderFunc(msg.DisplayName),
-				)
-			}
+			parts = append(parts, "|"+event.channelGuestDisplayName+"|")
 		}
 
+		// Add badges if present
+		if len(event.badgeReplacement) > 0 {
+			parts = append(parts, formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement))
+		}
+
+		// Add username
+		parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
+
+		prefix := strings.Join(parts, " ")
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
-	case *command.Notice:
-		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render("Notice") + "]: "
+	case *twitchirc.Notice:
+		title := "Notice"
+		if event.isFakeEvent {
+			title = "Fake-Notice"
+		}
+
+		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render(title) + "]: "
 		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(styled))
-	case *command.ClearMessage:
+	case *twitchirc.ClearMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Message") + "]: A message from "
 
 		userRenderFunc := c.getSetUserColorFunc(msg.Login, "")
@@ -636,7 +619,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text += userRenderFunc(msg.Login)
 		text += " was removed."
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.ClearChat:
+	case *twitchirc.ClearChat:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
 
 		if msg.TargetUserID == nil {
@@ -656,7 +639,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.SubMessage:
+	case *twitchirc.SubMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Alert") + "]: "
 
 		subResubText := "subscribed"
@@ -664,7 +647,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			subResubText = "resubscribed"
 		}
 
-		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
+		userRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
 
 		text := fmt.Sprintf("%s just %s with a %s subscription. (%d Months, %d Month Streak)",
 			userRenderFunc(msg.DisplayName),
@@ -679,7 +662,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		}
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.SubGiftMessage:
+	case *twitchirc.SubGiftMessage:
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
 
 		gifterRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
@@ -693,7 +676,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		)
 
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *command.AnnouncementMessage:
+	case *twitchirc.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
@@ -731,6 +714,30 @@ func (c *chatWindow) colorMessage(content string) string {
 	return content
 }
 
+func (c *chatWindow) colorMessageMentions(message string) string {
+	words := strings.Split(message, " ")
+	for i, word := range words {
+		cleaned := strings.ToLower(stripDisplayNameEdges(word))
+		renderFn, ok := c.userColorCache[cleaned]
+
+		//log.Logger.Info().Str("cleaned", cleaned).Str("word", word).Bool("found", ok).Msg("message color replace")
+
+		if !ok {
+			// fallback try if empty
+			if f, ok := c.userColorCache[word]; ok {
+				renderFn = f
+			} else {
+				continue
+			}
+		}
+
+		word = strings.ReplaceAll(word, stripDisplayNameEdges(word), renderFn(cleaned))
+		words[i] = word
+	}
+
+	return strings.Join(words, " ")
+}
+
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	content = strings.Map(func(r rune) rune {
 		// this rune is commonly used to bypass the twitch spam detection
@@ -760,7 +767,7 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 
 	// if there are more lines, add prefixPadding spaces to the beginning of the line
 	for _, line := range splits[1:] {
-		if c.userConfiguration.Settings.Chat.DisablePaddingWrappedLines {
+		if c.deps.UserConfig.Settings.Chat.DisablePaddingWrappedLines {
 			lines = append(lines, strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))+3)+line)
 		} else {
 			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
@@ -768,26 +775,6 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	}
 
 	return lines
-}
-
-func (c *chatWindow) colorMessageMentions(message string) string {
-	words := strings.Split(message, " ")
-	for i, word := range words {
-		cleaned := strings.ToLower(stripDisplayNameEdges(word))
-		renderFn, ok := c.userColorCache[cleaned]
-
-		if !ok {
-			continue
-		}
-
-		if start := strings.Index(word, cleaned); start != -1 {
-			word = word[:start] + renderFn(cleaned) + word[start+len(cleaned):]
-		}
-
-		words[i] = word
-	}
-
-	return strings.Join(words, " ")
 }
 
 func (c *chatWindow) updatePort() {
@@ -917,7 +904,7 @@ func (c *chatWindow) applySearch() {
 }
 
 func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
-	cast, ok := e.Event.message.(*command.PrivateMessage)
+	cast, ok := e.Event.message.(*twitchirc.PrivateMessage)
 
 	if !ok {
 		return false

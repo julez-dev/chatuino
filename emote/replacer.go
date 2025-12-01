@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
 )
 
@@ -53,7 +53,7 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 	}
 }
 
-func (i *Replacer) Replace(channelID, content string, emoteList []command.Emote) (string, string, error) {
+func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emote) (string, string, error) {
 	// twitch sends us a list of emotes used in the message, even emotes from other channels (sub emotes)
 	// parse the emote text with the index and replace it from the global store, since its guaranteed
 	// the user has access to the emote

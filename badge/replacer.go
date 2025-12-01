@@ -12,13 +12,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
 )
 
 type BadgeCache interface {
-	MatchBadgeSet(broadcasterID string, ircBadge []command.Badge) map[string]twitch.BadgeVersion
+	MatchBadgeSet(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion
 }
 
 type DisplayManager interface {
@@ -56,7 +56,7 @@ func NewReplacer(httpClient *http.Client, cache BadgeCache, enableGraphics bool,
 	}
 }
 
-func (r *Replacer) Replace(broadcasterID string, badgeList []command.Badge) (string, []string, error) {
+func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, []string, error) {
 	badgeMap := r.cache.MatchBadgeSet(broadcasterID, badgeList)
 	badgesSortedKeys := slices.Sorted(maps.Keys(badgeMap))
 

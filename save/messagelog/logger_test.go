@@ -8,7 +8,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/julez-dev/chatuino/mocks"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -27,9 +27,9 @@ func (f fakeDB) Query(query string, args ...any) (*sql.Rows, error) {
 func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 	t.Run("max-batch-size", func(t *testing.T) {
 		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), fakeDB{}, fakeDB{}, nil, nil)
-		in := make(chan *command.PrivateMessage, maxBatchItems)
+		in := make(chan *twitchirc.PrivateMessage, maxBatchItems)
 		for i := range maxBatchItems {
-			msg := &command.PrivateMessage{
+			msg := &twitchirc.PrivateMessage{
 				ID:              fmt.Sprintf("%d", i),
 				RoomID:          fmt.Sprintf("room-%d", i),
 				ChannelUserName: fmt.Sprintf("room-name-%d", i),
@@ -55,8 +55,8 @@ func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 
 		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db, db, nil, nil)
 
-		in := make(chan *command.PrivateMessage, 1)
-		msg := &command.PrivateMessage{
+		in := make(chan *twitchirc.PrivateMessage, 1)
+		msg := &twitchirc.PrivateMessage{
 			ID:              "1",
 			RoomID:          "room-1",
 			ChannelUserName: "room-name-1",
@@ -85,9 +85,9 @@ func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 
 func TestBatchedMessageLogger_createLogEntries(t *testing.T) {
 	t.Run("dynamic-rows", func(t *testing.T) {
-		db := mocks.NewDB(t)
+		db := mocks.NewDBVariadic(t)
 
-		msgs := []*command.PrivateMessage{
+		msgs := []*twitchirc.PrivateMessage{
 			{
 				ID:              "first",
 				RoomID:          "room-id",

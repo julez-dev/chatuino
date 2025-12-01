@@ -7,6 +7,7 @@ dist/
 idea.txt
 .env
 .vscode
+chatuino
 
 secrets
 .zed

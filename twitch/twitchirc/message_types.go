@@ -1,4 +1,4 @@
-package command
+package twitchirc
 
 import (
 	"fmt"

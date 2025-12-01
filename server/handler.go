@@ -373,16 +373,18 @@ func (a *API) handleGetStreamUser() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := a.getLoggerFrom(r.Context())
 
-		reqLogins := []string{}
-		if logins := r.URL.Query()["logins"]; (len(logins)) > 0 {
-			reqLogins = append(reqLogins, logins...)
-		} else {
-			reqLogins = append(reqLogins, chi.URLParam(r, "login"))
+		reqLogins := r.URL.Query()["logins"]
+		reqIDs := r.URL.Query()["ids"]
+
+		// only single login endpoint is used
+		if l := chi.URLParam(r, "login"); l != "" {
+			reqLogins = []string{l}
+			reqIDs = nil
 		}
 
-		users, err := a.ttvAPI.GetUsers(r.Context(), reqLogins, nil)
+		users, err := a.ttvAPI.GetUsers(r.Context(), reqLogins, reqIDs)
 		if err != nil {
-			logger.Err(err).Str("login", chi.URLParam(r, "login")).Msg("could not get stream user")
+			logger.Err(err).Str("login", chi.URLParam(r, "logins")).Str("ids", chi.URLParam(r, "ids")).Msg("could not get stream user")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

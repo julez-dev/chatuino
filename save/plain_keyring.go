@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
 )
 
@@ -13,12 +14,14 @@ var _ keyring.Keyring = &PlainKeyringFallback{}
 const plainAuthFile = "accounts.json"
 
 type PlainKeyringFallback struct {
-	m *sync.RWMutex
+	m  *sync.RWMutex
+	fs afero.Fs
 }
 
-func NewPlainKeyringFallback() *PlainKeyringFallback {
+func NewPlainKeyringFallback(fs afero.Fs) *PlainKeyringFallback {
 	return &PlainKeyringFallback{
-		m: &sync.RWMutex{},
+		m:  &sync.RWMutex{},
+		fs: fs,
 	}
 }
 
@@ -42,7 +45,7 @@ func (p *PlainKeyringFallback) read() (string, error) {
 	p.m.RLock()
 	defer p.m.RUnlock()
 
-	f, err := openCreateConfigFile(plainAuthFile)
+	f, err := openCreateConfigFile(p.fs, plainAuthFile)
 	if err != nil {
 		return "", err
 	}
@@ -61,7 +64,7 @@ func (p *PlainKeyringFallback) write(data string) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	f, err := openCreateConfigFile(plainAuthFile)
+	f, err := openCreateConfigFile(p.fs, plainAuthFile)
 	if err != nil {
 		return err
 	}

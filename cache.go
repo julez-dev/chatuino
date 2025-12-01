@@ -30,7 +30,7 @@ var cacheCMD = &cli.Command{
 					if err := os.RemoveAll(filepath.Join(kittyimg.BaseImageDirectory, "emote")); err != nil && !errors.Is(err, os.ErrNotExist) {
 						return fmt.Errorf("failed to delete emote cache: %w", err)
 					}
-					fmt.Print("badge cache directory deleted\n")
+					fmt.Print("emote cache directory deleted\n")
 				}
 
 				if c.Bool("badges") {

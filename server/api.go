@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -23,10 +23,10 @@ type API struct {
 	conf   Config
 	client *http.Client
 
-	ttvAPI *twitch.API
+	ttvAPI *twitchapi.API
 }
 
-func New(logger zerolog.Logger, config Config, client *http.Client, ttvAPI *twitch.API) *API {
+func New(logger zerolog.Logger, config Config, client *http.Client, ttvAPI *twitchapi.API) *API {
 	return &API{
 		logger: logger,
 		conf:   config,

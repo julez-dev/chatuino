@@ -6,21 +6,21 @@ import (
 
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/mocks"
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/seventv"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestRefreshLocal(t *testing.T) {
-	ttv := mocks.NewTwitchEmoteFetcher(t)
-	seven := mocks.NewSevenTVEmoteFetcher(t)
-	bttvService := mocks.NewBTTVEmoteFetcher(t)
+	ttv := mocks.NewMockTwitchEmoteFetcher(t)
+	seven := mocks.NewMockSevenTVEmoteFetcher(t)
+	bttvService := mocks.NewMockBTTVEmoteFetcher(t)
 
-	ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitch.EmoteResponse{
-		Data: []twitch.EmoteData{
+	ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitchapi.EmoteResponse{
+		Data: []twitchapi.EmoteData{
 			{
 				ID:   "test",
 				Name: "Kappa",

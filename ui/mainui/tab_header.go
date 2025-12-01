@@ -6,10 +6,6 @@ import (
 
 const bellEmojiPrefix = string(rune(128276)) + " "
 
-type requestNotificationIconMessage struct {
-	tabID string
-}
-
 type tabHeaderEntry struct {
 	id              string
 	name            string

@@ -108,9 +108,9 @@ When the graphic_emotes setting is disabled, Chatuino will display emotes as col
 
 ### Graphic emotes
 
-Chatuino can display rendered images and animated images as twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by the Kitty and some other terminals. **However** it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders) which as of right now is only implemented by Kitty.
+Chatuino can display rendered images and animated images as twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by the Kitty and some other terminals. **However** it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders) which as of right now is only implemented by Kitty. It's also works with Ghostty, but sadly animated emotes are displayed as static images.
 
-Right now this feature is **only** available in Kitty terminals on Unix platforms. This may change in the future.
+Right now this feature is **only** available in Kitty and Ghostty terminals on Unix platforms. This may change in the future.
 
 #### Drawbacks and workarounds
 
@@ -124,7 +124,7 @@ During development I noticed a high memory consumption (sometimes 10x over non g
 
 The emotes are cached at the same location Chatuino will put the message log sqlite database at: In the `$HOME/chatuino` directory. The format used to store the image data is the same format Kitty requires to be used to transmit images, compressed with RFC 1950 ZLIB based deflate compression.
 
-You can query the current cache size usint
+You can query the current cache size using
 
 ```sh
 chatuino cache

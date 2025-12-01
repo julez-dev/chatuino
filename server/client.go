@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type Client struct {
@@ -83,23 +83,23 @@ func (c *Client) RevokeToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func (c *Client) GetGlobalEmotes(ctx context.Context) (twitch.EmoteResponse, error) {
-	return do[twitch.EmoteResponse](ctx, c, c.baseURL+"/ttv/emotes/global")
+func (c *Client) GetGlobalEmotes(ctx context.Context) (twitchapi.EmoteResponse, error) {
+	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/emotes/global")
 }
 
-func (c *Client) GetChannelEmotes(ctx context.Context, broadcaster string) (twitch.EmoteResponse, error) {
-	return do[twitch.EmoteResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcaster+"/emotes")
+func (c *Client) GetChannelEmotes(ctx context.Context, broadcaster string) (twitchapi.EmoteResponse, error) {
+	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcaster+"/emotes")
 }
 
-func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitch.GetStreamsResponse, error) {
+func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitchapi.GetStreamsResponse, error) {
 	if len(broadcastID) == 0 {
-		return twitch.GetStreamsResponse{}, fmt.Errorf("expected at least one broadcast id")
+		return twitchapi.GetStreamsResponse{}, fmt.Errorf("expected at least one broadcast id")
 	}
 
 	if len(broadcastID) == 1 {
-		resp, err := do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
+		resp, err := do[twitchapi.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
 		if err != nil {
-			return twitch.GetStreamsResponse{}, err
+			return twitchapi.GetStreamsResponse{}, err
 		}
 
 		return resp, nil
@@ -110,36 +110,39 @@ func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitc
 		userValues.Add("user_id", login)
 	}
 
-	return do[twitch.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channels/info?"+userValues.Encode())
+	return do[twitchapi.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channels/info?"+userValues.Encode())
 }
 
-func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (twitch.UserResponse, error) {
-	if len(logins) == 0 {
-		return twitch.UserResponse{}, fmt.Errorf("expected at least one login")
+func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (twitchapi.UserResponse, error) {
+	if len(logins) == 0 && len(ids) == 0 {
+		return twitchapi.UserResponse{}, fmt.Errorf("expected at least one login or id")
 	}
 
-	if len(logins) == 1 {
-		return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
+	if len(logins) == 1 && len(ids) == 0 {
+		return do[twitchapi.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
 	}
 
 	userValues := url.Values{}
 	for _, login := range logins {
 		userValues.Add("logins", login)
 	}
+	for _, id := range ids {
+		userValues.Add("ids", id)
+	}
 
-	return do[twitch.UserResponse](ctx, c, c.baseURL+"/ttv/channels?"+userValues.Encode())
+	return do[twitchapi.UserResponse](ctx, c, c.baseURL+"/ttv/channels?"+userValues.Encode())
 }
 
-func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitch.GetChatSettingsResponse, error) {
-	return do[twitch.GetChatSettingsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/settings")
+func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitchapi.GetChatSettingsResponse, error) {
+	return do[twitchapi.GetChatSettingsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/settings")
 }
 
-func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitch.BadgeSet, error) {
-	return do[[]twitch.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges/global")
+func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet, error) {
+	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges/global")
 }
 
-func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitch.BadgeSet, error) {
-	return do[[]twitch.BadgeSet](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/badges")
+func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
+	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/badges")
 }
 
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {

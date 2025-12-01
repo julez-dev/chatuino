@@ -1,4 +1,4 @@
-package twitch
+package twitchirc
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/coder/websocket"
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
@@ -23,6 +23,11 @@ const (
 	maxMessageSize = 1 * 1024 * 1024 // 1MiB
 	ircWSURL       = "wss://irc-ws.chat.twitch.tv:443"
 )
+
+type AccountProvider interface {
+	GetAccountBy(id string) (save.Account, error)
+	UpdateTokensFor(id, accessToken, refreshToken string) error
+}
 
 // IRCer are types that can be turned into an IRC command
 type IRCer interface {
@@ -151,9 +156,9 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 							return err
 						}
 
-						if _, ok := parsed.(command.PingMessage); ok {
+						if _, ok := parsed.(PingMessage); ok {
 							select {
-							case innerMessages <- command.PongMessage{}:
+							case innerMessages <- PongMessage{}:
 							case <-innerCtx.Done():
 								return nil
 							}
@@ -211,7 +216,7 @@ func (c *Chat) ConnectWithRetry(ctx context.Context, messages <-chan IRCer) (<-c
 							return retry.Unrecoverable(errors.New("messages channel closed"))
 						}
 
-						if join, ok := msg.(command.JoinMessage); ok {
+						if join, ok := msg.(JoinMessage); ok {
 							c.m.Lock()
 							has := slices.ContainsFunc(c.channels, func(s string) bool {
 								return s == join.Channel

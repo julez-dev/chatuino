@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/julez-dev/chatuino/twitch/command"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +36,7 @@ func Test_filter(t *testing.T) {
 	entries := []*chatEntry{
 		{
 			Event: chatEventMessage{
-				message: &command.PrivateMessage{
+				message: &twitchirc.PrivateMessage{
 					DisplayName: "abc",
 					Message:     "hello test message",
 				},
@@ -44,7 +44,7 @@ func Test_filter(t *testing.T) {
 		},
 		{
 			Event: chatEventMessage{
-				message: &command.PrivateMessage{
+				message: &twitchirc.PrivateMessage{
 					DisplayName: "xyz",
 					Message:     "hello test message",
 				},
@@ -53,7 +53,7 @@ func Test_filter(t *testing.T) {
 	}
 
 	filtered := slices.Collect(filter(entries, func(e *chatEntry) bool {
-		cast, ok := e.Event.message.(*command.PrivateMessage)
+		cast, ok := e.Event.message.(*twitchirc.PrivateMessage)
 
 		if !ok {
 			return false

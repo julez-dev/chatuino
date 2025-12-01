@@ -3,6 +3,7 @@ package save
 import (
 	"io"
 
+	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )
 
@@ -84,7 +85,7 @@ func BuildDefaultTheme() Theme {
 }
 
 func ThemeFromDisk() (Theme, error) {
-	f, err := openCreateConfigFile(themeFileName)
+	f, err := openCreateConfigFile(afero.NewOsFs(), themeFileName)
 	if err != nil {
 		return Theme{}, err
 	}

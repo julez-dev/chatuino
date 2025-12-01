@@ -2,7 +2,7 @@
 
 Chatuino needs a server component for handling the user authentication flow with Twitch.
 
-Additionally, the server component is used for serving responses from Twitch API endpoints that normally require a authenticated user oder app, when the anonymous account user is used to connect to a chat.
+Additionally, the server component is used for serving responses from Twitch API endpoints that normally require a authenticated user or app, when the anonymous account user is used to connect to a chat.
 
 The server component in included inside the Chatuino binary.
 
@@ -18,7 +18,7 @@ Twitch allows localhost as a valid non https redirect URL, make sure to use the 
 
 You can pass the client_id and client_secret to the server component via environment variables (`CHATUINO_CLIENT_ID` and `CHATUINO_CLIENT_SECRET`).
 
-You also want to configure the `CHATUINO_API_HOST` (<http://localhost:8080> in this example) environment variable which is used by the Chatunito main app.
+You also want to configure the `CHATUINO_API_HOST` (<http://localhost:8080> in this example) environment variable which is used by the Chatuino main app.
 
 ## Running the server
 
@@ -47,7 +47,7 @@ docker run -d \
 
 ## Launching Chatuino
 
-After the server is started and `CHATUINO_API_HOST` is configured, you can start the Chatunito main app.
+After the server is started and `CHATUINO_API_HOST` is configured, you can start the Chatuino main app.
 
 Example:
 

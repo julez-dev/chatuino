@@ -1,4 +1,4 @@
-package twitch
+package twitchirc
 
 import (
 	"bytes"
@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/julez-dev/chatuino/twitch/command"
 )
 
 var (
@@ -155,7 +153,7 @@ func ParseIRC(message string) (IRCer, error) {
 			return nil, err
 		}
 
-		p := command.PrivateMessage{
+		p := PrivateMessage{
 			BadgeInfo:   parseBadges(string(c.tags["badge-info"])),
 			Badges:      parseBadges(string(c.tags["badges"])),
 			Bits:        bits,
@@ -187,7 +185,7 @@ func ParseIRC(message string) (IRCer, error) {
 			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
 			Turbo:           c.tags["turbo"] == "1",
 			UserID:          string(c.tags["user-id"]),
-			UserType:        command.UserType(c.tags["user-type"]),
+			UserType:        UserType(c.tags["user-type"]),
 			VIP:             c.tags["vip"] == "1",
 
 			SourceID:     string(c.tags["source-id"]),
@@ -201,10 +199,10 @@ func ParseIRC(message string) (IRCer, error) {
 
 		return &p, nil
 	case "PING":
-		return command.PingMessage{}, nil
+		return PingMessage{}, nil
 	case "NOTICE":
-		n := command.Notice{
-			MsgID:           command.MsgID(c.tags["msg-id"]),
+		n := Notice{
+			MsgID:           MsgID(c.tags["msg-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
 		}
 
@@ -215,7 +213,7 @@ func ParseIRC(message string) (IRCer, error) {
 
 		return &n, nil
 	case "USERNOTICE":
-		u := command.UserNotice{
+		u := UserNotice{
 			BadgeInfo:       parseBadges(string(c.tags["badge-info"])),
 			Badges:          parseBadges(string(c.tags["badges"])),
 			Color:           string(c.tags["color"]),
@@ -223,20 +221,20 @@ func ParseIRC(message string) (IRCer, error) {
 			Emotes:          parseEmotes(string(c.tags["emotes"])),
 			ID:              string(c.tags["id"]),
 			Login:           string(c.tags["login"]),
-			MsgID:           command.MsgID(c.tags["msg-id"]),
+			MsgID:           MsgID(c.tags["msg-id"]),
 			RoomID:          string(c.tags["room-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
 			SystemMsg:       string(c.tags["system-msg"]),
 			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
 			UserID:          string(c.tags["user-id"]),
-			UserType:        command.UserType(c.tags["user-type"]),
+			UserType:        UserType(c.tags["user-type"]),
 			Mod:             c.tags["mod"] == "1",
 			Subscriber:      c.tags["subscriber"] == "1",
 			Turbo:           c.tags["turbo"] == "1",
 		}
 
 		switch u.MsgID {
-		case command.Sub, command.ReSub:
+		case Sub, ReSub:
 			cumMonths, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-cumulative-months"])))
 			if err != nil {
 				return nil, err
@@ -247,12 +245,12 @@ func ParseIRC(message string) (IRCer, error) {
 				return nil, err
 			}
 
-			sub := &command.SubMessage{
+			sub := &SubMessage{
 				UserNotice:        u,
 				CumulativeMonths:  cumMonths,
 				ShouldShareStreak: c.tags["msg-param-should-share-streak"] == "1",
 				StreakMonths:      streakMonths,
-				SubPlan:           command.SubPlan(c.tags["msg-param-sub-plan"]),
+				SubPlan:           SubPlan(c.tags["msg-param-sub-plan"]),
 				SubPlanName:       string(c.tags["msg-param-sub-plan-name"]),
 			}
 
@@ -261,7 +259,7 @@ func ParseIRC(message string) (IRCer, error) {
 			}
 
 			return sub, nil
-		case command.SubGift:
+		case SubGift:
 			months, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-months"])))
 			if err != nil {
 				return nil, err
@@ -272,22 +270,22 @@ func ParseIRC(message string) (IRCer, error) {
 				return nil, err
 			}
 
-			sub := command.SubGiftMessage{
+			sub := SubGiftMessage{
 				UserNotice:         u,
 				Months:             months,
 				ReceiptDisplayName: string(c.tags["msg-param-recipient-display-name"]),
 				RecipientID:        string(c.tags["msg-param-recipient-id"]),
 				RecipientUserName:  string(c.tags["msg-param-recipient-user-name"]),
-				SubPlan:            command.SubPlan(c.tags["msg-param-sub-plan"]),
+				SubPlan:            SubPlan(c.tags["msg-param-sub-plan"]),
 				SubPlanName:        string(c.tags["msg-param-sub-plan-name"]),
 				GiftMonths:         giftMonths,
 			}
 
 			return &sub, nil
-		case command.Announcement:
-			announcement := command.AnnouncementMessage{
+		case Announcement:
+			announcement := AnnouncementMessage{
 				UserNotice: u,
-				ParamColor: command.AnnouncementColor(c.tags["msg-param-color"]),
+				ParamColor: AnnouncementColor(c.tags["msg-param-color"]),
 			}
 
 			if len(c.Params) > 1 {
@@ -295,13 +293,13 @@ func ParseIRC(message string) (IRCer, error) {
 			}
 
 			return &announcement, nil
-		case command.Raid:
+		case Raid:
 			viewerCount, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-viewerCount"])))
 			if err != nil {
 				return nil, err
 			}
 
-			raid := command.RaidMessage{
+			raid := RaidMessage{
 				UserNotice:  u,
 				DisplayName: string(c.tags["msg-param-displayName"]),
 				Login:       string(c.tags["msg-param-login"]),
@@ -309,26 +307,26 @@ func ParseIRC(message string) (IRCer, error) {
 			}
 
 			return &raid, nil
-		case command.AnonGiftPaidUpgrade:
+		case AnonGiftPaidUpgrade:
 			giftTotal, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-promo-gift-total"])))
 			if err != nil {
 				return nil, err
 			}
 
-			gift := command.AnonGiftPaidUpgradeMessage{
+			gift := AnonGiftPaidUpgradeMessage{
 				UserNotice:     u,
 				PromoGiftTotal: giftTotal,
 				PromoName:      string(c.tags["msg-param-promo-name"]),
 			}
 
 			return &gift, nil
-		case command.GiftPaidUpgrade:
+		case GiftPaidUpgrade:
 			giftTotal, err := strconv.Atoi(emptyStringZero(string(c.tags["msg-param-promo-gift-total"])))
 			if err != nil {
 				return nil, err
 			}
 
-			gift := command.GiftPaidUpgradeMessage{
+			gift := GiftPaidUpgradeMessage{
 				UserNotice:     u,
 				PromoGiftTotal: giftTotal,
 				PromoName:      string(c.tags["msg-param-promo-name"]),
@@ -337,8 +335,8 @@ func ParseIRC(message string) (IRCer, error) {
 			}
 
 			return &gift, nil
-		case command.Ritual:
-			ritual := command.RitualMessage{
+		case Ritual:
+			ritual := RitualMessage{
 				UserNotice: u,
 				RitualName: string(c.tags["msg-param-ritual-name"]),
 			}
@@ -352,7 +350,7 @@ func ParseIRC(message string) (IRCer, error) {
 
 		return &u, nil
 	case "USERSTATE":
-		u := command.UserState{
+		u := UserState{
 			BadgeInfo:       parseBadges(string(c.tags["badge-info"])),
 			Badges:          parseBadges(string(c.tags["badges"])),
 			Color:           string(c.tags["color"]),
@@ -362,12 +360,12 @@ func ParseIRC(message string) (IRCer, error) {
 			ID:              string(c.tags["id"]),
 			Subscriber:      c.tags["subscriber"] == "1",
 			Turbo:           c.tags["turbo"] == "1",
-			UserType:        command.UserType(c.tags["user-type"]),
+			UserType:        UserType(c.tags["user-type"]),
 		}
 
 		return &u, nil
 	case "WHISPER":
-		w := command.Whisper{
+		w := Whisper{
 			Badges:      parseBadges(string(c.tags["badges"])),
 			Color:       string(c.tags["color"]),
 			DisplayName: string(c.tags["display-name"]),
@@ -376,7 +374,7 @@ func ParseIRC(message string) (IRCer, error) {
 			ThreadID:    string(c.tags["thread-id"]),
 			Turbo:       c.tags["turbo"] == "1",
 			UserID:      string(c.tags["user-id"]),
-			UserType:    command.UserType(c.tags["user-type"]),
+			UserType:    UserType(c.tags["user-type"]),
 		}
 
 		if len(c.Params) > 1 {
@@ -385,7 +383,7 @@ func ParseIRC(message string) (IRCer, error) {
 
 		return &w, nil
 	case "ROOMSTATE":
-		r := command.RoomState{
+		r := RoomState{
 			RoomID:          string(c.tags["room-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
 		}
@@ -423,7 +421,7 @@ func ParseIRC(message string) (IRCer, error) {
 		return &r, nil
 	case "CLEARCHAT":
 
-		cc := command.ClearChat{
+		cc := ClearChat{
 			RoomID:          string(c.tags["room-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
 			TMISentTS:       parseTimestamp(string(c.tags["tmi-sent-ts"])),
@@ -448,7 +446,7 @@ func ParseIRC(message string) (IRCer, error) {
 
 		return &cc, nil
 	case "CLEARMSG":
-		c := command.ClearMessage{
+		c := ClearMessage{
 			Login:           string(c.tags["login"]),
 			RoomID:          string(c.tags["room-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
@@ -474,10 +472,10 @@ func emptyStringZero(s string) string {
 	return s
 }
 
-func parseEmotes(emoteStr string) []command.Emote {
+func parseEmotes(emoteStr string) []Emote {
 	// emote format 79382:20-24,40-44/{other emote}
 	emoteSplit := strings.Split(string(emoteStr), "/")
-	emotes := make([]command.Emote, 0, len(emoteSplit))
+	emotes := make([]Emote, 0, len(emoteSplit))
 
 	for _, emote := range emoteSplit {
 		parts := strings.Split(emote, ":")
@@ -485,7 +483,7 @@ func parseEmotes(emoteStr string) []command.Emote {
 			continue
 		}
 
-		e := command.Emote{
+		e := Emote{
 			ID: parts[0],
 		}
 
@@ -506,7 +504,7 @@ func parseEmotes(emoteStr string) []command.Emote {
 				continue
 			}
 
-			e.Positions = append(e.Positions, command.EmotePosition{
+			e.Positions = append(e.Positions, EmotePosition{
 				Start: start,
 				End:   end,
 			})
@@ -518,22 +516,22 @@ func parseEmotes(emoteStr string) []command.Emote {
 	return emotes
 }
 
-func parseBadges(badgeStr string) []command.Badge {
+func parseBadges(badgeStr string) []Badge {
 	if badgeStr == "" {
 		return nil
 	}
 
 	badgeSplit := strings.Split(string(badgeStr), ",")
-	badges := make([]command.Badge, 0, len(badgeSplit))
+	badges := make([]Badge, 0, len(badgeSplit))
 
 	for _, badge := range badgeSplit {
 		parts := strings.SplitN(badge, "/", 2)
 		if len(parts) == 1 {
-			badges = append(badges, command.Badge{Name: parts[0]})
+			badges = append(badges, Badge{Name: parts[0]})
 			continue
 		}
 
-		badges = append(badges, command.Badge{Name: parts[0], Version: parts[1]})
+		badges = append(badges, Badge{Name: parts[0], Version: parts[1]})
 	}
 
 	return badges
@@ -544,7 +542,7 @@ func parseTimestamp(timeStr string) time.Time {
 	if err != nil {
 		return time.Time{}
 	}
-	return time.Unix(0, i*1e6)
+	return time.Unix(0, i*1e6).UTC()
 }
 
 func parsePrefix(line string) *prefix {
@@ -601,8 +599,7 @@ func parseTagValue(v string) tagValue {
 func parseTags(line string) tags {
 	ret := tags{}
 
-	tags := strings.Split(line, ";")
-	for _, tag := range tags {
+	for tag := range strings.SplitSeq(line, ";") {
 		parts := strings.SplitN(tag, "=", 2)
 		if len(parts) < 2 {
 			ret[parts[0]] = ""

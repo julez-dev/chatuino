@@ -9,19 +9,19 @@ import (
 	"sync"
 
 	"github.com/julez-dev/chatuino/twitch/bttv"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/julez-dev/chatuino/twitch"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 type TwitchEmoteFetcher interface {
-	GetGlobalEmotes(context.Context) (twitch.EmoteResponse, error)
-	GetChannelEmotes(ctx context.Context, broadcaster string) (twitch.EmoteResponse, error)
+	GetGlobalEmotes(context.Context) (twitchapi.EmoteResponse, error)
+	GetChannelEmotes(ctx context.Context, broadcaster string) (twitchapi.EmoteResponse, error)
 }
 
 type SevenTVEmoteFetcher interface {
@@ -81,7 +81,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 
 	set, err, _ := s.single.Do("channel"+channelID, func() (any, error) {
 		var (
-			ttvResp  twitch.EmoteResponse
+			ttvResp  twitchapi.EmoteResponse
 			stvResp  seventv.ChannelEmoteResponse
 			bttvResp bttv.UserResponse
 		)
@@ -148,10 +148,11 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
-				ID:       ttvEmote.ID,
-				Text:     ttvEmote.Name,
-				Platform: Twitch,
-				URL:      ttvEmote.Images.URL1X,
+				ID:           ttvEmote.ID,
+				Text:         ttvEmote.Name,
+				Platform:     Twitch,
+				URL:          ttvEmote.Images.URL1X,
+				TTVEmoteType: ttvEmote.EmoteType,
 			})
 		}
 
@@ -212,7 +213,7 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 		group, ctx := errgroup.WithContext(ctx)
 
 		var (
-			ttvResp  twitch.EmoteResponse
+			ttvResp  twitchapi.EmoteResponse
 			stvResp  seventv.EmoteResponse
 			bttvResp bttv.GlobalEmoteResponse
 		)
@@ -254,10 +255,11 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes)+len(bttvResp))
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
-				ID:       ttvEmote.ID,
-				Text:     ttvEmote.Name,
-				Platform: Twitch,
-				URL:      ttvEmote.Images.URL1X,
+				ID:           ttvEmote.ID,
+				Text:         ttvEmote.Name,
+				Platform:     Twitch,
+				URL:          ttvEmote.Images.URL1X,
+				TTVEmoteType: ttvEmote.EmoteType,
 			})
 		}
 

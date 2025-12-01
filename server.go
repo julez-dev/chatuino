@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/julez-dev/chatuino/server"
-	"github.com/julez-dev/chatuino/twitch"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
 )
@@ -42,9 +42,9 @@ var serverCMD = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		ttvAPI, err := twitch.NewAPI(command.String("client-id"),
-			twitch.WithHTTPClient(http.DefaultClient),
-			twitch.WithClientSecret(command.String("client-secret")),
+		ttvAPI, err := twitchapi.NewAPI(command.String("client-id"),
+			twitchapi.WithHTTPClient(http.DefaultClient),
+			twitchapi.WithClientSecret(command.String("client-secret")),
 		)
 		if err != nil {
 			log.Err(err).Msg("could not create new twitch API client")
