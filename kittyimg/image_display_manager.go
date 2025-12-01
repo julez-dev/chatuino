@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"image"
 	"image/gif"
-	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
@@ -131,8 +130,6 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 		i := cached.(DecodedImage)
 		i.lastUsed = time.Now()
 		globalPlacedImages.Swap(unit.ID, i)
-
-		log.Logger.Info().Str("id", unit.ID).Int32("placement-id", i.ID).Msg("load image from session cache")
 
 		return KittyDisplayUnit{
 			// don't resend placement command
@@ -391,7 +388,6 @@ func (d *DisplayManager) saveKittyFormattedImage(buff []byte, unit DisplayUnit, 
 	}
 
 	path := filepath.Join(cacheDir, fmt.Sprintf("%s.%d", filepath.Clean(unit.ID), offset))
-	log.Logger.Info().Str("path", path).Msg("trying to save ")
 
 	f, err := d.fs.Create(path)
 	if err != nil {

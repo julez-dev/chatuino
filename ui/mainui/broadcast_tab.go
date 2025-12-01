@@ -18,6 +18,7 @@ import (
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -474,8 +475,16 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				unique[emote.Text] = struct{}{}
 			}
 
-			for _, emote := range channelEmoteSet {
-				unique[emote.Text] = struct{}{}
+			for _, e := range channelEmoteSet {
+				// We want to set all emotes available to the user. This means we shouldn't set twitch sub emotes and others like follower and bits that
+				// the user doesn't have access to.
+				// All twitch emotes for the current channel to which the users has access to should be in the userEmoteSet, since they are returned from the API.
+				// So we only include all 3rd pary emotes here
+				if e.Platform == emote.Twitch {
+					continue
+				}
+
+				unique[e.Text] = struct{}{}
 			}
 
 			suggestions := slices.Collect(maps.Keys(unique))

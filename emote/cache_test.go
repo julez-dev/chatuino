@@ -15,9 +15,9 @@ import (
 )
 
 func TestRefreshLocal(t *testing.T) {
-	ttv := mocks.NewTwitchEmoteFetcher(t)
-	seven := mocks.NewSevenTVEmoteFetcher(t)
-	bttvService := mocks.NewBTTVEmoteFetcher(t)
+	ttv := mocks.NewMockTwitchEmoteFetcher(t)
+	seven := mocks.NewMockSevenTVEmoteFetcher(t)
+	bttvService := mocks.NewMockBTTVEmoteFetcher(t)
 
 	ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitchapi.EmoteResponse{
 		Data: []twitchapi.EmoteData{

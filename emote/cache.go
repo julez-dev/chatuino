@@ -148,10 +148,11 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
-				ID:       ttvEmote.ID,
-				Text:     ttvEmote.Name,
-				Platform: Twitch,
-				URL:      ttvEmote.Images.URL1X,
+				ID:           ttvEmote.ID,
+				Text:         ttvEmote.Name,
+				Platform:     Twitch,
+				URL:          ttvEmote.Images.URL1X,
+				TTVEmoteType: ttvEmote.EmoteType,
 			})
 		}
 
@@ -254,10 +255,11 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes)+len(bttvResp))
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
-				ID:       ttvEmote.ID,
-				Text:     ttvEmote.Name,
-				Platform: Twitch,
-				URL:      ttvEmote.Images.URL1X,
+				ID:           ttvEmote.ID,
+				Text:         ttvEmote.Name,
+				Platform:     Twitch,
+				URL:          ttvEmote.Images.URL1X,
+				TTVEmoteType: ttvEmote.EmoteType,
 			})
 		}
 

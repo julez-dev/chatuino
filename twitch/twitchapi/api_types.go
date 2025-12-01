@@ -53,6 +53,7 @@ type (
 	//easyjson:json
 	EmoteData struct {
 		ID        string     `json:"id"`
+		EmoteType string     `json:"emote_type"`
 		Name      string     `json:"name"`
 		Images    EmoteImage `json:"images"`
 		Format    []string   `json:"format"`

@@ -124,7 +124,7 @@ During development I noticed a high memory consumption (sometimes 10x over non g
 
 The emotes are cached at the same location Chatuino will put the message log sqlite database at: In the `$HOME/chatuino` directory. The format used to store the image data is the same format Kitty requires to be used to transmit images, compressed with RFC 1950 ZLIB based deflate compression.
 
-You can query the current cache size usint
+You can query the current cache size using
 
 ```sh
 chatuino cache

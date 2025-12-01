@@ -85,7 +85,7 @@ func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 
 func TestBatchedMessageLogger_createLogEntries(t *testing.T) {
 	t.Run("dynamic-rows", func(t *testing.T) {
-		db := mocks.NewDB(t)
+		db := mocks.NewDBVariadic(t)
 
 		msgs := []*twitchirc.PrivateMessage{
 			{

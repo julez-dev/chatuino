@@ -31,6 +31,10 @@ type Emote struct {
 	URL        string
 	IsAnimated bool
 	Format     string
+
+	// For channel specific twitch emotes
+	// bitstier, follower, subscriptions
+	TTVEmoteType string
 }
 
 type EmoteSet []Emote
