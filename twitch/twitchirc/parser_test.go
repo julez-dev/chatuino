@@ -134,7 +134,7 @@ func Test_parseTimestamp(t *testing.T) {
 		{
 			name:  "valid-time",
 			input: "1763895624889",
-			want:  time.Date(2025, 11, 23, 12, 0, 24, 889000000, time.Local),
+			want:  time.Date(2025, 11, 23, 11, 0, 24, 889000000, time.UTC),
 		},
 		{
 			name:  "invalid-input",
@@ -145,7 +145,9 @@ func Test_parseTimestamp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, parseTimestamp(tt.input), "expected matching timestamp")
+			p := parseTimestamp(tt.input)
+			require.Equal(t, time.UTC, p.Location(), "time should be UTC")
+			require.Equal(t, tt.want, p, "expected matching timestamp")
 		})
 	}
 }

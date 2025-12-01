@@ -542,7 +542,7 @@ func parseTimestamp(timeStr string) time.Time {
 	if err != nil {
 		return time.Time{}
 	}
-	return time.Unix(0, i*1e6)
+	return time.Unix(0, i*1e6).UTC()
 }
 
 func parsePrefix(line string) *prefix {
