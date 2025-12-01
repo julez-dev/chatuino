@@ -289,13 +289,13 @@ func (d *DisplayManager) convertAnimatedWebP(r io.Reader, unit DisplayUnit) (Dec
 	var cols int
 	var decodedEmote DecodedImage
 	for i, img := range images.Image {
-		frame, cols, err := d.convertImageFrame(img, unit, i)
+		frame, c, err := d.convertImageFrame(img, unit, i)
 		if err != nil {
 			return DecodedImage{}, err
 		}
 
 		if i == 0 {
-			cols = cols
+			cols = c
 		}
 
 		frame.DelayInMS = int(images.Delay[i] * 1000)
