@@ -627,6 +627,10 @@ func (r *Root) View() string {
 	return ""
 }
 
+func (r *Root) HasSessionLoaded() bool {
+	return r.hasLoadedSession
+}
+
 func (r *Root) TakeStateSnapshot() save.AppState {
 	appState := save.AppState{}
 

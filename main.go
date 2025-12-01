@@ -333,11 +333,14 @@ func main() {
 					return err
 				}
 
-				// persist open tabs on disk
-				state := final.TakeStateSnapshot()
+				// persist open tabs on disk when session was actually loaded
+				// to prevent saving empty state when Chatuino was closed while loading
+				if final.HasSessionLoaded() {
+					state := final.TakeStateSnapshot()
 
-				if err := appStateManager.SaveAppState(state); err != nil {
-					return fmt.Errorf("error while saving state: %w", err)
+					if err := appStateManager.SaveAppState(state); err != nil {
+						return fmt.Errorf("error while saving state: %w", err)
+					}
 				}
 			}
 

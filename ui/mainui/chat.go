@@ -247,12 +247,12 @@ func (c *chatWindow) debugDumpChat() {
 	}
 
 	dump := state{
-		Lines:     c.lines,
+		//Lines:     c.lines,
 		Cursor:    c.cursor,
 		LineEnd:   c.lineEnd,
 		LineStart: c.lineStart,
-		View:      c.View(),
-		Entries:   c.entries,
+		//View:      c.View(),
+		Entries: c.entries,
 	}
 
 	dump.UserCache = make([]string, 0, len(c.userColorCache))
@@ -578,7 +578,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.colorMessage(text))
 	case *twitchirc.PrivateMessage:
-		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
+		userRenderFunc := c.getSetUserColorFunc(msg.LoginName, msg.Color)
 
 		// Build prefix components: time, [guest channel], [badges], username
 		var parts []string
@@ -647,7 +647,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			subResubText = "resubscribed"
 		}
 
-		userRenderFunc := c.getSetUserColorFunc(msg.DisplayName, msg.Color)
+		userRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
 
 		text := fmt.Sprintf("%s just %s with a %s subscription. (%d Months, %d Month Streak)",
 			userRenderFunc(msg.DisplayName),
@@ -720,6 +720,8 @@ func (c *chatWindow) colorMessageMentions(message string) string {
 		cleaned := strings.ToLower(stripDisplayNameEdges(word))
 		renderFn, ok := c.userColorCache[cleaned]
 
+		//log.Logger.Info().Str("cleaned", cleaned).Str("word", word).Bool("found", ok).Msg("message color replace")
+
 		if !ok {
 			// fallback try if empty
 			if f, ok := c.userColorCache[word]; ok {
@@ -729,10 +731,7 @@ func (c *chatWindow) colorMessageMentions(message string) string {
 			}
 		}
 
-		if start := strings.Index(word, cleaned); start != -1 {
-			word = word[:start] + renderFn(cleaned) + word[start+len(cleaned):]
-		}
-
+		word = strings.ReplaceAll(word, stripDisplayNameEdges(word), renderFn(cleaned))
 		words[i] = word
 	}
 
