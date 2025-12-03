@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
@@ -143,6 +145,48 @@ func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet,
 
 func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
 	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/badges")
+}
+
+type CheckLinkResponse struct {
+	RemoteStatusCode  int
+	RemoteContentType string
+	VisitedURLs       []string
+}
+
+func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResponse, error) {
+	u := fmt.Sprintf("%s/proxy/link_check?target=%s", c.baseURL, url.QueryEscape(targetURL))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to create req for: %s: %w", u, err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return CheckLinkResponse{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	code := resp.Header.Get("X-Remote-Status-Code")
+	parsedStatusCode, err := strconv.Atoi(code)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to parse remote status code (%s): %w", code, err)
+	}
+
+	data := CheckLinkResponse{
+		RemoteStatusCode:  parsedStatusCode,
+		RemoteContentType: resp.Header.Get("X-Remote-Content-Type"),
+		VisitedURLs:       strings.Split(resp.Header.Get("X-Visited-Urls"), ","),
+	}
+
+	return data, nil
 }
 
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {

@@ -596,8 +596,10 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 
 		// Add username
 		parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
-
 		prefix := strings.Join(parts, " ")
+
+		// detect links
+
 		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
 	case *twitchirc.Notice:
 		title := "Notice"

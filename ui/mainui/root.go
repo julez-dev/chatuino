@@ -1083,6 +1083,19 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		io.WriteString(os.Stdout, prepare)
 	}
 
+	if r.dependencies.UserConfig.Settings.Security.CheckLinks {
+		if urls := extractValidURLs(contentOverwrite); len(urls) > 0 {
+			for _, url := range urls {
+				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), url)
+				if err != nil {
+					log.Logger.Log().Str("link", url).Err(err).Msg("failed to check link")
+				}
+
+				log.Logger.Info().Any("r", r).Msg("link check")
+			}
+		}
+	}
+
 	return chatEventMessage{
 		isFakeEvent:                 isFakeEvent,
 		accountID:                   accountID,
