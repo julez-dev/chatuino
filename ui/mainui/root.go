@@ -1092,7 +1092,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 					log.Logger.Log().Str("link", url).Err(err).Msg("failed to check link")
 				}
 
-				parts := []string{fmt.Sprintf("%s", http.StatusText(r.RemoteStatusCode))}
+				parts := []string{http.StatusText(r.RemoteStatusCode)}
 
 				if r.RemoteContentType != "" {
 					before, _, _ := strings.Cut(r.RemoteContentType, ";")
