@@ -21,6 +21,7 @@ type Settings struct {
 	Chat            ChatSettings       `yaml:"chat"`
 	CustomCommands  []CustomCommand    `yaml:"custom_commands"`
 	BlockSettings   BlockSettings      `yaml:"block_settings"`
+	Security        SecuritySettings   `yaml:"security"`
 }
 
 type ModerationSettings struct {
@@ -40,6 +41,10 @@ type BlockSettings struct {
 	Words []string `yaml:"words"`
 }
 
+type SecuritySettings struct {
+	CheckLinks bool `yaml:"check_links"`
+}
+
 type CustomCommand struct {
 	Trigger     string `yaml:"trigger"`
 	Replacement string `yaml:"replacement"`
@@ -49,6 +54,9 @@ func BuildDefaultSettings() Settings {
 	return Settings{
 		Moderation: ModerationSettings{
 			StoreChatLogs: true,
+		},
+		Security: SecuritySettings{
+			CheckLinks: true,
 		},
 	}
 }

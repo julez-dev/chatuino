@@ -149,7 +149,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 		cachedDecoded.ID = incrementID
 		cachedDecoded.lastUsed = time.Now()
 
-		log.Logger.Info().Str("id", unit.ID).Int32("placement-id", cachedDecoded.ID).Msg("load image from storage cache")
+		//log.Logger.Info().Str("id", unit.ID).Int32("placement-id", cachedDecoded.ID).Msg("load image from storage cache")
 
 		globalPlacedImages.Store(unit.ID, cachedDecoded)
 		return KittyDisplayUnit{
@@ -210,12 +210,12 @@ func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, conten
 	}
 
 	if unit.IsAnimated && contentType == "image/webp" {
-		log.Logger.Info().Any("unit", unit).Msg("converting animated webp")
+		//log.Logger.Info().Any("unit", unit).Msg("converting animated webp")
 		return d.convertAnimatedWebP(r, unit)
 	}
 
 	if unit.IsAnimated && contentType == "image/gif" {
-		log.Logger.Info().Any("unit", unit).Msg("converting animated gif")
+		//log.Logger.Info().Any("unit", unit).Msg("converting animated gif")
 		return d.convertAnimatedGif(r, unit)
 	}
 
@@ -359,7 +359,7 @@ func (d *DisplayManager) cacheDecodedImage(decoded DecodedImage, unit DisplayUni
 	}
 
 	metaImageFilePath := filepath.Join(cacheDir, fmt.Sprintf("%s.json", filepath.Clean(unit.ID)))
-	log.Logger.Info().Str("path", metaImageFilePath).Msg("trying to cache decoded")
+	//log.Logger.Info().Str("path", metaImageFilePath).Msg("trying to cache decoded")
 
 	f, err := d.fs.Create(metaImageFilePath)
 	if err != nil {
@@ -416,7 +416,7 @@ func (d *DisplayManager) openCached(unit DisplayUnit) (DecodedImage, bool, error
 
 	metaImageFilePath := filepath.Join(dir, fmt.Sprintf("%s.json", filepath.Clean(unit.ID)))
 
-	log.Logger.Info().Str("path", metaImageFilePath).Msg("trying to open")
+	//log.Logger.Info().Str("path", metaImageFilePath).Msg("trying to open")
 
 	data, err := afero.ReadFile(d.fs, metaImageFilePath)
 	if err != nil {

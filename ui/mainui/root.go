@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -1081,6 +1082,32 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 
 	if prepare != "" {
 		io.WriteString(os.Stdout, prepare)
+	}
+
+	if r.dependencies.UserConfig.Settings.Security.CheckLinks {
+		if urls := extractValidURLs(contentOverwrite); len(urls) > 0 {
+			for _, url := range urls {
+				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), url)
+				if err != nil {
+					v := fmt.Sprintf("%s [%s]", url, err.Error())
+					contentOverwrite = strings.ReplaceAll(contentOverwrite, url, v)
+				}
+
+				parts := []string{http.StatusText(r.RemoteStatusCode)}
+
+				if r.RemoteContentType != "" {
+					before, _, _ := strings.Cut(r.RemoteContentType, ";")
+					parts = append(parts, before)
+				}
+
+				if len(r.VisitedURLs) > 0 {
+					parts = append(parts, r.VisitedURLs...)
+				}
+
+				v := fmt.Sprintf("%s [%s]", url, strings.Join(parts, ", "))
+				contentOverwrite = strings.ReplaceAll(contentOverwrite, url, v)
+			}
+		}
 	}
 
 	return chatEventMessage{

@@ -92,7 +92,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 			continue
 		}
 
-		log.Info().Str("word", word).Str("channel", channelID).Bool("is-in-cache", isEmote).Msg("replaced emote")
+		//log.Info().Str("word", word).Str("channel", channelID).Bool("is-in-cache", isEmote).Msg("replaced emote")
 
 		// graphics not enabled, replace with colored emote
 		if !i.enableGraphics {
