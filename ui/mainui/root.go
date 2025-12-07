@@ -1089,7 +1089,8 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 			for _, url := range urls {
 				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), url)
 				if err != nil {
-					log.Logger.Log().Str("link", url).Err(err).Msg("failed to check link")
+					v := fmt.Sprintf("%s [%s]", url, err.Error())
+					contentOverwrite = strings.ReplaceAll(contentOverwrite, url, v)
 				}
 
 				parts := []string{http.StatusText(r.RemoteStatusCode)}

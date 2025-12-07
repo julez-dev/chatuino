@@ -171,7 +171,12 @@ func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResp
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return CheckLinkResponse{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		errMsg, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return CheckLinkResponse{}, fmt.Errorf("failed to read error message: %w", err)
+		}
+
+		return CheckLinkResponse{}, fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, string(errMsg))
 	}
 
 	code := resp.Header.Get("X-Remote-Status-Code")
