@@ -183,7 +183,14 @@ func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResp
 	data := CheckLinkResponse{
 		RemoteStatusCode:  parsedStatusCode,
 		RemoteContentType: resp.Header.Get("X-Remote-Content-Type"),
-		VisitedURLs:       strings.Split(resp.Header.Get("X-Visited-Urls"), ","),
+	}
+
+	for u := range strings.SplitSeq(resp.Header.Get("X-Visited-Urls"), ",") {
+		if u == "" {
+			continue
+		}
+
+		data.VisitedURLs = append(data.VisitedURLs, u)
 	}
 
 	return data, nil

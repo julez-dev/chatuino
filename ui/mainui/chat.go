@@ -444,7 +444,7 @@ func (c *chatWindow) cleanup() {
 	usersLeft := make(map[string]struct{}, len(c.entries))
 	for _, e := range c.entries {
 		if privMsg, ok := e.Event.message.(*twitchirc.PrivateMessage); ok {
-			usersLeft[strings.ToLower(privMsg.DisplayName)] = struct{}{}
+			usersLeft[strings.ToLower(privMsg.LoginName)] = struct{}{}
 		}
 	}
 

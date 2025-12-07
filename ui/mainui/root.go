@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -1091,7 +1092,19 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 					log.Logger.Log().Str("link", url).Err(err).Msg("failed to check link")
 				}
 
-				log.Logger.Info().Any("r", r).Msg("link check")
+				parts := []string{fmt.Sprintf("%s", http.StatusText(r.RemoteStatusCode))}
+
+				if r.RemoteContentType != "" {
+					before, _, _ := strings.Cut(r.RemoteContentType, ";")
+					parts = append(parts, before)
+				}
+
+				if len(r.VisitedURLs) > 0 {
+					parts = append(parts, r.VisitedURLs...)
+				}
+
+				v := fmt.Sprintf("%s [%s]", url, strings.Join(parts, ", "))
+				contentOverwrite = strings.ReplaceAll(contentOverwrite, url, v)
 			}
 		}
 	}

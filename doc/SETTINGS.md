@@ -13,6 +13,9 @@ moderation:
   logs_channel_include: ["lirik", "sodapoppin"] # Chatuino will only log channels that are in this list, if set
   logs_channel_exclude: ["lec"] # Chatuino will not log channels that are in this list, but all others, if set
 
+security:
+  check_links: true # If Chatuino should check and display http redirects next to URLs. Uses chatuino server to hide IP when resolving; Default: true
+
 # Globaly block specific users and words
 block_settings:
   users:
