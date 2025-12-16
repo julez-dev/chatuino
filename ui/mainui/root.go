@@ -6,6 +6,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -1086,11 +1087,11 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 
 	if r.dependencies.UserConfig.Settings.Security.CheckLinks {
 		if urls := extractValidURLs(contentOverwrite); len(urls) > 0 {
-			for _, url := range urls {
-				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), url)
+			for _, u := range urls {
+				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), u)
 				if err != nil {
-					v := fmt.Sprintf("%s [%s]", url, err.Error())
-					contentOverwrite = strings.ReplaceAll(contentOverwrite, url, v)
+					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
+					continue
 				}
 
 				parts := []string{http.StatusText(r.RemoteStatusCode)}
@@ -1101,11 +1102,18 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 				}
 
 				if len(r.VisitedURLs) > 0 {
-					parts = append(parts, r.VisitedURLs...)
+					for _, u := range r.VisitedURLs {
+						d, err := url.QueryUnescape(u)
+						if err != nil {
+							log.Logger.Info().Err(err).Str("url", u).Msg("failed to unescape url")
+							continue
+						}
+						parts = append(parts, d)
+					}
 				}
 
-				v := fmt.Sprintf("%s [%s]", url, strings.Join(parts, ", "))
-				contentOverwrite = strings.ReplaceAll(contentOverwrite, url, v)
+				v := fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", "))
+				contentOverwrite = strings.ReplaceAll(contentOverwrite, u, v)
 			}
 		}
 	}

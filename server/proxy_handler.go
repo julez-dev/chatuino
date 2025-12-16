@@ -49,6 +49,8 @@ func (a *API) handleCheckRedirectsRequest() http.HandlerFunc {
 			return
 		}
 
+		logger.Info().Str("target", target.String()).Msg("link check request")
+
 		if err := validateURLSecurity(target); err != nil {
 			logger.Err(err).Str("target", target.String()).Msg("got link check request for suspicious URL")
 			http.Error(w, fmt.Sprintf("%s is invalid target URL: %s", rawTargetURL, err), http.StatusBadRequest)
@@ -99,7 +101,7 @@ func (a *API) handleCheckRedirectsRequest() http.HandlerFunc {
 
 		w.Header().Set("X-Remote-Status-Code", fmt.Sprintf("%d", resp.StatusCode))
 		w.Header().Set("X-Remote-Content-Type", resp.Header.Get("Content-Type"))
-		w.Header().Set("X-Visited-URLs", strings.Join(visited, ","))
+		w.Header().Set("X-Visited-URLs", url.QueryEscape(strings.Join(visited, ",")))
 	})
 }
 
@@ -155,12 +157,12 @@ func validateURLSecurity(u *url.URL) error {
 	}
 
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("unsupported scheme")
+		return fmt.Errorf("unsupported scheme %q, only http and https are allowed", u.Scheme)
 	}
 
 	hostname := u.Hostname()
 
-	if strings.HasSuffix(strings.ToLower(hostname), ".localhost") {
+	if strings.HasSuffix(strings.ToLower(hostname), ".localhost") || hostname == "caddy" {
 		return fmt.Errorf("localhost subdomain not allowed")
 	}
 
