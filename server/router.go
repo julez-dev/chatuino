@@ -21,6 +21,10 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 		r.Get("/ready", api.handleGetHealth())
 	})
 
+	c.Route("/proxy", func(r chi.Router) {
+		r.Get("/link_check", api.handleCheckRedirectsRequest())
+	})
+
 	c.Route("/auth", func(r chi.Router) {
 		r.Get("/start", api.handleAuthStart())
 		r.Get("/redirect", api.handleAuthRedirect())

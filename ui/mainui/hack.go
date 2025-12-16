@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"math/rand/v2"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,11 +16,34 @@ import (
 )
 
 var (
-	duplicateBypass   = rune(917504)
-	ansiRegex         = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
+	duplicateBypass = rune(917504)
+	ansiRegex       = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
+
 	accountStartRegex = regexp.MustCompile(`^[^a-zA-Z0-9_-]+`)
 	accountEndRegex   = regexp.MustCompile(`[^a-zA-Z0-9_-]+$`)
+
+	urlStartRegex = regexp.MustCompile(`https?://[^\s]+`)
 )
+
+func extractValidURLs(text string) []string {
+	rawMatches := urlStartRegex.FindAllString(text, -1)
+	var validURLs []string
+
+	for _, match := range rawMatches {
+		cleanMatch := strings.TrimRight(match, `.,;:!?"')`)
+
+		u, err := url.Parse(cleanMatch)
+		if err != nil {
+			continue
+		}
+
+		if (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
+			validURLs = append(validURLs, cleanMatch)
+		}
+	}
+
+	return validURLs
+}
 
 func filter[S ~[]E, E any](x S, f func(e E) bool) iter.Seq[E] {
 	return func(yield func(E) bool) {

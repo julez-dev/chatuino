@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
@@ -143,6 +145,60 @@ func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet,
 
 func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
 	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/badges")
+}
+
+type CheckLinkResponse struct {
+	RemoteStatusCode  int
+	RemoteContentType string
+	VisitedURLs       []string
+}
+
+func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResponse, error) {
+	u := fmt.Sprintf("%s/proxy/link_check?target=%s", c.baseURL, url.QueryEscape(targetURL))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to create req for: %s: %w", u, err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		errMsg, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return CheckLinkResponse{}, fmt.Errorf("failed to read error message: %w", err)
+		}
+
+		return CheckLinkResponse{}, fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, string(errMsg))
+	}
+
+	code := resp.Header.Get("X-Remote-Status-Code")
+	parsedStatusCode, err := strconv.Atoi(code)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to parse remote status code (%s): %w", code, err)
+	}
+
+	data := CheckLinkResponse{
+		RemoteStatusCode:  parsedStatusCode,
+		RemoteContentType: resp.Header.Get("X-Remote-Content-Type"),
+	}
+
+	for u := range strings.SplitSeq(resp.Header.Get("X-Visited-Urls"), ",") {
+		if u == "" {
+			continue
+		}
+
+		data.VisitedURLs = append(data.VisitedURLs, u)
+	}
+
+	return data, nil
 }
 
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {

@@ -9,6 +9,7 @@ import (
 	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/save/messagelog"
+	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
@@ -49,9 +50,10 @@ type APIClient interface {
 	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitchapi.GetChatSettingsResponse, error)
 }
 
-type APIClientWithRefresh interface {
+type ChatuinoServer interface {
 	APIClient
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+	CheckLink(ctx context.Context, targetURL string) (server.CheckLinkResponse, error)
 }
 
 type UserEmoteClient interface {
@@ -84,7 +86,7 @@ type DependencyContainer struct {
 	Keymap     save.KeyMap
 	Accounts   []save.Account
 
-	ServerAPI      APIClientWithRefresh
+	ServerAPI      ChatuinoServer
 	APIUserClients map[string]APIClient
 
 	AccountProvider      AccountProvider
