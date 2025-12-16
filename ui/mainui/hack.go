@@ -26,26 +26,17 @@ var (
 )
 
 func extractValidURLs(text string) []string {
-	// 1. Compile the regex to find candidates
-	// This matches http:// or https:// followed by non-whitespace characters
-
 	rawMatches := urlStartRegex.FindAllString(text, -1)
 	var validURLs []string
 
 	for _, match := range rawMatches {
-		// 2. Clean the match
-		// Regex often captures trailing punctuation (.,;) if the URL is at the end of a sentence.
-		// We trim these specific characters from the right side.
 		cleanMatch := strings.TrimRight(match, `.,;:!?"')`)
 
-		// 3. Parse with url.Parse
 		u, err := url.Parse(cleanMatch)
 		if err != nil {
-			continue // Parse failed
+			continue
 		}
 
-		// 4. Validate Scheme and Host
-		// url.Parse accepts "http://" without a host, so we must check u.Host explicitly.
 		if (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
 			validURLs = append(validURLs, cleanMatch)
 		}
