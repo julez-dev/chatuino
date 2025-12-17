@@ -11,7 +11,6 @@ import (
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,8 +59,8 @@ func TestReplacer_Replace(t *testing.T) {
 		prepare, formatted, err := replacer.Replace("broadcaster123", []twitchirc.Badge{})
 
 		require.NoError(t, err)
-		assert.Empty(t, prepare)
-		assert.Empty(t, formatted)
+		require.Empty(t, prepare)
+		require.Empty(t, formatted)
 	})
 
 	t.Run("single badge returns correct results", func(t *testing.T) {
@@ -99,9 +98,9 @@ func TestReplacer_Replace(t *testing.T) {
 		prepare, formatted, err := replacer.Replace("broadcaster123", badgeList)
 
 		require.NoError(t, err)
-		assert.Equal(t, "prepare_command_1", prepare)
+		require.Equal(t, "prepare_command_1", prepare)
 		require.Len(t, formatted, 1)
-		assert.Equal(t, "replacement_1", formatted[0])
+		require.Equal(t, "replacement_1", formatted["Subscriber"])
 	})
 
 	t.Run("multiple badges returns concatenated results", func(t *testing.T) {
@@ -153,9 +152,9 @@ func TestReplacer_Replace(t *testing.T) {
 		prepare, formatted, err := replacer.Replace("broadcaster123", badgeList)
 
 		require.NoError(t, err)
-		assert.Equal(t, 3, callCount, "Convert should be called 3 times")
-		assert.Len(t, formatted, 3)
-		assert.Contains(t, prepare, "prepare_")
+		require.Equal(t, 3, callCount, "Convert should be called 3 times")
+		require.Len(t, formatted, 3)
+		require.Contains(t, prepare, "prepare_")
 	})
 
 	t.Run("display manager error returns error", func(t *testing.T) {
@@ -191,9 +190,9 @@ func TestReplacer_Replace(t *testing.T) {
 		prepare, formatted, err := replacer.Replace("broadcaster123", badgeList)
 
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "failed to convert")
-		assert.Empty(t, prepare)
-		assert.Nil(t, formatted)
+		require.ErrorContains(t, err, "failed to convert")
+		require.Empty(t, prepare)
+		require.Nil(t, formatted)
 	})
 
 	t.Run("display unit has correct ID format", func(t *testing.T) {
@@ -239,9 +238,9 @@ func TestReplacer_Replace(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedID := broadcasterID + badgeSetKey + badgeID
-		assert.Equal(t, expectedID, capturedUnit.ID)
-		assert.Equal(t, "badge", capturedUnit.Directory)
-		assert.NotNil(t, capturedUnit.Load)
+		require.Equal(t, expectedID, capturedUnit.ID)
+		require.Equal(t, "badge", capturedUnit.Directory)
+		require.NotNil(t, capturedUnit.Load)
 	})
 
 	t.Run("preserves badge order in formatted output", func(t *testing.T) {
@@ -249,9 +248,9 @@ func TestReplacer_Replace(t *testing.T) {
 			matchBadgeSetFunc: func(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion {
 				// Note: maps don't preserve order, but we can test that all badges are present
 				return map[string]twitchapi.BadgeVersion{
-					"badge1": {ID: "1", Image_URL_1x: "url1"},
-					"badge2": {ID: "2", Image_URL_1x: "url2"},
-					"badge3": {ID: "3", Image_URL_1x: "url3"},
+					"badge1": {ID: "1", Image_URL_1x: "url1", Title: "Badge1"},
+					"badge2": {ID: "2", Image_URL_1x: "url2", Title: "Badge2"},
+					"badge3": {ID: "3", Image_URL_1x: "url3", Title: "Badge3"},
 				}
 			},
 		}
@@ -280,17 +279,17 @@ func TestReplacer_Replace(t *testing.T) {
 		_, formatted, err := replacer.Replace("broadcaster123", badgeList)
 
 		require.NoError(t, err)
-		assert.Len(t, formatted, 3)
+		require.Len(t, formatted, 3)
 
-		// Verify all expected texts are present
-		expectedTexts := []string{
-			"text_broadcaster123badge11",
-			"text_broadcaster123badge22",
-			"text_broadcaster123badge33",
+		// Verify all expected texts are present (map keys are badge Titles)
+		expectedBadges := map[string]string{
+			"Badge1": "text_broadcaster123badge11",
+			"Badge2": "text_broadcaster123badge22",
+			"Badge3": "text_broadcaster123badge33",
 		}
 
-		for _, expected := range expectedTexts {
-			assert.Contains(t, formatted, expected)
+		for title, expectedText := range expectedBadges {
+			require.Equal(t, expectedText, formatted[title])
 		}
 	})
 
@@ -312,8 +311,8 @@ func TestReplacer_Replace(t *testing.T) {
 		prepare, formatted, err := replacer.Replace("broadcaster123", nil)
 
 		require.NoError(t, err)
-		assert.Empty(t, prepare)
-		assert.Empty(t, formatted)
+		require.Empty(t, prepare)
+		require.Empty(t, formatted)
 	})
 
 	t.Run("Load function can be invoked without panic", func(t *testing.T) {
@@ -345,7 +344,7 @@ func TestReplacer_Replace(t *testing.T) {
 
 		client := &http.Client{
 			Transport: httputil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				assert.Equal(t, "https://example.com/badge1.png", req.URL.String())
+				require.Equal(t, "https://example.com/badge1.png", req.URL.String())
 				return &http.Response{
 					StatusCode: 200,
 					Header:     http.Header{"Content-Type": []string{"image/jpg"}},

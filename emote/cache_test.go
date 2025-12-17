@@ -10,8 +10,8 @@ import (
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRefreshLocal(t *testing.T) {
@@ -68,13 +68,13 @@ func TestRefreshLocal(t *testing.T) {
 
 	// first call
 	err := store.RefreshLocal(context.Background(), "test-channel")
-	assert.Nil(t, err)
+	require.Nil(t, err)
 
 	set := store.GetAllForChannel("test-channel")
 	_, ok := set.GetByText("Kappa")
-	assert.True(t, ok)
+	require.True(t, ok)
 
 	// second call
 	err = store.RefreshLocal(context.Background(), "test-channel")
-	assert.Nil(t, err)
+	require.Nil(t, err)
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/julez-dev/chatuino/mocks"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeDB struct{}
@@ -43,7 +43,7 @@ func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 		close(in)
 
 		err := messageLogger.LogMessages(in)
-		assert.Nil(t, err)
+		require.Nil(t, err)
 	})
 
 	t.Run("timeout-reached", func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestBatchedMessageLogger_LogMessages(t *testing.T) {
 		})
 
 		err = messageLogger.LogMessages(in)
-		assert.Nil(t, err)
+		require.Nil(t, err)
 
 		// we make sure that all expectations were met
 		if err := mock.ExpectationsWereMet(); err != nil {
@@ -126,6 +126,6 @@ func TestBatchedMessageLogger_createLogEntries(t *testing.T) {
 
 		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db, db, nil, nil)
 		err := messageLogger.createLogEntries(msgs)
-		assert.Nil(t, err)
+		require.Nil(t, err)
 	})
 }
