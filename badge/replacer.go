@@ -56,23 +56,24 @@ func NewReplacer(httpClient *http.Client, cache BadgeCache, enableGraphics bool,
 	}
 }
 
-func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, []string, error) {
+func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, map[string]string, error) {
 	badgeMap := r.cache.MatchBadgeSet(broadcasterID, badgeList)
 	badgesSortedKeys := slices.Sorted(maps.Keys(badgeMap))
 
-	formattedBadges := make([]string, 0, len(badgeMap))
+	formattedBadges := make(map[string]string, len(badgeMap))
 
 	if !r.enableGraphics {
 		for _, k := range badgesSortedKeys {
 			b := badgeMap[k]
 
 			if colored, ok := r.badeColorMap[k]; ok {
-				formattedBadges = append(formattedBadges, colored)
+				formattedBadges[k] = colored
 				continue
 			}
 
-			formattedBadges = append(formattedBadges, b.Title)
+			formattedBadges[k] = b.Title
 		}
+
 		return "", formattedBadges, nil
 	}
 
@@ -98,7 +99,7 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (s
 
 		prepare.WriteString(u.PrepareCommand)
 
-		formattedBadges = append(formattedBadges, u.ReplacementText)
+		formattedBadges[b.Title] = u.ReplacementText
 	}
 
 	return prepare.String(), formattedBadges, nil

@@ -989,14 +989,13 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitchirc.IRCer, isFakeEvent bool) chatEventMessage {
 	var (
 		channel                 string
-		contentOverwrite        string
-		prepare                 string
+		message                 string
+		badges                  []twitchirc.Badge
+		emotes                  []twitchirc.Emote
+		emoteSourceRoom         string
 		channelID               string
 		channelGuestID          string
 		channelGuestDisplayName string
-
-		badgePrepare     string
-		badgeReplacement []string
 	)
 
 	// Check when currently in shared session.
@@ -1028,33 +1027,28 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelID = ircMessage.RoomID
 		channelGuestID = ircMessage.SourceRoomID
 		channel = ircMessage.ChannelUserName
+		message = ircMessage.Message
 
 		// if is shared display emotes from guest channel, when message is from guest
-		emoteSourceRoom := channelID
-		badges := ircMessage.Badges
+		emoteSourceRoom = channelID
+		badges = ircMessage.Badges
+		emotes = ircMessage.Emotes
 
 		if channelGuestID != "" && channelID != channelGuestID {
 			emoteSourceRoom = channelGuestID
 			badges = ircMessage.SourceBadges
 		}
 
-		var err error
-		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(emoteSourceRoom, ircMessage.Message, ircMessage.Emotes)
-
-		badgePrepare, badgeReplacement, err = r.dependencies.BadgeReplacer.Replace(emoteSourceRoom, badges)
-		if err != nil {
-			log.Logger.Err(err).Any("msg", ircMessage).Send()
-		}
-
-		prepare += badgePrepare
 	case *twitchirc.RoomState:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
 	case *twitchirc.UserNotice:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
+		badges = ircMessage.Badges
 	case *twitchirc.UserState:
 		channel = ircMessage.ChannelUserName
+		badges = ircMessage.Badges
 	case *twitchirc.ClearChat:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
@@ -1063,30 +1057,82 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channel = ircMessage.ChannelUserName
 	case *twitchirc.SubMessage:
 		channelID = ircMessage.RoomID
+		emoteSourceRoom = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+		message = ircMessage.Message
+		emotes = ircMessage.Emotes
+		badges = ircMessage.Badges
 	case *twitchirc.RaidMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
+		badges = ircMessage.Badges
 	case *twitchirc.SubGiftMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
+		badges = ircMessage.Badges
 	case *twitchirc.RitualMessage:
 		channelID = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+		emoteSourceRoom = ircMessage.RoomID
+		message = ircMessage.Message
+		emotes = ircMessage.Emotes
+		badges = ircMessage.Badges
 	case *twitchirc.AnnouncementMessage:
 		channelID = ircMessage.RoomID
+		emoteSourceRoom = ircMessage.RoomID
 		channel = ircMessage.ChannelUserName
-		prepare, contentOverwrite, _ = r.dependencies.EmoteReplacer.Replace(ircMessage.RoomID, ircMessage.Message, ircMessage.Emotes)
+		message = ircMessage.Message
+		emotes = ircMessage.Emotes
+		badges = ircMessage.Badges
 	}
 
-	if prepare != "" {
-		io.WriteString(os.Stdout, prepare)
+	event := chatEventMessage{
+		isFakeEvent:             isFakeEvent,
+		accountID:               accountID,
+		channel:                 channel,
+		channelID:               channelID,
+		channelGuestID:          channelGuestID,
+		channelGuestDisplayName: channelGuestDisplayName,
+		tabID:                   tabID,
+
+		message: ircer,
+		displayModifier: messageContentModifier{
+			wordReplacements: make(wordReplacement),
+			badgeReplacement: make(wordReplacement),
+		},
 	}
 
-	if r.dependencies.UserConfig.Settings.Security.CheckLinks {
-		if urls := extractValidURLs(contentOverwrite); len(urls) > 0 {
+	var replaceCommand string
+
+	if len(message) > 0 {
+		p, replacement, err := r.dependencies.EmoteReplacer.Replace(emoteSourceRoom, message, emotes)
+		if err != nil {
+			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace emotes")
+		}
+
+		for k, v := range replacement {
+			event.displayModifier.wordReplacements[k] = v
+		}
+
+		replaceCommand += p
+	}
+
+	if len(badges) > 0 {
+		p, replace, err := r.dependencies.BadgeReplacer.Replace(emoteSourceRoom, badges)
+		if err != nil {
+			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace badges")
+		}
+
+		event.displayModifier.badgeReplacement = replace
+		replaceCommand += p
+	}
+
+	if replaceCommand != "" {
+		_, _ = io.WriteString(os.Stdout, replaceCommand)
+	}
+
+	if r.dependencies.UserConfig.Settings.Security.CheckLinks && len(message) > 0 {
+		if urls := extractValidURLs(message); len(urls) > 0 {
 			for _, u := range urls {
 				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), u)
 				if err != nil {
@@ -1113,23 +1159,12 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 				}
 
 				v := fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", "))
-				contentOverwrite = strings.ReplaceAll(contentOverwrite, u, v)
+				event.displayModifier.wordReplacements[u] = v
 			}
 		}
 	}
 
-	return chatEventMessage{
-		isFakeEvent:                 isFakeEvent,
-		accountID:                   accountID,
-		channel:                     channel,
-		channelID:                   channelID,
-		channelGuestID:              channelGuestID,
-		channelGuestDisplayName:     channelGuestDisplayName,
-		tabID:                       tabID,
-		message:                     ircer,
-		messageContentEmoteOverride: contentOverwrite,
-		badgeReplacement:            badgeReplacement,
-	}
+	return event
 }
 
 func (r *Root) waitChatEvents() tea.Cmd {

@@ -88,8 +88,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					MsgID:         twitchirc.MsgID(uuid.NewString()),
 					Message:       msg,
 				},
-				isFakeEvent:                 true,
-				messageContentEmoteOverride: msg,
+				isFakeEvent: true,
 			})
 
 			return m, nil
@@ -102,8 +101,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
 				Message:       notice,
 			},
-			isFakeEvent:                 true,
-			messageContentEmoteOverride: notice,
+			isFakeEvent: true,
 		})
 
 		return m, nil
@@ -115,7 +113,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			for iu := range m.usernames {
 				if messageContainsCaseInsensitive(privMsg, m.usernames[iu]) {
-					event.messageContentEmoteOverride = fmt.Sprintf("%s (mentioned in %s)", event.messageContentEmoteOverride, privMsg.ChannelUserName)
+					event.displayModifier.messageSuffix = fmt.Sprintf(" (mentioned in %s)", privMsg.ChannelUserName)
 					mentioned = true
 					break
 				}

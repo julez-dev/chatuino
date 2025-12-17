@@ -45,10 +45,10 @@ func TestReplacer_Replace_GraphicsEnabled(t *testing.T) {
 
 		replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote", nil)
+		command, replacement, err := replacer.Replace("", "Test Message with Kappa emote", nil)
 		require.NoError(t, err)
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
-		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m emote", replacedText)
+		assert.Equal(t, map[string]string{"Kappa": "\x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m"}, replacement)
 	})
 
 	t.Run("fetch-emote", func(t *testing.T) {
@@ -104,11 +104,11 @@ func TestReplacer_Replace_GraphicsEnabled(t *testing.T) {
 
 		replacer := NewReplacer(client, store, true, save.Theme{}, mockDisplay)
 
-		command, replacedText, err := replacer.Replace("", "Test Message with Kappa emote", nil)
+		command, replacement, err := replacer.Replace("", "Test Message with Kappa emote", nil)
 		require.NoError(t, err)
 		assert.True(t, loadCalled, "Load function should be called")
 		assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=28,v=28;L3BhdGgvdG8va2FwcGEucG5n\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=1\x1b\\", command)
-		assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\x1b[39m emote", replacedText)
+		assert.Equal(t, map[string]string{"Kappa": "\x1b[38;2;0;0;1m\U0010eeee\x1b[39m"}, replacement)
 	})
 
 	t.Run("animated-emote", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 		platform  Platform
 		emoteText string
 		theme     save.Theme
-		expected  string
+		expected  map[string]string
 	}{
 		{
 			name:      "twitch-emote",
@@ -163,7 +163,9 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 			theme: save.Theme{
 				TwitchTVEmoteColor: "#9147FF",
 			},
-			expected: "Test Message with \x1b[38;5;93mKappa\x1b[0m emote",
+			expected: map[string]string{
+				"Kappa": "\x1b[38;2;145;71;255mKappa\x1b[0m",
+			},
 		},
 		{
 			name:      "7tv-emote",
@@ -172,7 +174,9 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 			theme: save.Theme{
 				SevenTVEmoteColor: "#00A8FC",
 			},
-			expected: "Test Message with \x1b[38;5;39mpepeD\x1b[0m emote",
+			expected: map[string]string{
+				"pepeD": "\x1b[38;2;0;168;252mpepeD\x1b[0m",
+			},
 		},
 		{
 			name:      "bttv-emote",
@@ -181,7 +185,9 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 			theme: save.Theme{
 				BetterTTVEmoteColor: "#D50014",
 			},
-			expected: "Test Message with \x1b[38;5;160mmonkaS\x1b[0m emote",
+			expected: map[string]string{
+				"monkaS": "\x1b[38;2;213;0;20mmonkaS\x1b[0m",
+			},
 		},
 	}
 
@@ -199,10 +205,10 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 
 			replacer := NewReplacer(nil, store, false, tt.theme, nil)
 
-			command, replacedText, err := replacer.Replace("", "Test Message with "+tt.emoteText+" emote", nil)
+			command, replacement, err := replacer.Replace("", "Test Message with "+tt.emoteText+" emote", nil)
 			require.NoError(t, err)
 			assert.Empty(t, command, "should not generate graphics commands in color mode")
-			assert.Contains(t, replacedText, tt.emoteText)
+			assert.Equal(t, tt.expected, replacement)
 		})
 	}
 }
@@ -232,7 +238,7 @@ func TestReplacer_Replace_WithBadgeList(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacedText, err := replacer.Replace("123", "Test Message with Kappa emote", []twitchirc.Emote{
+	command, replacement, err := replacer.Replace("123", "Test Message with Kappa emote", []twitchirc.Emote{
 		{
 			ID: "KappaCustomID",
 			Positions: []twitchirc.EmotePosition{
@@ -245,7 +251,7 @@ func TestReplacer_Replace_WithBadgeList(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
-	assert.Equal(t, "Test Message with \x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m emote", replacedText)
+	assert.Equal(t, map[string]string{"Kappa": "\x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m"}, replacement)
 }
 
 func TestReplacer_Replace_ForeignEmote(t *testing.T) {
@@ -274,7 +280,7 @@ func TestReplacer_Replace_ForeignEmote(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacedText, err := replacer.Replace("channel123", "Check out ForeignEmote here", []twitchirc.Emote{
+	command, replacement, err := replacer.Replace("channel123", "Check out ForeignEmote here", []twitchirc.Emote{
 		{
 			ID: "ForeignEmoteID",
 			Positions: []twitchirc.EmotePosition{
@@ -286,8 +292,8 @@ func TestReplacer_Replace_ForeignEmote(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, command)
-	assert.Contains(t, replacedText, "\U0010eeee")
+	require.NotEmpty(t, command)
+	require.Equal(t, map[string]string{"ForeignEmote": "\x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m"}, replacement)
 }
 
 func TestReplacer_Replace_MultipleEmotes(t *testing.T) {
@@ -323,11 +329,11 @@ func TestReplacer_Replace_MultipleEmotes(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacedText, err := replacer.Replace("", "Kappa and PogChamp", nil)
+	command, replacement, err := replacer.Replace("", "Kappa and PogChamp", nil)
 	require.NoError(t, err)
-	assert.NotEmpty(t, command)
-	assert.Contains(t, replacedText, "\U0010eeee")
-	assert.Equal(t, 2, callCount, "should convert 2 emotes")
+	require.NotEmpty(t, command)
+	require.Equal(t, map[string]string{"Kappa": "\x1b[38;2;0;0;1m\U0010eeee\x1b[39m", "PogChamp": "\x1b[38;2;0;0;2m\U0010eeee\x1b[39m"}, replacement)
+	require.Equal(t, 2, callCount, "should convert 2 emotes")
 }
 
 type mockEmoteStore struct {

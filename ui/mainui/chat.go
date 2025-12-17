@@ -3,6 +3,7 @@ package mainui
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -538,7 +539,7 @@ func (c *chatWindow) handleTimeoutMessage(msg chatEventMessage) {
 			if strings.EqualFold(privMsg.LoginName, *timeoutMsg.UserName) && !e.IsDeleted {
 				hasDeleted = true
 				e.IsDeleted = true
-				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
+				e.Event.displayModifier.strikethrough = true
 			}
 		}
 
@@ -561,7 +562,7 @@ func (c *chatWindow) handleMessageDeletion(msg chatEventMessage) {
 			if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !e.IsDeleted {
 				hasDeleted = true
 				e.IsDeleted = true
-				e.Event.messageContentEmoteOverride = lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Render(privMsg.Message)
+				e.Event.displayModifier.strikethrough = true
 			}
 		}
 
@@ -571,68 +572,123 @@ func (c *chatWindow) handleMessageDeletion(msg chatEventMessage) {
 	}
 }
 
+// buildAlertPrefix creates a standardized prefix with timestamp and styled alert label.
+// Example output: "  15:04:05 [Notice]: "
+func (c *chatWindow) buildAlertPrefix(timestamp time.Time, label string, style lipgloss.Style) string {
+	return "  " + c.timeFormatFunc(timestamp) + " [" + style.Render(label) + "]: "
+}
+
+// formatMessageText applies word replacements and color processing to message content.
+func (c *chatWindow) formatMessageText(content string, modifier messageContentModifier) string {
+	if modifier.strikethrough || modifier.italic {
+		s := lipgloss.NewStyle()
+
+		if modifier.strikethrough {
+			s = s.Strikethrough(true).StrikethroughSpaces(false)
+		}
+
+		if modifier.italic {
+			s = s.Italic(true)
+		}
+
+		return s.Render(content)
+	}
+
+	content = c.applyWordReplacements(content, modifier.wordReplacements)
+
+	if modifier.messageSuffix != "" {
+		content += modifier.messageSuffix
+	}
+	return content
+}
+
+// applyWordReplacements applies word replacements from the display modifier to the given content.
+// It replaces each key in the wordReplacements map with its corresponding value.
+func (c *chatWindow) applyWordReplacements(content string, replacements wordReplacement) string {
+	for original, replacement := range replacements {
+		content = strings.ReplaceAll(content, original, replacement)
+	}
+	return content
+}
+
+func (c *chatWindow) setUserColorModifier(content string, modifier *messageContentModifier) {
+	words := strings.Split(content, " ")
+
+	if modifier.wordReplacements == nil {
+		modifier.wordReplacements = make(wordReplacement)
+	}
+
+	for _, word := range words {
+		cleaned := strings.ToLower(stripDisplayNameEdges(word))
+		renderFn, ok := c.userColorCache[cleaned]
+
+		if !ok {
+			// fallback try if empty
+			if f, ok := c.userColorCache[word]; ok {
+				renderFn = f
+			} else {
+				continue
+			}
+		}
+
+		modifier.wordReplacements[stripDisplayNameEdges(word)] = renderFn(cleaned)
+		modifier.wordReplacements[word] = renderFn(cleaned)
+	}
+}
+
 func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	switch msg := event.message.(type) {
 	case error:
 		prefix := "  " + strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
+		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	case *twitchirc.PrivateMessage:
 		userRenderFunc := c.getSetUserColorFunc(msg.LoginName, msg.Color)
 
 		// Build prefix components: time, [guest channel], [badges], username
-		var parts []string
-		parts = append(parts, "  "+c.timeFormatFunc(msg.TMISentTS))
+		parts := []string{"  " + c.timeFormatFunc(msg.TMISentTS)}
 
-		// Add guest channel if message is in context of shared chat
 		if event.channelGuestDisplayName != "" {
 			parts = append(parts, "|"+event.channelGuestDisplayName+"|")
 		}
 
-		// Add badges if present
-		if len(event.badgeReplacement) > 0 {
-			parts = append(parts, formatBadgeReplacement(c.deps.UserConfig.Settings, event.badgeReplacement))
+		if len(event.displayModifier.badgeReplacement) > 0 {
+			parts = append(parts, formatBadgeReplacement(c.deps.UserConfig.Settings, event.displayModifier.badgeReplacement))
 		}
 
-		// Add username
 		parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
 		prefix := strings.Join(parts, " ")
 
-		// detect links
-
-		return c.wordwrapMessage(prefix, c.colorMessage(event.messageContentEmoteOverride))
+		c.setUserColorModifier(msg.Message, &event.displayModifier)
+		return c.wordwrapMessage(prefix, c.formatMessageText(msg.Message, event.displayModifier))
 	case *twitchirc.Notice:
 		title := "Notice"
 		if event.isFakeEvent {
 			title = "Fake-Notice"
 		}
 
-		prefix := "  " + c.timeFormatFunc(msg.FakeTimestamp) + " [" + c.noticeAlertStyle.Render(title) + "]: "
-		styled := lipgloss.NewStyle().Italic(true).Render(msg.Message)
+		prefix := c.buildAlertPrefix(msg.FakeTimestamp, title, c.noticeAlertStyle)
 
-		return c.wordwrapMessage(prefix, c.colorMessage(styled))
+		event.displayModifier.italic = true
+		c.setUserColorModifier(msg.Message, &event.displayModifier)
+
+		return c.wordwrapMessage(prefix, c.formatMessageText(msg.Message, event.displayModifier))
 	case *twitchirc.ClearMessage:
-		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Message") + "]: A message from "
+		prefix := c.buildAlertPrefix(msg.TMISentTS, "Clear Message", c.clearChatAlertStyle)
+		prefix += "A message from "
+		text := msg.Login + " was removed."
 
-		userRenderFunc := c.getSetUserColorFunc(msg.Login, "")
+		c.setUserColorModifier(text, &event.displayModifier)
 
-		var text string
-
-		text += userRenderFunc(msg.Login)
-		text += " was removed."
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
+		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	case *twitchirc.ClearChat:
-		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.clearChatAlertStyle.Render("Clear Chat") + "]: "
+		prefix := c.buildAlertPrefix(msg.TMISentTS, "Clear Chat", c.clearChatAlertStyle)
 
 		if msg.TargetUserID == nil {
-			text := "Clear chat prevented by Chatuino. Chat restored."
-			return c.wordwrapMessage(prefix, c.colorMessage(text))
+			return c.wordwrapMessage(prefix, c.formatMessageText("Clear chat prevented by Chatuino. Chat restored.", event.displayModifier))
 		}
 
-		userRenderFunc := c.getSetUserColorFunc(*msg.UserName, "")
-
-		var text string
-		text += userRenderFunc(*msg.UserName)
+		text := *msg.UserName
 
 		if msg.BanDuration != nil && *msg.BanDuration > 0 {
 			text += " was timed out for " + time.Duration(*msg.BanDuration*1e9).String()
@@ -640,57 +696,62 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			text += " was permanently banned."
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
+		c.setUserColorModifier(text, &event.displayModifier)
+
+		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	case *twitchirc.SubMessage:
-		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Alert") + "]: "
+		prefix := c.buildAlertPrefix(msg.TMISentTS, "Sub Alert", c.subAlertStyle)
 
 		subResubText := "subscribed"
 		if msg.MsgID == "resub" {
 			subResubText = "resubscribed"
 		}
 
-		userRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
-
+		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
 		text := fmt.Sprintf("%s just %s with a %s subscription. (%d Months, %d Month Streak)",
-			userRenderFunc(msg.DisplayName),
+			msg.DisplayName,
 			subResubText,
 			msg.SubPlan.String(),
 			msg.CumulativeMonths,
 			msg.StreakMonths,
 		)
 
-		if event.messageContentEmoteOverride != "" {
-			text += ": " + event.messageContentEmoteOverride
+		// Append user message if present
+		if msg.Message != "" {
+			text += ": " + msg.Message
 		}
 
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
-	case *twitchirc.SubGiftMessage:
-		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + c.subAlertStyle.Render("Sub Gift Alert") + "]: "
+		c.setUserColorModifier(text, &event.displayModifier)
 
-		gifterRenderFunc := c.getSetUserColorFunc(msg.Login, msg.Color)
-		receiptRenderFunc := c.getSetUserColorFunc(msg.RecipientUserName, "")
+		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
+	case *twitchirc.SubGiftMessage:
+		prefix := c.buildAlertPrefix(msg.TMISentTS, "Sub Gift Alert", c.subAlertStyle)
+
+		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
 
 		text := fmt.Sprintf("%s gifted a %s sub to %s. (%d Months)",
-			gifterRenderFunc(msg.DisplayName),
+			msg.DisplayName,
 			msg.SubPlan.String(),
-			receiptRenderFunc(msg.ReceiptDisplayName),
+			msg.ReceiptDisplayName,
 			msg.Months,
 		)
 
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
+		c.setUserColorModifier(text, &event.displayModifier)
+
+		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	case *twitchirc.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
-
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
 
-		userRenderFn := c.getSetUserColorFunc(msg.Login, msg.Color)
-
+		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
 		text := fmt.Sprintf("%s: %s",
-			userRenderFn(msg.DisplayName),
-			event.messageContentEmoteOverride,
+			msg.DisplayName,
+			c.applyWordReplacements(msg.Message, event.displayModifier.wordReplacements),
 		)
 
-		return c.wordwrapMessage(prefix, c.colorMessage(text))
+		c.setUserColorModifier(text, &event.displayModifier)
+
+		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	}
 
 	return []string{}
@@ -709,35 +770,6 @@ func (c *chatWindow) getSetUserColorFunc(name string, colorHex string) func(strs
 	}
 
 	return c.userColorCache[name]
-}
-
-func (c *chatWindow) colorMessage(content string) string {
-	content = c.colorMessageMentions(content)
-	return content
-}
-
-func (c *chatWindow) colorMessageMentions(message string) string {
-	words := strings.Split(message, " ")
-	for i, word := range words {
-		cleaned := strings.ToLower(stripDisplayNameEdges(word))
-		renderFn, ok := c.userColorCache[cleaned]
-
-		//log.Logger.Info().Str("cleaned", cleaned).Str("word", word).Bool("found", ok).Msg("message color replace")
-
-		if !ok {
-			// fallback try if empty
-			if f, ok := c.userColorCache[word]; ok {
-				renderFn = f
-			} else {
-				continue
-			}
-		}
-
-		word = strings.ReplaceAll(word, stripDisplayNameEdges(word), renderFn(cleaned))
-		words[i] = word
-	}
-
-	return strings.Join(words, " ")
 }
 
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
@@ -925,10 +957,10 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 	return false
 }
 
-func formatBadgeReplacement(settings save.Settings, replacements []string) string {
+func formatBadgeReplacement(settings save.Settings, replacements map[string]string) string {
 	if !settings.Chat.GraphicBadges {
-		return fmt.Sprintf("[%s]", strings.Join(replacements, ","))
+		return fmt.Sprintf("[%s]", strings.Join(slices.Collect(maps.Values(replacements)), ","))
 	}
 
-	return strings.Join(replacements, "")
+	return strings.Join(slices.Collect(maps.Values(replacements)), "")
 }
