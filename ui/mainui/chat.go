@@ -605,8 +605,26 @@ func (c *chatWindow) formatMessageText(content string, modifier messageContentMo
 // applyWordReplacements applies word replacements from the display modifier to the given content.
 // It replaces each key in the wordReplacements map with its corresponding value.
 func (c *chatWindow) applyWordReplacements(content string, replacements wordReplacement) string {
-	for original, replacement := range replacements {
-		content = strings.ReplaceAll(content, original, replacement)
+	if replacements == nil {
+		return content
+	}
+
+	// Sort keys by length (longest first) to prevent partial matches
+	keys := make([]string, 0, len(replacements))
+	for k := range replacements {
+		keys = append(keys, k)
+	}
+
+	slices.SortFunc(keys, func(a, b string) int {
+		// Sort by length descending, then lexicographically
+		if len(a) != len(b) {
+			return len(b) - len(a)
+		}
+		return strings.Compare(a, b)
+	})
+
+	for _, original := range keys {
+		content = strings.ReplaceAll(content, original, replacements[original])
 	}
 	return content
 }
@@ -631,8 +649,9 @@ func (c *chatWindow) setUserColorModifier(content string, modifier *messageConte
 			}
 		}
 
-		modifier.wordReplacements[stripDisplayNameEdges(word)] = renderFn(cleaned)
-		modifier.wordReplacements[word] = renderFn(cleaned)
+		stripped := stripDisplayNameEdges(word)
+		modifier.wordReplacements[stripped] = renderFn(stripped)
+		modifier.wordReplacements[word] = renderFn(word)
 	}
 }
 

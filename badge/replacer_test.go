@@ -100,7 +100,7 @@ func TestReplacer_Replace(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "prepare_command_1", prepare)
 		require.Len(t, formatted, 1)
-		require.Equal(t, "replacement_1", formatted["Subscriber"])
+		require.Equal(t, "replacement_1", formatted["subscriber"])
 	})
 
 	t.Run("multiple badges returns concatenated results", func(t *testing.T) {
@@ -281,15 +281,15 @@ func TestReplacer_Replace(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, formatted, 3)
 
-		// Verify all expected texts are present (map keys are badge Titles)
+		// Verify all expected texts are present (map keys are badge set IDs)
 		expectedBadges := map[string]string{
-			"Badge1": "text_broadcaster123badge11",
-			"Badge2": "text_broadcaster123badge22",
-			"Badge3": "text_broadcaster123badge33",
+			"badge1": "text_broadcaster123badge11",
+			"badge2": "text_broadcaster123badge22",
+			"badge3": "text_broadcaster123badge33",
 		}
 
-		for title, expectedText := range expectedBadges {
-			require.Equal(t, expectedText, formatted[title])
+		for setID, expectedText := range expectedBadges {
+			require.Equal(t, expectedText, formatted[setID])
 		}
 	})
 

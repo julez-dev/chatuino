@@ -99,7 +99,7 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (s
 
 		prepare.WriteString(u.PrepareCommand)
 
-		formattedBadges[b.Title] = u.ReplacementText
+		formattedBadges[k] = u.ReplacementText
 	}
 
 	return prepare.String(), formattedBadges, nil
