@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/spf13/afero"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/syncmap"
 )
@@ -48,9 +47,9 @@ func TestDisplayManager_Convert_Cached(t *testing.T) {
 	result, err := dm.Convert(unit)
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, result.PrepareCommand)
-	assert.Contains(t, result.ReplacementText, "\U0010eeee")
-	assert.Contains(t, result.PrepareCommand, "L3BhdGgvdG8vY2FjaGVkLnBuZw==")
+	require.NotEmpty(t, result.PrepareCommand)
+	require.Contains(t, result.ReplacementText, "\U0010eeee")
+	require.Contains(t, result.PrepareCommand, "L3BhdGgvdG8vY2FjaGVkLnBuZw==")
 }
 
 func TestDisplayManager_Convert_SessionCache(t *testing.T) {
@@ -76,14 +75,14 @@ func TestDisplayManager_Convert_SessionCache(t *testing.T) {
 	// First conversion - should load and cache
 	result1, err := dm.Convert(unit)
 	require.NoError(t, err)
-	assert.NotEmpty(t, result1.PrepareCommand)
-	assert.Contains(t, result1.ReplacementText, "\U0010eeee")
+	require.NotEmpty(t, result1.PrepareCommand)
+	require.Contains(t, result1.ReplacementText, "\U0010eeee")
 
 	// Second conversion - should use session cache (no prepare command)
 	result2, err := dm.Convert(unit)
 	require.NoError(t, err)
-	assert.Empty(t, result2.PrepareCommand, "should not resend placement command from session cache")
-	assert.Equal(t, result1.ReplacementText, result2.ReplacementText)
+	require.Empty(t, result2.PrepareCommand, "should not resend placement command from session cache")
+	require.Equal(t, result1.ReplacementText, result2.ReplacementText)
 }
 
 func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
@@ -109,10 +108,10 @@ func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
 	result, err := dm.Convert(unit)
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, result.PrepareCommand)
-	assert.Contains(t, result.PrepareCommand, "\x1b_Gf=32,i=1,t=f,q=2")
-	assert.Contains(t, result.PrepareCommand, "\x1b_Ga=p,i=1,p=1,q=2")
-	assert.Contains(t, result.ReplacementText, "\x1b[38;2;0;0;1m\U0010eeee\x1b[39m")
+	require.NotEmpty(t, result.PrepareCommand)
+	require.Contains(t, result.PrepareCommand, "\x1b_Gf=32,i=1,t=f,q=2")
+	require.Contains(t, result.PrepareCommand, "\x1b_Ga=p,i=1,p=1,q=2")
+	require.Contains(t, result.ReplacementText, "\x1b[38;2;0;0;1m\U0010eeee\x1b[39m")
 }
 
 func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
@@ -133,10 +132,10 @@ func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
 	}
 
 	result, err := dm.Convert(unit)
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, ErrUnsupportedAnimatedFormat)
-	assert.Empty(t, result.PrepareCommand)
-	assert.Empty(t, result.ReplacementText)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrUnsupportedAnimatedFormat)
+	require.Empty(t, result.PrepareCommand)
+	require.Empty(t, result.ReplacementText)
 }
 
 func TestDecodedImage_PrepareCommand_Static(t *testing.T) {
@@ -155,8 +154,8 @@ func TestDecodedImage_PrepareCommand_Static(t *testing.T) {
 	}
 
 	cmd := decoded.PrepareCommand()
-	assert.Contains(t, cmd, "\x1b_Gf=32,i=1,t=f,q=2,s=20,v=20,o=z;dGVzdHBhdGg=\x1b\\")
-	assert.Contains(t, cmd, "\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\")
+	require.Contains(t, cmd, "\x1b_Gf=32,i=1,t=f,q=2,s=20,v=20,o=z;dGVzdHBhdGg=\x1b\\")
+	require.Contains(t, cmd, "\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\")
 }
 
 func TestDecodedImage_PrepareCommand_Animated(t *testing.T) {
@@ -183,15 +182,15 @@ func TestDecodedImage_PrepareCommand_Animated(t *testing.T) {
 
 	cmd := decoded.PrepareCommand()
 	// Should contain transmit command for first frame
-	assert.Contains(t, cmd, "\033_Gf=32,i=5,t=f,q=2,s=30,v=30,o=z;ZnJhbWUx\033\\")
+	require.Contains(t, cmd, "\033_Gf=32,i=5,t=f,q=2,s=30,v=30,o=z;ZnJhbWUx\033\\")
 	// Should contain animation start for first frame
-	assert.Contains(t, cmd, "\033_Ga=a,i=5,r=1,z=100,q=2;\033\\")
+	require.Contains(t, cmd, "\033_Ga=a,i=5,r=1,z=100,q=2;\033\\")
 	// Should contain subsequent frame
-	assert.Contains(t, cmd, "\033_Ga=f,i=5,t=t,f=32,s=30,v=30,z=100,q=2,o=z;ZnJhbWUy\033\\")
+	require.Contains(t, cmd, "\033_Ga=f,i=5,t=t,f=32,s=30,v=30,z=100,q=2,o=z;ZnJhbWUy\033\\")
 	// Should start animation
-	assert.Contains(t, cmd, "\033_Ga=a,i=5,s=3,v=1,q=2;\033\\")
+	require.Contains(t, cmd, "\033_Ga=a,i=5,s=3,v=1,q=2;\033\\")
 	// Should create placement
-	assert.Contains(t, cmd, "\x1b_Ga=p,i=5,p=5,q=2,U=1,r=1,c=3\x1b\\")
+	require.Contains(t, cmd, "\x1b_Ga=p,i=5,p=5,q=2,U=1,r=1,c=3\x1b\\")
 }
 
 func TestDecodedImage_DisplayUnicodePlaceholder(t *testing.T) {
@@ -230,7 +229,7 @@ func TestDecodedImage_DisplayUnicodePlaceholder(t *testing.T) {
 				Cols: tt.cols,
 			}
 			result := decoded.DisplayUnicodePlaceholder()
-			assert.Equal(t, tt.expected, result)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -268,9 +267,9 @@ func TestIntToRGB(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r, g, b := intToRGB(tt.id)
-			assert.Equal(t, tt.r, r)
-			assert.Equal(t, tt.g, g)
-			assert.Equal(t, tt.b, b)
+			require.Equal(t, tt.r, r)
+			require.Equal(t, tt.g, g)
+			require.Equal(t, tt.b, b)
 		})
 	}
 }

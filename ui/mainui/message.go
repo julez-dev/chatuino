@@ -27,15 +27,24 @@ type chatEventMessage struct {
 	channelGuestID          string // source-room-id by twitch
 	channelGuestDisplayName string // set later when broadcast tab reads the message
 
-	message twitchirc.IRCer
-	// the original twitch.IRC message with it's content overwritten by emote unicodes or colors
-	messageContentEmoteOverride string
-	badgeReplacement            []string
+	message         twitchirc.IRCer
+	displayModifier messageContentModifier // modifier for the original irc message
 
 	// if message should only be sent to a specific tab ID
 	// if empty send to all
 	tabID string
 }
+
+type (
+	messageContentModifier struct {
+		wordReplacements wordReplacement
+		badgeReplacement wordReplacement
+		messageSuffix    string
+		strikethrough    bool
+		italic           bool
+	}
+	wordReplacement map[string]string // og:replacement
+)
 
 // requestLocalMessageHandleMessage comes when the program requests a message to be handled by the IRC message handler which
 // then converts it into a chatEventMessage

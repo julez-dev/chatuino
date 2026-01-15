@@ -1393,15 +1393,14 @@ func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
 	initialEvents := make([]chatEventMessage, 0, 15)
 	for e := range slices.Values(t.chatWindow.entries) {
 		initialEvents = append(initialEvents, chatEventMessage{
-			isFakeEvent:                 true,
-			accountID:                   t.account.ID,
-			channel:                     t.channelLogin,
-			channelID:                   t.channelID,
-			messageContentEmoteOverride: e.Event.messageContentEmoteOverride,
-			message:                     e.Event.message,
-			channelGuestID:              e.Event.channelGuestID,
-			channelGuestDisplayName:     e.Event.channelGuestDisplayName,
-			badgeReplacement:            e.Event.badgeReplacement,
+			isFakeEvent:             true,
+			accountID:               t.account.ID,
+			channel:                 t.channelLogin,
+			channelID:               t.channelID,
+			message:                 e.Event.message,
+			displayModifier:         e.Event.displayModifier,
+			channelGuestID:          e.Event.channelGuestID,
+			channelGuestDisplayName: e.Event.channelGuestDisplayName,
 		})
 	}
 

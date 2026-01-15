@@ -84,8 +84,7 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
 				Message:       msg,
 			},
-			isFakeEvent:                 true,
-			messageContentEmoteOverride: msg,
+			isFakeEvent: true,
 		})
 
 		return l, cmd

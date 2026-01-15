@@ -37,7 +37,7 @@ type userInspect struct {
 	channel         string // the streamer
 	accountID       string // account id from chatuino user
 	badges          []twitchirc.Badge
-	formattedBadges []string
+	formattedBadges wordReplacement
 
 	ivr  *ivr.API
 	deps *DependencyContainer
@@ -134,10 +134,12 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 			io.WriteString(os.Stdout, prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
-				isFakeEvent:                 true,
-				message:                     loggedEntry.PrivateMessage,
-				messageContentEmoteOverride: contentOverwrite,
-				badgeReplacement:            badgeOverwrite,
+				isFakeEvent: true,
+				message:     loggedEntry.PrivateMessage,
+				displayModifier: messageContentModifier{
+					wordReplacements: contentOverwrite,
+					badgeReplacement: badgeOverwrite,
+				},
 			})
 		}
 
@@ -249,7 +251,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	// update badges if user inspect user is sender
 	if msg, ok := chatEvent.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
 		u.badges = msg.Badges
-		u.formattedBadges = chatEvent.badgeReplacement
+		u.formattedBadges = chatEvent.displayModifier.badgeReplacement
 	}
 
 	u.chatWindow, cmd = u.chatWindow.Update(msg)

@@ -109,7 +109,7 @@ func (e *emoteOverview) Init() tea.Cmd {
 					ch <- channelData{
 						emote: emoteWithOverwrite{
 							emote:     emote,
-							overwrite: overwrite,
+							overwrite: overwrite[emote.Text],
 						},
 						prepare: prepare,
 					}

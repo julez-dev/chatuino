@@ -25,7 +25,7 @@ type emoteReplacementMessage struct {
 }
 
 type Replacer interface {
-	Replace(channelID, content string, emoteList []twitchirc.Emote) (string, string, error)
+	Replace(channelID, content string, emoteList []twitchirc.Emote) (string, map[string]string, error)
 }
 
 // KeyMap is the key bindings for different actions within the textinput.
@@ -222,16 +222,16 @@ func (s *SuggestionTextInput) loadEmoteImageCommand() tea.Cmd {
 			return nil
 		}
 
-		log.Logger.Info().Str("sugg", suggestion).Str("replace", replace).Msg("suggestion emote replaced")
+		log.Logger.Info().Str("sugg", suggestion).Any("replace", replace).Msg("suggestion emote replaced")
 
 		// skip when empty
-		if replace == "" {
+		if replace[suggestion] == "" {
 			return nil
 		}
 
 		return emoteReplacementMessage{
 			prepare:     prepare,
-			replaceCode: replace,
+			replaceCode: replace[suggestion],
 			word:        suggestion,
 		}
 	}

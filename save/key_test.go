@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
@@ -17,9 +17,9 @@ func TestKeyMap_MarshalYAML(t *testing.T) {
 
 	doc, err := yaml.Marshal(keyMap)
 
-	if assert.NoError(t, err) {
-		assert.Equal(t, "up:\n    - w\n    - q\n", string(doc))
-	}
+	require.NoError(t, err)
+	require.Equal(t, "up:\n    - w\n    - q\n", string(doc))
+
 }
 
 func TestKeyMap_UnmarshalYAML(t *testing.T) {
@@ -30,9 +30,9 @@ func TestKeyMap_UnmarshalYAML(t *testing.T) {
 	}
 
 	err := yaml.Unmarshal([]byte("up:\n    - w\n    - q\n"), &gotKeyMap)
-	if assert.NoError(t, err) {
-		assert.Equal(t, []string{"w", "q"}, gotKeyMap.Up.Keys())
-		assert.Equal(t, "test-help", gotKeyMap.Up.Help().Desc)   // should not be overwritten
-		assert.Equal(t, []string{"w", "q"}, gotKeyMap.Up.Keys()) // should be overwritten
-	}
+	require.NoError(t, err)
+	require.Equal(t, []string{"w", "q"}, gotKeyMap.Up.Keys())
+	require.Equal(t, "test-help", gotKeyMap.Up.Help().Desc)   // should not be overwritten
+	require.Equal(t, []string{"w", "q"}, gotKeyMap.Up.Keys()) // should be overwritten
+
 }

@@ -6,7 +6,7 @@ import (
 
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/lithammer/fuzzysearch/fuzzy"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_selectWordAtIndex(t *testing.T) {
@@ -14,21 +14,21 @@ func Test_selectWordAtIndex(t *testing.T) {
 		sentence := "a new and nice sentence"
 
 		res := selectWordAtIndex(sentence, 7)
-		assert.Equal(t, "and", res)
+		require.Equal(t, "and", res)
 	})
 
 	t.Run("one word", func(t *testing.T) {
 		sentence := "new"
 
 		res := selectWordAtIndex(sentence, 1)
-		assert.Equal(t, "new", res)
+		require.Equal(t, "new", res)
 	})
 
 	t.Run("bounds", func(t *testing.T) {
 		sentence := "new bla"
 
 		res := selectWordAtIndex(sentence, len(sentence)+1)
-		assert.Equal(t, "", res)
+		require.Equal(t, "", res)
 	})
 }
 
@@ -66,5 +66,5 @@ func Test_filter(t *testing.T) {
 		return false
 	}))
 
-	assert.Len(t, filtered, 1)
+	require.Len(t, filtered, 1)
 }

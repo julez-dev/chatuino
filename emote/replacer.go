@@ -53,7 +53,7 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 	}
 }
 
-func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emote) (string, string, error) {
+func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emote) (string, map[string]string, error) {
 	// twitch sends us a list of emotes used in the message, even emotes from other channels (sub emotes)
 	// parse the emote text with the index and replace it from the global store, since its guaranteed
 	// the user has access to the emote
@@ -67,9 +67,10 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 	}
 
 	words := strings.Split(content, " ")
+	replacements := map[string]string{}
 
 	var cmd strings.Builder
-	for windex, word := range words {
+	for _, word := range words {
 		var (
 			emote   Emote
 			isEmote bool
@@ -96,7 +97,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 
 		// graphics not enabled, replace with colored emote
 		if !i.enableGraphics {
-			words[windex] = i.replaceEmoteColored(emote)
+			replacements[word] = i.replaceEmoteColored(emote)
 			continue
 		}
 
@@ -114,10 +115,10 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 		}
 
 		_, _ = cmd.WriteString(unit.PrepareCommand)
-		words[windex] = unit.ReplacementText
+		replacements[word] = unit.ReplacementText
 	}
 
-	return cmd.String(), strings.Join(words, " "), nil
+	return cmd.String(), replacements, nil
 }
 
 func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser, string, error) {
