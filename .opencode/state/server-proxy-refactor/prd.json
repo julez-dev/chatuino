@@ -25,7 +25,7 @@
         "Client-Id header injected",
         "Response status, headers, body returned unchanged"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "proxy-3",

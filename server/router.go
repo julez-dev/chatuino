@@ -32,20 +32,10 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 		r.Post("/refresh", api.handleAuthRefresh())
 	})
 
+	// New helix-aligned proxy routes (allowlist validated, proxied to Twitch)
 	c.Route("/ttv", func(r chi.Router) {
-		r.Get("/emotes/global", api.handleGetGlobalEmotes())
-
-		// batched endoints
-		r.Get("/channels", api.handleGetStreamUser())
-		r.Get("/channels/info", api.handleGetStreamInfo())
-
-		r.Get("/channel/{channelID}/emotes", api.handleGetChannelEmotes())
-		r.Get("/channel/{channelID}/info", api.handleGetStreamInfo())
-		r.Get("/channel/{channelID}/chat/settings", api.handleGetChatSettings())
-		r.Get("/channel/{channelID}/chat/badges", api.handleGetChannelBadges())
-		r.Get("/channel/{login}/user", api.handleGetStreamUser())
-
-		r.Get("/chat/badges/global", api.handleGetGlobalBadges())
+		r.Use(HelixAllowlistMiddleware)
+		r.Get("/*", api.handleHelixProxy())
 	})
 
 	return c

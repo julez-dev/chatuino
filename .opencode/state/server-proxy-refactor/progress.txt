@@ -7,6 +7,9 @@ Started: 2026-01-15
 - Map-based allowlist: `map[string]struct{}` for O(1) lookup
 - Path extraction: `strings.TrimPrefix` for stripping route prefixes
 - Tests: use `require` framework (stretchr/testify), not `t.Error/Fail`
+- Tests: always add descriptive messages to `require.NoError(t, err, "message")`
+- Reverse proxy: use `httputil.ReverseProxy` with `Director` (not deprecated `Rewrite`)
+- Reverse proxy: use `ModifyResponse` to filter response headers
 
 ---
 <!-- Task logs below - APPEND ONLY -->
@@ -15,3 +18,16 @@ Started: 2026-01-15
 - Implemented server-side endpoint allowlist with 7 Helix paths
 - Files: `server/helix_allowlist.go`, `server/helix_allowlist_test.go`
 - **Learnings:** Using map[string]struct{} for allowlist gives O(1) lookup; middleware not yet wired into router (will be done in proxy-2)
+
+## Task - proxy-2
+- Implemented reverse proxy handler for /ttv/* routes using `httputil.ReverseProxy`
+- Created `HelixTokenProvider` for managing app access tokens (client credentials flow)
+- Files: `server/helix_proxy.go`, `server/helix_proxy_test.go`, `server/helix_token.go`, `server/helix_token_test.go`
+- Updated `server/router.go` to use `handleHelixProxy()` with allowlist middleware
+- Updated `server/api.go` to include `helixTokenProvider` field
+- **Learnings:** 
+  - Use `Director` (not deprecated `Rewrite`) to modify outgoing requests
+  - Use `ModifyResponse` to filter response headers (strip rate limit headers except `Ratelimit-Reset` on 429)
+  - Handler pattern: return `http.HandlerFunc`, attach as `r.Get("/*", api.handleHelixProxy())`
+  - Testability: internal `helixProxyHandlerWithTarget(*url.URL)` accepts configurable target
+  - Old handlers now unused (cleanup in refactor-1)

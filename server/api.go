@@ -19,19 +19,21 @@ type Config struct {
 }
 
 type API struct {
-	logger zerolog.Logger
-	conf   Config
-	client *http.Client
+	logger             zerolog.Logger
+	conf               Config
+	client             *http.Client
+	helixTokenProvider *HelixTokenProvider
 
 	ttvAPI *twitchapi.API
 }
 
 func New(logger zerolog.Logger, config Config, client *http.Client, ttvAPI *twitchapi.API) *API {
 	return &API{
-		logger: logger,
-		conf:   config,
-		client: client,
-		ttvAPI: ttvAPI,
+		logger:             logger,
+		conf:               config,
+		client:             client,
+		helixTokenProvider: NewHelixTokenProvider(client, config.ClientID, config.ClientSecret),
+		ttvAPI:             ttvAPI,
 	}
 }
 
