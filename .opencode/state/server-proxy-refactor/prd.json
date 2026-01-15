@@ -1,0 +1,177 @@
+{
+  "prdName": "server-proxy-refactor",
+  "tasks": [
+    {
+      "id": "proxy-1",
+      "category": "proxy",
+      "description": "Server-side endpoint allowlist",
+      "steps": [
+        "Allowlist defined in server package (hardcoded)",
+        "Contains: chat/emotes/global, chat/emotes, streams, users, chat/settings, chat/badges/global, chat/badges",
+        "Non-allowlisted paths return 403 Forbidden",
+        "Allowlist check happens before any proxying"
+      ],
+      "passes": true
+    },
+    {
+      "id": "proxy-2",
+      "category": "proxy",
+      "description": "Reverse proxy handler for /ttv/* routes",
+      "steps": [
+        "GET /ttv/* forwards to https://api.twitch.tv/helix/*",
+        "Path rewritten: /ttv/X -> /helix/X",
+        "Query params passed through unchanged",
+        "Authorization: Bearer <app_token> header injected",
+        "Client-Id header injected",
+        "Response status, headers, body returned unchanged"
+      ],
+      "passes": false
+    },
+    {
+      "id": "proxy-3",
+      "category": "proxy",
+      "description": "App access token management with 401 retry",
+      "steps": [
+        "On 401 from Twitch: refresh app access token using client credentials flow",
+        "Retry the failed request once after token refresh",
+        "If retry also fails, return error to client"
+      ],
+      "passes": false
+    },
+    {
+      "id": "proxy-4",
+      "category": "proxy",
+      "description": "Pass through Twitch 429 responses",
+      "steps": [
+        "On 429 from Twitch: pass response through to client (don't wait server-side)",
+        "Ratelimit-Reset header preserved in response",
+        "Client responsible for retry logic"
+      ],
+      "passes": false
+    },
+    {
+      "id": "refactor-1",
+      "category": "refactor",
+      "description": "Remove old /ttv handlers and twitchapi dependency from server",
+      "steps": [
+        "Delete handler functions: handleGetGlobalEmotes, handleGetChannelEmotes, handleGetStreamInfo, handleGetChatSettings, handleGetStreamUser, handleGetGlobalBadges, handleGetChannelBadges",
+        "Remove ttvAPI field from server.API struct",
+        "Server package has no imports from twitch/twitchapi for data models",
+        "Old routes in router.go replaced with single proxy handler"
+      ],
+      "passes": false
+    },
+    {
+      "id": "client-1",
+      "category": "client",
+      "description": "Update server.Client to use new Helix-aligned paths",
+      "steps": [
+        "GetGlobalEmotes calls /ttv/chat/emotes/global",
+        "GetChannelEmotes calls /ttv/chat/emotes?broadcaster_id=",
+        "GetStreamInfo calls /ttv/streams?user_id=",
+        "GetUsers calls /ttv/users?login=&id=",
+        "GetChatSettings calls /ttv/chat/settings?broadcaster_id=",
+        "GetGlobalChatBadges calls /ttv/chat/badges/global",
+        "GetChannelChatBadges calls /ttv/chat/badges?broadcaster_id=",
+        "Response types unchanged (still use twitchapi.* types)"
+      ],
+      "passes": false
+    },
+    {
+      "id": "client-2",
+      "category": "client",
+      "description": "Extract shared 429 retry logic",
+      "steps": [
+        "Helper function extracts Ratelimit-Reset header",
+        "Helper waits until reset time and retries request",
+        "twitchapi.API uses shared helper (refactored from twitchapi/api.go:878-909)",
+        "server.Client uses same shared helper",
+        "No duplicate retry logic between clients"
+      ],
+      "passes": false
+    },
+    {
+      "id": "testing-1",
+      "category": "testing",
+      "description": "Tests for endpoint allowlist",
+      "steps": [
+        "Test: allowlisted paths pass through",
+        "Test: non-allowlisted paths return 403",
+        "Test: paths with query params correctly matched"
+      ],
+      "passes": false
+    },
+    {
+      "id": "testing-2",
+      "category": "testing",
+      "description": "Tests for proxy behavior",
+      "steps": [
+        "Test: path rewriting /ttv/* -> /helix/*",
+        "Test: query params preserved",
+        "Test: auth headers injected",
+        "Test: response passed through unchanged"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ratelimit-1",
+      "category": "ratelimit",
+      "description": "Add Redis dependency and connection setup",
+      "steps": [
+        "go-redis/v9 added to go.mod",
+        "Redis client created in server package",
+        "Connection configurable via environment or config",
+        "Graceful handling when Redis unavailable (fail open)"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ratelimit-2",
+      "category": "ratelimit",
+      "description": "Rate limiting middleware with Redis backend",
+      "steps": [
+        "Middleware extracts client IP (respects X-Forwarded-For from trusted proxies)",
+        "Token bucket or sliding window in Redis per IP",
+        "Burst capacity ~100 requests",
+        "Sustained rate ~25 requests/minute",
+        "Returns 429 with Retry-After header when exceeded",
+        "Fails open if Redis unavailable"
+      ],
+      "passes": false
+    },
+    {
+      "id": "testing-3",
+      "category": "testing",
+      "description": "Tests for rate limiting middleware",
+      "steps": [
+        "Test: requests under limit succeed",
+        "Test: requests over burst limit return 429",
+        "Test: Retry-After header present in 429 response",
+        "Test: different IPs have independent limits",
+        "Test: middleware fails open when Redis unavailable"
+      ],
+      "passes": false
+    }
+  ],
+  "context": {
+    "patterns": [
+      "Chi router with middleware chain: server/router.go:9-17",
+      "httputil.ReverseProxy commented example: server/handler.go:248-268",
+      "Existing 429 handling: twitchapi/api.go:878-909"
+    ],
+    "keyFiles": [
+      "server/router.go",
+      "server/handler.go",
+      "server/client.go",
+      "server/api.go",
+      "twitch/twitchapi/api.go"
+    ],
+    "nonGoals": [
+      "Auth endpoints (/auth/*) - different concern, already working",
+      "Link check proxy (/proxy/link_check) - unrelated to Twitch API",
+      "Write operations - app token doesn't support them",
+      "Response caching - future optimization",
+      "Metrics/observability - future enhancement"
+    ]
+  }
+}

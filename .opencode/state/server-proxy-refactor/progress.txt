@@ -1,0 +1,17 @@
+# Progress Log
+PRD: server-proxy-refactor
+Started: 2026-01-15
+
+## Codebase Patterns
+- Middleware pattern: `func(next http.Handler) http.Handler` returning `http.HandlerFunc`
+- Map-based allowlist: `map[string]struct{}` for O(1) lookup
+- Path extraction: `strings.TrimPrefix` for stripping route prefixes
+- Tests: use `require` framework (stretchr/testify), not `t.Error/Fail`
+
+---
+<!-- Task logs below - APPEND ONLY -->
+
+## Task - proxy-1
+- Implemented server-side endpoint allowlist with 7 Helix paths
+- Files: `server/helix_allowlist.go`, `server/helix_allowlist_test.go`
+- **Learnings:** Using map[string]struct{} for allowlist gives O(1) lookup; middleware not yet wired into router (will be done in proxy-2)
