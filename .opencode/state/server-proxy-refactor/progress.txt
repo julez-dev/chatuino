@@ -74,3 +74,19 @@ Started: 2026-01-15
   - Query param names match Helix API: `login` and `id` (not `logins` and `ids`), `user_id` (not path-based)
   - Simplified GetStreamInfo - removed special case for single ID, now always uses query params
   - Response types unchanged - still use twitchapi.* types for compatibility
+
+## Task - testing-1
+- Tests for endpoint allowlist already implemented in proxy-1
+- Files: `server/helix_allowlist_test.go`
+- **Learnings:**
+  - TestHelixAllowlistMiddleware covers all requirements: allowlisted paths pass through (200), non-allowlisted return 403, query params handled correctly
+  - TestIsPathAllowed verifies allowlist logic for all 7 Helix endpoints
+  - Tests use table-driven approach with subtests for each scenario
+
+## Task - testing-2
+- Tests for proxy behavior already implemented in proxy-2
+- Files: `server/helix_proxy_test.go`
+- **Learnings:**
+  - TestHelixProxyHandler covers all requirements: path rewriting /ttv/* -> /helix/*, query params preserved, auth headers injected, response passed through unchanged
+  - Tests use mock HTTP servers to verify request/response handling
+  - Each test captures specific aspects (path, query, headers, body) for verification

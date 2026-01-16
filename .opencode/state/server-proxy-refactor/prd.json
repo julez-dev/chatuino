@@ -99,7 +99,7 @@
         "Test: non-allowlisted paths return 403",
         "Test: paths with query params correctly matched"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "testing-2",
@@ -111,7 +111,7 @@
         "Test: auth headers injected",
         "Test: response passed through unchanged"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ratelimit-1",
