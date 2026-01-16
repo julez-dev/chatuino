@@ -36,7 +36,7 @@
         "Retry the failed request once after token refresh",
         "If retry also fails, return error to client"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "proxy-4",

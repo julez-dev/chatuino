@@ -34,15 +34,8 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.Handler {
 			helixPath := extractHelixPath(req.URL.Path)
 			req.URL.Path = "/helix/" + helixPath
 
-			// Get app access token and inject auth headers
-			token, err := a.helixTokenProvider.GetToken(req.Context())
-			if err != nil {
-				a.logger.Err(err).Msg("failed to get app access token")
-				return
-			}
-
-			req.Header.Set("Authorization", "Bearer "+token)
-			req.Header.Set("Client-Id", a.conf.ClientID)
+			// Remove X-Forwarded-For header
+			req.Header.Del("X-Forwarded-For")
 
 			// Set required proxy headers
 			if _, ok := req.Header["User-Agent"]; !ok {
@@ -69,6 +62,7 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.Handler {
 			logger.Err(err).Str("url", r.URL.String()).Msg("proxy error")
 			w.WriteHeader(http.StatusBadGateway)
 		},
+		Transport: newHelixRetryTransport(http.DefaultTransport, a.helixTokenProvider, a.conf.ClientID),
 	}
 
 	return proxy

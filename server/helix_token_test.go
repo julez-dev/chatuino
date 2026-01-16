@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHelixTokenProvider_GetToken(t *testing.T) {
+func TestHelixTokenProvider_EnsureToken(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fetches token from server", func(t *testing.T) {
@@ -35,7 +35,7 @@ func TestHelixTokenProvider_GetToken(t *testing.T) {
 		provider := NewHelixTokenProvider(http.DefaultClient, "test-client-id", "test-secret")
 		provider.tokenURL = tokenServer.URL
 
-		token, err := provider.GetToken(context.Background())
+		token, err := provider.EnsureToken(context.Background())
 
 		require.NoError(t, err)
 		require.Equal(t, "fresh-token-abc", token)
@@ -56,12 +56,12 @@ func TestHelixTokenProvider_GetToken(t *testing.T) {
 		provider.tokenURL = tokenServer.URL
 
 		// First call
-		token1, err := provider.GetToken(context.Background())
+		token1, err := provider.EnsureToken(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, "cached-token", token1)
 
 		// Second call should use cached token
-		token2, err := provider.GetToken(context.Background())
+		token2, err := provider.EnsureToken(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, "cached-token", token2)
 
@@ -80,7 +80,7 @@ func TestHelixTokenProvider_GetToken(t *testing.T) {
 		provider := NewHelixTokenProvider(http.DefaultClient, "bad-client-id", "bad-secret")
 		provider.tokenURL = tokenServer.URL
 
-		_, err := provider.GetToken(context.Background())
+		_, err := provider.EnsureToken(context.Background())
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "status 400")
@@ -98,7 +98,7 @@ func TestHelixTokenProvider_GetToken(t *testing.T) {
 		provider := NewHelixTokenProvider(http.DefaultClient, "test-client-id", "test-secret")
 		provider.tokenURL = tokenServer.URL
 
-		_, err := provider.GetToken(context.Background())
+		_, err := provider.EnsureToken(context.Background())
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unmarshal")
@@ -110,7 +110,7 @@ func TestHelixTokenProvider_GetToken(t *testing.T) {
 		provider := NewHelixTokenProvider(http.DefaultClient, "test-client-id", "test-secret")
 		provider.tokenURL = "http://localhost:99999"
 
-		_, err := provider.GetToken(context.Background())
+		_, err := provider.EnsureToken(context.Background())
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "token request failed")
@@ -139,7 +139,7 @@ func TestHelixTokenProvider_InvalidateToken(t *testing.T) {
 		provider.tokenURL = tokenServer.URL
 
 		// First fetch
-		token1, err := provider.GetToken(context.Background())
+		token1, err := provider.EnsureToken(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, "token-v1", token1)
 
@@ -147,7 +147,7 @@ func TestHelixTokenProvider_InvalidateToken(t *testing.T) {
 		provider.InvalidateToken()
 
 		// Second fetch should get new token
-		token2, err := provider.GetToken(context.Background())
+		token2, err := provider.EnsureToken(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, "token-v2", token2)
 
@@ -177,7 +177,7 @@ func TestHelixTokenProvider_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			token, err := provider.GetToken(context.Background())
+			token, err := provider.EnsureToken(context.Background())
 			require.NoError(t, err)
 			require.Equal(t, "concurrent-token", token)
 		}()

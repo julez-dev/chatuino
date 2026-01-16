@@ -10,6 +10,7 @@ Started: 2026-01-15
 - Tests: always add descriptive messages to `require.NoError(t, err, "message")`
 - Reverse proxy: use `httputil.ReverseProxy` with `Director` (not deprecated `Rewrite`)
 - Reverse proxy: use `ModifyResponse` to filter response headers
+- Retry logic: custom `http.RoundTripper` wrapping base transport for status-specific retries
 
 ---
 <!-- Task logs below - APPEND ONLY -->
@@ -31,3 +32,18 @@ Started: 2026-01-15
   - Handler pattern: return `http.HandlerFunc`, attach as `r.Get("/*", api.handleHelixProxy())`
   - Testability: internal `helixProxyHandlerWithTarget(*url.URL)` accepts configurable target
   - Old handlers now unused (cleanup in refactor-1)
+
+## Task - proxy-3
+- Implemented 401 retry with token refresh using custom RoundTripper
+- Files: `server/helix_retry_transport.go`, `server/helix_retry_transport_test.go`, `server/helix_token.go` (renamed method)
+- Modified `server/helix_proxy.go` to use retry transport, removed token injection from Director
+- **Learnings:**
+  - Custom RoundTripper wraps base transport for retry logic AND auth header injection
+  - Extract header injection to `injectAuthHeaders(req)` helper - called for both initial and retry requests
+  - Renamed `GetToken` to `EnsureToken` - better reflects side effects (HTTP request may occur)
+  - Transport handles both initial token injection and retry with refreshed token
+  - Director only handles URL rewriting and header cleanup (removed X-Forwarded-For)
+  - Request body must be cloned before first attempt (for retry)
+  - Only close response body after successful token refresh (before retry fails, keep body intact)
+  - tokenProvider interface for testability (InvalidateToken + EnsureToken)
+  - Test organization: group by behavior (non-401, 401 retry, auth headers) with subtests

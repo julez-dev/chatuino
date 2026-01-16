@@ -35,8 +35,9 @@ func NewHelixTokenProvider(client *http.Client, clientID, clientSecret string) *
 	}
 }
 
-// GetToken returns a valid app access token, creating one if necessary.
-func (p *HelixTokenProvider) GetToken(ctx context.Context) (string, error) {
+// EnsureToken returns a valid app access token, creating one if necessary.
+// This method may perform HTTP requests to fetch a new token.
+func (p *HelixTokenProvider) EnsureToken(ctx context.Context) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
