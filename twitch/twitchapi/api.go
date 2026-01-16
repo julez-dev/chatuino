@@ -46,6 +46,16 @@ func WithHTTPClient(client *http.Client) APIOptionFunc {
 	}
 }
 
+func WithTransport(transport http.RoundTripper) APIOptionFunc {
+	return func(api *API) error {
+		if api.client == nil {
+			api.client = &http.Client{}
+		}
+		api.client.Transport = transport
+		return nil
+	}
+}
+
 func WithUserAuthentication(provider AccountProvider, refresher TokenRefresher, accountID string) APIOptionFunc {
 	return func(api *API) error {
 		api.refresher = refresher
@@ -86,7 +96,17 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	}
 
 	if api.client == nil {
-		api.client = http.DefaultClient
+		api.client = &http.Client{}
+	}
+
+	// Wrap the client's transport with rate limit retry logic
+	if api.client.Transport == nil {
+		api.client.Transport = http.DefaultTransport
+	}
+
+	api.client.Transport = &httputil.RateLimitRetryTransport{
+		Transport:     api.client.Transport,
+		SkipEndpoints: []string{"/helix/eventsub/subscriptions"},
 	}
 
 	if api.provider == nil {
@@ -632,46 +652,29 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method, endpoint string, body []byte) (T, error) {
 	var data T
 
-	// Define the request function
-	makeRequest := func() (*http.Response, error) {
-		url := fmt.Sprintf("%s%s", baseURL, endpoint)
-		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-		req.Header.Set("Client-Id", api.clientID)
-
-		if body != nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-
-		return api.client.Do(req)
+	url := fmt.Sprintf("%s%s", baseURL, endpoint)
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	if err != nil {
+		return data, err
 	}
 
-	// Check if endpoint should skip 429 retry
-	if endpoint == "/eventsub/subscriptions" {
-		// EventSub has cost-based limits, don't retry
-		resp, err := makeRequest()
-		if err != nil {
-			return data, err
-		}
-		defer resp.Body.Close()
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Client-Id", api.clientID)
 
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return data, fmt.Errorf("reached event sub cost limit")
-		}
-
-		return parseResponse[T](resp)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
-	// Use retry helper for other endpoints
-	resp, err := httputil.RetryOn429(ctx, makeRequest)
+	resp, err := api.client.Do(req)
 	if err != nil {
 		return data, err
 	}
 	defer resp.Body.Close()
+
+	// Special handling for EventSub 429 responses
+	if endpoint == "/eventsub/subscriptions" && resp.StatusCode == http.StatusTooManyRequests {
+		return data, fmt.Errorf("reached event sub cost limit")
+	}
 
 	return parseResponse[T](resp)
 }

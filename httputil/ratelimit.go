@@ -1,18 +1,32 @@
 package httputil
 
 import (
-	"context"
+	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 )
 
-// RetryOn429 wraps an HTTP request function and retries on 429 (Too Many Requests)
-// by waiting until the Ratelimit-Reset time specified in the response header.
-// The retryFunc should execute the HTTP request and return the response.
-// If skipEndpoints is provided, 429 responses for those endpoints will not be retried.
-func RetryOn429(ctx context.Context, retryFunc func() (*http.Response, error), skipEndpoints ...string) (*http.Response, error) {
-	resp, err := retryFunc()
+// RateLimitRetryTransport is an http.RoundTripper that automatically retries
+// requests that receive a 429 (Too Many Requests) response by waiting until
+// the time specified in the Ratelimit-Reset header.
+type RateLimitRetryTransport struct {
+	// Transport is the underlying http.RoundTripper
+	Transport http.RoundTripper
+
+	// SkipEndpoints lists endpoint paths that should NOT be retried on 429
+	SkipEndpoints []string
+}
+
+// RoundTrip implements http.RoundTripper
+func (t *RateLimitRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt := t.Transport
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+
+	resp, err := rt.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
@@ -23,6 +37,11 @@ func RetryOn429(ctx context.Context, retryFunc func() (*http.Response, error), s
 	}
 
 	// Check if this endpoint should skip retry
+	if slices.Contains(t.SkipEndpoints, req.URL.Path) {
+		return resp, nil
+	}
+
+	// Check for Ratelimit-Reset header
 	resetHeader := resp.Header.Get("Ratelimit-Reset")
 	if resetHeader == "" {
 		// No reset header, can't retry
@@ -37,6 +56,7 @@ func RetryOn429(ctx context.Context, retryFunc func() (*http.Response, error), s
 	}
 
 	// Close the 429 response body since we're going to retry
+	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 
 	// Calculate wait duration (add 1 second buffer)
@@ -50,18 +70,8 @@ func RetryOn429(ctx context.Context, retryFunc func() (*http.Response, error), s
 	select {
 	case <-timer.C:
 		// Reset time reached, retry the request
-		return retryFunc()
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		return rt.RoundTrip(req)
+	case <-req.Context().Done():
+		return nil, req.Context().Err()
 	}
-}
-
-// ShouldSkipRetry checks if the endpoint is in the skip list
-func ShouldSkipRetry(endpoint string, skipList []string) bool {
-	for _, skip := range skipList {
-		if endpoint == skip {
-			return true
-		}
-	}
-	return false
 }

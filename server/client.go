@@ -22,7 +22,16 @@ type Client struct {
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{}
+	}
+
+	// Wrap the client's transport with rate limit retry logic
+	if httpClient.Transport == nil {
+		httpClient.Transport = http.DefaultTransport
+	}
+
+	httpClient.Transport = &httputil.RateLimitRetryTransport{
+		Transport: httpClient.Transport,
 	}
 
 	return &Client{
@@ -194,18 +203,12 @@ func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string)
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	var respData T
 
-	// Define the request function for retry helper
-	makeRequest := func() (*http.Response, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		return client.httpClient.Do(req)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return respData, err
 	}
 
-	// Use retry helper to handle 429 responses
-	resp, err := httputil.RetryOn429(ctx, makeRequest)
+	resp, err := client.httpClient.Do(req)
 	if err != nil {
 		return respData, err
 	}
