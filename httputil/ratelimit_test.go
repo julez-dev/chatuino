@@ -69,9 +69,16 @@ func TestRateLimitRetryTransport(t *testing.T) {
 
 		callCount := 0
 		resetTime := time.Now().Add(1 * time.Second).Unix()
+		expectedBody := `{"test":"data"}`
 
 		mockTransport := RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			callCount++
+
+			// Verify request body is present and correct on both calls
+			body, err := io.ReadAll(req.Body)
+			require.NoError(t, err, "should read request body")
+			require.Equal(t, expectedBody, string(body), "request body should match on call %d", callCount)
+
 			if callCount == 1 {
 				return &http.Response{
 					StatusCode: http.StatusTooManyRequests,
@@ -91,7 +98,10 @@ func TestRateLimitRetryTransport(t *testing.T) {
 			Transport: mockTransport,
 		}
 
-		req := httptest.NewRequest(http.MethodGet, "http://example.com/test", nil)
+		// Use http.NewRequest (not httptest.NewRequest) to ensure GetBody is set
+		req, err := http.NewRequest(http.MethodPost, "http://example.com/test", strings.NewReader(expectedBody))
+		require.NoError(t, err, "should create request")
+
 		start := time.Now()
 		resp, err := transport.RoundTrip(req)
 		elapsed := time.Since(start)
