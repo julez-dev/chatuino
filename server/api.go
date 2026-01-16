@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -23,17 +22,14 @@ type API struct {
 	conf               Config
 	client             *http.Client
 	helixTokenProvider *HelixTokenProvider
-
-	ttvAPI *twitchapi.API
 }
 
-func New(logger zerolog.Logger, config Config, client *http.Client, ttvAPI *twitchapi.API) *API {
+func New(logger zerolog.Logger, config Config, client *http.Client) *API {
 	return &API{
 		logger:             logger,
 		conf:               config,
 		client:             client,
 		helixTokenProvider: NewHelixTokenProvider(client, config.ClientID, config.ClientSecret),
-		ttvAPI:             ttvAPI,
 	}
 }
 

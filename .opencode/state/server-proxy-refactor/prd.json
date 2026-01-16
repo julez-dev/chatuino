@@ -59,7 +59,7 @@
         "Server package has no imports from twitch/twitchapi for data models",
         "Old routes in router.go replaced with single proxy handler"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "client-1",

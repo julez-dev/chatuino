@@ -56,3 +56,12 @@ Started: 2026-01-15
   - For 429 responses: strip Ratelimit-Limit and Ratelimit-Remaining, keep only Ratelimit-Reset
   - Server-side doesn't wait/retry - client gets 429 immediately with reset timestamp
   - Test verifies header filtering behavior
+
+## Task - refactor-1
+- Removed old handler functions and twitchapi dependency from server package
+- Files: `server/handler.go` (deleted 7 handler functions), `server/api.go` (removed ttvAPI field), `server.go` (removed twitchapi initialization)
+- **Learnings:**
+  - Router already updated in proxy-2 - no changes needed to router.go
+  - server/client.go still uses twitchapi types for responses (allowed per PRD)
+  - API struct now only depends on helixTokenProvider for Twitch API access
+  - Removed ~200 lines of legacy handler code
