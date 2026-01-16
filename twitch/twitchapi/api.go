@@ -100,12 +100,8 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	}
 
 	// Wrap the client's transport with rate limit retry logic
-	if api.client.Transport == nil {
-		api.client.Transport = http.DefaultTransport
-	}
-
 	api.client.Transport = &httputil.RateLimitRetryTransport{
-		Transport:     api.client.Transport,
+		Transport:     api.client.Transport, // nil is fine, RateLimitRetryTransport handles it
 		SkipEndpoints: []string{"/helix/eventsub/subscriptions"},
 	}
 

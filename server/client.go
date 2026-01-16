@@ -26,12 +26,8 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 	}
 
 	// Wrap the client's transport with rate limit retry logic
-	if httpClient.Transport == nil {
-		httpClient.Transport = http.DefaultTransport
-	}
-
 	httpClient.Transport = &httputil.RateLimitRetryTransport{
-		Transport: httpClient.Transport,
+		Transport: httpClient.Transport, // nil is fine, RateLimitRetryTransport handles it
 	}
 
 	return &Client{
