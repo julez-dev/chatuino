@@ -44,13 +44,7 @@ func RetryOn429(ctx context.Context, retryFunc func() (*http.Response, error), s
 
 	// Create timer for the wait duration
 	timer := time.NewTimer(diff)
-	defer func() {
-		timer.Stop()
-		select {
-		case <-timer.C:
-		default:
-		}
-	}()
+	defer timer.Stop() // Go 1.23+ automatically drains the channel
 
 	// Wait for either reset time or context cancellation
 	select {

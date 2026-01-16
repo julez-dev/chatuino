@@ -12,6 +12,7 @@ Started: 2026-01-15
 - Reverse proxy: use `ModifyResponse` to filter response headers
 - Retry logic: custom `http.RoundTripper` wrapping base transport for status-specific retries
 - Constructor validation: validate required dependencies in New() functions, fail fast (e.g., twitchapi.NewAPI checks provider != nil)
+- Timers (Go 1.23+): use `defer timer.Stop()` - automatically drains channel, no manual select needed
 
 ---
 <!-- Task logs below - APPEND ONLY -->
