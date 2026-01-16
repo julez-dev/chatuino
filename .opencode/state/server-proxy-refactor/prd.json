@@ -75,7 +75,7 @@
         "GetChannelChatBadges calls /ttv/chat/badges?broadcaster_id=",
         "Response types unchanged (still use twitchapi.* types)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "client-2",

@@ -65,3 +65,12 @@ Started: 2026-01-15
   - server/client.go still uses twitchapi types for responses (allowed per PRD)
   - API struct now only depends on helixTokenProvider for Twitch API access
   - Removed ~200 lines of legacy handler code
+
+## Task - client-1
+- Updated server.Client methods to use new Helix-aligned paths matching Twitch API
+- Files: `server/client.go` (6 methods updated)
+- **Learnings:**
+  - Changed from custom server paths to Helix paths: `/ttv/chat/emotes/global`, `/ttv/chat/emotes?broadcaster_id=`, `/ttv/streams?user_id=`, `/ttv/users?login=&id=`, `/ttv/chat/settings?broadcaster_id=`, `/ttv/chat/badges?broadcaster_id=`
+  - Query param names match Helix API: `login` and `id` (not `logins` and `ids`), `user_id` (not path-based)
+  - Simplified GetStreamInfo - removed special case for single ID, now always uses query params
+  - Response types unchanged - still use twitchapi.* types for compatibility
