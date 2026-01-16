@@ -11,6 +11,7 @@ Started: 2026-01-15
 - Reverse proxy: use `httputil.ReverseProxy` with `Director` (not deprecated `Rewrite`)
 - Reverse proxy: use `ModifyResponse` to filter response headers
 - Retry logic: custom `http.RoundTripper` wrapping base transport for status-specific retries
+- Constructor validation: validate required dependencies in New() functions, fail fast (e.g., twitchapi.NewAPI checks provider != nil)
 
 ---
 <!-- Task logs below - APPEND ONLY -->
@@ -114,3 +115,7 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
   - twitchapi.API now exclusively handles user token operations
   - App token operations delegated to server package's `HelixTokenProvider`
   - Architecture separation: server handles app tokens, twitchapi handles user tokens
+  - **Follow-up improvement**: Moved provider nil check to NewAPI constructor (commit 4076ed5)
+    - Removed 22 duplicate `if a.provider == nil` checks from individual methods
+    - Enforces user authentication requirement at API creation time (fail-fast principle)
+    - Simplified method bodies by removing redundant validation
