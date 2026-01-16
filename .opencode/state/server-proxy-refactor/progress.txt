@@ -47,3 +47,12 @@ Started: 2026-01-15
   - Only close response body after successful token refresh (before retry fails, keep body intact)
   - tokenProvider interface for testability (InvalidateToken + EnsureToken)
   - Test organization: group by behavior (non-401, 401 retry, auth headers) with subtests
+
+## Task - proxy-4
+- Already implemented in proxy-2 via ModifyResponse callback
+- Files: `server/helix_proxy.go:46-58`, `server/helix_proxy_test.go:220-246` (test)
+- **Learnings:**
+  - ModifyResponse callback in httputil.ReverseProxy filters response headers before client sees them
+  - For 429 responses: strip Ratelimit-Limit and Ratelimit-Remaining, keep only Ratelimit-Reset
+  - Server-side doesn't wait/retry - client gets 429 immediately with reset timestamp
+  - Test verifies header filtering behavior

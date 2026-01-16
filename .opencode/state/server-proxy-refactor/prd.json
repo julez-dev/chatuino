@@ -47,7 +47,7 @@
         "Ratelimit-Reset header preserved in response",
         "Client responsible for retry logic"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "refactor-1",
