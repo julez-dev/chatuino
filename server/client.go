@@ -30,6 +30,8 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 	}
 }
 
+// Auth methods
+
 func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/refresh", nil)
 	if err != nil {
@@ -42,14 +44,12 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (string,
 	if err != nil {
 		return "", "", err
 	}
-
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", err
 	}
-
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("non 200 response code (%d): %s", resp.StatusCode, bodyBytes)
 	}
@@ -74,7 +74,6 @@ func (c *Client) RevokeToken(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-
 	defer resp.Body.Close()
 
 	// for revoke endpoint, BadRequest just means that the token was invalid (most likely expired, we can ignore this)
@@ -84,6 +83,63 @@ func (c *Client) RevokeToken(ctx context.Context, token string) error {
 
 	return nil
 }
+
+// Proxy methods
+
+type CheckLinkResponse struct {
+	RemoteStatusCode  int
+	RemoteContentType string
+	VisitedURLs       []string
+}
+
+func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResponse, error) {
+	u := fmt.Sprintf("%s/proxy/link_check?target=%s", c.baseURL, url.QueryEscape(targetURL))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to create req for: %s: %w", u, err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		errMsg, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return CheckLinkResponse{}, fmt.Errorf("failed to read error message: %w", err)
+		}
+
+		return CheckLinkResponse{}, fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, string(errMsg))
+	}
+
+	code := resp.Header.Get("X-Remote-Status-Code")
+	parsedStatusCode, err := strconv.Atoi(code)
+	if err != nil {
+		return CheckLinkResponse{}, fmt.Errorf("failed to parse remote status code (%s): %w", code, err)
+	}
+
+	data := CheckLinkResponse{
+		RemoteStatusCode:  parsedStatusCode,
+		RemoteContentType: resp.Header.Get("X-Remote-Content-Type"),
+	}
+
+	for u := range strings.SplitSeq(resp.Header.Get("X-Visited-Urls"), ",") {
+		if u == "" {
+			continue
+		}
+
+		data.VisitedURLs = append(data.VisitedURLs, u)
+	}
+
+	return data, nil
+}
+
+// Twitch API proxy methods (/ttv/*)
 
 func (c *Client) GetGlobalEmotes(ctx context.Context) (twitchapi.EmoteResponse, error) {
 	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/chat/emotes/global")
@@ -132,60 +188,6 @@ func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet,
 
 func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
 	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges?broadcaster_id="+broadcasterID)
-}
-
-type CheckLinkResponse struct {
-	RemoteStatusCode  int
-	RemoteContentType string
-	VisitedURLs       []string
-}
-
-func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResponse, error) {
-	u := fmt.Sprintf("%s/proxy/link_check?target=%s", c.baseURL, url.QueryEscape(targetURL))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return CheckLinkResponse{}, fmt.Errorf("failed to create req for: %s: %w", u, err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return CheckLinkResponse{}, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		errMsg, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return CheckLinkResponse{}, fmt.Errorf("failed to read error message: %w", err)
-		}
-
-		return CheckLinkResponse{}, fmt.Errorf("unexpected status code: %d: %s", resp.StatusCode, string(errMsg))
-	}
-
-	code := resp.Header.Get("X-Remote-Status-Code")
-	parsedStatusCode, err := strconv.Atoi(code)
-	if err != nil {
-		return CheckLinkResponse{}, fmt.Errorf("failed to parse remote status code (%s): %w", code, err)
-	}
-
-	data := CheckLinkResponse{
-		RemoteStatusCode:  parsedStatusCode,
-		RemoteContentType: resp.Header.Get("X-Remote-Content-Type"),
-	}
-
-	for u := range strings.SplitSeq(resp.Header.Get("X-Visited-Urls"), ",") {
-		if u == "" {
-			continue
-		}
-
-		data.VisitedURLs = append(data.VisitedURLs, u)
-	}
-
-	return data, nil
 }
 
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
