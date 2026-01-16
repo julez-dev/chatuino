@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,12 +21,10 @@ import (
 )
 
 var (
-	ErrNoAuthProvided     = errors.New("one of app secret or user access token needs to be provided")
-	ErrNoUserAccess       = errors.New("user endpoint called when no token was provided")
-	ErrUserRefreshToken   = errors.New("the provided user refresh token is empty")
-	ErrNoRefresher        = errors.New("refresher was not provided")
-	ErrNoClientSecret     = errors.New("no app access token was provided")
-	ErrAppTokenStatusCode = errors.New("invalid status code response while creating app access token")
+	ErrNoAuthProvided   = errors.New("one of app secret or user access token needs to be provided")
+	ErrNoUserAccess     = errors.New("user endpoint called when no token was provided")
+	ErrUserRefreshToken = errors.New("the provided user refresh token is empty")
+	ErrNoRefresher      = errors.New("refresher was not provided")
 )
 
 const baseURL = "https://api.twitch.tv/helix"
@@ -46,13 +43,6 @@ type APIOptionFunc func(api *API) error
 func WithHTTPClient(client *http.Client) APIOptionFunc {
 	return func(api *API) error {
 		api.client = client
-		return nil
-	}
-}
-
-func WithClientSecret(secret string) APIOptionFunc {
-	return func(api *API) error {
-		api.clientSecret = secret
 		return nil
 	}
 }
@@ -78,10 +68,7 @@ type API struct {
 	singleUserChatColor *singleflight.Group[string, []UserChatColor]
 	singleUserBadge     *singleflight.Group[string, []BadgeSet]
 
-	appAccessToken string
-
-	clientID     string
-	clientSecret string
+	clientID string
 }
 
 func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
@@ -125,20 +112,14 @@ func (a *API) SendChatMessage(ctx context.Context, data SendChatMessageRequest) 
 }
 
 func (a *API) GetGlobalChatBadges(ctx context.Context) ([]BadgeSet, error) {
+	if a.provider == nil {
+		return nil, ErrNoUserAccess
+	}
+
 	url := "/chat/badges/global"
 
 	data, _, err := a.singleUserBadge.Do(ctx, url, func(ctx context.Context) ([]BadgeSet, error) {
-		var (
-			resp GetGlobalBadgesResp
-			err  error
-		)
-
-		if a.provider != nil {
-			resp, err = doAuthenticatedUserRequest[GetGlobalBadgesResp](ctx, a, http.MethodGet, url, nil)
-		} else {
-			resp, err = doAuthenticatedAppRequest[GetGlobalBadgesResp](ctx, a, http.MethodGet, url, nil)
-		}
-
+		resp, err := doAuthenticatedUserRequest[GetGlobalBadgesResp](ctx, a, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -154,23 +135,17 @@ func (a *API) GetGlobalChatBadges(ctx context.Context) ([]BadgeSet, error) {
 }
 
 func (a *API) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]BadgeSet, error) {
+	if a.provider == nil {
+		return nil, ErrNoUserAccess
+	}
+
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 
 	url := fmt.Sprintf("/chat/badges?%s", values.Encode())
 
 	data, _, err := a.singleUserBadge.Do(ctx, url, func(ctx context.Context) ([]BadgeSet, error) {
-		var (
-			resp GetChannelChatBadgesResp
-			err  error
-		)
-
-		if a.provider != nil {
-			resp, err = doAuthenticatedUserRequest[GetChannelChatBadgesResp](ctx, a, http.MethodGet, url, nil)
-		} else {
-			resp, err = doAuthenticatedAppRequest[GetChannelChatBadgesResp](ctx, a, http.MethodGet, url, nil)
-		}
-
+		resp, err := doAuthenticatedUserRequest[GetChannelChatBadgesResp](ctx, a, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -474,6 +449,10 @@ func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID,
 }
 
 func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {
+	if a.provider == nil {
+		return UserResponse{}, ErrNoUserAccess
+	}
+
 	values := url.Values{}
 	for _, login := range logins {
 		values.Add("login", login)
@@ -483,19 +462,9 @@ func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (User
 		values.Add("id", id)
 	}
 
-	var (
-		resp UserResponse
-		err  error
-	)
-
 	url := fmt.Sprintf("/users?%s", values.Encode())
 
-	if a.provider != nil {
-		resp, err = doAuthenticatedUserRequest[UserResponse](ctx, a, http.MethodGet, url, nil)
-	} else {
-		resp, err = doAuthenticatedAppRequest[UserResponse](ctx, a, http.MethodGet, url, nil)
-	}
-
+	resp, err := doAuthenticatedUserRequest[UserResponse](ctx, a, http.MethodGet, url, nil)
 	if err != nil {
 		return UserResponse{}, err
 	}
@@ -504,6 +473,10 @@ func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (User
 }
 
 func (a *API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStreamsResponse, error) {
+	if a.provider == nil {
+		return GetStreamsResponse{}, ErrNoUserAccess
+	}
+
 	values := url.Values{}
 	for _, id := range broadcastID {
 		values.Add("user_id", id)
@@ -513,16 +486,7 @@ func (a *API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStrea
 
 	url := fmt.Sprintf("/streams?%s", values.Encode())
 
-	var (
-		resp GetStreamsResponse
-		err  error
-	)
-
-	if a.provider != nil {
-		resp, err = doAuthenticatedUserRequest[GetStreamsResponse](ctx, a, http.MethodGet, url, nil)
-	} else {
-		resp, err = doAuthenticatedAppRequest[GetStreamsResponse](ctx, a, http.MethodGet, url, nil)
-	}
+	resp, err := doAuthenticatedUserRequest[GetStreamsResponse](ctx, a, http.MethodGet, url, nil)
 	if err != nil {
 		return GetStreamsResponse{}, err
 	}
@@ -605,18 +569,13 @@ func (a *API) DeleteSubSubscriptions(ctx context.Context, id string) error {
 }
 
 func (a *API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
-	var (
-		resp EmoteResponse
-		err  error
-	)
+	if a.provider == nil {
+		return EmoteResponse{}, ErrNoUserAccess
+	}
 
 	url := "/chat/emotes/global"
 
-	if a.provider != nil {
-		resp, err = doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, url, nil)
-	} else {
-		resp, err = doAuthenticatedAppRequest[EmoteResponse](ctx, a, http.MethodGet, url, nil)
-	}
+	resp, err := doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, url, nil)
 	if err != nil {
 		return EmoteResponse{}, err
 	}
@@ -625,18 +584,12 @@ func (a *API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 }
 
 func (a *API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteResponse, error) {
-	var (
-		resp EmoteResponse
-		err  error
-	)
-
-	// /chat/emotes?broadcaster_id=141981764
-	if a.provider != nil {
-		resp, err = doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
-	} else {
-		resp, err = doAuthenticatedAppRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
+	if a.provider == nil {
+		return EmoteResponse{}, ErrNoUserAccess
 	}
 
+	// /chat/emotes?broadcaster_id=141981764
+	resp, err := doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
 	if err != nil {
 		return EmoteResponse{}, err
 	}
@@ -646,10 +599,9 @@ func (a *API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteRe
 
 // moderatorID needs to match ID of the user the token was generated for
 func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (GetChatSettingsResponse, error) {
-	var (
-		resp GetChatSettingsResponse
-		err  error
-	)
+	if a.provider == nil {
+		return GetChatSettingsResponse{}, ErrNoUserAccess
+	}
 
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
@@ -659,12 +611,7 @@ func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderat
 
 	url := fmt.Sprintf("/chat/settings?%s", values.Encode())
 
-	if a.provider != nil {
-		resp, err = doAuthenticatedUserRequest[GetChatSettingsResponse](ctx, a, http.MethodGet, url, nil)
-	} else {
-		resp, err = doAuthenticatedAppRequest[GetChatSettingsResponse](ctx, a, http.MethodGet, url, nil)
-	}
-
+	resp, err := doAuthenticatedUserRequest[GetChatSettingsResponse](ctx, a, http.MethodGet, url, nil)
 	if err != nil {
 		return GetChatSettingsResponse{}, err
 	}
@@ -712,82 +659,6 @@ func (a *API) CreateStreamMarker(ctx context.Context, req CreateStreamMarkerRequ
 	}
 
 	return resp.Data[0], nil
-}
-
-func (a *API) createAppAccessToken(ctx context.Context) (string, error) {
-	if a.clientSecret == "" {
-		return "", ErrNoClientSecret
-	}
-
-	formVal := url.Values{}
-	formVal.Set("client_id", a.clientID)
-	formVal.Set("client_secret", a.clientSecret)
-	formVal.Set("grant_type", "client_credentials")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://id.twitch.tv/oauth2/token", strings.NewReader(formVal.Encode()))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return "", err
-	}
-
-	defer resp.Body.Close()
-
-	type tokenResp struct {
-		AccessToken string `json:"access_token"`
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var token tokenResp
-	if err := json.Unmarshal(bodyBytes, &token); err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", ErrAppTokenStatusCode
-	}
-
-	return token.AccessToken, nil
-}
-
-func doAuthenticatedAppRequest[T any](ctx context.Context, api *API, method, url string, body []byte) (T, error) {
-	api.m.Lock()
-	defer api.m.Unlock()
-
-	if api.clientSecret == "" {
-		var d T
-		return d, ErrNoClientSecret
-	}
-
-	resp, err := doAuthenticatedRequest[T](ctx, api, api.appAccessToken, method, url, body)
-	if err != nil {
-		apiErr := APIError{}
-		// Unauthorized - the access token may be expired
-		if errors.As(err, &apiErr) && apiErr.Status == http.StatusUnauthorized {
-			token, err := api.createAppAccessToken(ctx)
-			if err != nil {
-				return resp, err
-			}
-
-			api.appAccessToken = token
-
-			// retry request
-			return doAuthenticatedRequest[T](ctx, api, api.appAccessToken, method, url, body)
-		}
-
-		return resp, err
-	}
-
-	return resp, nil
 }
 
 func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, url string, body []byte) (T, error) {

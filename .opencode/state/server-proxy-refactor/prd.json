@@ -165,7 +165,7 @@
         "Remove app token related errors: ErrNoClientSecret, ErrAppTokenStatusCode",
         "twitchapi.API now only handles user authentication"
       ],
-      "passes": false
+      "passes": true
     }
   ],
   "context": {

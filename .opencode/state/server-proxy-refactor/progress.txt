@@ -98,3 +98,19 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
 - Remove clientSecret handling (only needed for app tokens)
 - twitchapi.API will focus solely on user authentication
 - This eliminates ~50 lines of duplicate token logic
+
+## Task - refactor-2
+- Removed app token management from twitchapi.API struct
+- Files: `twitch/twitchapi/api.go`
+- **Learnings:**
+  - Removed fields: `appAccessToken`, `clientSecret` (lines 81, 84)
+  - Removed `WithClientSecret` option function
+  - Removed `createAppAccessToken` method (~44 lines)
+  - Removed `doAuthenticatedAppRequest` function (~30 lines)
+  - Removed errors: `ErrNoClientSecret`, `ErrAppTokenStatusCode`
+  - Updated 6 methods to require user auth: `GetGlobalChatBadges`, `GetChannelChatBadges`, `GetUsers`, `GetStreamInfo`, `GetGlobalEmotes`, `GetChannelEmotes`, `GetChatSettings`
+  - All methods now return `ErrNoUserAccess` if `a.provider == nil`
+  - Removed unused `strings` import
+  - twitchapi.API now exclusively handles user token operations
+  - App token operations delegated to server package's `HelixTokenProvider`
+  - Architecture separation: server handles app tokens, twitchapi handles user tokens
