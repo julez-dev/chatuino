@@ -26,7 +26,20 @@ func (t *RateLimitRetryTransport) RoundTrip(req *http.Request) (*http.Response, 
 		rt = http.DefaultTransport
 	}
 
-	resp, err := rt.RoundTrip(req)
+	// Clone the request to preserve the body for potential retry
+	reqClone := req.Clone(req.Context())
+	if req.Body != nil {
+		// GetBody should be set by http.NewRequest for retryable bodies
+		if req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, err
+			}
+			reqClone.Body = body
+		}
+	}
+
+	resp, err := rt.RoundTrip(reqClone)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +82,16 @@ func (t *RateLimitRetryTransport) RoundTrip(req *http.Request) (*http.Response, 
 	// Wait for either reset time or context cancellation
 	select {
 	case <-timer.C:
-		// Reset time reached, retry the request
-		return rt.RoundTrip(req)
+		// Reset time reached, clone request again for retry
+		reqRetry := req.Clone(req.Context())
+		if req.Body != nil && req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, err
+			}
+			reqRetry.Body = body
+		}
+		return rt.RoundTrip(reqRetry)
 	case <-req.Context().Done():
 		return nil, req.Context().Err()
 	}
