@@ -151,6 +151,21 @@
         "Test: middleware fails open when Redis unavailable"
       ],
       "passes": false
+    },
+    {
+      "id": "refactor-2",
+      "category": "refactor",
+      "description": "Remove app token logic from twitchapi package",
+      "steps": [
+        "Remove appAccessToken field from twitchapi.API struct",
+        "Remove clientSecret field from twitchapi.API struct",
+        "Remove createAppAccessToken method",
+        "Remove WithClientSecret option",
+        "Simplify doAuthenticatedRequest - remove app token fallback logic",
+        "Remove app token related errors: ErrNoClientSecret, ErrAppTokenStatusCode",
+        "twitchapi.API now only handles user authentication"
+      ],
+      "passes": false
     }
   ],
   "context": {

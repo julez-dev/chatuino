@@ -90,3 +90,11 @@ Started: 2026-01-15
   - TestHelixProxyHandler covers all requirements: path rewriting /ttv/* -> /helix/*, query params preserved, auth headers injected, response passed through unchanged
   - Tests use mock HTTP servers to verify request/response handling
   - Each test captures specific aspects (path, query, headers, body) for verification
+
+---
+## IMPROVEMENT IDENTIFIED
+Added refactor-2 to PRD: Since server now handles app access tokens independently via HelixTokenProvider, the twitchapi package can be simplified:
+- Remove app token management (appAccessToken field, createAppAccessToken method)
+- Remove clientSecret handling (only needed for app tokens)
+- twitchapi.API will focus solely on user authentication
+- This eliminates ~50 lines of duplicate token logic
