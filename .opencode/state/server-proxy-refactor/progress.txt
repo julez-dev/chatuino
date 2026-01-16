@@ -136,3 +136,10 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
   - Pattern: wrap HTTP calls in `func() (*http.Response, error)` for retry helper
   - Eliminated ~30 lines of duplicate retry logic between packages
   - Both clients now have consistent 429 handling behavior
+  - **Follow-up refactor**: Replaced function-based helper with RoundTripper (commit 3d1c381)
+    - Created `RateLimitRetryTransport` implementing `http.RoundTripper`
+    - More idiomatic Go pattern - transport wrapping is standard practice
+    - Injected at client construction time in both `twitchapi.NewAPI` and `server.NewClient`
+    - Simplified `slices.Contains` for skip list checking
+    - Cleaner separation: transport handles retry, business logic stays in handlers
+    - Tests verify transport behavior directly (no mock functions needed)
