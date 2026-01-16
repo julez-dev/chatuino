@@ -88,7 +88,7 @@
         "server.Client uses same shared helper",
         "No duplicate retry logic between clients"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "testing-1",

@@ -9,14 +9,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"resenje.org/singleflight"
 
+	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/save"
 )
 
@@ -633,25 +632,52 @@ func doAuthenticatedUserRequest[T any](ctx context.Context, api *API, method, ur
 func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method, endpoint string, body []byte) (T, error) {
 	var data T
 
-	url := fmt.Sprintf("%s%s", baseURL, endpoint)
-	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	// Define the request function
+	makeRequest := func() (*http.Response, error) {
+		url := fmt.Sprintf("%s%s", baseURL, endpoint)
+		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		req.Header.Set("Client-Id", api.clientID)
+
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		return api.client.Do(req)
+	}
+
+	// Check if endpoint should skip 429 retry
+	if endpoint == "/eventsub/subscriptions" {
+		// EventSub has cost-based limits, don't retry
+		resp, err := makeRequest()
+		if err != nil {
+			return data, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return data, fmt.Errorf("reached event sub cost limit")
+		}
+
+		return parseResponse[T](resp)
+	}
+
+	// Use retry helper for other endpoints
+	resp, err := httputil.RetryOn429(ctx, makeRequest)
 	if err != nil {
 		return data, err
 	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Client-Id", api.clientID)
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := api.client.Do(req)
-	if err != nil {
-		return data, err
-	}
-
 	defer resp.Body.Close()
+
+	return parseResponse[T](resp)
+}
+
+func parseResponse[T any](resp *http.Response) (T, error) {
+	var data T
 
 	if resp.StatusCode == http.StatusNoContent {
 		return data, nil
@@ -663,38 +689,6 @@ func doAuthenticatedRequest[T any](ctx context.Context, api *API, token, method,
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Is rate-limit reached?
-		// Then wait
-		if resp.StatusCode == http.StatusTooManyRequests && resp.Header.Get("Ratelimit-Reset") != "" {
-			if endpoint == "/eventsub/subscriptions" {
-				return data, fmt.Errorf("reached event sub cost limit")
-			}
-
-			waitUntil, err := strconv.Atoi(resp.Header.Get("Ratelimit-Reset"))
-			if err != nil {
-				return data, err
-			}
-
-			diff := time.Until(time.Unix(int64(waitUntil), 0)) + time.Second*1
-			timer := time.NewTimer(diff)
-
-			defer func() {
-				timer.Stop()
-				select {
-				case <-timer.C:
-				default:
-				}
-			}()
-
-			select {
-			case <-timer.C: // reset time is reached, try again
-				return doAuthenticatedRequest[T](ctx, api, token, method, endpoint, body)
-			case <-ctx.Done():
-				timer.Stop()
-				return data, ctx.Err()
-			}
-		}
-
 		var errResp APIError
 		if err := json.Unmarshal(respBody, &errResp); err != nil {
 			return data, err

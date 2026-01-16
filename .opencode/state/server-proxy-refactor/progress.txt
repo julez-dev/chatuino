@@ -119,3 +119,19 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
     - Removed 22 duplicate `if a.provider == nil` checks from individual methods
     - Enforces user authentication requirement at API creation time (fail-fast principle)
     - Simplified method bodies by removing redundant validation
+
+## Task - client-2
+- Extracted shared 429 retry logic to `httputil` package
+- Files: `httputil/ratelimit.go`, `httputil/ratelimit_test.go`, `twitch/twitchapi/api.go`, `server/client.go`
+- **Learnings:**
+  - Created `httputil.RetryOn429` helper - accepts context + retry function
+  - Helper extracts `Ratelimit-Reset` header, waits until reset time, retries request
+  - Handles edge cases: no reset header, invalid timestamp, context cancellation
+  - Refactored `twitchapi.doAuthenticatedRequest` to use helper
+    - Special case: `/eventsub/subscriptions` skips retry (cost-based limits)
+    - Extracted `parseResponse[T]` helper to separate response parsing
+  - Added 429 retry support to `server.Client.do` (previously missing)
+  - Comprehensive tests: non-429, missing header, valid retry, context cancellation, invalid header
+  - Pattern: wrap HTTP calls in `func() (*http.Response, error)` for retry helper
+  - Eliminated ~30 lines of duplicate retry logic between packages
+  - Both clients now have consistent 429 handling behavior

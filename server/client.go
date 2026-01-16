@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
@@ -193,16 +194,21 @@ func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string)
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	var respData T
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// Define the request function for retry helper
+	makeRequest := func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		return client.httpClient.Do(req)
+	}
+
+	// Use retry helper to handle 429 responses
+	resp, err := httputil.RetryOn429(ctx, makeRequest)
 	if err != nil {
 		return respData, err
 	}
-
-	resp, err := client.httpClient.Do(req)
-	if err != nil {
-		return respData, err
-	}
-
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
