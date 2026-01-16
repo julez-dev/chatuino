@@ -90,14 +90,14 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 		api.client = http.DefaultClient
 	}
 
+	if api.provider == nil {
+		return nil, ErrNoUserAccess
+	}
+
 	return api, nil
 }
 
 func (a *API) SendChatMessage(ctx context.Context, data SendChatMessageRequest) (SendChatMessageResponse, error) {
-	if a.provider == nil {
-		return SendChatMessageResponse{}, ErrNoUserAccess
-	}
-
 	body, err := json.Marshal(data)
 	if err != nil {
 		return SendChatMessageResponse{}, err
@@ -112,10 +112,6 @@ func (a *API) SendChatMessage(ctx context.Context, data SendChatMessageRequest) 
 }
 
 func (a *API) GetGlobalChatBadges(ctx context.Context) ([]BadgeSet, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
-	}
-
 	url := "/chat/badges/global"
 
 	data, _, err := a.singleUserBadge.Do(ctx, url, func(ctx context.Context) ([]BadgeSet, error) {
@@ -135,10 +131,6 @@ func (a *API) GetGlobalChatBadges(ctx context.Context) ([]BadgeSet, error) {
 }
 
 func (a *API) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]BadgeSet, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 
@@ -161,10 +153,6 @@ func (a *API) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([
 }
 
 func (a *API) GetUserChatColor(ctx context.Context, userIDs []string) ([]UserChatColor, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	for _, id := range userIDs {
 		values.Add("user_id", id)
@@ -189,10 +177,6 @@ func (a *API) GetUserChatColor(ctx context.Context, userIDs []string) ([]UserCha
 }
 
 func (a *API) FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]UserEmoteImage, string, error) {
-	if a.provider == nil {
-		return nil, "", ErrNoUserAccess
-	}
-
 	emotes := []UserEmoteImage{}
 	var (
 		after    string
@@ -230,10 +214,6 @@ func (a *API) FetchAllUserEmotes(ctx context.Context, userID string, broadcaster
 }
 
 func (a *API) DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error {
-	if a.provider == nil {
-		return ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	values.Add("moderator_id", moderatorID)
@@ -253,10 +233,6 @@ func (a *API) DeleteMessage(ctx context.Context, broadcasterID string, moderator
 }
 
 func (a *API) BanUser(ctx context.Context, broadcasterID string, moderatorID string, data BanUserData) error {
-	if a.provider == nil {
-		return ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	values.Add("moderator_id", moderatorID)
@@ -277,10 +253,6 @@ func (a *API) BanUser(ctx context.Context, broadcasterID string, moderatorID str
 }
 
 func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error {
-	if a.provider == nil {
-		return ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	values.Add("moderator_id", moderatorID)
@@ -297,10 +269,6 @@ func (a *API) UnbanUser(ctx context.Context, broadcasterID string, moderatorID s
 }
 
 func (a *API) CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (CreatedClip, error) {
-	if a.provider == nil {
-		return CreatedClip{}, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcastID)
 	if hasDelay {
@@ -318,10 +286,6 @@ func (a *API) CreateClip(ctx context.Context, broadcastID string, hasDelay bool)
 }
 
 func (a *API) FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]FollowedChannel, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
-	}
-
 	channels := []FollowedChannel{}
 	var after string
 
@@ -356,10 +320,6 @@ func (a *API) FetchUserFollowedChannels(ctx context.Context, userID string, broa
 }
 
 func (a *API) FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID string) ([]UnbanRequest, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
-	}
-
 	// Fetch all unban requests for the broadcaster
 	// For all statuses, handle each status in a separate goroutine
 	// One status may have multiple pages, so we need to fetch all pages for each status
@@ -428,10 +388,6 @@ func (a *API) FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID
 }
 
 func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (UnbanRequest, error) {
-	if a.provider == nil {
-		return UnbanRequest{}, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	values.Add("moderator_id", moderatorID)
@@ -449,10 +405,6 @@ func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID,
 }
 
 func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (UserResponse, error) {
-	if a.provider == nil {
-		return UserResponse{}, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	for _, login := range logins {
 		values.Add("login", login)
@@ -473,10 +425,6 @@ func (a *API) GetUsers(ctx context.Context, logins []string, ids []string) (User
 }
 
 func (a *API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStreamsResponse, error) {
-	if a.provider == nil {
-		return GetStreamsResponse{}, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	for _, id := range broadcastID {
 		values.Add("user_id", id)
@@ -495,10 +443,6 @@ func (a *API) GetStreamInfo(ctx context.Context, broadcastID []string) (GetStrea
 }
 
 func (a *API) CreateEventSubSubscription(ctx context.Context, reqData CreateEventSubSubscriptionRequest) (CreateEventSubSubscriptionResponse, error) {
-	if a.provider == nil {
-		return CreateEventSubSubscriptionResponse{}, ErrNoUserAccess
-	}
-
 	reqBytes, err := json.Marshal(reqData)
 	if err != nil {
 		return CreateEventSubSubscriptionResponse{}, err
@@ -514,10 +458,6 @@ func (a *API) CreateEventSubSubscription(ctx context.Context, reqData CreateEven
 
 // https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
 func (a *API) FetchEventSubSubscriptions(ctx context.Context, status, subType, userID string) ([]EventSubData, error) {
-	if a.provider == nil {
-		return nil, ErrNoUserAccess
-	}
-
 	subs := []EventSubData{}
 	var after string
 
@@ -554,10 +494,6 @@ func (a *API) FetchEventSubSubscriptions(ctx context.Context, status, subType, u
 }
 
 func (a *API) DeleteSubSubscriptions(ctx context.Context, id string) error {
-	if a.provider == nil {
-		return ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("id", id)
 
@@ -569,10 +505,6 @@ func (a *API) DeleteSubSubscriptions(ctx context.Context, id string) error {
 }
 
 func (a *API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
-	if a.provider == nil {
-		return EmoteResponse{}, ErrNoUserAccess
-	}
-
 	url := "/chat/emotes/global"
 
 	resp, err := doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, url, nil)
@@ -584,10 +516,6 @@ func (a *API) GetGlobalEmotes(ctx context.Context) (EmoteResponse, error) {
 }
 
 func (a *API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteResponse, error) {
-	if a.provider == nil {
-		return EmoteResponse{}, ErrNoUserAccess
-	}
-
 	// /chat/emotes?broadcaster_id=141981764
 	resp, err := doAuthenticatedUserRequest[EmoteResponse](ctx, a, http.MethodGet, "/chat/emotes?broadcaster_id="+broadcaster, nil)
 	if err != nil {
@@ -599,10 +527,6 @@ func (a *API) GetChannelEmotes(ctx context.Context, broadcaster string) (EmoteRe
 
 // moderatorID needs to match ID of the user the token was generated for
 func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (GetChatSettingsResponse, error) {
-	if a.provider == nil {
-		return GetChatSettingsResponse{}, ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	if moderatorID != "" {
@@ -620,10 +544,6 @@ func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderat
 }
 
 func (a *API) SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req CreateChatAnnouncementRequest) error {
-	if a.provider == nil {
-		return ErrNoUserAccess
-	}
-
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	values.Add("moderator_id", moderatorID)
@@ -644,10 +564,6 @@ func (a *API) SendChatAnnouncement(ctx context.Context, broadcasterID string, mo
 }
 
 func (a *API) CreateStreamMarker(ctx context.Context, req CreateStreamMarkerRequest) (StreamMarker, error) {
-	if a.provider == nil {
-		return StreamMarker{}, ErrNoUserAccess
-	}
-
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
 		return StreamMarker{}, err
