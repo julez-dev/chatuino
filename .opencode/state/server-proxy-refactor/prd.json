@@ -123,7 +123,7 @@
         "Connection configurable via environment or config",
         "Graceful handling when Redis unavailable (fail open)"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ratelimit-2",

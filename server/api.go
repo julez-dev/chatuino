@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -10,11 +11,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type RatelimitStore interface {
+	io.Closer
+	// todo define api later
+}
+
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	HostAndPort  string
-	RedirectURL  string
+	ClientID             string
+	ClientSecret         string
+	HostAndPort          string
+	RedirectURL          string
+	Redis                RedisConfig
+	EnableProxyRateLimit bool
 }
 
 type API struct {
@@ -22,6 +30,7 @@ type API struct {
 	conf               Config
 	client             *http.Client
 	helixTokenProvider *HelixTokenProvider
+	ratelimitStore     RatelimitStore
 }
 
 func New(logger zerolog.Logger, config Config, client *http.Client) *API {
@@ -34,6 +43,18 @@ func New(logger zerolog.Logger, config Config, client *http.Client) *API {
 }
 
 func (a *API) Launch(ctx context.Context) error {
+	if a.conf.EnableProxyRateLimit {
+		redisClient, err := NewRedisClient(ctx, a.conf.Redis)
+		if err != nil {
+			a.logger.Error().Err(err).Msg("redis connection failed")
+			return err
+		}
+
+		a.ratelimitStore = redisClient
+	} else {
+		a.ratelimitStore = NewNopRedisClient()
+	}
+
 	httpSrv := &http.Server{
 		Addr:           a.conf.HostAndPort,
 		WriteTimeout:   time.Second * 15,
@@ -45,6 +66,7 @@ func (a *API) Launch(ctx context.Context) error {
 
 	httpSrv.RegisterOnShutdown(func() {
 		a.logger.Info().Msg("http shutdown started")
+		a.ratelimitStore.Close()
 	})
 
 	wg, ctx := errgroup.WithContext(ctx)

@@ -143,3 +143,28 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
     - Simplified `slices.Contains` for skip list checking
     - Cleaner separation: transport handles retry, business logic stays in handlers
     - Tests verify transport behavior directly (no mock functions needed)
+
+## Task - ratelimit-1
+- Added Redis dependency and connection setup with graceful fail-open
+- Files: `server/redis.go`, `server/redis_test.go`, `server/api.go`, `server.go`, `go.mod`
+- **Learnings:**
+  - Added `go-redis/v9` dependency to project
+  - Created `RedisConfig` struct: Enabled, Addr, Password, DB
+  - Created `NewRedisClient` function with fail-open behavior:
+    - Returns nil if disabled or connection fails
+    - 2-second ping timeout to test connectivity
+    - Logs warnings on failure but continues without Redis
+  - Added Redis client to `server.API` struct
+  - Initialized Redis in `API.Launch()` before starting HTTP server
+  - Added shutdown hook to close Redis client gracefully
+  - Environment variables for configuration:
+    - `CHATUINO_REDIS_ENABLED` (bool, default false)
+    - `CHATUINO_REDIS_ADDR` (string, default localhost:6379)
+    - `CHATUINO_REDIS_PASSWORD` (string, optional)
+    - `CHATUINO_REDIS_DB` (int, default 0, validated 0-15)
+  - Comprehensive tests verify:
+    - Returns nil when disabled
+    - Returns nil when address empty
+    - Returns nil on connection failure (fail-open)
+    - Respects context timeout
+  - Pattern: Fail-open is critical for optional dependencies - system remains functional even if Redis unavailable
