@@ -3,17 +3,19 @@ package server
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
-type RatelimitStore interface {
-	io.Closer
-	// todo define api later
+// RedisConfig holds Redis connection configuration
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
 }
 
 type Config struct {
@@ -30,7 +32,7 @@ type API struct {
 	conf               Config
 	client             *http.Client
 	helixTokenProvider *HelixTokenProvider
-	ratelimitStore     RatelimitStore
+	redisClient        *redis.Client
 }
 
 func New(logger zerolog.Logger, config Config, client *http.Client) *API {
@@ -44,15 +46,24 @@ func New(logger zerolog.Logger, config Config, client *http.Client) *API {
 
 func (a *API) Launch(ctx context.Context) error {
 	if a.conf.EnableProxyRateLimit {
-		redisClient, err := NewRedisClient(ctx, a.conf.Redis)
-		if err != nil {
+		client := redis.NewClient(&redis.Options{
+			Addr:     a.conf.Redis.Addr,
+			Password: a.conf.Redis.Password,
+			DB:       a.conf.Redis.DB,
+		})
+
+		// Test connection with timeout
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
+		if err := client.Ping(pingCtx).Err(); err != nil {
+			client.Close()
 			a.logger.Error().Err(err).Msg("redis connection failed")
 			return err
 		}
 
-		a.ratelimitStore = redisClient
-	} else {
-		a.ratelimitStore = NewNopRedisClient()
+		a.logger.Info().Str("addr", a.conf.Redis.Addr).Msg("redis connected")
+		a.redisClient = client
 	}
 
 	httpSrv := &http.Server{
@@ -66,7 +77,9 @@ func (a *API) Launch(ctx context.Context) error {
 
 	httpSrv.RegisterOnShutdown(func() {
 		a.logger.Info().Msg("http shutdown started")
-		a.ratelimitStore.Close()
+		if a.redisClient != nil {
+			a.redisClient.Close()
+		}
 	})
 
 	wg, ctx := errgroup.WithContext(ctx)

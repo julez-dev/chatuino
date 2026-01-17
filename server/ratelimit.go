@@ -21,17 +21,24 @@ const (
 
 // RateLimiter implements sliding window rate limiting using Redis
 type RateLimiter struct {
-	store RatelimitStore
+	client *redis.Client
 }
 
-// NewRateLimiter creates a new rate limiter
-func NewRateLimiter(store RatelimitStore) *RateLimiter {
-	return &RateLimiter{store: store}
+// NewRateLimiter creates a new rate limiter with Redis client.
+// If client is nil, rate limiting is disabled.
+func NewRateLimiter(client *redis.Client) *RateLimiter {
+	return &RateLimiter{client: client}
 }
 
 // Middleware returns a middleware that enforces rate limits per client IP
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If no Redis client, pass through (rate limiting disabled)
+		if rl.client == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		clientIP := extractClientIP(r)
 
 		allowed, err := rl.checkLimit(r.Context(), clientIP)
@@ -53,22 +60,11 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 // checkLimit verifies if the client is within rate limits using sliding window
 func (rl *RateLimiter) checkLimit(ctx context.Context, clientIP string) (bool, error) {
-	// Check if using no-op client (rate limiting disabled)
-	if _, ok := rl.store.(*NopRedisClient); ok {
-		return true, nil
-	}
-
-	redisClient, ok := rl.store.(*RedisClient)
-	if !ok {
-		// Unknown store type, fail open
-		return true, nil
-	}
-
 	key := fmt.Sprintf("ratelimit:%s", clientIP)
 	now := time.Now()
 	windowStart := now.Add(-windowDuration)
 
-	pipe := redisClient.client.Pipeline()
+	pipe := rl.client.Pipeline()
 
 	// Remove old entries outside the sliding window
 	pipe.ZRemRangeByScore(ctx, key, "0", strconv.FormatInt(windowStart.UnixNano(), 10))

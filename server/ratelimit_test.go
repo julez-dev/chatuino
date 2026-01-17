@@ -32,8 +32,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey)
 		defer client.Del(ctx, testKey)
 
-		store := &RedisClient{client: client}
-		limiter := NewRateLimiter(store)
+		limiter := NewRateLimiter(client)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -68,8 +67,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey)
 		defer client.Del(ctx, testKey)
 
-		store := &RedisClient{client: client}
-		limiter := NewRateLimiter(store)
+		limiter := NewRateLimiter(client)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -115,8 +113,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey)
 		defer client.Del(ctx, testKey)
 
-		store := &RedisClient{client: client}
-		limiter := NewRateLimiter(store)
+		limiter := NewRateLimiter(client)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -162,8 +159,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey1, testKey2)
 		defer client.Del(ctx, testKey1, testKey2)
 
-		store := &RedisClient{client: client}
-		limiter := NewRateLimiter(store)
+		limiter := NewRateLimiter(client)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -193,9 +189,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 	t.Run("middleware fails open when Redis unavailable", func(t *testing.T) {
 		t.Parallel()
 
-		// Use NopRedisClient (simulates disabled rate limiting)
-		store := NewNopRedisClient()
-		limiter := NewRateLimiter(store)
+		// Pass nil client (simulates disabled rate limiting)
+		limiter := NewRateLimiter(nil)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
