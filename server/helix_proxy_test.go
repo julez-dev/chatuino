@@ -94,7 +94,7 @@ func TestHelixProxyHandler(t *testing.T) {
 	t.Run("response passed through unchanged", func(t *testing.T) {
 		t.Parallel()
 
-		expectedBody := `{"data":[{"id":"123","name":"test"}]}`
+		expectedBody := `{"data":[]}`
 		mockTwitch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Custom-Header", "custom-value")
@@ -114,8 +114,8 @@ func TestHelixProxyHandler(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 
 		require.Equal(t, http.StatusOK, rec.Code)
-		require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-		require.Equal(t, "custom-value", rec.Header().Get("X-Custom-Header"))
+		require.Equal(t, "application/json", rec.Header().Get("Content-Type"), "Content-Type should be copied")
+		require.Empty(t, rec.Header().Get("X-Custom-Header"), "custom headers should not be copied")
 
 		body, err := io.ReadAll(rec.Body)
 		require.NoError(t, err, "failed to read response body")

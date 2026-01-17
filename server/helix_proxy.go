@@ -47,10 +47,6 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.HandlerFunc {
 			return
 		}
 
-		// Copy safe headers from original request (skip Host, Connection, etc.)
-		// Transport will add Authorization and Client-Id
-		copyHeaders(req.Header, r.Header)
-
 		// Make request to Twitch (transport adds auth headers)
 		resp, err := client.Do(req)
 		if err != nil {
@@ -61,57 +57,23 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.HandlerFunc {
 		}
 		defer resp.Body.Close()
 
-		// Filter response headers before sending to client
-		copyResponseHeaders(w.Header(), resp.Header, resp.StatusCode)
+		// Only copy essential response headers
+		// Copy Ratelimit-Reset on 429 to inform client when to retry
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if resetHeader := resp.Header.Get("Ratelimit-Reset"); resetHeader != "" {
+				w.Header().Set("Ratelimit-Reset", resetHeader)
+			}
+		}
+
+		// Copy Content-Type so client knows response format
+		if contentType := resp.Header.Get("Content-Type"); contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
 
 		// Write status code
 		w.WriteHeader(resp.StatusCode)
 
 		// Copy response body
 		io.Copy(w, resp.Body)
-	}
-}
-
-// copyHeaders copies HTTP headers from src to dst, excluding hop-by-hop headers
-func copyHeaders(dst, src http.Header) {
-	// Headers to skip (hop-by-hop headers and headers we'll set ourselves)
-	skipHeaders := map[string]bool{
-		"Connection":          true,
-		"Keep-Alive":          true,
-		"Proxy-Authenticate":  true,
-		"Proxy-Authorization": true,
-		"Te":                  true,
-		"Trailer":             true,
-		"Transfer-Encoding":   true,
-		"Upgrade":             true,
-		"Authorization":       true, // Set by transport
-		"Client-Id":           true, // Set by transport
-		"Host":                true, // Set by http.Client
-	}
-
-	for key, values := range src {
-		if skipHeaders[key] {
-			continue
-		}
-		for _, value := range values {
-			dst.Add(key, value)
-		}
-	}
-}
-
-// copyResponseHeaders copies response headers, filtering out rate limit headers except on 429
-func copyResponseHeaders(dst, src http.Header, statusCode int) {
-	for key, values := range src {
-		// Filter rate limit headers
-		if key == "Ratelimit-Limit" || key == "Ratelimit-Remaining" {
-			continue
-		}
-		if key == "Ratelimit-Reset" && statusCode != http.StatusTooManyRequests {
-			continue
-		}
-
-		for _, value := range values {
-			dst.Add(key, value)
-		}
 	}
 }

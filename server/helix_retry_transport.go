@@ -85,7 +85,5 @@ func (t *helixRetryTransport) doAuthenticatedRequest(req *http.Request) (*http.R
 	req.Header.Set("Client-Id", t.clientID)
 	req.Header.Set("Accept", "application/json")
 
-	log.Logger.Info().Any("header", req.Header).Stringer("url", req.URL).Msg("send proxied req to ttv")
-
 	return t.base.RoundTrip(req)
 }
