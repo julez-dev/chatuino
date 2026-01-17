@@ -186,3 +186,13 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
   - Tests verify: under limit succeeds, over limit returns 429, independent IP limits, fail-open behavior
   - Pattern: Redis key format `ratelimit:{ip}` for namespace isolation
   - Pattern: Window duration 2x for key expiration (cleanup old data)
+
+## Task - testing-3
+- Tests for rate limiting middleware already implemented in ratelimit-2
+- Files: `server/ratelimit_test.go`
+- **Learnings:**
+  - All required test scenarios covered in TestRateLimiter_Middleware
+  - Tests skip gracefully when Redis unavailable (t.Skip pattern)
+  - Parallel subtests for independent test execution
+  - TestExtractClientIP verifies IP extraction logic separately
+  - Pattern: Clean up test data with defer client.Del(ctx, testKey)

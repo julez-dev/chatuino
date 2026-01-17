@@ -150,7 +150,7 @@
         "Test: different IPs have independent limits",
         "Test: middleware fails open when Redis unavailable"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "refactor-2",
