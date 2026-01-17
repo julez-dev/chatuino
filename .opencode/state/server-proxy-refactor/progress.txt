@@ -168,3 +168,21 @@ Added refactor-2 to PRD: Since server now handles app access tokens independentl
     - Returns nil on connection failure (fail-open)
     - Respects context timeout
   - Pattern: Fail-open is critical for optional dependencies - system remains functional even if Redis unavailable
+
+## Task - ratelimit-2
+- Implemented rate limiting middleware with Redis sliding window algorithm
+- Files: `server/ratelimit.go`, `server/ratelimit_test.go`, `server/router.go`
+- **Learnings:**
+  - Sliding window: Redis sorted set (ZSET) stores request timestamps, scored by UnixNano
+  - Pipeline operations: ZREMRANGEBYSCORE (cleanup), ZCARD (count), ZADD (add), EXPIRE (TTL)
+  - Burst capacity: 100 requests max, sustained rate: 25 requests/minute
+  - Client IP extraction: X-Forwarded-For takes precedence over RemoteAddr
+  - Fail-open pattern: type assertion on `RatelimitStore` interface
+    - `*NopRedisClient` → always allow (rate limiting disabled)
+    - `*RedisClient` → enforce limits
+    - Unknown type or Redis error → fail open (allow request)
+  - Middleware wiring: conditionally applied in router based on `EnableProxyRateLimit` flag
+  - 429 response includes `Retry-After: 60` header
+  - Tests verify: under limit succeeds, over limit returns 429, independent IP limits, fail-open behavior
+  - Pattern: Redis key format `ratelimit:{ip}` for namespace isolation
+  - Pattern: Window duration 2x for key expiration (cleanup old data)

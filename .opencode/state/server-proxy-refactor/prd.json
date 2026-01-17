@@ -137,7 +137,7 @@
         "Returns 429 with Retry-After header when exceeded",
         "Fails open if Redis unavailable"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "testing-3",
