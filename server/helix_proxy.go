@@ -34,27 +34,27 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.Handler {
 			helixPath := extractHelixPath(req.URL.Path)
 			req.URL.Path = "/helix/" + helixPath
 
-			// Remove X-Forwarded-For header
+			// Remove proxy-revealing headers
 			req.Header.Del("X-Forwarded-For")
+			req.Header.Del("X-Forwarded-Host")
+			req.Header.Del("X-Forwarded-Proto")
+			req.Header.Del("Forwarded")
 
-			// Set required proxy headers
-			if _, ok := req.Header["User-Agent"]; !ok {
-				// Set a default user agent if not present
-				req.Header.Set("User-Agent", "")
+			// Set a proper User-Agent if missing (empty User-Agent can trigger blocks)
+			if req.Header.Get("User-Agent") == "" {
+				req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; chatuino/1.0)")
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("Ratelimit-Limit")
+			resp.Header.Del("Ratelimit-Remaining")
+
 			// Strip rate limit headers for non-429 responses
 			// Only preserve Ratelimit-Reset on 429 to inform clients when to retry
 			if resp.StatusCode != http.StatusTooManyRequests {
-				resp.Header.Del("Ratelimit-Limit")
-				resp.Header.Del("Ratelimit-Remaining")
 				resp.Header.Del("Ratelimit-Reset")
-			} else {
-				// For 429, keep only Ratelimit-Reset
-				resp.Header.Del("Ratelimit-Limit")
-				resp.Header.Del("Ratelimit-Remaining")
 			}
+
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

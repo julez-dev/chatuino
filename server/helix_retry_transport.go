@@ -79,7 +79,12 @@ func (t *helixRetryTransport) doAuthenticatedRequest(req *http.Request) (*http.R
 		return nil, fmt.Errorf("failed to ensure token: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
+	// remove all headers, expect auth headers
+	req.Header = http.Header{}
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Client-Id", t.clientID)
+
+	log.Logger.Info().Any("header", req.Header).Stringer("url", req.URL).Msg("send proxied req to ttv")
+
 	return t.base.RoundTrip(req)
 }
