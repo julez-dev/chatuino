@@ -1,12 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 
+	"github.com/julez-dev/chatuino/httputil"
 	"github.com/rs/zerolog/log"
 )
 
@@ -39,7 +38,7 @@ func newHelixRetryTransport(base http.RoundTripper, tokenProvider tokenProvider,
 // RoundTrip implements http.RoundTripper.
 func (t *helixRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone the request to allow retry
-	reqClone, err := cloneRequest(req)
+	reqClone, err := httputil.CloneRequest(req)
 	if err != nil {
 		return nil, err
 	}
@@ -83,25 +82,4 @@ func (t *helixRetryTransport) doAuthenticatedRequest(req *http.Request) (*http.R
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Client-Id", t.clientID)
 	return t.base.RoundTrip(req)
-}
-
-// cloneRequest creates a shallow copy of the request with a cloned body (if present).
-func cloneRequest(req *http.Request) (*http.Request, error) {
-	clone := req.Clone(req.Context())
-
-	if req.Body != nil {
-		// Read the body
-		bodyBytes, err := io.ReadAll(req.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		// Restore original body
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-
-		// Set clone body
-		clone.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	}
-
-	return clone, nil
 }
