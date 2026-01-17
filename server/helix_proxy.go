@@ -31,6 +31,12 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Only allow GET requests (all allowlisted endpoints are read-only)
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
 		// Build target URL: /ttv/chat/emotes/global -> https://api.twitch.tv/helix/chat/emotes/global
 		helixPath := extractHelixPath(r.URL.Path)
 		targetURL := target.ResolveReference(&url.URL{
@@ -38,8 +44,8 @@ func (a *API) helixProxyHandlerWithTarget(target *url.URL) http.HandlerFunc {
 			RawQuery: r.URL.RawQuery,
 		})
 
-		// Create new request to Twitch
-		req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL.String(), r.Body)
+		// Create new request to Twitch (no body needed for GET)
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, targetURL.String(), nil)
 		if err != nil {
 			logger := a.getLoggerFrom(r.Context())
 			logger.Err(err).Msg("failed to create proxy request")

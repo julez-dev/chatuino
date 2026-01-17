@@ -14,6 +14,31 @@ import (
 func TestHelixProxyHandler(t *testing.T) {
 	t.Parallel()
 
+	t.Run("only allows GET requests", func(t *testing.T) {
+		t.Parallel()
+
+		api := createTestAPI(t)
+		handler := api.handleHelixProxy()
+
+		// Test POST request
+		req := httptest.NewRequest(http.MethodPost, "/ttv/chat/emotes/global", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusMethodNotAllowed, rec.Code, "POST should be rejected")
+
+		// Test PUT request
+		req = httptest.NewRequest(http.MethodPut, "/ttv/users", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusMethodNotAllowed, rec.Code, "PUT should be rejected")
+
+		// Test DELETE request
+		req = httptest.NewRequest(http.MethodDelete, "/ttv/streams", nil)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusMethodNotAllowed, rec.Code, "DELETE should be rejected")
+	})
+
 	t.Run("path rewriting /ttv/* -> /helix/*", func(t *testing.T) {
 		t.Parallel()
 
