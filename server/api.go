@@ -51,6 +51,10 @@ func (a *API) Launch(ctx context.Context) error {
 			return err
 		}
 		a.redisClient = client
+
+		defer func() {
+			a.redisClient.Close()
+		}()
 	}
 
 	httpSrv := &http.Server{
@@ -64,9 +68,6 @@ func (a *API) Launch(ctx context.Context) error {
 
 	httpSrv.RegisterOnShutdown(func() {
 		a.logger.Info().Msg("http shutdown started")
-		if a.redisClient != nil {
-			a.redisClient.Close()
-		}
 	})
 
 	wg, ctx := errgroup.WithContext(ctx)

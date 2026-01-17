@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,7 +33,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey)
 		defer client.Del(ctx, testKey)
 
-		limiter := NewRateLimiter(client)
+		logger := zerolog.Nop()
+		limiter := NewRateLimiter(client, logger)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -67,7 +69,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey)
 		defer client.Del(ctx, testKey)
 
-		limiter := NewRateLimiter(client)
+		logger := zerolog.Nop()
+		limiter := NewRateLimiter(client, logger)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -113,7 +116,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey)
 		defer client.Del(ctx, testKey)
 
-		limiter := NewRateLimiter(client)
+		logger := zerolog.Nop()
+		limiter := NewRateLimiter(client, logger)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -159,7 +163,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		client.Del(ctx, testKey1, testKey2)
 		defer client.Del(ctx, testKey1, testKey2)
 
-		limiter := NewRateLimiter(client)
+		logger := zerolog.Nop()
+		limiter := NewRateLimiter(client, logger)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -190,7 +195,8 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		t.Parallel()
 
 		// Pass nil client (simulates disabled rate limiting)
-		limiter := NewRateLimiter(nil)
+		logger := zerolog.Nop()
+		limiter := NewRateLimiter(nil, logger)
 
 		handler := limiter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -218,6 +224,17 @@ func TestExtractClientIP(t *testing.T) {
 
 		ip := extractClientIP(req)
 		require.Equal(t, "203.0.113.1", ip, "should use X-Forwarded-For")
+	})
+
+	t.Run("extracts first IP from X-Forwarded-For with multiple IPs", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.2, 192.0.2.1")
+		req.RemoteAddr = "10.0.0.1:12345"
+
+		ip := extractClientIP(req)
+		require.Equal(t, "203.0.113.1", ip, "should extract first IP from comma-separated list")
 	})
 
 	t.Run("extracts IP from RemoteAddr when no X-Forwarded-For", func(t *testing.T) {

@@ -35,7 +35,7 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 	// New helix-aligned proxy routes (rate limited, allowlist validated, proxied to Twitch)
 	c.Route("/ttv", func(r chi.Router) {
 		// Apply rate limiting (disabled if redisClient is nil)
-		limiter := NewRateLimiter(api.redisClient)
+		limiter := NewRateLimiter(api.redisClient, logger)
 		r.Use(limiter.Middleware)
 		r.Use(HelixAllowlistMiddleware)
 		r.Get("/*", api.handleHelixProxy())
