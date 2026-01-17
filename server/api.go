@@ -46,23 +46,10 @@ func New(logger zerolog.Logger, config Config, client *http.Client) *API {
 
 func (a *API) Launch(ctx context.Context) error {
 	if a.conf.EnableProxyRateLimit {
-		client := redis.NewClient(&redis.Options{
-			Addr:     a.conf.Redis.Addr,
-			Password: a.conf.Redis.Password,
-			DB:       a.conf.Redis.DB,
-		})
-
-		// Test connection with timeout
-		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-
-		if err := client.Ping(pingCtx).Err(); err != nil {
-			client.Close()
-			a.logger.Error().Err(err).Msg("redis connection failed")
+		client, err := a.initRedisClient(ctx)
+		if err != nil {
 			return err
 		}
-
-		a.logger.Info().Str("addr", a.conf.Redis.Addr).Msg("redis connected")
 		a.redisClient = client
 	}
 
@@ -117,6 +104,27 @@ func (a *API) Launch(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (a *API) initRedisClient(ctx context.Context) (*redis.Client, error) {
+	client := redis.NewClient(&redis.Options{
+		Addr:     a.conf.Redis.Addr,
+		Password: a.conf.Redis.Password,
+		DB:       a.conf.Redis.DB,
+	})
+
+	// Test connection with timeout
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := client.Ping(pingCtx).Err(); err != nil {
+		client.Close()
+		a.logger.Error().Err(err).Msg("redis connection failed")
+		return nil, err
+	}
+
+	a.logger.Info().Str("addr", a.conf.Redis.Addr).Msg("redis connected")
+	return client, nil
 }
 
 func (a *API) getLoggerFrom(ctx context.Context) zerolog.Logger {

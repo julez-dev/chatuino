@@ -58,42 +58,82 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// checkLimit verifies if the client is within rate limits using sliding window
+// checkLimit verifies if the client is within rate limits using sliding window algorithm.
+//
+// SLIDING WINDOW ALGORITHM:
+// Uses Redis Sorted Set (ZSET) to track request timestamps per IP.
+// - Key: "ratelimit:{ip}"
+// - Score: Request timestamp (nanoseconds since epoch)
+// - Member: Unique request ID (using timestamp as ID)
+//
+// The "window" slides with each request:
+// - Window start: now - 1 minute
+// - Window end: now
+// - Only count requests within this 1-minute window
+//
+// REDIS PIPELINE:
+// Groups multiple Redis commands into a single network round-trip.
+// Without pipeline: 4 commands = 4 network calls
+// With pipeline: 4 commands = 1 network call
+// Commands execute atomically on server, but pipeline itself is NOT a transaction.
+//
+// REDIS COMMANDS USED:
+// 1. ZREMRANGEBYSCORE: Remove timestamps older than window (cleanup)
+//   - Removes entries with score < (now - 1 minute)
+//   - Keeps sorted set size bounded
+//
+// 2. ZCARD: Count entries in sorted set
+//   - Returns number of requests in current window
+//   - Used BEFORE adding current request (counts existing requests)
+//
+// 3. ZADD: Add current request timestamp
+//   - Score: now (in nanoseconds)
+//   - Member: timestamp as string (unique ID)
+//   - Idempotent: same timestamp won't be added twice
+//
+// 4. EXPIRE: Set key TTL to 2 minutes
+//   - Auto-cleanup if IP goes idle
+//   - 2x window duration for safety margin
 func (rl *RateLimiter) checkLimit(ctx context.Context, clientIP string) (bool, error) {
 	key := fmt.Sprintf("ratelimit:%s", clientIP)
 	now := time.Now()
 	windowStart := now.Add(-windowDuration)
 
+	// Pipeline batches commands for single network round-trip
 	pipe := rl.client.Pipeline()
 
-	// Remove old entries outside the sliding window
+	// 1. Remove old entries outside the sliding window
 	pipe.ZRemRangeByScore(ctx, key, "0", strconv.FormatInt(windowStart.UnixNano(), 10))
 
-	// Count requests in current window
+	// 2. Count requests in current window (BEFORE adding current request)
 	countCmd := pipe.ZCard(ctx, key)
 
-	// Add current request timestamp
+	// 3. Add current request timestamp to the window
 	pipe.ZAdd(ctx, key, redis.Z{
 		Score:  float64(now.UnixNano()),
 		Member: fmt.Sprintf("%d", now.UnixNano()),
 	})
 
-	// Set expiration on key (cleanup)
+	// 4. Set expiration on key (auto-cleanup for idle IPs)
 	pipe.Expire(ctx, key, windowDuration*2)
 
+	// Execute all commands in one network call
 	_, err := pipe.Exec(ctx)
 	if err != nil {
 		return false, err
 	}
 
+	// Get count result from command #2
 	count := countCmd.Val()
 
-	// Check against burst capacity
+	// Check against burst capacity (max requests in window)
 	if count >= burstCapacity {
 		return false, nil
 	}
 
 	// Check against sustained rate (requests per minute)
+	// Note: This check is redundant since sustainedRate < burstCapacity
+	// Kept for clarity - can be removed
 	if count >= sustainedRate {
 		return false, nil
 	}
@@ -101,21 +141,33 @@ func (rl *RateLimiter) checkLimit(ctx context.Context, clientIP string) (bool, e
 	return true, nil
 }
 
-// extractClientIP extracts the client IP from the request
-// Respects X-Forwarded-For header from trusted proxies
+// extractClientIP extracts the client IP from the request.
+//
+// SECURITY NOTE: X-Forwarded-For can be spoofed by clients.
+// This implementation trusts X-Forwarded-For, which is acceptable when:
+// 1. Server runs behind a trusted reverse proxy (nginx, Cloudflare, etc.)
+// 2. Proxy strips/overwrites client-provided X-Forwarded-For headers
+// 3. Worst case: attacker bypasses rate limit for their IP only (no privilege escalation)
+//
+// For production use behind untrusted proxies, implement trusted proxy validation:
+// - Maintain allowlist of trusted proxy IPs
+// - Only trust X-Forwarded-For if r.RemoteAddr is in allowlist
+// - Otherwise use r.RemoteAddr directly
 func extractClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first
+	// NOTE: Trusting X-Forwarded-For without validation.
+	// Safe if deployed behind trusted reverse proxy that sets this header.
+	// Bad actor can bypass their own rate limit, but cannot affect other users.
 	xff := r.Header.Get("X-Forwarded-For")
 	if xff != "" {
-		// Take the first IP in the chain (original client)
+		// X-Forwarded-For format: "client, proxy1, proxy2"
+		// Take first IP (original client)
 		if ip, _, err := net.SplitHostPort(xff); err == nil {
 			return ip
 		}
-		// If no port, return as-is
 		return xff
 	}
 
-	// Fallback to RemoteAddr
+	// No X-Forwarded-For, use direct connection IP
 	if ip, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return ip
 	}
