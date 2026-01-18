@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
@@ -21,7 +22,12 @@ type Client struct {
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{}
+	}
+
+	// Wrap the client's transport with rate limit retry logic
+	httpClient.Transport = &httputil.RateLimitRetryTransport{
+		Transport: httpClient.Transport, // nil is fine, RateLimitRetryTransport handles it
 	}
 
 	return &Client{
@@ -29,6 +35,8 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 		httpClient: httpClient,
 	}
 }
+
+// Auth methods
 
 func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/refresh", nil)
@@ -42,14 +50,12 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (string,
 	if err != nil {
 		return "", "", err
 	}
-
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", err
 	}
-
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("non 200 response code (%d): %s", resp.StatusCode, bodyBytes)
 	}
@@ -74,7 +80,6 @@ func (c *Client) RevokeToken(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-
 	defer resp.Body.Close()
 
 	// for revoke endpoint, BadRequest just means that the token was invalid (most likely expired, we can ignore this)
@@ -85,67 +90,7 @@ func (c *Client) RevokeToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func (c *Client) GetGlobalEmotes(ctx context.Context) (twitchapi.EmoteResponse, error) {
-	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/emotes/global")
-}
-
-func (c *Client) GetChannelEmotes(ctx context.Context, broadcaster string) (twitchapi.EmoteResponse, error) {
-	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcaster+"/emotes")
-}
-
-func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitchapi.GetStreamsResponse, error) {
-	if len(broadcastID) == 0 {
-		return twitchapi.GetStreamsResponse{}, fmt.Errorf("expected at least one broadcast id")
-	}
-
-	if len(broadcastID) == 1 {
-		resp, err := do[twitchapi.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcastID[0]+"/info")
-		if err != nil {
-			return twitchapi.GetStreamsResponse{}, err
-		}
-
-		return resp, nil
-	}
-
-	userValues := url.Values{}
-	for _, login := range broadcastID {
-		userValues.Add("user_id", login)
-	}
-
-	return do[twitchapi.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/channels/info?"+userValues.Encode())
-}
-
-func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (twitchapi.UserResponse, error) {
-	if len(logins) == 0 && len(ids) == 0 {
-		return twitchapi.UserResponse{}, fmt.Errorf("expected at least one login or id")
-	}
-
-	if len(logins) == 1 && len(ids) == 0 {
-		return do[twitchapi.UserResponse](ctx, c, c.baseURL+"/ttv/channel/"+logins[0]+"/user")
-	}
-
-	userValues := url.Values{}
-	for _, login := range logins {
-		userValues.Add("logins", login)
-	}
-	for _, id := range ids {
-		userValues.Add("ids", id)
-	}
-
-	return do[twitchapi.UserResponse](ctx, c, c.baseURL+"/ttv/channels?"+userValues.Encode())
-}
-
-func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitchapi.GetChatSettingsResponse, error) {
-	return do[twitchapi.GetChatSettingsResponse](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/settings")
-}
-
-func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet, error) {
-	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges/global")
-}
-
-func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
-	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/channel/"+broadcasterID+"/chat/badges")
-}
+// Proxy methods
 
 type CheckLinkResponse struct {
 	RemoteStatusCode  int
@@ -165,7 +110,6 @@ func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResp
 	if err != nil {
 		return CheckLinkResponse{}, fmt.Errorf("failed to send request: %w", err)
 	}
-
 	defer func() {
 		_ = resp.Body.Close()
 	}()
@@ -201,6 +145,69 @@ func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResp
 	return data, nil
 }
 
+// Twitch API proxy methods (/ttv/*)
+
+func (c *Client) GetGlobalEmotes(ctx context.Context) (twitchapi.EmoteResponse, error) {
+	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/chat/emotes/global")
+}
+
+func (c *Client) GetChannelEmotes(ctx context.Context, broadcaster string) (twitchapi.EmoteResponse, error) {
+	return do[twitchapi.EmoteResponse](ctx, c, c.baseURL+"/ttv/chat/emotes?broadcaster_id="+broadcaster)
+}
+
+func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitchapi.GetStreamsResponse, error) {
+	if len(broadcastID) == 0 {
+		return twitchapi.GetStreamsResponse{}, fmt.Errorf("expected at least one broadcast id")
+	}
+
+	userValues := url.Values{}
+	for _, id := range broadcastID {
+		userValues.Add("user_id", id)
+	}
+
+	userValues.Add("type", "all")
+
+	return do[twitchapi.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/streams?"+userValues.Encode())
+}
+
+func (c *Client) GetUsers(ctx context.Context, logins []string, ids []string) (twitchapi.UserResponse, error) {
+	if len(logins) == 0 && len(ids) == 0 {
+		return twitchapi.UserResponse{}, fmt.Errorf("expected at least one login or id")
+	}
+
+	userValues := url.Values{}
+	for _, login := range logins {
+		userValues.Add("login", login)
+	}
+	for _, id := range ids {
+		userValues.Add("id", id)
+	}
+
+	return do[twitchapi.UserResponse](ctx, c, c.baseURL+"/ttv/users?"+userValues.Encode())
+}
+
+func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitchapi.GetChatSettingsResponse, error) {
+	return do[twitchapi.GetChatSettingsResponse](ctx, c, c.baseURL+"/ttv/chat/settings?broadcaster_id="+broadcasterID)
+}
+
+func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet, error) {
+	resp, err := do[twitchapi.GetGlobalBadgesResp](ctx, c, c.baseURL+"/ttv/chat/badges/global")
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
+}
+
+func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
+	resp, err := do[twitchapi.GetChannelChatBadgesResp](ctx, c, c.baseURL+"/ttv/chat/badges?broadcaster_id="+broadcasterID)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
+}
+
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	var respData T
 
@@ -213,7 +220,6 @@ func do[T any](ctx context.Context, client *Client, url string) (T, error) {
 	if err != nil {
 		return respData, err
 	}
-
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)

@@ -1,0 +1,198 @@
+# Progress Log
+PRD: server-proxy-refactor
+Started: 2026-01-15
+
+## Codebase Patterns
+- Middleware pattern: `func(next http.Handler) http.Handler` returning `http.HandlerFunc`
+- Map-based allowlist: `map[string]struct{}` for O(1) lookup
+- Path extraction: `strings.TrimPrefix` for stripping route prefixes
+- Tests: use `require` framework (stretchr/testify), not `t.Error/Fail`
+- Tests: always add descriptive messages to `require.NoError(t, err, "message")`
+- Reverse proxy: use `httputil.ReverseProxy` with `Director` (not deprecated `Rewrite`)
+- Reverse proxy: use `ModifyResponse` to filter response headers
+- Retry logic: custom `http.RoundTripper` wrapping base transport for status-specific retries
+- Constructor validation: validate required dependencies in New() functions, fail fast (e.g., twitchapi.NewAPI checks provider != nil)
+- Timers (Go 1.23+): use `defer timer.Stop()` - automatically drains channel, no manual select needed
+
+---
+<!-- Task logs below - APPEND ONLY -->
+
+## Task - proxy-1
+- Implemented server-side endpoint allowlist with 7 Helix paths
+- Files: `server/helix_allowlist.go`, `server/helix_allowlist_test.go`
+- **Learnings:** Using map[string]struct{} for allowlist gives O(1) lookup; middleware not yet wired into router (will be done in proxy-2)
+
+## Task - proxy-2
+- Implemented reverse proxy handler for /ttv/* routes using `httputil.ReverseProxy`
+- Created `HelixTokenProvider` for managing app access tokens (client credentials flow)
+- Files: `server/helix_proxy.go`, `server/helix_proxy_test.go`, `server/helix_token.go`, `server/helix_token_test.go`
+- Updated `server/router.go` to use `handleHelixProxy()` with allowlist middleware
+- Updated `server/api.go` to include `helixTokenProvider` field
+- **Learnings:** 
+  - Use `Director` (not deprecated `Rewrite`) to modify outgoing requests
+  - Use `ModifyResponse` to filter response headers (strip rate limit headers except `Ratelimit-Reset` on 429)
+  - Handler pattern: return `http.HandlerFunc`, attach as `r.Get("/*", api.handleHelixProxy())`
+  - Testability: internal `helixProxyHandlerWithTarget(*url.URL)` accepts configurable target
+  - Old handlers now unused (cleanup in refactor-1)
+
+## Task - proxy-3
+- Implemented 401 retry with token refresh using custom RoundTripper
+- Files: `server/helix_retry_transport.go`, `server/helix_retry_transport_test.go`, `server/helix_token.go` (renamed method)
+- Modified `server/helix_proxy.go` to use retry transport, removed token injection from Director
+- **Learnings:**
+  - Custom RoundTripper wraps base transport for retry logic AND auth header injection
+  - Extract header injection to `injectAuthHeaders(req)` helper - called for both initial and retry requests
+  - Renamed `GetToken` to `EnsureToken` - better reflects side effects (HTTP request may occur)
+  - Transport handles both initial token injection and retry with refreshed token
+  - Director only handles URL rewriting and header cleanup (removed X-Forwarded-For)
+  - Request body must be cloned before first attempt (for retry)
+  - Only close response body after successful token refresh (before retry fails, keep body intact)
+  - tokenProvider interface for testability (InvalidateToken + EnsureToken)
+  - Test organization: group by behavior (non-401, 401 retry, auth headers) with subtests
+
+## Task - proxy-4
+- Already implemented in proxy-2 via ModifyResponse callback
+- Files: `server/helix_proxy.go:46-58`, `server/helix_proxy_test.go:220-246` (test)
+- **Learnings:**
+  - ModifyResponse callback in httputil.ReverseProxy filters response headers before client sees them
+  - For 429 responses: strip Ratelimit-Limit and Ratelimit-Remaining, keep only Ratelimit-Reset
+  - Server-side doesn't wait/retry - client gets 429 immediately with reset timestamp
+  - Test verifies header filtering behavior
+
+## Task - refactor-1
+- Removed old handler functions and twitchapi dependency from server package
+- Files: `server/handler.go` (deleted 7 handler functions), `server/api.go` (removed ttvAPI field), `server.go` (removed twitchapi initialization)
+- **Learnings:**
+  - Router already updated in proxy-2 - no changes needed to router.go
+  - server/client.go still uses twitchapi types for responses (allowed per PRD)
+  - API struct now only depends on helixTokenProvider for Twitch API access
+  - Removed ~200 lines of legacy handler code
+
+## Task - client-1
+- Updated server.Client methods to use new Helix-aligned paths matching Twitch API
+- Files: `server/client.go` (6 methods updated)
+- **Learnings:**
+  - Changed from custom server paths to Helix paths: `/ttv/chat/emotes/global`, `/ttv/chat/emotes?broadcaster_id=`, `/ttv/streams?user_id=`, `/ttv/users?login=&id=`, `/ttv/chat/settings?broadcaster_id=`, `/ttv/chat/badges?broadcaster_id=`
+  - Query param names match Helix API: `login` and `id` (not `logins` and `ids`), `user_id` (not path-based)
+  - Simplified GetStreamInfo - removed special case for single ID, now always uses query params
+  - Response types unchanged - still use twitchapi.* types for compatibility
+
+## Task - testing-1
+- Tests for endpoint allowlist already implemented in proxy-1
+- Files: `server/helix_allowlist_test.go`
+- **Learnings:**
+  - TestHelixAllowlistMiddleware covers all requirements: allowlisted paths pass through (200), non-allowlisted return 403, query params handled correctly
+  - TestIsPathAllowed verifies allowlist logic for all 7 Helix endpoints
+  - Tests use table-driven approach with subtests for each scenario
+
+## Task - testing-2
+- Tests for proxy behavior already implemented in proxy-2
+- Files: `server/helix_proxy_test.go`
+- **Learnings:**
+  - TestHelixProxyHandler covers all requirements: path rewriting /ttv/* -> /helix/*, query params preserved, auth headers injected, response passed through unchanged
+  - Tests use mock HTTP servers to verify request/response handling
+  - Each test captures specific aspects (path, query, headers, body) for verification
+
+---
+## IMPROVEMENT IDENTIFIED
+Added refactor-2 to PRD: Since server now handles app access tokens independently via HelixTokenProvider, the twitchapi package can be simplified:
+- Remove app token management (appAccessToken field, createAppAccessToken method)
+- Remove clientSecret handling (only needed for app tokens)
+- twitchapi.API will focus solely on user authentication
+- This eliminates ~50 lines of duplicate token logic
+
+## Task - refactor-2
+- Removed app token management from twitchapi.API struct
+- Files: `twitch/twitchapi/api.go`
+- **Learnings:**
+  - Removed fields: `appAccessToken`, `clientSecret` (lines 81, 84)
+  - Removed `WithClientSecret` option function
+  - Removed `createAppAccessToken` method (~44 lines)
+  - Removed `doAuthenticatedAppRequest` function (~30 lines)
+  - Removed errors: `ErrNoClientSecret`, `ErrAppTokenStatusCode`
+  - Updated 6 methods to require user auth: `GetGlobalChatBadges`, `GetChannelChatBadges`, `GetUsers`, `GetStreamInfo`, `GetGlobalEmotes`, `GetChannelEmotes`, `GetChatSettings`
+  - All methods now return `ErrNoUserAccess` if `a.provider == nil`
+  - Removed unused `strings` import
+  - twitchapi.API now exclusively handles user token operations
+  - App token operations delegated to server package's `HelixTokenProvider`
+  - Architecture separation: server handles app tokens, twitchapi handles user tokens
+  - **Follow-up improvement**: Moved provider nil check to NewAPI constructor (commit 4076ed5)
+    - Removed 22 duplicate `if a.provider == nil` checks from individual methods
+    - Enforces user authentication requirement at API creation time (fail-fast principle)
+    - Simplified method bodies by removing redundant validation
+
+## Task - client-2
+- Extracted shared 429 retry logic to `httputil` package
+- Files: `httputil/ratelimit.go`, `httputil/ratelimit_test.go`, `twitch/twitchapi/api.go`, `server/client.go`
+- **Learnings:**
+  - Created `httputil.RetryOn429` helper - accepts context + retry function
+  - Helper extracts `Ratelimit-Reset` header, waits until reset time, retries request
+  - Handles edge cases: no reset header, invalid timestamp, context cancellation
+  - Refactored `twitchapi.doAuthenticatedRequest` to use helper
+    - Special case: `/eventsub/subscriptions` skips retry (cost-based limits)
+    - Extracted `parseResponse[T]` helper to separate response parsing
+  - Added 429 retry support to `server.Client.do` (previously missing)
+  - Comprehensive tests: non-429, missing header, valid retry, context cancellation, invalid header
+  - Pattern: wrap HTTP calls in `func() (*http.Response, error)` for retry helper
+  - Eliminated ~30 lines of duplicate retry logic between packages
+  - Both clients now have consistent 429 handling behavior
+  - **Follow-up refactor**: Replaced function-based helper with RoundTripper (commit 3d1c381)
+    - Created `RateLimitRetryTransport` implementing `http.RoundTripper`
+    - More idiomatic Go pattern - transport wrapping is standard practice
+    - Injected at client construction time in both `twitchapi.NewAPI` and `server.NewClient`
+    - Simplified `slices.Contains` for skip list checking
+    - Cleaner separation: transport handles retry, business logic stays in handlers
+    - Tests verify transport behavior directly (no mock functions needed)
+
+## Task - ratelimit-1
+- Added Redis dependency and connection setup with graceful fail-open
+- Files: `server/redis.go`, `server/redis_test.go`, `server/api.go`, `server.go`, `go.mod`
+- **Learnings:**
+  - Added `go-redis/v9` dependency to project
+  - Created `RedisConfig` struct: Enabled, Addr, Password, DB
+  - Created `NewRedisClient` function with fail-open behavior:
+    - Returns nil if disabled or connection fails
+    - 2-second ping timeout to test connectivity
+    - Logs warnings on failure but continues without Redis
+  - Added Redis client to `server.API` struct
+  - Initialized Redis in `API.Launch()` before starting HTTP server
+  - Added shutdown hook to close Redis client gracefully
+  - Environment variables for configuration:
+    - `CHATUINO_REDIS_ENABLED` (bool, default false)
+    - `CHATUINO_REDIS_ADDR` (string, default localhost:6379)
+    - `CHATUINO_REDIS_PASSWORD` (string, optional)
+    - `CHATUINO_REDIS_DB` (int, default 0, validated 0-15)
+  - Comprehensive tests verify:
+    - Returns nil when disabled
+    - Returns nil when address empty
+    - Returns nil on connection failure (fail-open)
+    - Respects context timeout
+  - Pattern: Fail-open is critical for optional dependencies - system remains functional even if Redis unavailable
+
+## Task - ratelimit-2
+- Implemented rate limiting middleware with Redis sliding window algorithm
+- Files: `server/ratelimit.go`, `server/ratelimit_test.go`, `server/router.go`
+- **Learnings:**
+  - Sliding window: Redis sorted set (ZSET) stores request timestamps, scored by UnixNano
+  - Pipeline operations: ZREMRANGEBYSCORE (cleanup), ZCARD (count), ZADD (add), EXPIRE (TTL)
+  - Burst capacity: 100 requests max, sustained rate: 25 requests/minute
+  - Client IP extraction: X-Forwarded-For takes precedence over RemoteAddr
+  - Fail-open pattern: type assertion on `RatelimitStore` interface
+    - `*NopRedisClient` → always allow (rate limiting disabled)
+    - `*RedisClient` → enforce limits
+    - Unknown type or Redis error → fail open (allow request)
+  - Middleware wiring: conditionally applied in router based on `EnableProxyRateLimit` flag
+  - 429 response includes `Retry-After: 60` header
+  - Tests verify: under limit succeeds, over limit returns 429, independent IP limits, fail-open behavior
+  - Pattern: Redis key format `ratelimit:{ip}` for namespace isolation
+  - Pattern: Window duration 2x for key expiration (cleanup old data)
+
+## Task - testing-3
+- Tests for rate limiting middleware already implemented in ratelimit-2
+- Files: `server/ratelimit_test.go`
+- **Learnings:**
+  - All required test scenarios covered in TestRateLimiter_Middleware
+  - Tests skip gracefully when Redis unavailable (t.Skip pattern)
+  - Parallel subtests for independent test execution
+  - TestExtractClientIP verifies IP extraction logic separately
+  - Pattern: Clean up test data with defer client.Del(ctx, testKey)

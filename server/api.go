@@ -6,36 +6,53 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
+// RedisConfig holds Redis connection configuration
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
+}
+
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	HostAndPort  string
-	RedirectURL  string
+	ClientID             string
+	ClientSecret         string
+	HostAndPort          string
+	RedirectURL          string
+	Redis                RedisConfig
+	EnableProxyRateLimit bool
 }
 
 type API struct {
-	logger zerolog.Logger
-	conf   Config
-	client *http.Client
-
-	ttvAPI *twitchapi.API
+	logger             zerolog.Logger
+	conf               Config
+	client             *http.Client
+	helixTokenProvider *HelixTokenProvider
+	redisClient        *redis.Client
 }
 
-func New(logger zerolog.Logger, config Config, client *http.Client, ttvAPI *twitchapi.API) *API {
+func New(logger zerolog.Logger, config Config, client *http.Client) *API {
 	return &API{
-		logger: logger,
-		conf:   config,
-		client: client,
-		ttvAPI: ttvAPI,
+		logger:             logger,
+		conf:               config,
+		client:             client,
+		helixTokenProvider: NewHelixTokenProvider(client, config.ClientID, config.ClientSecret),
 	}
 }
 
 func (a *API) Launch(ctx context.Context) error {
+	if a.conf.EnableProxyRateLimit {
+		client, err := a.initRedisClient(ctx)
+		if err != nil {
+			return err
+		}
+		a.redisClient = client
+	}
+
 	httpSrv := &http.Server{
 		Addr:           a.conf.HostAndPort,
 		WriteTimeout:   time.Second * 15,
@@ -67,10 +84,14 @@ func (a *API) Launch(ctx context.Context) error {
 	wg.Go(func() error {
 		<-ctx.Done()
 
-		ctx, cancel := context.WithTimeout(ctx, time.Second*15)
+		if a.redisClient != nil {
+			defer a.redisClient.Close()
+		}
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 
-		if err := httpSrv.Shutdown(ctx); err != nil {
+		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
@@ -84,6 +105,27 @@ func (a *API) Launch(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (a *API) initRedisClient(ctx context.Context) (*redis.Client, error) {
+	client := redis.NewClient(&redis.Options{
+		Addr:     a.conf.Redis.Addr,
+		Password: a.conf.Redis.Password,
+		DB:       a.conf.Redis.DB,
+	})
+
+	// Test connection with timeout
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := client.Ping(pingCtx).Err(); err != nil {
+		client.Close()
+		a.logger.Error().Err(err).Msg("redis connection failed")
+		return nil, err
+	}
+
+	a.logger.Info().Str("addr", a.conf.Redis.Addr).Msg("redis connected")
+	return client, nil
 }
 
 func (a *API) getLoggerFrom(ctx context.Context) zerolog.Logger {
