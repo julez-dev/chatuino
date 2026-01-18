@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -99,7 +100,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		require.LessOrEqual(t, successCount, burstCapacity, "should not exceed burst capacity")
 	})
 
-	t.Run("Retry-After header present in 429 response", func(t *testing.T) {
+	t.Run("Ratelimit-Reset header present in 429 response", func(t *testing.T) {
 		t.Parallel()
 
 		client := redis.NewClient(&redis.Options{
@@ -124,6 +125,7 @@ func TestRateLimiter_Middleware(t *testing.T) {
 		}))
 
 		// Exhaust rate limit
+		beforeTest := time.Now()
 		for i := 0; i < burstCapacity+5; i++ {
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.RemoteAddr = "192.0.2.3:12345"
@@ -132,12 +134,15 @@ func TestRateLimiter_Middleware(t *testing.T) {
 			handler.ServeHTTP(w, req)
 
 			if w.Code == http.StatusTooManyRequests {
-				retryAfterHeader := w.Header().Get("Retry-After")
-				require.NotEmpty(t, retryAfterHeader, "Retry-After header should be present")
+				resetHeader := w.Header().Get("Ratelimit-Reset")
+				require.NotEmpty(t, resetHeader, "Ratelimit-Reset header should be present")
 
-				seconds, err := strconv.Atoi(retryAfterHeader)
-				require.NoError(t, err, "Retry-After should be valid integer")
-				require.Equal(t, 60, seconds, "Retry-After should be 60 seconds")
+				resetTime, err := strconv.ParseInt(resetHeader, 10, 64)
+				require.NoError(t, err, "Ratelimit-Reset should be valid Unix timestamp")
+
+				// Reset time should be ~60 seconds from now (within window duration)
+				expectedReset := beforeTest.Add(windowDuration).Unix()
+				require.InDelta(t, expectedReset, resetTime, 5, "reset time should be ~60 seconds from now")
 				return
 			}
 		}

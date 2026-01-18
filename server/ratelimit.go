@@ -17,7 +17,6 @@ const (
 	// Rate limit configuration
 	burstCapacity  = 100         // Max requests in burst
 	windowDuration = time.Minute // Sliding window duration
-	retryAfter     = 60          // Seconds to wait after rate limit hit
 )
 
 // RateLimiter implements sliding window rate limiting using Redis
@@ -55,7 +54,10 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 		}
 
 		if !allowed {
-			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+			// Set Ratelimit-Reset header with Unix timestamp (mimics Twitch behavior)
+			// Clients can retry after 60 seconds
+			resetTime := time.Now().Add(windowDuration).Unix()
+			w.Header().Set("Ratelimit-Reset", strconv.FormatInt(resetTime, 10))
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
