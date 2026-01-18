@@ -165,6 +165,8 @@ func (c *Client) GetStreamInfo(ctx context.Context, broadcastID []string) (twitc
 		userValues.Add("user_id", id)
 	}
 
+	userValues.Add("type", "all")
+
 	return do[twitchapi.GetStreamsResponse](ctx, c, c.baseURL+"/ttv/streams?"+userValues.Encode())
 }
 
@@ -189,11 +191,21 @@ func (c *Client) GetChatSettings(ctx context.Context, broadcasterID string, mode
 }
 
 func (c *Client) GetGlobalChatBadges(ctx context.Context) ([]twitchapi.BadgeSet, error) {
-	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges/global")
+	resp, err := do[twitchapi.GetGlobalBadgesResp](ctx, c, c.baseURL+"/ttv/chat/badges/global")
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
 }
 
 func (c *Client) GetChannelChatBadges(ctx context.Context, broadcasterID string) ([]twitchapi.BadgeSet, error) {
-	return do[[]twitchapi.BadgeSet](ctx, c, c.baseURL+"/ttv/chat/badges?broadcaster_id="+broadcasterID)
+	resp, err := do[twitchapi.GetChannelChatBadgesResp](ctx, c, c.baseURL+"/ttv/chat/badges?broadcaster_id="+broadcasterID)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Data, nil
 }
 
 func do[T any](ctx context.Context, client *Client, url string) (T, error) {
