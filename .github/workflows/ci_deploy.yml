@@ -43,8 +43,8 @@ jobs:
 
       - name: Create develop tag
         run: |
-          git tag -f develop
-          git push origin develop --force
+          git tag -f v0.0.0-develop
+          git push origin v0.0.0-develop --force
 
       - uses: goreleaser/goreleaser-action@v6
         with:
@@ -53,6 +53,7 @@ jobs:
           args: release --clean --config .goreleaser.ci.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: v0.0.0-develop
 
       - name: Deploy to CI server
         uses: appleboy/ssh-action@v1.2.2
