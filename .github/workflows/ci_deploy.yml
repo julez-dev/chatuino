@@ -37,7 +37,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete existing develop release
-        run: gh release delete develop --yes --cleanup-tag || true
+        run: gh release delete v0.0.0-develop --yes --cleanup-tag || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
