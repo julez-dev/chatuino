@@ -17,3 +17,17 @@ chatuino.net {
 www.chatuino.net {
 	redir https://chatuino.net{uri}
 }
+
+ci.chatuino.net {
+	header X-Robots-Tag "noindex, nofollow"
+
+	@blocked {
+		path /internal /internal/*
+	}
+
+	respond @blocked 403 {
+		body "Access denied"
+	}
+
+	reverse_proxy chatuino-ci:3000
+}

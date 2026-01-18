@@ -1,0 +1,60 @@
+services:
+  redis-ci:
+    image: redis:8-alpine
+    container_name: chatuino-redis-ci
+    restart: unless-stopped
+    command: >
+      sh -c "redis-server --requirepass $$(cat /run/secrets/redis_password)"
+    secrets:
+      - redis_password
+    volumes:
+      - redis-ci-data:/data
+    healthcheck:
+      test: redis-cli --no-auth-warning -a $$(cat /run/secrets/redis_password) ping | grep PONG
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - proxy
+
+  chatuino-ci:
+    image: ghcr.io/julez-dev/chatuino:develop
+    container_name: chatuino-ci
+    restart: unless-stopped
+    entrypoint:
+      [
+        "/bin/sh",
+        "-c",
+        "export CHATUINO_CLIENT_SECRET=$$(cat /run/secrets/twitch_client_secret) CHATUINO_REDIS_PASSWORD=$$(cat /run/secrets/redis_password) ; chatuino --log server --redirect-url=https://ci.chatuino.net/auth/redirect",
+      ]
+    secrets:
+      - twitch_client_secret
+      - redis_password
+    environment:
+      - "CHATUINO_CLIENT_ID=jliqj1q6nmp0uh5ofangdx4iac7yd9"
+      - "CHATUINO_ADDR=:3000"
+      - "CHATUINO_REDIS_ADDR=redis-ci:6379"
+      - "CHATUINO_PROXY_RATELIMIT=true"
+    healthcheck:
+      test: curl --fail http://localhost:3000/internal/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      redis-ci:
+        condition: service_healthy
+    networks:
+      - proxy
+
+secrets:
+  twitch_client_secret:
+    file: ./secrets/twitch_client_secret.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+
+volumes:
+  redis-ci-data:
+
+networks:
+  proxy:
+    external: true
