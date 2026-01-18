@@ -51,10 +51,6 @@ func (a *API) Launch(ctx context.Context) error {
 			return err
 		}
 		a.redisClient = client
-
-		defer func() {
-			a.redisClient.Close()
-		}()
 	}
 
 	httpSrv := &http.Server{
@@ -88,10 +84,14 @@ func (a *API) Launch(ctx context.Context) error {
 	wg.Go(func() error {
 		<-ctx.Done()
 
-		ctx, cancel := context.WithTimeout(ctx, time.Second*15)
+		if a.redisClient != nil {
+			defer a.redisClient.Close()
+		}
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*15)
 		defer cancel()
 
-		if err := httpSrv.Shutdown(ctx); err != nil {
+		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
