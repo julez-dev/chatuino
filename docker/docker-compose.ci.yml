@@ -57,4 +57,5 @@ volumes:
 
 networks:
   proxy:
+    name: chatuino-proxy
     external: true

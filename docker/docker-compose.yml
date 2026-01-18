@@ -69,4 +69,5 @@ volumes:
 
 networks:
   proxy:
+    name: chatuino-proxy
     driver: bridge
