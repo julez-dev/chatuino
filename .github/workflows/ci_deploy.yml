@@ -66,5 +66,5 @@ jobs:
             git fetch origin ${{ github.sha }}
             git checkout ${{ github.sha }}
             cd docker
-            docker compose -f docker-compose.ci.yml pull
-            docker compose -f docker-compose.ci.yml up -d
+            docker compose -p chatuino-ci -f docker-compose.ci.yml pull
+            docker compose -p chatuino-ci -f docker-compose.ci.yml up -d

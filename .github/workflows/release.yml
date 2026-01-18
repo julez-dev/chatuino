@@ -61,7 +61,7 @@ jobs:
             git fetch --all
             git checkout ${{ github.ref_name }}
             cd docker
-            docker compose pull
-            docker compose up -d
+            docker compose -p chatuino pull
+            docker compose -p chatuino up -d
             exit
           EOF
