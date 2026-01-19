@@ -573,8 +573,8 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 	prompt := s.InputModel.Prompt
 	promptWidth := lipgloss.Width(prompt)
 
-	// Calculate wrap width (total width minus prompt)
-	wrapWidth := s.width - promptWidth
+	// Calculate wrap width (total width minus prompt, minus 1 for cursor at end of line)
+	wrapWidth := s.width - promptWidth - 1
 	if wrapWidth <= 0 {
 		wrapWidth = 1
 	}
