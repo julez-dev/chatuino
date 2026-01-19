@@ -977,9 +977,16 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 }
 
 func formatBadgeReplacement(settings save.Settings, replacements map[string]string) string {
-	if !settings.Chat.GraphicBadges {
-		return fmt.Sprintf("[%s]", strings.Join(slices.Collect(maps.Values(replacements)), ","))
+	// Sort keys for deterministic badge order
+	keys := slices.Sorted(maps.Keys(replacements))
+	values := make([]string, 0, len(keys))
+	for _, k := range keys {
+		values = append(values, replacements[k])
 	}
 
-	return strings.Join(slices.Collect(maps.Values(replacements)), "")
+	if !settings.Chat.GraphicBadges {
+		return fmt.Sprintf("[%s]", strings.Join(values, ","))
+	}
+
+	return strings.Join(values, "")
 }

@@ -299,6 +299,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap())
 		t.messageInput.EmoteReplacer = t.deps.EmoteReplacer // enable emote replacement
 		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
+		t.messageInput.SetMaxVisibleLines(3) // allow input to grow up to 3 lines
 
 		t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.deps)
 
@@ -589,8 +590,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				// Message Accept Suggestion Template Replace
 				// always allow accept suggestion key so even new texts can be templated
 				if key.Matches(msg, t.messageInput.KeyMap.AcceptSuggestion) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+					heightBefore := lipgloss.Height(t.renderMessageInput())
 					t.messageInput, _ = t.messageInput.Update(msg)
 					cmds = append(cmds, t.replaceInputTemplate())
+					if lipgloss.Height(t.renderMessageInput()) != heightBefore {
+						t.HandleResize()
+					}
 					return t, tea.Batch(cmds...)
 				}
 
@@ -634,8 +639,17 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			if t.state == insertMode || t.state == userInspectInsertMode {
+				// Track height before update to detect changes
+				heightBefore := lipgloss.Height(t.renderMessageInput())
+
 				t.messageInput, cmd = t.messageInput.Update(msg)
 				cmds = append(cmds, cmd)
+
+				// Recalculate layout if input height changed (text wrapped/unwrapped)
+				heightAfter := lipgloss.Height(t.renderMessageInput())
+				if heightBefore != heightAfter {
+					t.HandleResize()
+				}
 			}
 		}
 
@@ -1157,6 +1171,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 
 		t.messageInput.Blur()
 		t.messageInput.SetValue("")
+		t.HandleResize() // Recalculate layout after clearing input
 	}
 
 	t.chatWindow.moveToBottom()
@@ -1376,6 +1391,7 @@ func (t *broadcastTab) handleCopyMessage() {
 
 	t.messageInput.Focus()
 	t.messageInput.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
+	t.HandleResize() // Recalculate layout after copying message
 }
 
 func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
@@ -1480,6 +1496,7 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 
 	t.messageInput.Focus()
 	t.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
+	t.HandleResize() // Recalculate layout after setting timeout command
 }
 
 func (t *broadcastTab) renderMessageInput() string {
@@ -1495,6 +1512,9 @@ func (t *broadcastTab) HandleResize() {
 		t.statusInfo.width = t.width
 		t.streamInfo.width = t.width
 		t.poll.setWidth(t.width)
+
+		// Set messageInput width BEFORE rendering to ensure correct wrapping
+		t.messageInput.SetWidth(t.width)
 
 		messageInput := t.renderMessageInput()
 		heightMessageInput := lipgloss.Height(messageInput)
@@ -1542,8 +1562,6 @@ func (t *broadcastTab) HandleResize() {
 			t.chatWindow.width = t.width
 			t.chatWindow.recalculateLines()
 		}
-
-		t.messageInput.SetWidth(t.width)
 
 		if t.state == emoteOverviewMode {
 			log.Logger.Info().Int("width", t.width).Int("height", t.height-heightStatusInfo).Msg("resize emoteOverview")
@@ -1655,7 +1673,7 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 }
 
 func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
-	input := t.messageInput.Value()
+	input := t.messageInput.InputModel.Value()
 
 	notice := &twitchirc.Notice{
 		FakeTimestamp: time.Now(),
@@ -1747,6 +1765,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 	}
 
 	t.messageInput.SetValue(inputText)
+	t.HandleResize() // Recalculate layout after template replacement
 	return nil
 }
 

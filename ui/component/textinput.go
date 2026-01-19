@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	trie "github.com/Vivino/go-autocomplete-trie"
 	"github.com/charmbracelet/bubbles/key"
@@ -54,6 +55,7 @@ type SuggestionTextInput struct {
 
 	history                    []string
 	historyIndex               int
+	browsingHistory            bool // true when navigating history with up/down
 	IncludeCommandSuggestions  bool
 	IncludeModeratorCommands   bool
 	DisableAutoSpaceSuggestion bool
@@ -64,6 +66,11 @@ type SuggestionTextInput struct {
 	emoteReplacements map[string]string // emoteText:unicode
 
 	userCache map[string]func(...string) string // [username]render func
+
+	// Multi-line display support
+	maxVisibleLines int // 1 = single line (default), >1 = wrapped multi-line display
+	width           int // stored width for wrapping calculations
+	viewOffset      int // scroll offset when wrapped lines > maxVisibleLines
 }
 
 func defaultTrie() *trie.Trie {
@@ -100,6 +107,7 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string, customS
 		IncludeModeratorCommands:  false,
 		customSuggestions:         customSuggestions,
 		emoteReplacements:         map[string]string{},
+		maxVisibleLines:           1, // default single-line for backward compat
 	}
 }
 
@@ -119,9 +127,11 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 		case msg.String() == "enter" && !s.DisableHistory:
 			s.history = append(s.history, s.InputModel.Value())
 			s.historyIndex = len(s.history)
+			s.browsingHistory = false
 			return s, nil
-		case key.Matches(msg, s.KeyMap.PrevSuggestion) && s.InputModel.Value() == "":
+		case key.Matches(msg, s.KeyMap.PrevSuggestion) && (s.InputModel.Value() == "" || s.browsingHistory):
 			s.historyIndex--
+			s.browsingHistory = true
 
 			if s.historyIndex < 0 {
 				if len(s.history) != 0 {
@@ -137,8 +147,9 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			}
 
 			return s, nil
-		case key.Matches(msg, s.KeyMap.NextSuggestion) && s.InputModel.Value() == "":
+		case key.Matches(msg, s.KeyMap.NextSuggestion) && (s.InputModel.Value() == "" || s.browsingHistory):
 			s.historyIndex++
+			s.browsingHistory = true
 
 			if s.historyIndex >= len(s.history) {
 				s.historyIndex = 0
@@ -189,6 +200,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 		default:
 			s.InputModel, cmd = s.InputModel.Update(msg)
 			s.updateSuggestions()
+			s.browsingHistory = false // exit history mode when typing
 
 			// if emote replacer is enabled we try to display the actual emote, before that we need to fetch the emote
 			if s.EmoteReplacer != nil && s.canAcceptSuggestion() {
@@ -238,6 +250,14 @@ func (s *SuggestionTextInput) loadEmoteImageCommand() tea.Cmd {
 }
 
 func (s *SuggestionTextInput) View() string {
+	// Determine which input view to use
+	var inputView string
+	if s.maxVisibleLines > 1 {
+		inputView = s.renderMultiLineView()
+	} else {
+		inputView = s.InputModel.View()
+	}
+
 	if s.canAcceptSuggestion() {
 		suggestion := s.suggestions[s.suggestionIndex]
 
@@ -248,13 +268,13 @@ func (s *SuggestionTextInput) View() string {
 
 		// current suggestion is emote and has a relacement
 		if replace, ok := s.emoteReplacements[suggestion]; ok && replace != suggestion {
-			return fmt.Sprintf(" %s %s (%dx)\n%s", suggestion, replace, len(s.suggestions), s.InputModel.View())
+			return fmt.Sprintf(" %s %s (%dx)\n%s", suggestion, replace, len(s.suggestions), inputView)
 		}
 
-		return fmt.Sprintf(" %s (%dx)\n%s", suggestion, len(s.suggestions), s.InputModel.View())
+		return fmt.Sprintf(" %s (%dx)\n%s", suggestion, len(s.suggestions), inputView)
 	}
 
-	return "\n" + s.InputModel.View()
+	return "\n" + inputView
 }
 
 func (s *SuggestionTextInput) Blur() {
@@ -266,7 +286,18 @@ func (s *SuggestionTextInput) Focus() {
 }
 
 func (s *SuggestionTextInput) SetWidth(width int) {
+	s.width = width
 	s.InputModel.Width = width - 3 // -3 for prompt
+}
+
+// SetMaxVisibleLines sets the maximum number of visible lines for wrapped display.
+// When n > 1, input text will be soft-wrapped and displayed across multiple lines.
+// When n == 1 (default), the original single-line behavior is used.
+func (s *SuggestionTextInput) SetMaxVisibleLines(n int) {
+	if n < 1 {
+		n = 1
+	}
+	s.maxVisibleLines = n
 }
 
 func (s *SuggestionTextInput) Value() string {
@@ -402,28 +433,268 @@ func (s *SuggestionTextInput) previousSuggestion() {
 	}
 }
 
-func selectWordAtIndex(sentence string, index int) (string, int, int) {
-	if index > len(sentence) || sentence == "" {
+// selectWordAtIndex returns the word at the given rune index, along with byte start/end indices.
+// The index parameter is a rune position (as returned by textinput.Model.Position()).
+// Returns the word, byte start index, and byte end index for use with string slicing.
+func selectWordAtIndex(sentence string, runeIndex int) (string, int, int) {
+	runes := []rune(sentence)
+	if runeIndex > len(runes) || sentence == "" {
 		return "", 0, 0
 	}
 
-	before, after := sentence[:index], sentence[index:]
-
-	spaceIndexBefore := strings.LastIndex(before, " ")
-
-	if spaceIndexBefore == -1 {
-		spaceIndexBefore = 0
-	} else {
-		spaceIndexBefore++
+	// Find word boundaries in rune space
+	startRune := runeIndex
+	for startRune > 0 && runes[startRune-1] != ' ' {
+		startRune--
 	}
 
-	spaceIndexAfter := strings.Index(after, " ")
-
-	if spaceIndexAfter == -1 {
-		spaceIndexAfter = index + len(after)
-	} else {
-		spaceIndexAfter = index + spaceIndexAfter
+	endRune := runeIndex
+	for endRune < len(runes) && runes[endRune] != ' ' {
+		endRune++
 	}
 
-	return sentence[spaceIndexBefore:spaceIndexAfter], spaceIndexBefore, spaceIndexAfter
+	// Convert rune indices to byte indices for string slicing
+	startByte := len(string(runes[:startRune]))
+	endByte := len(string(runes[:endRune]))
+
+	return sentence[startByte:endByte], startByte, endByte
+}
+
+// wrapTextPreservingSpaces wraps text while preserving all whitespace.
+// Returns lines and break positions (rune indices where each new line starts).
+// Unlike reflow libraries, this preserves trailing spaces for accurate cursor positioning.
+func (s *SuggestionTextInput) wrapTextPreservingSpaces(text string, wrapWidth int) (lines []string, breaks []int) {
+	if text == "" {
+		return []string{""}, nil
+	}
+	if wrapWidth <= 0 {
+		return []string{text}, nil
+	}
+
+	runes := []rune(text)
+	lineStart := 0
+	lastSpace := -1
+	col := 0
+
+	for i, r := range runes {
+		col++
+
+		if col > wrapWidth {
+			// Need to wrap
+			var breakAt int
+			if lastSpace >= lineStart && lastSpace >= 0 {
+				// Wrap after the last space (word boundary) - space stays on current line
+				breakAt = lastSpace + 1
+			} else {
+				// No space found, hard wrap at current position
+				breakAt = i
+			}
+
+			lines = append(lines, string(runes[lineStart:breakAt]))
+			breaks = append(breaks, breakAt)
+			lineStart = breakAt
+			col = i - breakAt + 1
+			lastSpace = -1
+		}
+
+		// Update lastSpace AFTER wrap check, so it doesn't include the overflowing char
+		if r == ' ' {
+			lastSpace = i
+		}
+	}
+
+	// Add remaining text as last line
+	lines = append(lines, string(runes[lineStart:]))
+	return lines, breaks
+}
+
+// cursorLineCol maps the cursor position to (line, col) in wrapped text.
+// Note: InputModel.Position() returns rune position, not byte position.
+// Returns the line index and rune column within that line.
+func (s *SuggestionTextInput) cursorLineCol(text string, runePos int, wrapWidth int) (line, col int) {
+	textRuneCount := utf8.RuneCountInString(text)
+	if runePos > textRuneCount {
+		runePos = textRuneCount
+	}
+	if text == "" {
+		return 0, 0
+	}
+
+	_, breaks := s.wrapTextPreservingSpaces(text, wrapWidth)
+
+	// Find which line the cursor is on
+	lineStart := 0
+	for i, breakPos := range breaks {
+		if runePos < breakPos {
+			return i, runePos - lineStart
+		}
+		lineStart = breakPos
+	}
+
+	return len(breaks), runePos - lineStart
+}
+
+// updateViewOffset adjusts viewOffset to keep the cursor line visible.
+func (s *SuggestionTextInput) updateViewOffset(cursorLine, totalLines int) {
+	if totalLines <= s.maxVisibleLines {
+		s.viewOffset = 0
+		return
+	}
+
+	// Cursor above visible area - scroll up
+	if cursorLine < s.viewOffset {
+		s.viewOffset = cursorLine
+	}
+
+	// Cursor below visible area - scroll down
+	if cursorLine >= s.viewOffset+s.maxVisibleLines {
+		s.viewOffset = cursorLine - s.maxVisibleLines + 1
+	}
+
+	// Clamp viewOffset
+	maxOffset := totalLines - s.maxVisibleLines
+	if s.viewOffset > maxOffset {
+		s.viewOffset = maxOffset
+	}
+	if s.viewOffset < 0 {
+		s.viewOffset = 0
+	}
+}
+
+// getWrappedLines returns the wrapped lines for display, preserving all whitespace.
+func (s *SuggestionTextInput) getWrappedLines(value string, wrapWidth int) []string {
+	lines, _ := s.wrapTextPreservingSpaces(value, wrapWidth)
+	return lines
+}
+
+// renderMultiLineView renders the input as a multi-line wrapped view with cursor.
+func (s *SuggestionTextInput) renderMultiLineView() string {
+	value := s.InputModel.Value()
+	prompt := s.InputModel.Prompt
+	promptWidth := lipgloss.Width(prompt)
+
+	// Calculate wrap width (total width minus prompt)
+	wrapWidth := s.width - promptWidth
+	if wrapWidth <= 0 {
+		wrapWidth = 1
+	}
+
+	// Handle empty input with placeholder
+	if value == "" {
+		placeholder := s.InputModel.PlaceholderStyle.Render(s.InputModel.Placeholder)
+		cursorChar := ""
+		if s.InputModel.Focused() && !s.InputModel.Cursor.Blink {
+			cursorChar = s.cursorStyle().Render(" ")
+		}
+		return s.InputModel.PromptStyle.Render(prompt) + cursorChar + placeholder
+	}
+
+	// Get wrapped lines (preserving all whitespace) for display
+	lines := s.getWrappedLines(value, wrapWidth)
+	totalLines := len(lines)
+
+	// Find cursor position in wrapped text
+	cursorLine, cursorCol := s.cursorLineCol(value, s.InputModel.Position(), wrapWidth)
+
+	// Update scroll offset to keep cursor visible
+	s.updateViewOffset(cursorLine, totalLines)
+
+	// Determine visible line range
+	endLine := s.viewOffset + s.maxVisibleLines
+	if endLine > totalLines {
+		endLine = totalLines
+	}
+	visibleLines := lines[s.viewOffset:endLine]
+
+	// Build scroll indicators
+	showUpArrow := s.viewOffset > 0
+	showDownArrow := endLine < totalLines
+
+	// Render each visible line
+	var result strings.Builder
+	promptPadding := strings.Repeat(" ", promptWidth)
+
+	for i, line := range visibleLines {
+		actualLineIdx := s.viewOffset + i
+
+		// Add newline between lines (not before first)
+		if i > 0 {
+			result.WriteString("\n")
+		}
+
+		// Prompt only on first line (when viewOffset is 0), padding otherwise
+		if actualLineIdx == 0 {
+			result.WriteString(s.InputModel.PromptStyle.Render(prompt))
+		} else {
+			result.WriteString(promptPadding)
+		}
+
+		// Render line content with cursor if this is the cursor line
+		if actualLineIdx == cursorLine {
+			result.WriteString(s.renderLineWithCursor(line, cursorCol))
+		} else {
+			result.WriteString(s.InputModel.TextStyle.Render(line))
+		}
+	}
+
+	// Add scroll indicators
+	if showUpArrow || showDownArrow {
+		indicators := ""
+		if showUpArrow {
+			indicators += "↑"
+		}
+		if showDownArrow {
+			if showUpArrow {
+				indicators += "/"
+			}
+			indicators += "↓"
+		}
+		result.WriteString(" " + lipgloss.NewStyle().Faint(true).Render(indicators))
+	}
+
+	return result.String()
+}
+
+// cursorStyle returns the style to use for the cursor character.
+// Falls back to reverse video if cursor style is empty.
+func (s *SuggestionTextInput) cursorStyle() lipgloss.Style {
+	// If cursor style has no settings, use reverse video as default
+	if s.InputModel.Cursor.Style.Value() == "" {
+		return lipgloss.NewStyle().Reverse(true)
+	}
+	return s.InputModel.Cursor.Style
+}
+
+// renderLineWithCursor renders a single line with the cursor at the specified column.
+func (s *SuggestionTextInput) renderLineWithCursor(line string, cursorCol int) string {
+	runes := []rune(line)
+	lineLen := len(runes)
+	curStyle := s.cursorStyle()
+
+	// Cursor at end of line
+	if cursorCol >= lineLen {
+		rendered := s.InputModel.TextStyle.Render(line)
+		if s.InputModel.Focused() && !s.InputModel.Cursor.Blink {
+			rendered += curStyle.Render(" ")
+		}
+		return rendered
+	}
+
+	// Cursor within line
+	before := string(runes[:cursorCol])
+	cursorRune := string(runes[cursorCol])
+	after := string(runes[cursorCol+1:])
+
+	var result strings.Builder
+	result.WriteString(s.InputModel.TextStyle.Render(before))
+
+	if s.InputModel.Focused() && !s.InputModel.Cursor.Blink {
+		result.WriteString(curStyle.Render(cursorRune))
+	} else {
+		result.WriteString(s.InputModel.TextStyle.Render(cursorRune))
+	}
+
+	result.WriteString(s.InputModel.TextStyle.Render(after))
+
+	return result.String()
 }
