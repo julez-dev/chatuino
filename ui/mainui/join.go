@@ -125,7 +125,7 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	// Set input width to reasonable size (will be centered in modal)
-	input.SetWidth(40)
+	input.SetWidth(10)
 	// Set Space key to accept autocomplete suggestions
 	// Note: Must use " " (literal space) not "space" for key.Matches to work
 	input.KeyMap.AcceptSuggestion.SetKeys(" ")
@@ -369,6 +369,11 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		// This includes Space key for autocomplete
 		j.input, cmd = j.input.Update(msg)
 		cmds = append(cmds, cmd)
+
+		// on update change the width to the width of content
+		width := min(j.width, max(10, lipgloss.Width(j.input.Value())))
+
+		j.input.SetWidth(width)
 	case tabSelect:
 		j.tabKindList, cmd = j.tabKindList.Update(msg)
 		cmds = append(cmds, cmd)
@@ -428,9 +433,22 @@ func (j *join) View() string {
 	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
-		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
-		_, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
-		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
+		_, _ = labelIdentity, labelChannel
+
+		_, _ = b.WriteString(styleCenter.Render(labelTab))
+		_, _ = b.WriteString(styleCenter.Render(j.tabKindList.View()))
+		_, _ = b.WriteString("\n")
+
+		_, _ = b.WriteString(styleCenter.Render(labelIdentity))
+		_, _ = b.WriteString(styleCenter.Render(j.accountList.View()))
+		_, _ = b.WriteString("\n")
+
+		_, _ = b.WriteString(styleCenter.Render(labelChannel))
+		_, _ = b.WriteString(styleCenter.Render(j.input.View()))
+		_, _ = b.WriteString("\n")
+
+		// _, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
+		// _, _ = b.WriteString(styleCenter.Render(labelChannel + "\n"))
 	}
 
 	// Show keybind hints (centered, styled with theme)
@@ -443,14 +461,14 @@ func (j *join) View() string {
 	} else {
 		hints = hintStyle.Render("Enter: confirm | Tab: next field")
 	}
-	_, _ = b.WriteString(styleCenter.Render(hints))
+	_, _ = b.WriteString(styleCenter.PaddingBottom(1).Render(hints))
 
 	// Show status at bottom (left-aligned)
 	_, _ = b.WriteString("\n")
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
 	_, _ = b.WriteString(styleLeft.Render(stateStr))
 
-	return style.Render(b.String())
+	return style.Padding(0).Render(b.String())
 }
 
 func (c *join) focus() {
@@ -475,9 +493,6 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 
 	c.width = modalWidth
 	c.height = 0 // Dynamic height based on content
-
-	// Keep input at fixed reasonable width (will be centered)
-	c.input.SetWidth(40)
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {
