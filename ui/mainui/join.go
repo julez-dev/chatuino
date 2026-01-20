@@ -123,8 +123,8 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	// Set input width to reasonable size (will be centered in modal)
 	input.SetWidth(40)
-	input.KeyMap.AcceptSuggestion = deps.Keymap.Confirm
-	input.KeyMap.AcceptSuggestion.SetKeys("enter")
+	// Set Space key to accept autocomplete suggestions
+	input.KeyMap.AcceptSuggestion.SetKeys("space")
 
 	tabKindList := createDefaultList(parentHeight, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")

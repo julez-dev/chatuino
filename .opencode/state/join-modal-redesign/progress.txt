@@ -64,3 +64,14 @@ Started: 2026-01-20
   - Preserves existing logic: fetches user via GetUsers API, extracts normalized login
   - Returns joinChannelMessage with tabKind, channel, and account
   - Silent fail when inputs invalid (no error shown per PRD non-goals)
+
+## Task - ui-6
+- Implemented Space key to accept autocomplete suggestion in channel input
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Changed AcceptSuggestion key binding from "enter" to "space"
+  - Component already handles all autocomplete logic (textinput.go lines 172-193)
+  - DisableAutoSpaceSuggestion is true, so no extra space added after suggestion
+  - Cursor automatically positioned after inserted text by component
+  - Space key only processed when channel input is focused (component behavior)
+  - Lists don't handle Space key, so no interference with navigation

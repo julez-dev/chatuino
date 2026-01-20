@@ -92,7 +92,7 @@
         "Manual test: Type 'xq', press Space → 'xqc' inserted (if suggestion exists)",
         "Manual test: Press Space in tab selector → no autocomplete action"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-7",
