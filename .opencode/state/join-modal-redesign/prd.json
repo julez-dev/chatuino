@@ -78,7 +78,7 @@
         "Manual test: Enter in tab selector with Mention selected → join succeeds",
         "Manual test: Enter with empty channel on Channel tab → no action"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-6",

@@ -53,3 +53,14 @@ Started: 2026-01-20
   - Updated Shift+Tab to cycle in reverse: tabSelect → channelInput → accountSelect → tabSelect
   - For mention/live notification tabs, Tab/Shift+Tab do nothing (only one field visible)
   - Removed old Enter key logic (will be reimplemented in ui-5)
+
+## Task - ui-5
+- Implemented Enter key to confirm join from any field when inputs are valid
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Enter key validates inputs before triggering join
+  - Validation: (channel not empty AND broadcastTabKind) OR mentionTabKind OR liveNotificationTabKind
+  - Channel normalization via Twitch API only for broadcast tabs (not needed for mention/notification)
+  - Preserves existing logic: fetches user via GetUsers API, extracts normalized login
+  - Returns joinChannelMessage with tabKind, channel, and account
+  - Silent fail when inputs invalid (no error shown per PRD non-goals)

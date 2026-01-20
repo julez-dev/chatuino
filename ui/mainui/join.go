@@ -315,7 +315,47 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
-			// Enter key confirmation will be implemented in ui-5
+			// Enter key confirms join from any field when inputs are valid
+			kind := j.tabKindList.SelectedItem().(listItem).kind
+
+			// Check if inputs are valid for confirmation
+			isValid := (j.input.Value() != "" && kind == broadcastTabKind) ||
+				kind == mentionTabKind ||
+				kind == liveNotificationTabKind
+
+			if key.Matches(msg, j.deps.Keymap.Confirm) && isValid {
+				channel := j.input.Value()
+				account := j.accounts[j.accountList.Cursor()]
+
+				return j, func() tea.Msg {
+					// Normalize channel name via Twitch API for broadcast tabs
+					if kind == broadcastTabKind {
+						for accountID, client := range j.deps.APIUserClients {
+							if accountID != account.ID {
+								continue
+							}
+
+							resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+							if err != nil {
+								break
+							}
+
+							if len(resp.Data) < 1 {
+								break
+							}
+
+							channel = resp.Data[0].Login
+							break
+						}
+					}
+
+					return joinChannelMessage{
+						tabKind: kind,
+						channel: channel,
+						account: account,
+					}
+				}
+			}
 		}
 	}
 
