@@ -12,3 +12,13 @@ Started: 2026-01-20
 - Added github.com/rmhubbert/bubbletea-overlay@v0.6.4 dependency
 - Files changed: go.mod, go.sum
 - **Learnings:** Dependency added successfully. Go 1.25.4 was also updated. Project builds without issues.
+
+## Task - ui-1
+- Converted join screen from full-screen to modal structure
+- Files changed: ui/mainui/join.go
+- **Learnings:** 
+  - Modal width calculated as 60% of parent width with 40 char minimum
+  - Removed fixed height constraints - modal now sized by content
+  - Input width adjusted to account for modal padding (modalWidth - 4)
+  - Removed full-screen spacer logic that filled to terminal height
+  - View() now returns bounded modal content with padding instead of full-screen layout

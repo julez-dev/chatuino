@@ -98,8 +98,14 @@ func createDefaultList(height int, selectedColor string) list.Model {
 	return newList
 }
 
-func newJoin(width, height int, deps *DependencyContainer) *join {
+func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	emptyUserMap := map[string]func(...string) string{}
+
+	// Calculate modal width as 60% of parent
+	modalWidth := int(float64(parentWidth) * 0.6)
+	if modalWidth < 40 {
+		modalWidth = 40 // Minimum width
+	}
 
 	input := component.NewSuggestionTextInput(emptyUserMap, nil)
 	input.DisableAutoSpaceSuggestion = true
@@ -118,11 +124,11 @@ func newJoin(width, height int, deps *DependencyContainer) *join {
 	input.IncludeCommandSuggestions = false
 	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
-	input.SetWidth(width)
+	input.SetWidth(modalWidth - 4) // Account for modal padding
 	input.KeyMap.AcceptSuggestion = deps.Keymap.Confirm
 	input.KeyMap.AcceptSuggestion.SetKeys("enter")
 
-	tabKindList := createDefaultList(height, deps.UserConfig.Theme.ListSelectedColor)
+	tabKindList := createDefaultList(parentHeight, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
@@ -141,7 +147,7 @@ func newJoin(width, height int, deps *DependencyContainer) *join {
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(height, deps.UserConfig.Theme.ListSelectedColor)
+	channelList := createDefaultList(parentHeight, deps.UserConfig.Theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]followedFetcher{}
@@ -152,8 +158,8 @@ func newJoin(width, height int, deps *DependencyContainer) *join {
 	}
 
 	return &join{
-		width:            width,
-		height:           height,
+		width:            modalWidth,
+		height:           0, // Height will be dynamic based on content
 		input:            input,
 		deps:             deps,
 		accountList:      channelList,
@@ -375,15 +381,15 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 }
 
 func (j *join) View() string {
+	// Modal content style - no fixed height, let content determine size
 	style := lipgloss.NewStyle().
 		Width(j.width).
 		MaxWidth(j.width).
-		Height(j.height).
-		MaxHeight(j.height)
+		Padding(1, 2)
 
-	styleCenter := lipgloss.NewStyle().Width(j.width - 2).AlignHorizontal(lipgloss.Center)
+	styleCenter := lipgloss.NewStyle().Width(j.width - 4).AlignHorizontal(lipgloss.Center)
 
-	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
+	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
 	buttonStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Padding(0, 3).Border(lipgloss.ASCIIBorder())
 
 	var (
@@ -429,15 +435,10 @@ func (j *join) View() string {
 
 	_, _ = b.WriteString(styleCenter.Render(confirmButton))
 
-	// show status at bottom
-	heightUntilNow := lipgloss.Height(b.String())
-	spacerHeight := j.height - heightUntilNow
-	if spacerHeight > 0 {
-		_, _ = b.WriteString(strings.Repeat("\n", spacerHeight))
-	}
-
+	// Show status at bottom (no spacer for full-screen filling)
+	_, _ = b.WriteString("\n")
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
-	_, _ = b.WriteString(stateStr)
+	_, _ = b.WriteString(styleCenter.Render(stateStr))
 
 	return style.Render(b.String())
 }
@@ -452,11 +453,17 @@ func (c *join) blur() {
 	c.input.Blur()
 }
 
-func (c *join) handleResize(width, height int) {
-	c.width = width
-	c.height = height
+func (c *join) handleResize(parentWidth, parentHeight int) {
+	// Recalculate modal width as 60% of parent
+	modalWidth := int(float64(parentWidth) * 0.6)
+	if modalWidth < 40 {
+		modalWidth = 40 // Minimum width
+	}
 
-	c.input.SetWidth(width)
+	c.width = modalWidth
+	c.height = 0 // Dynamic height based on content
+
+	c.input.SetWidth(modalWidth - 4) // Account for modal padding
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {

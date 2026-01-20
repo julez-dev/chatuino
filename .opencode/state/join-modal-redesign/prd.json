@@ -24,7 +24,7 @@
         "Join modal View() renders within bounded dimensions",
         "No full-screen layout code remains in join.go"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-2",
