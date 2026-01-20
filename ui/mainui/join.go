@@ -121,8 +121,8 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	input.IncludeCommandSuggestions = false
 	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
-	// Account for modal border (2) + padding (4) = 6 total
-	input.SetWidth(modalWidth - 6)
+	// Set input width to reasonable size (will be centered in modal)
+	input.SetWidth(40)
 	input.KeyMap.AcceptSuggestion = deps.Keymap.Confirm
 	input.KeyMap.AcceptSuggestion.SetKeys("enter")
 
@@ -336,18 +336,16 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 func (j *join) View() string {
 	// Modal content style with rounded borders and theme colors
-	// Note: Border adds 2 chars (1 each side), Padding adds 4 chars (2 each side)
-	// So inner content width should be: j.width - 6
 	style := lipgloss.NewStyle().
-		Width(j.width).
-		MaxWidth(j.width).
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
 
-	// Center content within the inner area (accounting for border + padding)
-	innerWidth := j.width - 6
-	styleCenter := lipgloss.NewStyle().Width(innerWidth).AlignHorizontal(lipgloss.Center)
+	// Center content - don't set width on styleCenter to allow natural sizing
+	styleCenter := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center)
+
+	// Left-aligned style for status
+	styleLeft := lipgloss.NewStyle().AlignHorizontal(lipgloss.Left)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
 
@@ -387,10 +385,10 @@ func (j *join) View() string {
 		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
 	}
 
-	// Show status at bottom
+	// Show status at bottom (left-aligned)
 	_, _ = b.WriteString("\n")
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
-	_, _ = b.WriteString(styleCenter.Render(stateStr))
+	_, _ = b.WriteString(styleLeft.Render(stateStr))
 
 	return style.Render(b.String())
 }
@@ -415,8 +413,8 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 	c.width = modalWidth
 	c.height = 0 // Dynamic height based on content
 
-	// Account for modal border (2) + padding (4) = 6 total
-	c.input.SetWidth(modalWidth - 6)
+	// Keep input at fixed reasonable width (will be centered)
+	c.input.SetWidth(40)
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {
