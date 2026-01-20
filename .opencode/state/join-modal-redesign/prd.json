@@ -133,7 +133,7 @@
         "Test: Window resize updates modal dimensions",
         "Run `go test ./ui/mainui/... -v` → all tests pass"
       ],
-      "passes": false
+      "passes": true
     }
   ],
   "context": {

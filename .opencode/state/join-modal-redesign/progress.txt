@@ -99,3 +99,17 @@ Started: 2026-01-20
   - overlay.Composite() re-centers on every View() call automatically
   - View() now uses j.width throughout for consistent responsive sizing
   - Background tabs already receive resize updates via existing handleResize() logic
+
+## Task - testing-1
+- Added comprehensive tests for new modal behavior and keybinds
+- Files changed: ui/mainui/join_test.go (new file)
+- **Learnings:**
+  - Created 5 test cases covering all new functionality
+  - TestJoin_EnterKeyWithValidChannel: Verifies Enter triggers join with valid input
+  - TestJoin_EnterKeyWithEmptyChannelDoesNothing: Verifies silent fail on invalid input
+  - TestJoin_EnterKeyOnMentionTab: Verifies Enter works on mention tabs without channel
+  - TestJoin_TabNavigationCycle: Verifies Tab cycles through 3 fields (no confirm button)
+  - TestJoin_WindowResize: Verifies 60% width calculation and 40 char minimum
+  - Space key autocomplete already covered by component tests (textinput_test.go)
+  - Used t.Parallel() for concurrent test execution following project patterns
+  - All tests pass with race detector
