@@ -315,13 +315,6 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
-			// Space key in channel input - only pass to component, don't let it fall through
-			// This prevents space from being inserted as text when there's no suggestion
-			if j.selectedInput == channelInput && msg.String() == " " {
-				j.input, cmd = j.input.Update(msg)
-				return j, cmd
-			}
-
 			// Enter key confirms join from any field when inputs are valid
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
