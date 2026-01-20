@@ -159,8 +159,12 @@ func TestJoin_WindowResize(t *testing.T) {
 	// Resize to larger terminal
 	j.handleResize(200, 50)
 
-	// New width should be 60% of 200 = 120
-	require.Equal(t, 120, j.width)
+	// New width should be capped at maximum of 80
+	require.Equal(t, 80, j.width, "Should use maximum width of 80")
+
+	// Resize to medium terminal (60% of 120 = 72, within range)
+	j.handleResize(120, 50)
+	require.Equal(t, 72, j.width)
 
 	// Resize to very small terminal (should use minimum of 40)
 	j.handleResize(50, 50)

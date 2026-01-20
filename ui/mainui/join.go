@@ -103,6 +103,9 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	if modalWidth < 40 {
 		modalWidth = 40 // Minimum width
 	}
+	if modalWidth > 80 {
+		modalWidth = 80 // Maximum width to prevent being too wide on large terminals
+	}
 
 	input := component.NewSuggestionTextInput(emptyUserMap, nil)
 	input.DisableAutoSpaceSuggestion = true
@@ -465,6 +468,9 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 	modalWidth := int(float64(parentWidth) * 0.6)
 	if modalWidth < 40 {
 		modalWidth = 40 // Minimum width
+	}
+	if modalWidth > 80 {
+		modalWidth = 80 // Maximum width to prevent being too wide on large terminals
 	}
 
 	c.width = modalWidth
