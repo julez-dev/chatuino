@@ -42,3 +42,14 @@ Started: 2026-01-20
   - Used Theme.ListLabelColor for border color (consistent with labels)
   - lipgloss.Faint(true) dims background for modal overlay effect
   - Also updated button to use RoundedBorder for consistency
+
+## Task - ui-4
+- Removed confirm button UI element and navigation state
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Removed confirmButton const from currentJoinInput enum
+  - Removed confirm button rendering from View()
+  - Updated Tab navigation to cycle: tabSelect → accountSelect → channelInput → tabSelect
+  - Updated Shift+Tab to cycle in reverse: tabSelect → channelInput → accountSelect → tabSelect
+  - For mention/live notification tabs, Tab/Shift+Tab do nothing (only one field visible)
+  - Removed old Enter key logic (will be reimplemented in ui-5)

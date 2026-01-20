@@ -64,7 +64,7 @@
         "Manual test: Tab cycles only through: tabSelect → accountSelect → channelInput",
         "Manual test: No visible confirm button in modal"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-5",

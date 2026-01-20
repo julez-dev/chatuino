@@ -29,7 +29,6 @@ const (
 	channelInput currentJoinInput = iota
 	accountSelect
 	tabSelect
-	confirmButton
 )
 
 func (c currentJoinInput) String() string {
@@ -40,8 +39,6 @@ func (c currentJoinInput) String() string {
 		return "Account Input"
 	case tabSelect:
 		return "Tab Input"
-	case confirmButton:
-		return "Confirm Button"
 	default:
 		return "Unknown"
 	}
@@ -280,12 +277,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			if key.Matches(msg, j.deps.Keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					if j.selectedInput == tabSelect {
-						j.selectedInput = confirmButton
-					} else {
-						j.selectedInput = tabSelect
-					}
-
+					// For mention/live notification tabs, Tab does nothing (only one field)
 					return j, nil
 				}
 
@@ -296,8 +288,6 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
-					j.selectedInput = confirmButton
-				case confirmButton:
 					j.selectedInput = tabSelect
 				}
 
@@ -307,19 +297,12 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			if key.Matches(msg, j.deps.Keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					if j.selectedInput == tabSelect {
-						j.selectedInput = confirmButton
-					} else {
-						j.selectedInput = tabSelect
-					}
-
+					// For mention/live notification tabs, Shift+Tab does nothing (only one field)
 					return j, nil
 				}
 
 				switch j.selectedInput {
 				case tabSelect:
-					j.selectedInput = confirmButton
-				case confirmButton:
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
@@ -331,37 +314,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
-			kind := j.tabKindList.SelectedItem().(listItem).kind
-
-			if key.Matches(msg, j.deps.Keymap.Confirm) && j.selectedInput == confirmButton && (j.input.Value() != "" || kind == liveNotificationTabKind || kind == mentionTabKind) {
-				channel := j.input.Value()
-				account := j.accounts[j.accountList.Cursor()]
-
-				return j, func() tea.Msg {
-					for accountID, client := range j.deps.APIUserClients {
-						if accountID != account.ID {
-							continue
-						}
-
-						resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
-						if err != nil {
-							break
-						}
-
-						if len(resp.Data) < 1 {
-							break
-						}
-
-						channel = resp.Data[0].Login
-					}
-
-					return joinChannelMessage{
-						tabKind: j.tabKindList.SelectedItem().(listItem).kind,
-						channel: channel,
-						account: account,
-					}
-				}
-			}
+			// Enter key confirmation will be implemented in ui-5
 		}
 	}
 
@@ -393,13 +346,11 @@ func (j *join) View() string {
 	styleCenter := lipgloss.NewStyle().Width(j.width - 4).AlignHorizontal(lipgloss.Center)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
-	buttonStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Padding(0, 3).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
 
 	var (
 		labelTab      string
 		labelChannel  string
 		labelIdentity string
-		confirmButton string
 	)
 
 	switch j.selectedInput {
@@ -407,22 +358,18 @@ func (j *join) View() string {
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("> Channel")
 		labelIdentity = labelStyle("Identity")
-		confirmButton = buttonStyle.Render("Confirm")
 	case accountSelect:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("> Identity")
-		confirmButton = buttonStyle.Render("Confirm")
 	case tabSelect:
 		labelTab = labelStyle("> Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
-		confirmButton = buttonStyle.Render("Confirm")
 	default:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
-		confirmButton = buttonStyle.BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render("Confirm")
 	}
 
 	b := strings.Builder{}
@@ -436,9 +383,7 @@ func (j *join) View() string {
 		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
 	}
 
-	_, _ = b.WriteString(styleCenter.Render(confirmButton))
-
-	// Show status at bottom (no spacer for full-screen filling)
+	// Show status at bottom
 	_, _ = b.WriteString("\n")
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
 	_, _ = b.WriteString(styleCenter.Render(stateStr))
