@@ -590,10 +590,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				// Message Accept Suggestion Template Replace
 				// always allow accept suggestion key so even new texts can be templated
 				if key.Matches(msg, t.messageInput.KeyMap.AcceptSuggestion) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-					heightBefore := lipgloss.Height(t.renderMessageInput())
+					lineCountBefore := t.messageInput.LineCount()
 					t.messageInput, _ = t.messageInput.Update(msg)
 					cmds = append(cmds, t.replaceInputTemplate())
-					if lipgloss.Height(t.renderMessageInput()) != heightBefore {
+					if t.messageInput.LineCount() != lineCountBefore {
 						t.HandleResize()
 					}
 					return t, tea.Batch(cmds...)
@@ -639,15 +639,14 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			if t.state == insertMode || t.state == userInspectInsertMode {
-				// Track height before update to detect changes
-				heightBefore := lipgloss.Height(t.renderMessageInput())
+				// Track line count before update to detect changes
+				lineCountBefore := t.messageInput.LineCount()
 
 				t.messageInput, cmd = t.messageInput.Update(msg)
 				cmds = append(cmds, cmd)
 
-				// Recalculate layout if input height changed (text wrapped/unwrapped)
-				heightAfter := lipgloss.Height(t.renderMessageInput())
-				if heightBefore != heightAfter {
+				// Recalculate layout if input line count changed (text wrapped/unwrapped)
+				if t.messageInput.LineCount() != lineCountBefore {
 					t.HandleResize()
 				}
 			}

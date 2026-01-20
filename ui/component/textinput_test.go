@@ -66,6 +66,20 @@ func TestSuggestionTextInput_wrapTextPreservingSpaces(t *testing.T) {
 			wantLines:  []string{"abcde", "fghij"},
 			wantBreaks: []int{5},
 		},
+		{
+			name:       "emoji wrapping uses display width",
+			text:       "hi🌊🌊bye", // 7 runes but 9 display columns (each emoji is 2 wide)
+			wrapWidth:  6,
+			wantLines:  []string{"hi🌊🌊", "bye"}, // "hi🌊🌊" = 6 cols (wrap happens when EXCEEDS)
+			wantBreaks: []int{4},
+		},
+		{
+			name:       "CJK characters wrap correctly",
+			text:       "hello世界test", // 世界 are 2-wide each
+			wrapWidth:  8,
+			wantLines:  []string{"hello世", "界test"}, // "hello世" = 7 cols, "界test" = 6 cols
+			wantBreaks: []int{6},
+		},
 	}
 
 	for _, tt := range tests {
@@ -384,6 +398,36 @@ func TestSelectWordAtIndex(t *testing.T) {
 				if sliced != gotWord {
 					t.Errorf("slicing sentence[%d:%d] = %q, want %q", gotStart, gotEnd, sliced, gotWord)
 				}
+			}
+		})
+	}
+}
+
+func TestSuggestionTextInput_lineNumberWidth(t *testing.T) {
+	t.Parallel()
+
+	s := NewSuggestionTextInput(nil, nil)
+
+	tests := []struct {
+		name       string
+		totalLines int
+		want       int
+	}{
+		{"single line returns 0", 1, 0},
+		{"zero lines returns 0", 0, 0},
+		{"2 lines needs 2 width", 2, 2},   // "2" + space
+		{"9 lines needs 2 width", 9, 2},   // "9" + space
+		{"10 lines needs 3 width", 10, 3}, // "10" + space
+		{"99 lines needs 3 width", 99, 3},
+		{"100 lines needs 4 width", 100, 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := s.lineNumberWidth(tt.totalLines)
+			if got != tt.want {
+				t.Errorf("lineNumberWidth(%d) = %d, want %d", tt.totalLines, got, tt.want)
 			}
 		})
 	}

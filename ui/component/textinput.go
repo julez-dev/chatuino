@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	trie "github.com/Vivino/go-autocomplete-trie"
 	"github.com/charmbracelet/bubbles/key"
@@ -16,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/command"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/mattn/go-runewidth"
 	"github.com/rs/zerolog/log"
 )
 
@@ -71,6 +71,10 @@ type SuggestionTextInput struct {
 	maxVisibleLines int // 1 = single line (default), >1 = wrapped multi-line display
 	width           int // stored width for wrapping calculations
 	viewOffset      int // scroll offset when wrapped lines > maxVisibleLines
+
+	// Line number styles (only shown when content spans multiple lines)
+	LineNumberStyle        lipgloss.Style // style for non-current line numbers
+	CurrentLineNumberStyle lipgloss.Style // style for current line number (highlighted)
 }
 
 func defaultTrie() *trie.Trie {
@@ -108,6 +112,8 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string, customS
 		customSuggestions:         customSuggestions,
 		emoteReplacements:         map[string]string{},
 		maxVisibleLines:           1, // default single-line for backward compat
+		LineNumberStyle:           lipgloss.NewStyle().Faint(true),
+		CurrentLineNumberStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("212")), // bright highlight
 	}
 }
 
@@ -130,15 +136,14 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			s.browsingHistory = false
 			return s, nil
 		case key.Matches(msg, s.KeyMap.PrevSuggestion) && (s.InputModel.Value() == "" || s.browsingHistory):
+			if len(s.history) == 0 {
+				return s, nil
+			}
 			s.historyIndex--
 			s.browsingHistory = true
 
 			if s.historyIndex < 0 {
-				if len(s.history) != 0 {
-					s.historyIndex = len(s.history) - 1
-				} else {
-					s.historyIndex = 0
-				}
+				s.historyIndex = len(s.history) - 1
 			}
 
 			if len(s.history) > s.historyIndex {
@@ -148,6 +153,9 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 			return s, nil
 		case key.Matches(msg, s.KeyMap.NextSuggestion) && (s.InputModel.Value() == "" || s.browsingHistory):
+			if len(s.history) == 0 {
+				return s, nil
+			}
 			s.historyIndex++
 			s.browsingHistory = true
 
@@ -298,6 +306,36 @@ func (s *SuggestionTextInput) SetMaxVisibleLines(n int) {
 		n = 1
 	}
 	s.maxVisibleLines = n
+	s.viewOffset = 0 // Reset scroll position when changing mode
+}
+
+// LineCount returns the number of visible lines the input will render.
+// Use this instead of calling lipgloss.Height(View()) to avoid double-rendering.
+func (s *SuggestionTextInput) LineCount() int {
+	if s.maxVisibleLines <= 1 {
+		return 1
+	}
+	promptWidth := lipgloss.Width(s.InputModel.Prompt)
+	baseWrapWidth := s.width - promptWidth - 1
+	if baseWrapWidth <= 0 {
+		return 1
+	}
+
+	// First pass without line numbers
+	lines := s.getWrappedLines(s.InputModel.Value(), baseWrapWidth)
+	if len(lines) <= 1 {
+		return 1
+	}
+
+	// Re-calculate with line number width
+	lineNumWidth := s.lineNumberWidth(len(lines))
+	wrapWidth := s.width - promptWidth - lineNumWidth - 1
+	if wrapWidth <= 0 {
+		wrapWidth = 1
+	}
+	lines = s.getWrappedLines(s.InputModel.Value(), wrapWidth)
+
+	return min(len(lines), s.maxVisibleLines)
 }
 
 func (s *SuggestionTextInput) Value() string {
@@ -463,6 +501,7 @@ func selectWordAtIndex(sentence string, runeIndex int) (string, int, int) {
 // wrapTextPreservingSpaces wraps text while preserving all whitespace.
 // Returns lines and break positions (rune indices where each new line starts).
 // Unlike reflow libraries, this preserves trailing spaces for accurate cursor positioning.
+// Uses display width (runewidth) to correctly handle wide characters like emoji and CJK.
 func (s *SuggestionTextInput) wrapTextPreservingSpaces(text string, wrapWidth int) (lines []string, breaks []int) {
 	if text == "" {
 		return []string{""}, nil
@@ -477,7 +516,8 @@ func (s *SuggestionTextInput) wrapTextPreservingSpaces(text string, wrapWidth in
 	col := 0
 
 	for i, r := range runes {
-		col++
+		charWidth := runewidth.RuneWidth(r)
+		col += charWidth
 
 		if col > wrapWidth {
 			// Need to wrap
@@ -493,7 +533,8 @@ func (s *SuggestionTextInput) wrapTextPreservingSpaces(text string, wrapWidth in
 			lines = append(lines, string(runes[lineStart:breakAt]))
 			breaks = append(breaks, breakAt)
 			lineStart = breakAt
-			col = i - breakAt + 1
+			// Recalculate col for the new line
+			col = runewidth.StringWidth(string(runes[breakAt : i+1]))
 			lastSpace = -1
 		}
 
@@ -510,11 +551,11 @@ func (s *SuggestionTextInput) wrapTextPreservingSpaces(text string, wrapWidth in
 
 // cursorLineCol maps the cursor position to (line, col) in wrapped text.
 // Note: InputModel.Position() returns rune position, not byte position.
-// Returns the line index and rune column within that line.
-func (s *SuggestionTextInput) cursorLineCol(text string, runePos int, wrapWidth int) (line, col int) {
-	textRuneCount := utf8.RuneCountInString(text)
-	if runePos > textRuneCount {
-		runePos = textRuneCount
+// Returns the line index and rune column within that line (not display width).
+func (s *SuggestionTextInput) cursorLineCol(text string, runePos int, wrapWidth int) (line, runeCol int) {
+	runes := []rune(text)
+	if runePos > len(runes) {
+		runePos = len(runes)
 	}
 	if text == "" {
 		return 0, 0
@@ -567,16 +608,27 @@ func (s *SuggestionTextInput) getWrappedLines(value string, wrapWidth int) []str
 	return lines
 }
 
+// lineNumberWidth returns the width needed for line numbers (digits + 1 space padding).
+// Returns 0 if line numbers should not be shown (single line content).
+func (s *SuggestionTextInput) lineNumberWidth(totalLines int) int {
+	if totalLines <= 1 {
+		return 0
+	}
+	// Calculate digits needed for max line number + 1 space padding
+	digits := len(fmt.Sprintf("%d", totalLines))
+	return digits + 1 // +1 for space padding
+}
+
 // renderMultiLineView renders the input as a multi-line wrapped view with cursor.
 func (s *SuggestionTextInput) renderMultiLineView() string {
 	value := s.InputModel.Value()
 	prompt := s.InputModel.Prompt
 	promptWidth := lipgloss.Width(prompt)
 
-	// Calculate wrap width (total width minus prompt, minus 1 for cursor at end of line)
-	wrapWidth := s.width - promptWidth - 1
-	if wrapWidth <= 0 {
-		wrapWidth = 1
+	// First pass: calculate wrap width without line numbers to determine if we need them
+	baseWrapWidth := s.width - promptWidth - 1
+	if baseWrapWidth <= 0 {
+		baseWrapWidth = 1
 	}
 
 	// Handle empty input with placeholder
@@ -589,8 +641,37 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 		return s.InputModel.PromptStyle.Render(prompt) + cursorChar + placeholder
 	}
 
-	// Get wrapped lines (preserving all whitespace) for display
-	lines := s.getWrappedLines(value, wrapWidth)
+	// Get initial line count to determine if we need line numbers
+	initialLines := s.getWrappedLines(value, baseWrapWidth)
+	showLineNumbers := len(initialLines) > 1
+
+	// Recalculate with line number width if needed
+	lineNumWidth := 0
+	wrapWidth := baseWrapWidth
+	var lines []string
+
+	if showLineNumbers {
+		lineNumWidth = s.lineNumberWidth(len(initialLines))
+		wrapWidth = s.width - promptWidth - lineNumWidth - 1
+		if wrapWidth <= 0 {
+			wrapWidth = 1
+		}
+		// Re-wrap with adjusted width
+		lines = s.getWrappedLines(value, wrapWidth)
+		// Recalculate line number width if line count changed
+		newLineNumWidth := s.lineNumberWidth(len(lines))
+		if newLineNumWidth != lineNumWidth {
+			lineNumWidth = newLineNumWidth
+			wrapWidth = s.width - promptWidth - lineNumWidth - 1
+			if wrapWidth <= 0 {
+				wrapWidth = 1
+			}
+			lines = s.getWrappedLines(value, wrapWidth)
+		}
+	} else {
+		lines = initialLines
+	}
+
 	totalLines := len(lines)
 
 	// Find cursor position in wrapped text
@@ -613,6 +694,7 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 	// Render each visible line
 	var result strings.Builder
 	promptPadding := strings.Repeat(" ", promptWidth)
+	lineNumPadWidth := lineNumWidth - 1 // width for the number itself (excluding space)
 
 	for i, line := range visibleLines {
 		actualLineIdx := s.viewOffset + i
@@ -627,6 +709,17 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 			result.WriteString(s.InputModel.PromptStyle.Render(prompt))
 		} else {
 			result.WriteString(promptPadding)
+		}
+
+		// Render line number if showing line numbers
+		if showLineNumbers {
+			lineNum := fmt.Sprintf("%*d", lineNumPadWidth, actualLineIdx+1)
+			if actualLineIdx == cursorLine {
+				result.WriteString(s.CurrentLineNumberStyle.Render(lineNum))
+			} else {
+				result.WriteString(s.LineNumberStyle.Render(lineNum))
+			}
+			result.WriteString(" ") // padding between line number and text
 		}
 
 		// Render line content with cursor if this is the cursor line
