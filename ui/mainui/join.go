@@ -444,10 +444,7 @@ func (j *join) View() string {
 		_, _ = b.WriteString("\n")
 
 		_, _ = b.WriteString(styleCenter.Render(labelChannel))
-		// Center each line of input view separately (suggestion line + input line)
-		for _, line := range strings.Split(j.input.View(), "\n") {
-			_, _ = b.WriteString(styleCenter.Render(line))
-		}
+		_, _ = b.WriteString(styleCenter.Render(j.input.View()))
 		_, _ = b.WriteString("\n")
 
 		// _, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
