@@ -205,16 +205,22 @@ func (r *Root) Init() tea.Cmd {
 			wg, ctx := errgroup.WithContext(ctx)
 
 			wg.Go(func() error {
+				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+				defer cancel()
+
 				if err := r.dependencies.BadgeCache.RefreshGlobal(ctx); err != nil {
-					return err
+					log.Logger.Error().Err(err).Msg("could not fetch global badges")
 				}
 
 				return nil
 			})
 
 			wg.Go(func() error {
+				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
+				defer cancel()
+
 				if err := r.dependencies.EmoteCache.RefreshGlobal(ctx); err != nil {
-					return err
+					log.Logger.Error().Err(err).Msg("could not fetch global emotes")
 				}
 
 				return nil
@@ -240,7 +246,8 @@ func (r *Root) Init() tea.Cmd {
 				wg.Go(func() error {
 					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
 					if err != nil {
-						return err
+						log.Logger.Error().Str("user_id", acc.ID).Err(err).Msg("could not fetch user emotes")
+						return nil
 					}
 
 					emotes := make(emote.EmoteSet, 0, len(set))
@@ -284,7 +291,8 @@ func (r *Root) Init() tea.Cmd {
 				wg.Go(func() error {
 					resp, err := r.dependencies.ServerAPI.GetUsers(ctx, logins, nil)
 					if err != nil {
-						return fmt.Errorf("failed to fetch users: %w", err)
+						log.Logger.Error().Err(err).Msg("could not fetch users for tabs")
+						return nil
 					}
 
 					for _, data := range resp.Data {

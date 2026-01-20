@@ -78,3 +78,207 @@ func TestRefreshLocal(t *testing.T) {
 	err = store.RefreshLocal(context.Background(), "test-channel")
 	require.Nil(t, err)
 }
+
+func TestRefreshLocal_3rdPartyFailureNonBlocking(t *testing.T) {
+	t.Parallel()
+
+	t.Run("7TV failure does not block", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{
+				{ID: "ttv-1", Name: "TwitchEmote"},
+			},
+		}, nil)
+
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(
+			seventv.ChannelEmoteResponse{}, seventv.APIError{StatusCode: 500})
+
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(bttv.UserResponse{
+			ChannelEmotes: []bttv.Emote{
+				{ID: "bttv-1", Code: "BTTVEmote"},
+			},
+		}, nil)
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService)
+
+		err := store.RefreshLocal(context.Background(), "test-channel")
+		require.NoError(t, err)
+
+		set := store.GetAllForChannel("test-channel")
+		_, ok := set.GetByText("TwitchEmote")
+		require.True(t, ok)
+		_, ok = set.GetByText("BTTVEmote")
+		require.True(t, ok)
+	})
+
+	t.Run("BTTV failure does not block", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{
+				{ID: "ttv-1", Name: "TwitchEmote"},
+			},
+		}, nil)
+
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(seventv.ChannelEmoteResponse{
+			EmoteSet: struct {
+				Emotes []seventv.Emote `json:"emotes"`
+			}{
+				Emotes: []seventv.Emote{
+					{ID: "7tv-1", Name: "SevenTVEmote"},
+				},
+			},
+		}, nil)
+
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(
+			bttv.UserResponse{}, bttv.APIError{StatusCode: 503})
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService)
+
+		err := store.RefreshLocal(context.Background(), "test-channel")
+		require.NoError(t, err)
+
+		set := store.GetAllForChannel("test-channel")
+		_, ok := set.GetByText("TwitchEmote")
+		require.True(t, ok)
+		_, ok = set.GetByText("SevenTVEmote")
+		require.True(t, ok)
+	})
+
+	t.Run("both 3rd parties fail, Twitch succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{
+				{ID: "ttv-1", Name: "TwitchEmote"},
+			},
+		}, nil)
+
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(
+			seventv.ChannelEmoteResponse{}, seventv.APIError{StatusCode: 500})
+
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(
+			bttv.UserResponse{}, bttv.APIError{StatusCode: 500})
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService)
+
+		err := store.RefreshLocal(context.Background(), "test-channel")
+		require.NoError(t, err)
+
+		set := store.GetAllForChannel("test-channel")
+		_, ok := set.GetByText("TwitchEmote")
+		require.True(t, ok)
+	})
+}
+
+func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
+	t.Parallel()
+
+	t.Run("7TV failure does not block", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+
+		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{
+				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
+			},
+		}, nil)
+
+		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
+			seventv.EmoteResponse{}, seventv.APIError{StatusCode: 500})
+
+		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(bttv.GlobalEmoteResponse{
+			{ID: "bttv-global", Code: "GlobalBTTVEmote"},
+		}, nil)
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService)
+
+		err := store.RefreshGlobal(context.Background())
+		require.NoError(t, err)
+
+		set := store.GetAllForChannel("")
+		_, ok := set.GetByText("GlobalTwitchEmote")
+		require.True(t, ok)
+		_, ok = set.GetByText("GlobalBTTVEmote")
+		require.True(t, ok)
+	})
+
+	t.Run("BTTV failure does not block", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+
+		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{
+				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
+			},
+		}, nil)
+
+		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(seventv.EmoteResponse{
+			Emotes: []seventv.Emote{
+				{ID: "7tv-global", Name: "Global7TVEmote"},
+			},
+		}, nil)
+
+		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
+			bttv.GlobalEmoteResponse{}, bttv.APIError{StatusCode: 503})
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService)
+
+		err := store.RefreshGlobal(context.Background())
+		require.NoError(t, err)
+
+		set := store.GetAllForChannel("")
+		_, ok := set.GetByText("GlobalTwitchEmote")
+		require.True(t, ok)
+		_, ok = set.GetByText("Global7TVEmote")
+		require.True(t, ok)
+	})
+
+	t.Run("both 3rd parties fail, Twitch succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+
+		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{
+				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
+			},
+		}, nil)
+
+		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
+			seventv.EmoteResponse{}, seventv.APIError{StatusCode: 500})
+
+		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
+			bttv.GlobalEmoteResponse{}, bttv.APIError{StatusCode: 500})
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService)
+
+		err := store.RefreshGlobal(context.Background())
+		require.NoError(t, err)
+
+		set := store.GetAllForChannel("")
+		_, ok := set.GetByText("GlobalTwitchEmote")
+		require.True(t, ok)
+	})
+}
