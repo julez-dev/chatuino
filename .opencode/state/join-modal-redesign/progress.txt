@@ -88,3 +88,14 @@ Started: 2026-01-20
   - Hints styled with theme StatusColor and Faint(true) for subtle appearance
   - Hints centered above the status line for better visual hierarchy
   - Provides clear guidance without cluttering the interface
+
+## Task - ui-8
+- Ensured modal repositions and resizes correctly on terminal window changes
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Fixed hardcoded contentWidth (was 50) to use dynamic j.width (60% of parent)
+  - Resize flow already in place: WindowSizeMsg → handleResize() → joinInput.handleResize()
+  - joinInput.handleResize() recalculates modalWidth as 60% with 40 char minimum
+  - overlay.Composite() re-centers on every View() call automatically
+  - View() now uses j.width throughout for consistent responsive sizing
+  - Background tabs already receive resize updates via existing handleResize() logic

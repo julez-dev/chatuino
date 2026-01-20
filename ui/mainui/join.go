@@ -379,20 +379,18 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 func (j *join) View() string {
 	// Modal content style with rounded borders and theme colors
-	// Set a reasonable fixed width for the modal content
-	contentWidth := 50
-
+	// Use calculated width (60% of parent, updated on resize)
 	style := lipgloss.NewStyle().
-		Width(contentWidth).
+		Width(j.width).
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
 
-	// Center content within the fixed width
-	styleCenter := lipgloss.NewStyle().Width(contentWidth).AlignHorizontal(lipgloss.Center)
+	// Center content within the calculated width
+	styleCenter := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Center)
 
 	// Left-aligned style for status
-	styleLeft := lipgloss.NewStyle().Width(contentWidth).AlignHorizontal(lipgloss.Left)
+	styleLeft := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Left)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
 

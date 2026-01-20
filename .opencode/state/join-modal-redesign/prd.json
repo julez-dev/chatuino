@@ -118,7 +118,7 @@
         "Manual test: Resize terminal while modal open → modal stays centered",
         "Manual test: Content remains readable at minimum 80x24 size"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "testing-1",
