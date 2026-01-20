@@ -444,11 +444,12 @@ func (j *join) View() string {
 		_, _ = b.WriteString("\n")
 
 		_, _ = b.WriteString(styleCenter.Render(labelChannel))
-		_, _ = b.WriteString(styleCenter.Render(j.input.View()))
 		_, _ = b.WriteString("\n")
 
-		// _, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
-		// _, _ = b.WriteString(styleCenter.Render(labelChannel + "\n"))
+		// Center each line separately so suggestion text aligns with input
+		for _, line := range strings.Split(j.input.View(), "\n") {
+			_, _ = b.WriteString(styleCenter.Render(line) + "\n")
+		}
 	}
 
 	// Show keybind hints (centered, styled with theme)
