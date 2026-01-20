@@ -1,0 +1,163 @@
+{
+  "prdName": "join-modal-redesign",
+  "tasks": [
+    {
+      "id": "setup-1",
+      "category": "setup",
+      "description": "Add bubbletea-overlay library dependency",
+      "steps": [
+        "Run `go get github.com/rmhubbert/bubbletea-overlay@v0.6.4`",
+        "Verify `go.mod` contains overlay dependency",
+        "Run `go mod tidy`",
+        "Verify project builds: `go build`"
+      ],
+      "passes": true
+    },
+    {
+      "id": "ui-1",
+      "category": "ui",
+      "description": "Convert join screen from full-screen to modal structure",
+      "steps": [
+        "`ui/mainui/join.go` struct updated to work as modal foreground",
+        "View() method returns modal content (without full terminal dimensions)",
+        "Width/height calculations use percentage of parent (60% width)",
+        "Join modal View() renders within bounded dimensions",
+        "No full-screen layout code remains in join.go"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-2",
+      "category": "ui",
+      "description": "Integrate overlay wrapper in root model to composite join modal over active tab",
+      "steps": [
+        "`ui/mainui/root.go` imports `github.com/rmhubbert/bubbletea-overlay`",
+        "When inputScreen active, root.View() creates overlay.New() with: Background: current active tab, Foreground: join modal, Position: overlay.Center, overlay.Center, Offsets: 0, 0",
+        "Overlay model's View() called instead of direct joinInput.View()",
+        "Terminal resize (tea.WindowSizeMsg) updates both background and foreground models",
+        "Manual test: Open join modal, verify chat visible behind it"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-3",
+      "category": "ui",
+      "description": "Apply rounded borders, dimmed background, and theme colors to modal",
+      "steps": [
+        "Join modal border uses lipgloss.RoundedBorder()",
+        "Modal background uses theme color (Theme.ListLabelColor or similar)",
+        "Border color uses existing theme color",
+        "Manual test: Modal has rounded corners (╭─╮ ╰─╯)",
+        "Manual test: Background appears dimmed/muted behind modal",
+        "Manual test: Colors match existing theme configuration"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-4",
+      "category": "ui",
+      "description": "Remove confirm button UI element and navigation state",
+      "steps": [
+        "`confirmButton` const removed from currentJoinInput enum",
+        "Join View() no longer renders confirm button",
+        "Navigation no longer includes confirmButton in Tab cycle",
+        "Manual test: Tab cycles only through: tabSelect → accountSelect → channelInput",
+        "Manual test: No visible confirm button in modal"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-5",
+      "category": "ui",
+      "description": "Implement Enter key to confirm join from any field when inputs are valid",
+      "steps": [
+        "Enter key triggers confirmation when: Channel input has value AND tab type is Channel, OR Tab type is Mention/Live Notification (no channel needed)",
+        "Enter key does nothing (silent) when inputs invalid",
+        "Confirmation logic identical to old confirm button (channel normalization via API)",
+        "Manual test: Enter in channel input with valid name → join succeeds",
+        "Manual test: Enter in tab selector with Mention selected → join succeeds",
+        "Manual test: Enter with empty channel on Channel tab → no action"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-6",
+      "category": "ui",
+      "description": "Implement Space key to accept autocomplete suggestion in channel input",
+      "steps": [
+        "Space key in channel input accepts current autocomplete suggestion",
+        "Space key only active when channel input focused",
+        "Space key does not interfere with tab/identity list navigation",
+        "After accepting suggestion, cursor positioned after inserted text",
+        "Manual test: Type 'xq', press Space → 'xqc' inserted (if suggestion exists)",
+        "Manual test: Press Space in tab selector → no autocomplete action"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-7",
+      "category": "ui",
+      "description": "Add status hints showing available keybinds at bottom of modal",
+      "steps": [
+        "Modal View() includes hint bar at bottom",
+        "Hint shows context-appropriate keybinds: When channel input focused: 'Space: autocomplete | Enter: confirm | Tab: next field', When other field focused: 'Enter: confirm | Tab: next field'",
+        "Hint bar styled consistently with theme",
+        "Manual test: Hints visible and update based on focused field"
+      ],
+      "passes": false
+    },
+    {
+      "id": "ui-8",
+      "category": "ui",
+      "description": "Ensure modal repositions and resizes correctly on terminal window changes",
+      "steps": [
+        "Root Update() handles tea.WindowSizeMsg when inputScreen active",
+        "Both joinInput and background tab receive window size updates",
+        "Join modal recalculates 60% width based on new terminal width",
+        "Overlay repositions to center after resize",
+        "Manual test: Resize terminal while modal open → modal stays centered",
+        "Manual test: Content remains readable at minimum 80x24 size"
+      ],
+      "passes": false
+    },
+    {
+      "id": "testing-1",
+      "category": "testing",
+      "description": "Add tests for new modal behavior and keybinds",
+      "steps": [
+        "Test: Enter key with valid channel input triggers joinChannelMessage",
+        "Test: Enter key with empty channel on Channel tab does nothing",
+        "Test: Enter key on Mention tab (no channel) triggers joinChannelMessage",
+        "Test: Space key in channel input with suggestion accepts it",
+        "Test: Tab navigation cycles through fields correctly (no confirm button)",
+        "Test: Window resize updates modal dimensions",
+        "Run `go test ./ui/mainui/... -v` → all tests pass"
+      ],
+      "passes": false
+    }
+  ],
+  "context": {
+    "patterns": [
+      "Modal/Overlay: Help screen (ui/mainui/help.go) uses full-screen overlay pattern",
+      "Bubble Tea Lifecycle: ui/mainui/root.go:468-498 - Join screen creation on Ctrl+T",
+      "Theme Integration: Components use deps.UserConfig.Theme.ListLabelColor",
+      "Overlay positioning: overlay.New(fgModel, bgModel, overlay.Center, overlay.Center, 0, 0)"
+    ],
+    "keyFiles": [
+      "ui/mainui/join.go",
+      "ui/mainui/root.go",
+      "ui/component/textinput.go",
+      "save/theme.go"
+    ],
+    "nonGoals": [
+      "Error messages on invalid Enter (v1 silent fail)",
+      "Animation (fade in/slide)",
+      "Edit existing channel tabs",
+      "Autocomplete component refactor",
+      "Custom theme fields beyond existing",
+      "Mobile/SSH client testing",
+      "Accessibility beyond keyboard navigation",
+      "Join history / recent channels"
+    ]
+  }
+}

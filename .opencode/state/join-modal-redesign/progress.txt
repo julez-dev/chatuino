@@ -1,0 +1,14 @@
+# Progress Log
+PRD: join-modal-redesign
+Started: 2026-01-20
+
+## Codebase Patterns
+<!-- Consolidate reusable patterns here -->
+
+---
+<!-- Task logs below - APPEND ONLY -->
+
+## Task - setup-1
+- Added github.com/rmhubbert/bubbletea-overlay@v0.6.4 dependency
+- Files changed: go.mod, go.sum
+- **Learnings:** Dependency added successfully. Go 1.25.4 was also updated. Project builds without issues.
