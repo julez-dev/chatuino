@@ -2,9 +2,7 @@ package emote
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 
@@ -103,15 +101,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
 				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch 7TV emotes")
-
-				var apiErr seventv.APIError
-				if errors.As(err, &apiErr) {
-					if apiErr.StatusCode == http.StatusNotFound {
-						return nil
-					}
-				}
-
-				return err
+				return nil
 			}
 
 			stvResp = resp
@@ -122,17 +112,8 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		group.Go(func() error {
 			resp, err := s.bttvEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
-
-				var apiErr bttv.APIError
-				if errors.As(err, &apiErr) {
-					if apiErr.StatusCode == http.StatusNotFound {
-						return nil
-					}
-				}
-
 				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch BTTV emotes")
-
-				return err
+				return nil
 			}
 
 			bttvResp = resp
@@ -231,7 +212,8 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 		group.Go(func() error {
 			resp, err := s.sevenTVEmotes.GetGlobalEmotes(ctx)
 			if err != nil {
-				return err
+				s.logger.Error().Err(err).Msg("could not fetch 7TV global emotes")
+				return nil
 			}
 
 			stvResp = resp
@@ -241,7 +223,8 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 		group.Go(func() error {
 			resp, err := s.bttvEmotes.GetGlobalEmotes(ctx)
 			if err != nil {
-				return err
+				s.logger.Error().Err(err).Msg("could not fetch BTTV global emotes")
+				return nil
 			}
 
 			bttvResp = resp

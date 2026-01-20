@@ -35,7 +35,7 @@ func (s splash) view(loading bool, err error) string {
 
 	var help string
 	if loading {
-		help = "Loading state from disk..."
+		help = "loading initial state..."
 	} else if err != nil {
 		help = err.Error() + "\n"
 		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
