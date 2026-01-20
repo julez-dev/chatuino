@@ -121,7 +121,8 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	input.IncludeCommandSuggestions = false
 	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
-	input.SetWidth(modalWidth - 4) // Account for modal padding
+	// Account for modal border (2) + padding (4) = 6 total
+	input.SetWidth(modalWidth - 6)
 	input.KeyMap.AcceptSuggestion = deps.Keymap.Confirm
 	input.KeyMap.AcceptSuggestion.SetKeys("enter")
 
@@ -335,15 +336,18 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 func (j *join) View() string {
 	// Modal content style with rounded borders and theme colors
+	// Note: Border adds 2 chars (1 each side), Padding adds 4 chars (2 each side)
+	// So inner content width should be: j.width - 6
 	style := lipgloss.NewStyle().
 		Width(j.width).
 		MaxWidth(j.width).
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).
-		Background(lipgloss.Color(j.deps.UserConfig.Theme.ListBackgroundColor))
+		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
 
-	styleCenter := lipgloss.NewStyle().Width(j.width - 4).AlignHorizontal(lipgloss.Center)
+	// Center content within the inner area (accounting for border + padding)
+	innerWidth := j.width - 6
+	styleCenter := lipgloss.NewStyle().Width(innerWidth).AlignHorizontal(lipgloss.Center)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
 
@@ -411,7 +415,8 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 	c.width = modalWidth
 	c.height = 0 // Dynamic height based on content
 
-	c.input.SetWidth(modalWidth - 4) // Account for modal padding
+	// Account for modal border (2) + padding (4) = 6 total
+	c.input.SetWidth(modalWidth - 6)
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {
