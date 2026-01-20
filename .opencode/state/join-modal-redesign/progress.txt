@@ -3,7 +3,8 @@ PRD: join-modal-redesign
 Started: 2026-01-20
 
 ## Codebase Patterns
-<!-- Consolidate reusable patterns here -->
+- **Bubble Tea key bindings**: Use literal key string for SetKeys(), e.g., " " not "space" - key.Matches compares against KeyMsg.String()
+- **Component switch cases**: When handling custom keys, always return to prevent fallthrough - don't put conditions in case statement if you want to consume the key regardless
 
 ---
 <!-- Task logs below - APPEND ONLY -->
@@ -67,10 +68,12 @@ Started: 2026-01-20
 
 ## Task - ui-6
 - Implemented Space key to accept autocomplete suggestion in channel input
-- Files changed: ui/mainui/join.go
+- Files changed: ui/mainui/join.go, ui/component/textinput.go
 - **Learnings:**
-  - Changed AcceptSuggestion key binding from "enter" to "space"
-  - Component already handles all autocomplete logic (textinput.go lines 172-193)
+  - Changed AcceptSuggestion key binding from "enter" to " " (literal space)
+  - CRITICAL: key.Matches requires literal " " not "space" string - space key message returns " " as string
+  - Fixed component bug: AcceptSuggestion case now always returns, preventing fallthrough to default
+  - Original code had AcceptSuggestion in condition (&&), so no-suggestion meant fallthrough to text insertion
   - DisableAutoSpaceSuggestion is true, so no extra space added after suggestion
   - Cursor automatically positioned after inserted text by component
   - Space key only processed when channel input is focused (component behavior)
