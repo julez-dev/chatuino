@@ -124,7 +124,8 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	// Set input width to reasonable size (will be centered in modal)
 	input.SetWidth(40)
 	// Set Space key to accept autocomplete suggestions
-	input.KeyMap.AcceptSuggestion.SetKeys("space")
+	// Note: Must use " " (literal space) not "space" for key.Matches to work
+	input.KeyMap.AcceptSuggestion.SetKeys(" ")
 
 	tabKindList := createDefaultList(parentHeight, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
