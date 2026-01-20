@@ -381,16 +381,19 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 }
 
 func (j *join) View() string {
-	// Modal content style - no fixed height, let content determine size
+	// Modal content style with rounded borders and theme colors
 	style := lipgloss.NewStyle().
 		Width(j.width).
 		MaxWidth(j.width).
-		Padding(1, 2)
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).
+		Background(lipgloss.Color(j.deps.UserConfig.Theme.ListBackgroundColor))
 
 	styleCenter := lipgloss.NewStyle().Width(j.width - 4).AlignHorizontal(lipgloss.Center)
 
 	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
-	buttonStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Padding(0, 3).Border(lipgloss.ASCIIBorder())
+	buttonStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Padding(0, 3).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
 
 	var (
 		labelTab      string

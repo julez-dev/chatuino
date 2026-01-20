@@ -642,11 +642,16 @@ func (r *Root) View() string {
 			background = r.splash.View()
 		}
 
+		// Dim the background for modal effect
+		dimmedBackground := lipgloss.NewStyle().
+			Faint(true).
+			Render(background)
+
 		foreground := r.joinInput.View()
 
 		return overlay.Composite(
 			foreground,
-			background,
+			dimmedBackground,
 			overlay.Center,
 			overlay.Center,
 			0,

@@ -32,3 +32,13 @@ Started: 2026-01-20
   - Background renders current tab or splash screen when no tabs exist
   - Existing resize handling in handleResize() already updates both modal and tabs
   - Dependency needed to be re-added (was missing from go.mod)
+
+## Task - ui-3
+- Applied rounded borders, dimmed background, and theme colors to modal
+- Files changed: ui/mainui/join.go, ui/mainui/root.go
+- **Learnings:**
+  - lipgloss.RoundedBorder() creates nice rounded corners (╭─╮ ╰─╯)
+  - Used Theme.ListBackgroundColor for modal background
+  - Used Theme.ListLabelColor for border color (consistent with labels)
+  - lipgloss.Faint(true) dims background for modal overlay effect
+  - Also updated button to use RoundedBorder for consistency

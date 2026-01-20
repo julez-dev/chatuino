@@ -51,7 +51,7 @@
         "Manual test: Background appears dimmed/muted behind modal",
         "Manual test: Colors match existing theme configuration"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-4",
