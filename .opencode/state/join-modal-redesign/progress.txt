@@ -78,3 +78,13 @@ Started: 2026-01-20
   - Cursor automatically positioned after inserted text by component
   - Space key only processed when channel input is focused (component behavior)
   - Lists don't handle Space key, so no interference with navigation
+
+## Task - ui-7
+- Added status hints showing available keybinds at bottom of modal
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Context-appropriate hints: "Space: autocomplete | Enter: confirm | Tab: next field" when channel input focused
+  - Simpler hints for other fields: "Enter: confirm | Tab: next field"
+  - Hints styled with theme StatusColor and Faint(true) for subtle appearance
+  - Hints centered above the status line for better visual hierarchy
+  - Provides clear guidance without cluttering the interface

@@ -432,6 +432,18 @@ func (j *join) View() string {
 		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
 	}
 
+	// Show keybind hints (centered, styled with theme)
+	_, _ = b.WriteString("\n")
+	var hints string
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Faint(true)
+
+	if j.selectedInput == channelInput {
+		hints = hintStyle.Render("Space: autocomplete | Enter: confirm | Tab: next field")
+	} else {
+		hints = hintStyle.Render("Enter: confirm | Tab: next field")
+	}
+	_, _ = b.WriteString(styleCenter.Render(hints))
+
 	// Show status at bottom (left-aligned)
 	_, _ = b.WriteString("\n")
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))

@@ -104,7 +104,7 @@
         "Hint bar styled consistently with theme",
         "Manual test: Hints visible and update based on focused field"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-8",
