@@ -37,7 +37,7 @@
         "Terminal resize (tea.WindowSizeMsg) updates both background and foreground models",
         "Manual test: Open join modal, verify chat visible behind it"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "ui-3",

@@ -30,6 +30,7 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mailru/easyjson v0.9.1
 	github.com/redis/go-redis/v9 v9.17.2
+	github.com/rmhubbert/bubbletea-overlay v0.6.4
 	github.com/spf13/afero v1.15.0
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/image v0.35.0

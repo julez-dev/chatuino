@@ -22,3 +22,13 @@ Started: 2026-01-20
   - Input width adjusted to account for modal padding (modalWidth - 4)
   - Removed full-screen spacer logic that filled to terminal height
   - View() now returns bounded modal content with padding instead of full-screen layout
+
+## Task - ui-2
+- Integrated overlay wrapper to composite join modal over active tab
+- Files changed: ui/mainui/root.go, go.mod, go.sum
+- **Learnings:**
+  - overlay.Composite() takes strings (fg, bg, xPos, yPos, xOff, yOff) for simple compositing
+  - overlay.New() requires Viewable models - use Composite for string-based rendering
+  - Background renders current tab or splash screen when no tabs exist
+  - Existing resize handling in handleResize() already updates both modal and tabs
+  - Dependency needed to be re-added (was missing from go.mod)

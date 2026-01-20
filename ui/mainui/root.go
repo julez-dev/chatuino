@@ -21,6 +21,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	overlay "github.com/rmhubbert/bubbletea-overlay"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
@@ -629,7 +630,28 @@ func (r *Root) View() string {
 
 		return "  " + r.header.View() + " \n" + r.tabs[r.tabCursor].View()
 	case inputScreen:
-		return r.joinInput.View()
+		// Composite join modal over the current active tab
+		var background string
+		if len(r.tabs) > 0 && r.tabCursor < len(r.tabs) {
+			if r.dependencies.UserConfig.Settings.VerticalTabList {
+				background = lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
+			} else {
+				background = "  " + r.header.View() + " \n" + r.tabs[r.tabCursor].View()
+			}
+		} else {
+			background = r.splash.View()
+		}
+
+		foreground := r.joinInput.View()
+
+		return overlay.Composite(
+			foreground,
+			background,
+			overlay.Center,
+			overlay.Center,
+			0,
+			0,
+		)
 	case helpScreen:
 		return r.help.View()
 	}
