@@ -408,17 +408,19 @@ func (j *join) View() string {
 		labelIdentity string
 	)
 
+	selectedLabelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).Bold(true).Render
+
 	switch j.selectedInput {
 	case channelInput:
 		labelTab = labelStyle("Tab type")
-		labelChannel = labelStyle("> Channel")
+		labelChannel = selectedLabelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
 	case accountSelect:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
-		labelIdentity = labelStyle("> Identity")
+		labelIdentity = selectedLabelStyle("Identity")
 	case tabSelect:
-		labelTab = labelStyle("> Tab type")
+		labelTab = selectedLabelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
 	default:
@@ -428,6 +430,10 @@ func (j *join) View() string {
 	}
 
 	b := strings.Builder{}
+
+	// Headline
+	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).MarginBottom(1)
+	_, _ = b.WriteString(styleCenter.Render(headlineStyle.Render("Create new Tab")) + "\n")
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
 	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
@@ -453,13 +459,16 @@ func (j *join) View() string {
 	}
 
 	// Show keybind hints (centered, styled with theme)
-	_, _ = b.WriteString("\n")
+	_, _ = b.WriteString("\n\n")
 	var hints string
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Faint(true)
 
-	if j.selectedInput == channelInput {
+	switch j.selectedInput {
+	case channelInput:
 		hints = hintStyle.Render("Space: autocomplete | Enter: confirm | Tab: next field")
-	} else {
+	case tabSelect, accountSelect:
+		hints = hintStyle.Render("↑/↓: select | Enter: confirm | Tab: next field")
+	default:
 		hints = hintStyle.Render("Enter: confirm | Tab: next field")
 	}
 	_, _ = b.WriteString(styleCenter.PaddingBottom(1).Render(hints))

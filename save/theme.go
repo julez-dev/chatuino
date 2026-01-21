@@ -31,6 +31,7 @@ type Theme struct {
 
 	ListSelectedColor string `yaml:"list_selected_color"`
 	ListLabelColor    string `yaml:"list_label_color"`
+	ActiveLabelColor  string `yaml:"active_label_color"`
 
 	StatusColor string `yaml:"status_color"`
 
@@ -68,6 +69,7 @@ func BuildDefaultTheme() Theme {
 
 		ListSelectedColor: "#a6da95",
 		ListLabelColor:    "#c6a0f6",
+		ActiveLabelColor:  "#f5a97f",
 
 		StatusColor: "#8aadf4",
 
