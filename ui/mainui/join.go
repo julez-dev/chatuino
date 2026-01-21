@@ -125,7 +125,8 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
 	// Set input width to reasonable size (will be centered in modal)
-	input.SetWidth(10)
+	input.SetWidth(7)
+	input.InputModel.Width = 7
 	// Set Space key to accept autocomplete suggestions
 	// Note: Must use " " (literal space) not "space" for key.Matches to work
 	input.KeyMap.AcceptSuggestion.SetKeys(" ")
@@ -371,9 +372,14 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 		// on update change the width to the width of content
-		width := min(j.width, max(10, lipgloss.Width(j.input.Value())))
+		iw := lipgloss.Width(j.input.Value())
 
-		j.input.SetWidth(width)
+		if iw < 7 {
+			iw = 7
+		}
+
+		j.input.SetWidth(iw)
+		j.input.InputModel.Width = iw
 	case tabSelect:
 		j.tabKindList, cmd = j.tabKindList.Update(msg)
 		cmds = append(cmds, cmd)

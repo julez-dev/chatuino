@@ -110,7 +110,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
 				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch 7TV emotes")
-				errSevenTV = err
+				errSevenTV = fmt.Errorf("could not fetch 7TV emotes: %w", err)
 				return nil
 			}
 
@@ -123,7 +123,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			resp, err := s.bttvEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
 				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch BTTV emotes")
-				errBTTV = err
+				errBTTV = fmt.Errorf("could not fetch BTTV emotes: %w", err)
 				return nil
 			}
 
