@@ -95,7 +95,7 @@ func createDefaultList(height int, selectedColor string) list.Model {
 	return newList
 }
 
-func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
+func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	emptyUserMap := map[string]func(...string) string{}
 
 	// Calculate modal width as 60% of parent
@@ -130,7 +130,7 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	// Note: Must use " " (literal space) not "space" for key.Matches to work
 	input.KeyMap.AcceptSuggestion.SetKeys(" ")
 
-	tabKindList := createDefaultList(parentHeight, deps.UserConfig.Theme.ListSelectedColor)
+	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
@@ -149,7 +149,7 @@ func newJoin(parentWidth, parentHeight int, deps *DependencyContainer) *join {
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(parentHeight, deps.UserConfig.Theme.ListSelectedColor)
+	channelList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]followedFetcher{}

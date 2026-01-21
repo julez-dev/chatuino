@@ -163,7 +163,7 @@ func NewUI(
 		},
 		header:    header,
 		help:      newHelp(10, 10, dependencies),
-		joinInput: newJoin(10, 10, dependencies),
+		joinInput: newJoin(10, dependencies),
 
 		// chat multiplex channels
 		closerWG: &sync.WaitGroup{},
@@ -474,7 +474,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.screenType = inputScreen
-				r.joinInput = newJoin(r.width, r.height, r.dependencies)
+				r.joinInput = newJoin(r.width, r.dependencies)
 				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
 					return t.Kind() == mentionTabKind
 				})

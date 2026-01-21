@@ -2,6 +2,7 @@ package emote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -16,6 +17,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+var ErrPartialFetch = errors.New("emote data could only be partially fetched")
 
 type TwitchEmoteFetcher interface {
 	GetGlobalEmotes(context.Context) (twitchapi.EmoteResponse, error)
@@ -69,6 +72,8 @@ func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 	}
 }
 
+// RefreshLocal refreshes the local emote cache for a specific channel.
+// When a 3rd party API fails, the cache will still be refreshed but a ErrPartialFetch will be returned.
 func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 	s.m.RLock()
 	if _, isCached := s.channelsFetched[channelID]; isCached {
@@ -82,6 +87,10 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			ttvResp  twitchapi.EmoteResponse
 			stvResp  seventv.ChannelEmoteResponse
 			bttvResp bttv.UserResponse
+
+			fetchErrs  error
+			errSevenTV error // routine will not cancel when 3rd pa
+			errBTTV    error
 		)
 
 		group, ctx := errgroup.WithContext(ctx)
@@ -101,6 +110,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
 				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch 7TV emotes")
+				errSevenTV = err
 				return nil
 			}
 
@@ -113,6 +123,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			resp, err := s.bttvEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
 				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch BTTV emotes")
+				errBTTV = err
 				return nil
 			}
 
@@ -124,6 +135,8 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		if err := group.Wait(); err != nil {
 			return nil, err
 		}
+
+		fetchErrs = errors.Join(errSevenTV, errBTTV)
 
 		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes)+len(bttvResp.ChannelEmotes))
 
@@ -167,19 +180,15 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			})
 		}
 
-		return emoteSet, nil
+		return emoteSet, fmt.Errorf("%w: %w", ErrPartialFetch, fetchErrs)
 	})
-
-	if err != nil {
-		return err
-	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
 	s.channelsFetched[channelID] = struct{}{}
 	s.channel[channelID] = set.(EmoteSet)
 
-	return nil
+	return err
 }
 
 func (s *Cache) RefreshGlobal(ctx context.Context) error {
