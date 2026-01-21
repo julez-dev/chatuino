@@ -534,7 +534,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 						accountID: t.AccountID(),
 						message: &twitchirc.Notice{
 							FakeTimestamp: time.Now(),
-							Message:       fmt.Sprintf("Emotes refreshed manually"),
+							Message:       "Emotes refreshed manually",
 						},
 					}
 				}
