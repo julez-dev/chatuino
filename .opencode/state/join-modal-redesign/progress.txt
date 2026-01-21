@@ -1,0 +1,115 @@
+# Progress Log
+PRD: join-modal-redesign
+Started: 2026-01-20
+
+## Codebase Patterns
+- **Bubble Tea key bindings**: Use literal key string for SetKeys(), e.g., " " not "space" - key.Matches compares against KeyMsg.String()
+- **Component switch cases**: When handling custom keys, always return to prevent fallthrough - don't put conditions in case statement if you want to consume the key regardless
+
+---
+<!-- Task logs below - APPEND ONLY -->
+
+## Task - setup-1
+- Added github.com/rmhubbert/bubbletea-overlay@v0.6.4 dependency
+- Files changed: go.mod, go.sum
+- **Learnings:** Dependency added successfully. Go 1.25.4 was also updated. Project builds without issues.
+
+## Task - ui-1
+- Converted join screen from full-screen to modal structure
+- Files changed: ui/mainui/join.go
+- **Learnings:** 
+  - Modal width calculated as 60% of parent width with 40 char minimum
+  - Removed fixed height constraints - modal now sized by content
+  - Input width adjusted to account for modal padding (modalWidth - 4)
+  - Removed full-screen spacer logic that filled to terminal height
+  - View() now returns bounded modal content with padding instead of full-screen layout
+
+## Task - ui-2
+- Integrated overlay wrapper to composite join modal over active tab
+- Files changed: ui/mainui/root.go, go.mod, go.sum
+- **Learnings:**
+  - overlay.Composite() takes strings (fg, bg, xPos, yPos, xOff, yOff) for simple compositing
+  - overlay.New() requires Viewable models - use Composite for string-based rendering
+  - Background renders current tab or splash screen when no tabs exist
+  - Existing resize handling in handleResize() already updates both modal and tabs
+  - Dependency needed to be re-added (was missing from go.mod)
+
+## Task - ui-3
+- Applied rounded borders, dimmed background, and theme colors to modal
+- Files changed: ui/mainui/join.go, ui/mainui/root.go
+- **Learnings:**
+  - lipgloss.RoundedBorder() creates nice rounded corners (╭─╮ ╰─╯)
+  - Used Theme.ListBackgroundColor for modal background
+  - Used Theme.ListLabelColor for border color (consistent with labels)
+  - lipgloss.Faint(true) dims background for modal overlay effect
+  - Also updated button to use RoundedBorder for consistency
+
+## Task - ui-4
+- Removed confirm button UI element and navigation state
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Removed confirmButton const from currentJoinInput enum
+  - Removed confirm button rendering from View()
+  - Updated Tab navigation to cycle: tabSelect → accountSelect → channelInput → tabSelect
+  - Updated Shift+Tab to cycle in reverse: tabSelect → channelInput → accountSelect → tabSelect
+  - For mention/live notification tabs, Tab/Shift+Tab do nothing (only one field visible)
+  - Removed old Enter key logic (will be reimplemented in ui-5)
+
+## Task - ui-5
+- Implemented Enter key to confirm join from any field when inputs are valid
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Enter key validates inputs before triggering join
+  - Validation: (channel not empty AND broadcastTabKind) OR mentionTabKind OR liveNotificationTabKind
+  - Channel normalization via Twitch API only for broadcast tabs (not needed for mention/notification)
+  - Preserves existing logic: fetches user via GetUsers API, extracts normalized login
+  - Returns joinChannelMessage with tabKind, channel, and account
+  - Silent fail when inputs invalid (no error shown per PRD non-goals)
+
+## Task - ui-6
+- Implemented Space key to accept autocomplete suggestion in channel input
+- Files changed: ui/mainui/join.go, ui/component/textinput.go
+- **Learnings:**
+  - Changed AcceptSuggestion key binding from "enter" to " " (literal space)
+  - CRITICAL: key.Matches requires literal " " not "space" string - space key message returns " " as string
+  - Fixed component bug: AcceptSuggestion case now always returns, preventing fallthrough to default
+  - Original code had AcceptSuggestion in condition (&&), so no-suggestion meant fallthrough to text insertion
+  - DisableAutoSpaceSuggestion is true, so no extra space added after suggestion
+  - Cursor automatically positioned after inserted text by component
+  - Space key only processed when channel input is focused (component behavior)
+  - Lists don't handle Space key, so no interference with navigation
+
+## Task - ui-7
+- Added status hints showing available keybinds at bottom of modal
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Context-appropriate hints: "Space: autocomplete | Enter: confirm | Tab: next field" when channel input focused
+  - Simpler hints for other fields: "Enter: confirm | Tab: next field"
+  - Hints styled with theme StatusColor and Faint(true) for subtle appearance
+  - Hints centered above the status line for better visual hierarchy
+  - Provides clear guidance without cluttering the interface
+
+## Task - ui-8
+- Ensured modal repositions and resizes correctly on terminal window changes
+- Files changed: ui/mainui/join.go
+- **Learnings:**
+  - Fixed hardcoded contentWidth (was 50) to use dynamic j.width (60% of parent)
+  - Resize flow already in place: WindowSizeMsg → handleResize() → joinInput.handleResize()
+  - joinInput.handleResize() recalculates modalWidth as 60% with 40 char minimum
+  - overlay.Composite() re-centers on every View() call automatically
+  - View() now uses j.width throughout for consistent responsive sizing
+  - Background tabs already receive resize updates via existing handleResize() logic
+
+## Task - testing-1
+- Added comprehensive tests for new modal behavior and keybinds
+- Files changed: ui/mainui/join_test.go (new file)
+- **Learnings:**
+  - Created 5 test cases covering all new functionality
+  - TestJoin_EnterKeyWithValidChannel: Verifies Enter triggers join with valid input
+  - TestJoin_EnterKeyWithEmptyChannelDoesNothing: Verifies silent fail on invalid input
+  - TestJoin_EnterKeyOnMentionTab: Verifies Enter works on mention tabs without channel
+  - TestJoin_TabNavigationCycle: Verifies Tab cycles through 3 fields (no confirm button)
+  - TestJoin_WindowResize: Verifies 60% width calculation and 40 char minimum
+  - Space key autocomplete already covered by component tests (textinput_test.go)
+  - Used t.Parallel() for concurrent test execution following project patterns
+  - All tests pass with race detector

@@ -29,7 +29,6 @@ const (
 	channelInput currentJoinInput = iota
 	accountSelect
 	tabSelect
-	confirmButton
 )
 
 func (c currentJoinInput) String() string {
@@ -40,8 +39,6 @@ func (c currentJoinInput) String() string {
 		return "Account Input"
 	case tabSelect:
 		return "Tab Input"
-	case confirmButton:
-		return "Confirm Button"
 	default:
 		return "Unknown"
 	}
@@ -98,8 +95,17 @@ func createDefaultList(height int, selectedColor string) list.Model {
 	return newList
 }
 
-func newJoin(width, height int, deps *DependencyContainer) *join {
+func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	emptyUserMap := map[string]func(...string) string{}
+
+	// Calculate modal width as 60% of parent
+	modalWidth := int(float64(parentWidth) * 0.6)
+	if modalWidth < 40 {
+		modalWidth = 40 // Minimum width
+	}
+	if modalWidth > 80 {
+		modalWidth = 80 // Maximum width to prevent being too wide on large terminals
+	}
 
 	input := component.NewSuggestionTextInput(emptyUserMap, nil)
 	input.DisableAutoSpaceSuggestion = true
@@ -118,11 +124,14 @@ func newJoin(width, height int, deps *DependencyContainer) *join {
 	input.IncludeCommandSuggestions = false
 	input.DisableHistory = true
 	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
-	input.SetWidth(width)
-	input.KeyMap.AcceptSuggestion = deps.Keymap.Confirm
-	input.KeyMap.AcceptSuggestion.SetKeys("enter")
+	// Set input width to reasonable size (will be centered in modal)
+	input.SetWidth(7)
+	input.InputModel.Width = 7
+	// Set Space key to accept autocomplete suggestions
+	// Note: Must use " " (literal space) not "space" for key.Matches to work
+	input.KeyMap.AcceptSuggestion.SetKeys(" ")
 
-	tabKindList := createDefaultList(height, deps.UserConfig.Theme.ListSelectedColor)
+	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
@@ -141,7 +150,7 @@ func newJoin(width, height int, deps *DependencyContainer) *join {
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(height, deps.UserConfig.Theme.ListSelectedColor)
+	channelList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]followedFetcher{}
@@ -152,8 +161,8 @@ func newJoin(width, height int, deps *DependencyContainer) *join {
 	}
 
 	return &join{
-		width:            width,
-		height:           height,
+		width:            modalWidth,
+		height:           0, // Height will be dynamic based on content
 		input:            input,
 		deps:             deps,
 		accountList:      channelList,
@@ -274,12 +283,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			if key.Matches(msg, j.deps.Keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					if j.selectedInput == tabSelect {
-						j.selectedInput = confirmButton
-					} else {
-						j.selectedInput = tabSelect
-					}
-
+					// For mention/live notification tabs, Tab does nothing (only one field)
 					return j, nil
 				}
 
@@ -290,8 +294,6 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
-					j.selectedInput = confirmButton
-				case confirmButton:
 					j.selectedInput = tabSelect
 				}
 
@@ -301,19 +303,12 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			if key.Matches(msg, j.deps.Keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
-					if j.selectedInput == tabSelect {
-						j.selectedInput = confirmButton
-					} else {
-						j.selectedInput = tabSelect
-					}
-
+					// For mention/live notification tabs, Shift+Tab does nothing (only one field)
 					return j, nil
 				}
 
 				switch j.selectedInput {
 				case tabSelect:
-					j.selectedInput = confirmButton
-				case confirmButton:
 					j.selectedInput = channelInput
 					cmd = j.input.InputModel.Cursor.BlinkCmd()
 				case channelInput:
@@ -325,32 +320,42 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
+			// Enter key confirms join from any field when inputs are valid
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
-			if key.Matches(msg, j.deps.Keymap.Confirm) && j.selectedInput == confirmButton && (j.input.Value() != "" || kind == liveNotificationTabKind || kind == mentionTabKind) {
+			// Check if inputs are valid for confirmation
+			isValid := (j.input.Value() != "" && kind == broadcastTabKind) ||
+				kind == mentionTabKind ||
+				kind == liveNotificationTabKind
+
+			if key.Matches(msg, j.deps.Keymap.Confirm) && isValid {
 				channel := j.input.Value()
 				account := j.accounts[j.accountList.Cursor()]
 
 				return j, func() tea.Msg {
-					for accountID, client := range j.deps.APIUserClients {
-						if accountID != account.ID {
-							continue
-						}
+					// Normalize channel name via Twitch API for broadcast tabs
+					if kind == broadcastTabKind {
+						for accountID, client := range j.deps.APIUserClients {
+							if accountID != account.ID {
+								continue
+							}
 
-						resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
-						if err != nil {
+							resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+							if err != nil {
+								break
+							}
+
+							if len(resp.Data) < 1 {
+								break
+							}
+
+							channel = resp.Data[0].Login
 							break
 						}
-
-						if len(resp.Data) < 1 {
-							break
-						}
-
-						channel = resp.Data[0].Login
 					}
 
 					return joinChannelMessage{
-						tabKind: j.tabKindList.SelectedItem().(listItem).kind,
+						tabKind: kind,
 						channel: channel,
 						account: account,
 					}
@@ -361,8 +366,20 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 	switch j.selectedInput {
 	case channelInput:
+		// For channel input, always pass to input component for handling
+		// This includes Space key for autocomplete
 		j.input, cmd = j.input.Update(msg)
 		cmds = append(cmds, cmd)
+
+		// on update change the width to the width of content
+		iw := lipgloss.Width(j.input.Value())
+
+		if iw < 7 {
+			iw = 7
+		}
+
+		j.input.SetWidth(iw)
+		j.input.InputModel.Width = iw
 	case tabSelect:
 		j.tabKindList, cmd = j.tabKindList.Update(msg)
 		cmds = append(cmds, cmd)
@@ -375,71 +392,99 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 }
 
 func (j *join) View() string {
+	// Modal content style with rounded borders and theme colors
+	// Use calculated width (60% of parent, updated on resize)
 	style := lipgloss.NewStyle().
 		Width(j.width).
-		MaxWidth(j.width).
-		Height(j.height).
-		MaxHeight(j.height)
+		Padding(1, 2).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
 
-	styleCenter := lipgloss.NewStyle().Width(j.width - 2).AlignHorizontal(lipgloss.Center)
+	// Center content within the calculated width
+	styleCenter := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Center)
 
-	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
-	buttonStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(2).Padding(0, 3).Border(lipgloss.ASCIIBorder())
+	// Left-aligned style for status
+	styleLeft := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Left)
+
+	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
 
 	var (
 		labelTab      string
 		labelChannel  string
 		labelIdentity string
-		confirmButton string
 	)
+
+	selectedLabelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).Bold(true).Render
 
 	switch j.selectedInput {
 	case channelInput:
 		labelTab = labelStyle("Tab type")
-		labelChannel = labelStyle("> Channel")
+		labelChannel = selectedLabelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
-		confirmButton = buttonStyle.Render("Confirm")
 	case accountSelect:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
-		labelIdentity = labelStyle("> Identity")
-		confirmButton = buttonStyle.Render("Confirm")
+		labelIdentity = selectedLabelStyle("Identity")
 	case tabSelect:
-		labelTab = labelStyle("> Tab type")
+		labelTab = selectedLabelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
-		confirmButton = buttonStyle.Render("Confirm")
 	default:
 		labelTab = labelStyle("Tab type")
 		labelChannel = labelStyle("Channel")
 		labelIdentity = labelStyle("Identity")
-		confirmButton = buttonStyle.BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render("Confirm")
 	}
 
 	b := strings.Builder{}
+
+	// Headline
+	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).MarginBottom(1)
+	_, _ = b.WriteString(styleCenter.Render(headlineStyle.Render("Create new Tab")) + "\n")
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
 	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
-		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
-		_, _ = b.WriteString(styleCenter.Render(labelIdentity + "\n" + j.accountList.View() + "\n"))
-		_, _ = b.WriteString(styleCenter.Render(labelChannel + "\n" + j.input.View() + "\n"))
+		_, _ = labelIdentity, labelChannel
+
+		_, _ = b.WriteString(styleCenter.Render(labelTab))
+		_, _ = b.WriteString(styleCenter.Render(j.tabKindList.View()))
+		_, _ = b.WriteString("\n")
+
+		_, _ = b.WriteString(styleCenter.Render(labelIdentity))
+		_, _ = b.WriteString(styleCenter.Render(j.accountList.View()))
+		_, _ = b.WriteString("\n")
+
+		_, _ = b.WriteString(styleCenter.Render(labelChannel))
+		_, _ = b.WriteString("\n")
+
+		// Center each line separately so suggestion text aligns with input
+		for _, line := range strings.Split(j.input.View(), "\n") {
+			_, _ = b.WriteString(styleCenter.Render(line) + "\n")
+		}
 	}
 
-	_, _ = b.WriteString(styleCenter.Render(confirmButton))
+	// Show keybind hints (centered, styled with theme)
+	_, _ = b.WriteString("\n\n")
+	var hints string
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Faint(true)
 
-	// show status at bottom
-	heightUntilNow := lipgloss.Height(b.String())
-	spacerHeight := j.height - heightUntilNow
-	if spacerHeight > 0 {
-		_, _ = b.WriteString(strings.Repeat("\n", spacerHeight))
+	switch j.selectedInput {
+	case channelInput:
+		hints = hintStyle.Render("Space: autocomplete | Enter: confirm | Tab: next field")
+	case tabSelect, accountSelect:
+		hints = hintStyle.Render("↑/↓: select | Enter: confirm | Tab: next field")
+	default:
+		hints = hintStyle.Render("Enter: confirm | Tab: next field")
 	}
+	_, _ = b.WriteString(styleCenter.PaddingBottom(1).Render(hints))
 
+	// Show status at bottom (left-aligned)
+	_, _ = b.WriteString("\n")
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
-	_, _ = b.WriteString(stateStr)
+	_, _ = b.WriteString(styleLeft.Render(stateStr))
 
-	return style.Render(b.String())
+	return style.Padding(0).Render(b.String())
 }
 
 func (c *join) focus() {
@@ -452,11 +497,18 @@ func (c *join) blur() {
 	c.input.Blur()
 }
 
-func (c *join) handleResize(width, height int) {
-	c.width = width
-	c.height = height
+func (c *join) handleResize(parentWidth, parentHeight int) {
+	// Recalculate modal width as 60% of parent
+	modalWidth := int(float64(parentWidth) * 0.6)
+	if modalWidth < 40 {
+		modalWidth = 40 // Minimum width
+	}
+	if modalWidth > 80 {
+		modalWidth = 80 // Maximum width to prevent being too wide on large terminals
+	}
 
-	c.input.SetWidth(width)
+	c.width = modalWidth
+	c.height = 0 // Dynamic height based on content
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {

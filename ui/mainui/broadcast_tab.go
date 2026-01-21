@@ -63,6 +63,7 @@ type setChannelDataMessage struct {
 type emoteSetRefreshedMessage struct {
 	targetID string
 	err      error
+	manually bool
 }
 
 type broadcastTabState int
@@ -259,6 +260,45 @@ func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 	return cmd
 }
 
+func (t *broadcastTab) refreshEmotes(login, channelID string, manually bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+
+		group, ctx := errgroup.WithContext(ctx)
+
+		group.Go(func() error {
+			if err := t.deps.EmoteCache.RefreshLocal(ctx, channelID); err != nil {
+				return fmt.Errorf("could not refresh emote cache for %s (%s): %w", login, channelID, err)
+			}
+
+			return nil
+		})
+
+		group.Go(func() error {
+			if err := t.deps.BadgeCache.RefreshChannel(ctx, channelID); err != nil {
+				return fmt.Errorf("could not refresh badge cache for %s (%s): %w", login, channelID, err)
+			}
+
+			return nil
+		})
+
+		err := group.Wait()
+		if err != nil {
+			return emoteSetRefreshedMessage{
+				targetID: t.id,
+				err:      err,
+				manually: manually,
+			}
+		}
+
+		return emoteSetRefreshedMessage{
+			targetID: t.id,
+			manually: manually,
+		}
+	}
+}
+
 func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
@@ -266,6 +306,21 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case error:
+		if !t.channelDataLoaded {
+			return t, nil
+		}
+
+		return t, func() tea.Msg {
+			return requestLocalMessageHandleMessage{
+				tabID:     t.id,
+				accountID: t.AccountID(),
+				message: &twitchirc.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       msg.Error(),
+				},
+			}
+		}
 	case setErrorMessage:
 		if msg.targetID != t.id {
 			return t, nil
@@ -363,40 +418,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 		})
 
-		cmds = append(cmds, func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-			defer cancel()
-
-			group, ctx := errgroup.WithContext(ctx)
-
-			group.Go(func() error {
-				if err := t.deps.EmoteCache.RefreshLocal(ctx, msg.channelID); err != nil {
-					return fmt.Errorf("could not refresh emote cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
-				}
-
-				return nil
-			})
-
-			group.Go(func() error {
-				if err := t.deps.BadgeCache.RefreshChannel(ctx, msg.channelID); err != nil {
-					return fmt.Errorf("could not refresh badge cache for %s (%s): %w", msg.channelLogin, msg.channelID, err)
-				}
-
-				return nil
-			})
-
-			err := group.Wait()
-			if err != nil {
-				return emoteSetRefreshedMessage{
-					targetID: t.id,
-					err:      fmt.Errorf("could not refresh emote/badge cache for %s (%s): %w", msg.channelLogin, msg.channelID, err),
-				}
-			}
-
-			return emoteSetRefreshedMessage{
-				targetID: t.id,
-			}
-		})
+		cmds = append(cmds, t.refreshEmotes(msg.channelLogin, msg.channelID, false))
 
 		// subscribe to channel events
 		//  - if authenticated user
@@ -459,7 +481,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, tea.Batch(cmds...)
 	case emoteSetRefreshedMessage:
 		if !t.account.IsAnonymous && msg.targetID == t.id {
-			if msg.err != nil {
+			if msg.err != nil && !errors.Is(msg.err, emote.ErrPartialFetch) {
 				t.err = errors.Join(t.err, msg.err)
 				return t, nil
 			}
@@ -490,6 +512,33 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 			suggestions := slices.Collect(maps.Keys(unique))
 			t.messageInput.SetSuggestions(suggestions)
+
+			// notify user if not all emotes could be fetched
+			if errors.Is(msg.err, emote.ErrPartialFetch) {
+				return t, func() tea.Msg {
+					return requestLocalMessageHandleMessage{
+						tabID:     t.id,
+						accountID: t.AccountID(),
+						message: &twitchirc.Notice{
+							FakeTimestamp: time.Now(),
+							Message:       msg.err.Error(),
+						},
+					}
+				}
+			}
+
+			if msg.manually {
+				return t, func() tea.Msg {
+					return requestLocalMessageHandleMessage{
+						tabID:     t.id,
+						accountID: t.AccountID(),
+						message: &twitchirc.Notice{
+							FakeTimestamp: time.Now(),
+							Message:       "Emotes refreshed manually",
+						},
+					}
+				}
+			}
 		}
 
 		return t, nil
@@ -1212,6 +1261,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleCreateClipMessage()
 		case "emotes":
 			return t.handleOpenEmoteOverview()
+		case "refreshemotes":
+			return t.handleManualRefreshEmotes()
 		}
 
 		if !t.isUserMod {
@@ -1783,6 +1834,16 @@ func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
 	t.emoteOverview = NewEmoteOverview(t.channelID, t.deps.EmoteCache, t.deps.EmoteReplacer, t.width, t.height)
 	t.HandleResize()
 	return t.emoteOverview.Init()
+}
+
+func (t *broadcastTab) handleManualRefreshEmotes() tea.Cmd {
+	if t.account.IsAnonymous {
+		return nil
+	}
+
+	t.deps.EmoteCache.RemoveEmoteSetForChannel(t.channelID)
+
+	return t.refreshEmotes(t.channelLogin, t.channelID, true)
 }
 
 func (t *broadcastTab) Focus() {

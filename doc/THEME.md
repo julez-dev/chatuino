@@ -29,5 +29,5 @@ splash_highlight_color: "#bac2de"
 tab_header_background_color: "#5b6078"
 tab_header_active_background_color: "#1e2030"
 inspect_border_color: "#c6a0f6"
-
+active_label_color: "#f5a97f"
 ```

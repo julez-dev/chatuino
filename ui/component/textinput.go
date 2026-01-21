@@ -169,27 +169,31 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 			}
 
 			return s, nil
-		case key.Matches(msg, s.KeyMap.AcceptSuggestion) && s.canAcceptSuggestion():
-			_, startIndex, endIndex := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
-			before := s.InputModel.Value()[:startIndex]
-			after := s.InputModel.Value()[endIndex:]
-			suggestion := s.suggestions[s.suggestionIndex]
+		case key.Matches(msg, s.KeyMap.AcceptSuggestion):
+			// If we can accept a suggestion, do it
+			if s.canAcceptSuggestion() {
+				_, startIndex, endIndex := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
+				before := s.InputModel.Value()[:startIndex]
+				after := s.InputModel.Value()[endIndex:]
+				suggestion := s.suggestions[s.suggestionIndex]
 
-			// if the suggestion is in custom suggestions, replace with custom suggestion text
-			if s.customSuggestions != nil {
-				if customSuggestion, ok := s.customSuggestions[suggestion]; ok {
-					suggestion = customSuggestion
+				// if the suggestion is in custom suggestions, replace with custom suggestion text
+				if s.customSuggestions != nil {
+					if customSuggestion, ok := s.customSuggestions[suggestion]; ok {
+						suggestion = customSuggestion
+					}
 				}
+
+				// add space on non command suggestions
+				if !strings.HasPrefix(suggestion, "/") && !s.DisableAutoSpaceSuggestion {
+					suggestion = suggestion + " "
+				}
+
+				s.InputModel.SetValue(before + suggestion + after)
+				s.InputModel.SetCursor(len(before) + len(suggestion)) // set cursor to end of suggestion + 1 for space
 			}
-
-			// add space on non command suggestions
-			if !strings.HasPrefix(suggestion, "/") && !s.DisableAutoSpaceSuggestion {
-				suggestion = suggestion + " "
-			}
-
-			s.InputModel.SetValue(before + suggestion + after)
-			s.InputModel.SetCursor(len(before) + len(suggestion)) // set cursor to end of suggestion + 1 for space
-
+			// Always return when AcceptSuggestion key is pressed - don't fall through to default
+			// This prevents the key from being inserted as text when there's no suggestion
 			return s, nil
 		case key.Matches(msg, s.KeyMap.NextSuggestion):
 			s.nextSuggestion()

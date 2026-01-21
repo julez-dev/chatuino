@@ -29,4 +29,5 @@ var CommandSuggestions = [...]string{
 	"/uniqueonlysoff",
 	"/createclip",
 	"/emotes",
+	"/refreshemotes",
 }
