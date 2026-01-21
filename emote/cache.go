@@ -180,7 +180,11 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			})
 		}
 
-		return emoteSet, fmt.Errorf("%w: %w", ErrPartialFetch, fetchErrs)
+		if fetchErrs != nil {
+			return emoteSet, fmt.Errorf("%w: %w", ErrPartialFetch, fetchErrs)
+		}
+
+		return emoteSet, nil
 	})
 
 	s.m.Lock()
