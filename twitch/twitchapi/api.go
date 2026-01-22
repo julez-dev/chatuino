@@ -723,7 +723,10 @@ func ValidateToken(ctx context.Context, httpClient *http.Client, accessToken str
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 
 	// 200 = valid token, 401 = invalid/expired token
 	return resp.StatusCode == http.StatusOK, nil

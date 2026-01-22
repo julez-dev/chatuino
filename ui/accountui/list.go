@@ -114,41 +114,35 @@ func (l List) fetchAccounts() tea.Msg {
 		return setAccountsMessage{err: err}
 	}
 
-	rows := make([]accountRow, 0, len(accounts))
-	for _, acc := range accounts {
-		rows = append(rows, accountRow{
-			id:          acc.ID,
-			displayName: acc.DisplayName,
-			isMain:      acc.IsMain,
-			createdAt:   acc.CreatedAt,
-			tokenValid:  true, // assume valid initially, will be checked async
-		})
-	}
-
-	return setAccountsMessage{accounts: rows}
+	return setAccountsMessage{accounts: accountsToRows(accounts, nil)}
 }
 
 func (l List) validateTokens() tea.Cmd {
-	return func() tea.Msg {
-		// Validate all tokens concurrently
-		cmds := make([]tea.Cmd, 0, len(l.accounts))
-		for _, acc := range l.accounts {
-			acc := acc // capture
-			cmds = append(cmds, func() tea.Msg {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-				defer cancel()
+	// Capture current state to avoid stale closures
+	accounts := l.accounts
+	provider := l.accountProvider
 
-				account, err := l.accountProvider.GetAccountBy(acc.id)
-				if err != nil {
-					return tokenValidationMessage{accountID: acc.id, valid: false}
-				}
+	cmds := make([]tea.Cmd, 0, len(accounts))
+	for _, acc := range accounts {
+		acc := acc
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
 
-				valid, _ := twitchapi.ValidateToken(ctx, nil, account.AccessToken)
-				return tokenValidationMessage{accountID: acc.id, valid: valid}
-			})
-		}
-		return tea.Batch(cmds...)()
+			account, err := provider.GetAccountBy(acc.id)
+			if err != nil {
+				return tokenValidationMessage{accountID: acc.id, valid: false}
+			}
+
+			valid, err := twitchapi.ValidateToken(ctx, nil, account.AccessToken)
+			if err != nil {
+				// Network error - assume valid to avoid false negatives
+				return tokenValidationMessage{accountID: acc.id, valid: true}
+			}
+			return tokenValidationMessage{accountID: acc.id, valid: valid}
+		})
 	}
+	return tea.Batch(cmds...)
 }
 
 func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -282,7 +276,7 @@ func (l List) renderAccountList() string {
 
 	if len(l.accounts) == 0 {
 		// Empty state
-		emptyMsg := l.dimmedStyle.Render("No accounts yet. Press 'a' to add one.")
+		emptyMsg := l.dimmedStyle.Render(fmt.Sprintf("No accounts yet. Press '%s' to add one.", firstKey(l.keymap.Create)))
 		content.WriteString("\n")
 		content.WriteString(emptyMsg)
 		content.WriteString("\n")
@@ -298,7 +292,7 @@ func (l List) renderAccountList() string {
 	// Calculate box dimensions
 	boxWidth := 60
 	if l.width > 0 && l.width < boxWidth+4 {
-		boxWidth = l.width - 4
+		boxWidth = max(20, l.width-4) // minimum viable width
 	}
 
 	// Build bordered box
@@ -433,6 +427,9 @@ func firstKey(b key.Binding) string {
 
 func (l List) renderConfirmDialog() string {
 	boxWidth := 50
+	if l.width > 0 && l.width < boxWidth+4 {
+		boxWidth = max(30, l.width-4)
+	}
 
 	var box strings.Builder
 
@@ -478,6 +475,7 @@ func (l List) renderConfirmDialog() string {
 }
 
 func (l List) markAccountMain(id string) tea.Cmd {
+	existingRows := l.accounts // capture to preserve token validation status
 	return func() tea.Msg {
 		if err := l.accountProvider.MarkAccountAsMain(id); err != nil {
 			return setAccountsMessage{err: err}
@@ -488,26 +486,7 @@ func (l List) markAccountMain(id string) tea.Cmd {
 			return setAccountsMessage{err: err}
 		}
 
-		rows := make([]accountRow, 0, len(accounts))
-		for _, acc := range accounts {
-			// Preserve token validation status
-			valid := true
-			for _, existing := range l.accounts {
-				if existing.id == acc.ID {
-					valid = existing.tokenValid
-					break
-				}
-			}
-			rows = append(rows, accountRow{
-				id:          acc.ID,
-				displayName: acc.DisplayName,
-				isMain:      acc.IsMain,
-				createdAt:   acc.CreatedAt,
-				tokenValid:  valid,
-			})
-		}
-
-		return setAccountsMessage{accounts: rows}
+		return setAccountsMessage{accounts: accountsToRows(accounts, existingRows)}
 	}
 }
 
@@ -539,18 +518,8 @@ func (l List) removeAccountRefresh(id string) tea.Cmd {
 			return setAccountsMessage{err: err}
 		}
 
-		rows := make([]accountRow, 0, len(accounts))
-		for _, a := range accounts {
-			rows = append(rows, accountRow{
-				id:          a.ID,
-				displayName: a.DisplayName,
-				isMain:      a.IsMain,
-				createdAt:   a.CreatedAt,
-				tokenValid:  true,
-			})
-		}
-
-		return setAccountsMessage{accounts: rows}
+		// After delete, don't preserve old validation status (account is gone)
+		return setAccountsMessage{accounts: accountsToRows(accounts, nil)}
 	}
 }
 
@@ -576,19 +545,31 @@ func (l List) addNewAccountRefresh(account save.Account) tea.Cmd {
 			return setAccountsMessage{err: err}
 		}
 
-		rows := make([]accountRow, 0, len(accounts))
-		for _, acc := range accounts {
-			rows = append(rows, accountRow{
-				id:          acc.ID,
-				displayName: acc.DisplayName,
-				isMain:      acc.IsMain,
-				createdAt:   acc.CreatedAt,
-				tokenValid:  true,
-			})
-		}
-
-		return setAccountsMessage{accounts: rows}
+		// New account, no existing validation status to preserve
+		return setAccountsMessage{accounts: accountsToRows(accounts, nil)}
 	}
+}
+
+// accountsToRows converts save.Account slice to accountRow slice, preserving token validation status from existing rows.
+func accountsToRows(accounts []save.Account, existingRows []accountRow) []accountRow {
+	rows := make([]accountRow, 0, len(accounts))
+	for _, acc := range accounts {
+		valid := true
+		for _, existing := range existingRows {
+			if existing.id == acc.ID {
+				valid = existing.tokenValid
+				break
+			}
+		}
+		rows = append(rows, accountRow{
+			id:          acc.ID,
+			displayName: acc.DisplayName,
+			isMain:      acc.IsMain,
+			createdAt:   acc.CreatedAt,
+			tokenValid:  valid,
+		})
+	}
+	return rows
 }
 
 func fetchAccountsNonAnonymous(provider AccountProvider) ([]save.Account, error) {
