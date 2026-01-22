@@ -131,6 +131,7 @@ type broadcastTab struct {
 	channelLogin string
 
 	width, height int
+	fullWidth     int // full terminal width (for status bar in vertical mode)
 
 	deps       *DependencyContainer
 	modFetcher ModStatusFetcher
@@ -822,6 +823,85 @@ func (t *broadcastTab) View() string {
 	return builder.String()
 }
 
+// ViewWithoutStatusBar returns the view without the status bar (for vertical tab mode)
+func (t *broadcastTab) ViewWithoutStatusBar() string {
+	if t.err != nil {
+		return lipgloss.NewStyle().
+			Width(t.width).
+			Height(t.height).
+			MaxWidth(t.width).
+			MaxHeight(t.height).
+			AlignHorizontal(lipgloss.Center).
+			AlignVertical(lipgloss.Center).
+			Render(t.err.Error())
+	}
+
+	if !t.channelDataLoaded {
+		return lipgloss.NewStyle().
+			Width(t.width).
+			Height(t.height).
+			MaxWidth(t.width).
+			MaxHeight(t.height).
+			AlignHorizontal(lipgloss.Center).
+			AlignVertical(lipgloss.Center).
+			Render(t.spinner.View() + " Loading")
+	}
+
+	builder := strings.Builder{}
+
+	// In Emote Overview Mode only render emote overview (status bar rendered separately)
+	if t.state == emoteOverviewMode {
+		builder.WriteString(t.emoteOverview.View())
+		return builder.String()
+	}
+
+	// Render Order (without status bar):
+	// Stream Info
+	// Poll
+	// Chat Window
+	// User Inspect Window (if in user inspect mode)
+	// Message Input
+
+	si := t.streamInfo.View()
+	if si != "" {
+		builder.WriteString(si)
+		builder.WriteString("\n")
+	} else {
+		builder.WriteString("\n")
+	}
+
+	pollView := t.poll.View()
+	if pollView != "" {
+		builder.WriteString(pollView)
+		builder.WriteString("\n")
+	}
+
+	cw := t.chatWindow.View()
+	builder.WriteString(cw)
+
+	if t.state == userInspectMode || t.state == userInspectInsertMode {
+		uiView := t.userInspect.View()
+		builder.WriteString("\n")
+		builder.WriteString(uiView)
+	}
+
+	mi := t.renderMessageInput()
+	if mi != "" {
+		builder.WriteString("\n")
+		builder.WriteString(mi)
+	}
+
+	return builder.String()
+}
+
+// StatusBarView returns just the status bar view (for vertical tab mode)
+func (t *broadcastTab) StatusBarView() string {
+	if !t.channelDataLoaded || t.statusInfo == nil {
+		return ""
+	}
+	return t.statusInfo.View()
+}
+
 func (t *broadcastTab) Focused() bool {
 	return t.focused
 }
@@ -857,6 +937,10 @@ func (t *broadcastTab) Kind() tabKind {
 func (t *broadcastTab) SetSize(width, height int) {
 	t.width = width
 	t.height = height
+}
+
+func (t *broadcastTab) SetFullWidth(width int) {
+	t.fullWidth = width
 }
 
 func (t *broadcastTab) handleEscapePressed() {
@@ -1592,7 +1676,12 @@ func (t *broadcastTab) renderMessageInput() string {
 
 func (t *broadcastTab) HandleResize() {
 	if t.channelDataLoaded {
-		t.statusInfo.width = t.width
+		// Use fullWidth for status bar if set (vertical tab mode), otherwise use tab width
+		if t.fullWidth > 0 {
+			t.statusInfo.width = t.fullWidth
+		} else {
+			t.statusInfo.width = t.width
+		}
 		t.streamInfo.width = t.width
 		t.poll.setWidth(t.width)
 
@@ -1606,11 +1695,14 @@ func (t *broadcastTab) HandleResize() {
 			heightMessageInput = 0
 		}
 
-		statusInfo := t.statusInfo.View()
-		heightStatusInfo := lipgloss.Height(statusInfo)
-
-		if statusInfo == "" {
-			heightStatusInfo = 0
+		// In vertical mode (fullWidth > 0), status bar is rendered at root level, so don't count its height
+		var heightStatusInfo int
+		if t.fullWidth == 0 {
+			statusInfo := t.statusInfo.View()
+			heightStatusInfo = lipgloss.Height(statusInfo)
+			if statusInfo == "" {
+				heightStatusInfo = 0
+			}
 		}
 
 		streamInfo := t.streamInfo.View()

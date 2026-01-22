@@ -52,6 +52,8 @@ type tab interface {
 	InitWithUserData(twitchapi.UserData) tea.Cmd
 	Update(tea.Msg) (tab, tea.Cmd)
 	View() string
+	ViewWithoutStatusBar() string // for vertical tab mode
+	StatusBarView() string        // for vertical tab mode
 	Focus()
 	Blur()
 	AccountID() string
@@ -63,6 +65,7 @@ type tab interface {
 	ChannelID() string
 	HandleResize()
 	SetSize(width, height int)
+	SetFullWidth(width int) // for status bar in vertical tab mode
 	Kind() tabKind
 }
 
@@ -625,7 +628,13 @@ func (r *Root) View() string {
 		}
 
 		if r.dependencies.UserConfig.Settings.VerticalTabList {
-			return lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
+			// In vertical mode, render status bar separately at full width
+			mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
+			statusBar := r.tabs[r.tabCursor].StatusBarView()
+			if statusBar != "" {
+				return mainContent + "\n" + statusBar
+			}
+			return mainContent
 		}
 
 		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
@@ -634,7 +643,13 @@ func (r *Root) View() string {
 		var background string
 		if len(r.tabs) > 0 && r.tabCursor < len(r.tabs) {
 			if r.dependencies.UserConfig.Settings.VerticalTabList {
-				background = lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
+				mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
+				statusBar := r.tabs[r.tabCursor].StatusBarView()
+				if statusBar != "" {
+					background = mainContent + "\n" + statusBar
+				} else {
+					background = mainContent
+				}
 			} else {
 				background = r.header.View() + "\n" + r.tabs[r.tabCursor].View()
 			}
@@ -877,9 +892,12 @@ func (r *Root) handleResize() {
 		r.header.Resize(minWidth, r.height)
 
 		headerWidth := lipgloss.Width(r.header.View())
+		headerHeight := lipgloss.Height(r.header.View())
 
 		for i := range r.tabs {
-			r.tabs[i].SetSize(r.width-headerWidth, r.height)
+			// Tab height matches header height (status bar is rendered separately below both)
+			r.tabs[i].SetSize(r.width-headerWidth, headerHeight)
+			r.tabs[i].SetFullWidth(r.width) // for status bar to span full width
 			r.tabs[i].HandleResize()
 		}
 

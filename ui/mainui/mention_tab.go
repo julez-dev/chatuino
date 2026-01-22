@@ -147,6 +147,14 @@ func (m *mentionTab) View() string {
 	return m.chatWindow.View()
 }
 
+func (m *mentionTab) ViewWithoutStatusBar() string {
+	return m.chatWindow.View() // mention tab has no status bar
+}
+
+func (m *mentionTab) StatusBarView() string {
+	return "" // mention tab has no status bar
+}
+
 func (m *mentionTab) Focus() {
 	m.focused = true
 	m.chatWindow.Focus()
@@ -194,6 +202,10 @@ func (m *mentionTab) HandleResize() {
 func (m *mentionTab) SetSize(width, height int) {
 	m.width = width
 	m.height = height
+}
+
+func (m *mentionTab) SetFullWidth(_ int) {
+	// No-op for mention tab (no status bar)
 }
 
 func (m *mentionTab) Kind() tabKind {
