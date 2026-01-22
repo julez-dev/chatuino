@@ -1137,6 +1137,8 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		message = ircMessage.Message
 		emotes = ircMessage.Emotes
 		badges = ircMessage.Badges
+	case *twitchirc.Notice:
+		channel = ircMessage.ChannelUserName
 	}
 
 	event := chatEventMessage{
