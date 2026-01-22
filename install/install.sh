@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Chatuino install script
-# Usage: curl -sSfL chatuino.net/install | sh
-#    or: curl -sSfL chatuino.net/install | sh -s -- -b /usr/local/bin
+# Usage: curl -sSfL https://chatuino.net/install | sh
+#    or: curl -sSfL https://chatuino.net/install | sh -s -- -b /usr/local/bin
 
 set -eu
 
@@ -48,9 +48,9 @@ Options:
     -h, --help           Show this help
 
 Examples:
-    curl -sSfL chatuino.net/install | sh
-    curl -sSfL chatuino.net/install | sh -s -- -b /usr/local/bin
-    curl -sSfL chatuino.net/install | sh -s -- -v v0.6.2
+    curl -sSfL https://chatuino.net/install | sh
+    curl -sSfL https://chatuino.net/install | sh -s -- -b /usr/local/bin
+    curl -sSfL https://chatuino.net/install | sh -s -- -v v0.6.2
 EOF
 }
 
@@ -85,7 +85,7 @@ check_package_manager() {
     # Check pacman (Arch Linux / AUR)
     if has pacman; then
         if pacman -Qo "$existing_bin" >/dev/null 2>&1; then
-            pkg_name=$(pacman -Qo "$existing_bin" 2>/dev/null | awk '{print $5}')
+            pkg_name=$(pacman -Qoq "$existing_bin" 2>/dev/null)
             error "chatuino is already managed by pacman (package: $pkg_name)"
             error "Using this script may cause conflicts with your package manager"
             exit 1
@@ -151,14 +151,19 @@ verify_checksum() {
     archive_name="$3"
 
     if has sha256sum; then
-        expected=$(grep "$archive_name" "$checksums_file" | awk '{print $1}')
+        expected=$(grep -F "$archive_name" "$checksums_file" | awk '{print $1}')
         actual=$(sha256sum "$archive" | awk '{print $1}')
     elif has shasum; then
-        expected=$(grep "$archive_name" "$checksums_file" | awk '{print $1}')
+        expected=$(grep -F "$archive_name" "$checksums_file" | awk '{print $1}')
         actual=$(shasum -a 256 "$archive" | awk '{print $1}')
     else
         warn "Neither sha256sum nor shasum found, skipping checksum verification"
         return 0
+    fi
+
+    if [ -z "$expected" ]; then
+        error "Checksum not found for $archive_name"
+        exit 1
     fi
 
     if [ "$expected" != "$actual" ]; then
@@ -246,10 +251,12 @@ main() {
     while [ $# -gt 0 ]; do
         case "$1" in
             -b|--bin-dir)
+                [ -z "${2:-}" ] && { error "-b requires an argument"; exit 1; }
                 BIN_DIR="$2"
                 shift 2
                 ;;
             -v|--version)
+                [ -z "${2:-}" ] && { error "-v requires an argument"; exit 1; }
                 VERSION="$2"
                 shift 2
                 ;;
@@ -290,6 +297,10 @@ main() {
     if [ -z "$VERSION" ]; then
         info "Fetching latest version..."
         VERSION=$(get_latest_version)
+        if [ -z "$VERSION" ]; then
+            error "Failed to fetch latest version from GitHub"
+            exit 1
+        fi
     fi
 
     # Ensure version starts with 'v'
@@ -340,6 +351,10 @@ main() {
         chmod +x "$BIN_DIR/$BINARY_NAME"
     else
         warn "Elevated permissions required for $BIN_DIR"
+        if ! has sudo; then
+            error "sudo not found; install manually or choose a writable directory with -b"
+            exit 1
+        fi
         sudo mv "$TMP_DIR/$BINARY_NAME" "$BIN_DIR/$BINARY_NAME"
         sudo chmod +x "$BIN_DIR/$BINARY_NAME"
     fi
