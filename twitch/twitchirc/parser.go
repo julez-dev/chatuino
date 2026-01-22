@@ -208,7 +208,6 @@ func ParseIRC(message string) (IRCer, error) {
 		}
 
 		if len(c.Params) > 1 {
-			n.ChannelUserName = strings.TrimPrefix(c.Params[0], "#")
 			n.Message = c.Params[1]
 		}
 

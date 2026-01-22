@@ -99,10 +99,11 @@ func cacheEmptyRow() string {
 // Helper functions
 
 func truncateChannelName(name string, maxLen int) string {
-	if len(name) <= maxLen {
+	runes := []rune(name)
+	if len(runes) <= maxLen {
 		return name
 	}
-	return name[:maxLen-1] + "…"
+	return string(runes[:maxLen-1]) + "…"
 }
 
 func renderBar(count, maxCount int64) string {
@@ -189,7 +190,10 @@ func renderCacheOutput(emote, badge imageStats, channels []channelMessageCount, 
 			name := truncateChannelName(ch.Channel, maxChannelNameLen)
 			bar := renderBar(ch.Count, maxCount)
 			barPad := maxBarWidth - lipgloss.Width(bar)
-			pct := float64(ch.Count) / float64(totalMsgs) * 100
+			var pct float64
+			if totalMsgs > 0 {
+				pct = float64(ch.Count) / float64(totalMsgs) * 100
+			}
 
 			row := fmt.Sprintf("%-*s %s%s %8s  %s",
 				maxChannelNameLen,
