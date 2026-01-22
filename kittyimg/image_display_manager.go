@@ -210,7 +210,6 @@ func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, conten
 	}
 
 	if unit.IsAnimated && contentType == "image/webp" {
-		//log.Logger.Info().Any("unit", unit).Msg("converting animated webp")
 		return d.convertAnimatedWebP(r, unit)
 	}
 

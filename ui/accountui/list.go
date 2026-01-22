@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
+	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
 type AccountProvider interface {
@@ -29,90 +29,120 @@ type state int
 const (
 	inTable state = iota
 	inCreate
+	inConfirmDelete
 )
+
+// accountRow holds display data for one account
+type accountRow struct {
+	id          string
+	displayName string
+	isMain      bool
+	createdAt   time.Time
+	tokenValid  bool
+}
 
 type setAccountsMessage struct {
 	err      error
-	accounts []save.Account
+	accounts []accountRow
 }
 
-// var baseStyle = lipgloss.NewStyle().
-//	BorderStyle(lipgloss.NormalBorder()).
-//	BorderForeground(lipgloss.Color("240"))
-
-type keyMapWithHelp struct {
-	save.KeyMap
-}
-
-func (k keyMapWithHelp) ShortHelp() []key.Binding {
-	return []key.Binding{k.Help, k.Quit}
-}
-
-func (k keyMapWithHelp) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Up, k.Down, k.Create, k.Remove, k.MarkLeader}, // first column
-		{k.Help, k.Quit}, // second column
-	}
+type tokenValidationMessage struct {
+	accountID string
+	valid     bool
 }
 
 type List struct {
-	key             keyMapWithHelp
+	keymap          save.KeyMap
 	accountProvider AccountProvider
-	table           table.Model
 	create          createModel
-	tableHelp       help.Model
 	state           state
 	width, height   int
 	err             error
 	theme           save.Theme
 
+	// Account list state
+	accounts []accountRow
+	cursor   int
+
+	// Confirmation dialog
+	confirmDeleteID   string
+	confirmDeleteName string
+
+	// Styles
+	borderStyle       lipgloss.Style
+	headerStyle       lipgloss.Style
+	selectedStyle     lipgloss.Style
+	dimmedStyle       lipgloss.Style
+	mainBadgeStyle    lipgloss.Style
+	validTokenStyle   lipgloss.Style
+	invalidTokenStyle lipgloss.Style
+	errorStyle        lipgloss.Style
+	footerStyle       lipgloss.Style
+
 	clientID, apiHost string
 }
 
 func NewList(clientID, apiHost string, accountProvider AccountProvider, keymap save.KeyMap, theme save.Theme) List {
-	columns := []table.Column{
-		{Title: "ID", Width: 10},
-		{Title: "Main Account", Width: 15},
-		{Title: "Login", Width: 15},
-		{Title: "Date added", Width: 20},
-	}
-
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithFocused(true),
-		table.WithHeight(10),
-	)
-
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		Bold(false)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color(theme.ListFontColor)).
-		Background(lipgloss.Color(theme.ListBackgroundColor)).
-		Bold(false)
-	t.SetStyles(s)
+	borderColor := lipgloss.Color(theme.InputPromptColor)
 
 	return List{
 		apiHost:         apiHost,
 		clientID:        clientID,
 		accountProvider: accountProvider,
-		key: keyMapWithHelp{
-			KeyMap: keymap,
-		},
-		table:     t,
-		tableHelp: help.New(),
-		theme:     theme,
+		keymap:          keymap,
+		theme:           theme,
+
+		borderStyle:       lipgloss.NewStyle().Foreground(borderColor),
+		headerStyle:       lipgloss.NewStyle().Foreground(borderColor).Bold(true),
+		selectedStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ListSelectedColor)).Bold(true),
+		dimmedStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
+		mainBadgeStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ActiveLabelColor)),
+		validTokenStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("#a3be8c")), // Nord green
+		invalidTokenStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("#bf616a")), // Nord red
+		errorStyle:        lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatErrorColor)),
+		footerStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
 	}
 }
 
 func (l List) Init() tea.Cmd {
-	return func() tea.Msg {
-		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
-		return setAccountsMessage{
-			err:      err,
-			accounts: accounts,
-		}
+	return l.fetchAccounts
+}
+
+func (l List) fetchAccounts() tea.Msg {
+	accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
+	if err != nil {
+		return setAccountsMessage{err: err}
 	}
+
+	return setAccountsMessage{accounts: accountsToRows(accounts, nil)}
+}
+
+func (l List) validateTokens() tea.Cmd {
+	// Capture current state to avoid stale closures
+	accounts := l.accounts
+	provider := l.accountProvider
+
+	cmds := make([]tea.Cmd, 0, len(accounts))
+	for _, acc := range accounts {
+		acc := acc
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+
+			account, err := provider.GetAccountBy(acc.id)
+			if err != nil {
+				return tokenValidationMessage{accountID: acc.id, valid: false}
+			}
+
+			valid, err := twitchapi.ValidateToken(ctx, nil, account.AccessToken)
+			if err != nil {
+				// Network error - assume valid to avoid false negatives
+				return tokenValidationMessage{accountID: acc.id, valid: true}
+			}
+			return tokenValidationMessage{accountID: acc.id, valid: valid}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -121,22 +151,22 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
-	if l.state == inTable {
-		l.table, cmd = l.table.Update(msg)
-		cmds = append(cmds, cmd)
-	} else {
+	if l.state == inCreate {
 		l.create, cmd = l.create.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		l.tableHelp.Width = msg.Width
 		l.width = msg.Width
 		l.height = msg.Height
 		l.create.width = msg.Width
 		l.create.height = msg.Height
-		l.table.SetWidth(msg.Width)
+
+	case cancelCreateMessage:
+		l.state = inTable
+		return l, nil
+
 	case setAccountMessage:
 		l.err = msg.err
 		l.state = inTable
@@ -149,52 +179,74 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case setAccountsMessage:
 		l.err = msg.err
+		if l.err == nil {
+			l.accounts = msg.accounts
+			if l.cursor >= len(l.accounts) {
+				l.cursor = max(0, len(l.accounts)-1)
+			}
+			// Start token validation
+			cmds = append(cmds, l.validateTokens())
+		}
 
-		if l.err != nil {
+	case tokenValidationMessage:
+		for i, acc := range l.accounts {
+			if acc.id == msg.accountID {
+				l.accounts[i].tokenValid = msg.valid
+				break
+			}
+		}
+
+	case tea.KeyMsg:
+		l.err = nil
+
+		if l.state == inConfirmDelete {
+			switch {
+			case key.Matches(msg, l.keymap.Confirm):
+				// Confirmed delete
+				cmds = append(cmds, l.removeAccountRefresh(l.confirmDeleteID))
+				l.state = inTable
+				return l, tea.Batch(cmds...)
+			case key.Matches(msg, l.keymap.Quit), key.Matches(msg, l.keymap.Escape):
+				// Cancel delete
+				l.state = inTable
+				return l, nil
+			}
 			return l, nil
 		}
 
-		rows := make([]table.Row, 0, len(msg.accounts))
-
-		for _, acc := range msg.accounts {
-			rows = append(rows, table.Row{
-				acc.ID, fmt.Sprintf("%v", acc.IsMain), acc.DisplayName, acc.CreatedAt.Local().Format("02.01.2006 15:04"),
-			})
-		}
-
-		l.table.SetRows(rows)
-		l.table.SetCursor(0)
-	case tea.KeyMsg:
-		l.err = nil
-		switch {
-		case key.Matches(msg, l.key.Create):
-			if l.state == inTable {
+		if l.state == inTable {
+			switch {
+			case key.Matches(msg, l.keymap.Up):
+				if l.cursor > 0 {
+					l.cursor--
+				}
+			case key.Matches(msg, l.keymap.Down):
+				if l.cursor < len(l.accounts)-1 {
+					l.cursor++
+				}
+			case key.Matches(msg, l.keymap.Create):
 				l.state = inCreate
-				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost, l.key.KeyMap, l.theme)
+				l.create = newCreateModel(l.width, l.height, l.clientID, l.apiHost, l.keymap, l.theme)
 				return l, l.create.Init()
-			} else {
+			case key.Matches(msg, l.keymap.Remove):
+				if len(l.accounts) > 0 && l.cursor < len(l.accounts) {
+					acc := l.accounts[l.cursor]
+					l.confirmDeleteID = acc.id
+					l.confirmDeleteName = acc.displayName
+					l.state = inConfirmDelete
+				}
+			case key.Matches(msg, l.keymap.MarkLeader):
+				if len(l.accounts) > 0 && l.cursor < len(l.accounts) {
+					cmds = append(cmds, l.markAccountMain(l.accounts[l.cursor].id))
+					return l, tea.Batch(cmds...)
+				}
+			case key.Matches(msg, l.keymap.Quit):
+				return l, tea.Quit
+			}
+		} else if l.state == inCreate {
+			if key.Matches(msg, l.keymap.Create) {
 				l.state = inTable
 			}
-		case key.Matches(msg, l.key.Remove):
-			if l.state == inTable {
-				curr := l.table.SelectedRow()
-				if curr != nil {
-					cmds = append(cmds, l.removeAccountRefresh(curr[0]))
-					return l, tea.Batch(cmds...)
-				}
-			}
-		case key.Matches(msg, l.key.MarkLeader):
-			if l.state == inTable {
-				curr := l.table.SelectedRow()
-				if curr != nil {
-					cmds = append(cmds, l.markAccountMain(curr[0]))
-					return l, tea.Batch(cmds...)
-				}
-			}
-		case key.Matches(msg, l.key.Help):
-			l.tableHelp.ShowAll = !l.tableHelp.ShowAll
-		case key.Matches(msg, l.key.Quit):
-			return l, tea.Quit
 		}
 	}
 
@@ -202,44 +254,239 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (l List) View() string {
-	if l.state == inTable {
-		display := ""
-		if l.err != nil {
-			display = fmt.Sprintf("failed: %s\n\n", l.err)
-		}
-
-		display = display + "\n" + l.table.View() + "\n" + l.tableHelp.View(l.key)
-
-		return lipgloss.NewStyle().
-			AlignHorizontal(lipgloss.Center).
-			AlignVertical(lipgloss.Center).
-			Width(l.width - 2).
-			Height(l.height - 2).
-			Render(display)
-	} else {
+	if l.state == inCreate {
 		return l.create.View()
 	}
+
+	if l.state == inConfirmDelete {
+		return l.renderConfirmDialog()
+	}
+
+	return l.renderAccountList()
+}
+
+func (l List) renderAccountList() string {
+	// Build content
+	var content strings.Builder
+
+	if l.err != nil {
+		content.WriteString(l.errorStyle.Render(fmt.Sprintf("Error: %s", l.err)))
+		content.WriteString("\n\n")
+	}
+
+	if len(l.accounts) == 0 {
+		// Empty state
+		emptyMsg := l.dimmedStyle.Render(fmt.Sprintf("No accounts yet. Press '%s' to add one.", firstKey(l.keymap.Create)))
+		content.WriteString("\n")
+		content.WriteString(emptyMsg)
+		content.WriteString("\n")
+	} else {
+		// Render account rows
+		for i, acc := range l.accounts {
+			row := l.renderAccountRow(acc, i == l.cursor)
+			content.WriteString(row)
+			content.WriteString("\n")
+		}
+	}
+
+	// Calculate box dimensions
+	boxWidth := 60
+	if l.width > 0 && l.width < boxWidth+4 {
+		boxWidth = max(20, l.width-4) // minimum viable width
+	}
+
+	// Build bordered box
+	contentStr := strings.TrimSuffix(content.String(), "\n")
+	contentLines := strings.Split(contentStr, "\n")
+
+	// Pad lines to box width
+	innerWidth := boxWidth - 4 // account for "│ " and " │"
+	for i, line := range contentLines {
+		lineLen := lipgloss.Width(line)
+		if lineLen < innerWidth {
+			contentLines[i] = line + strings.Repeat(" ", innerWidth-lineLen)
+		}
+	}
+
+	// Build box
+	var box strings.Builder
+
+	// Top border with header
+	header := "[ Accounts ]"
+	topBorder := "─" + l.headerStyle.Render(header) + strings.Repeat("─", boxWidth-lipgloss.Width(header)-3) + "┐"
+	box.WriteString(l.borderStyle.Render("┌" + topBorder))
+	box.WriteString("\n")
+
+	// Empty line after header
+	box.WriteString(l.borderStyle.Render("│") + strings.Repeat(" ", boxWidth-2) + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Content lines
+	for _, line := range contentLines {
+		box.WriteString(l.borderStyle.Render("│") + " " + line + " " + l.borderStyle.Render("│"))
+		box.WriteString("\n")
+	}
+
+	// Empty line before footer
+	box.WriteString(l.borderStyle.Render("│") + strings.Repeat(" ", boxWidth-2) + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Bottom border with footer
+	footer := l.renderFooter()
+	footerLen := lipgloss.Width(footer)
+	bottomBorder := "─" + footer + strings.Repeat("─", boxWidth-footerLen-3) + "┘"
+	box.WriteString(l.borderStyle.Render("└" + bottomBorder))
+
+	// Center in viewport
+	return lipgloss.NewStyle().
+		AlignHorizontal(lipgloss.Center).
+		AlignVertical(lipgloss.Center).
+		Width(l.width - 2).
+		Height(l.height - 2).
+		Render(box.String())
+}
+
+func (l List) renderAccountRow(acc accountRow, selected bool) string {
+	var parts []string
+
+	// Selection arrow
+	if selected {
+		parts = append(parts, l.selectedStyle.Render("▸"))
+	} else {
+		parts = append(parts, " ")
+	}
+
+	// Token status indicator
+	if acc.tokenValid {
+		parts = append(parts, l.validTokenStyle.Render("●"))
+	} else {
+		parts = append(parts, l.invalidTokenStyle.Render("●"))
+	}
+
+	// ID (shortened)
+	idStr := acc.id
+	if len(idStr) > 10 {
+		idStr = idStr[:10]
+	}
+	idPadded := fmt.Sprintf("%-10s", idStr)
+	if selected {
+		parts = append(parts, l.selectedStyle.Render(idPadded))
+	} else {
+		parts = append(parts, l.dimmedStyle.Render(idPadded))
+	}
+
+	// Main badge
+	if acc.isMain {
+		parts = append(parts, l.mainBadgeStyle.Render("Main"))
+	} else {
+		parts = append(parts, "    ")
+	}
+
+	// Display name
+	namePadded := fmt.Sprintf("%-15s", acc.displayName)
+	if selected {
+		parts = append(parts, l.selectedStyle.Render(namePadded))
+	} else {
+		parts = append(parts, namePadded)
+	}
+
+	// Date
+	dateStr := acc.createdAt.Local().Format("02.01.2006 15:04")
+	if selected {
+		parts = append(parts, l.selectedStyle.Render(dateStr))
+	} else {
+		parts = append(parts, l.dimmedStyle.Render(dateStr))
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func (l List) renderFooter() string {
+	// Extract first key from each binding for display
+	addKey := firstKey(l.keymap.Create)
+	delKey := firstKey(l.keymap.Remove)
+	mainKey := firstKey(l.keymap.MarkLeader)
+	quitKey := firstKey(l.keymap.Quit)
+
+	hints := []string{
+		addKey + ":Add",
+		delKey + ":Delete",
+		mainKey + ":Main",
+		quitKey + ":Quit",
+	}
+	return l.footerStyle.Render("[ " + strings.Join(hints, " ") + " ]")
+}
+
+func firstKey(b key.Binding) string {
+	keys := b.Keys()
+	if len(keys) > 0 {
+		return keys[0]
+	}
+	return "?"
+}
+
+func (l List) renderConfirmDialog() string {
+	boxWidth := 50
+	if l.width > 0 && l.width < boxWidth+4 {
+		boxWidth = max(30, l.width-4)
+	}
+
+	var box strings.Builder
+
+	// Top border with header
+	header := "[ Confirm Delete ]"
+	topBorder := "─" + l.errorStyle.Render(header) + strings.Repeat("─", boxWidth-lipgloss.Width(header)-3) + "┐"
+	box.WriteString(l.borderStyle.Render("┌" + topBorder))
+	box.WriteString("\n")
+
+	// Empty line
+	box.WriteString(l.borderStyle.Render("│") + strings.Repeat(" ", boxWidth-2) + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Message
+	msg := fmt.Sprintf("Delete account '%s'?", l.confirmDeleteName)
+	msgPadded := fmt.Sprintf("%-*s", boxWidth-4, msg)
+	box.WriteString(l.borderStyle.Render("│") + " " + msgPadded + " " + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Empty line
+	box.WriteString(l.borderStyle.Render("│") + strings.Repeat(" ", boxWidth-2) + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Instructions
+	instr := "Enter: Confirm  Esc: Cancel"
+	instrPadded := fmt.Sprintf("%-*s", boxWidth-4, instr)
+	box.WriteString(l.borderStyle.Render("│") + " " + l.dimmedStyle.Render(instrPadded) + " " + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Empty line
+	box.WriteString(l.borderStyle.Render("│") + strings.Repeat(" ", boxWidth-2) + l.borderStyle.Render("│"))
+	box.WriteString("\n")
+
+	// Bottom border
+	box.WriteString(l.borderStyle.Render("└" + strings.Repeat("─", boxWidth-2) + "┘"))
+
+	return lipgloss.NewStyle().
+		AlignHorizontal(lipgloss.Center).
+		AlignVertical(lipgloss.Center).
+		Width(l.width - 2).
+		Height(l.height - 2).
+		Render(box.String())
 }
 
 func (l List) markAccountMain(id string) tea.Cmd {
+	existingRows := l.accounts // capture to preserve token validation status
 	return func() tea.Msg {
-		err := l.accountProvider.MarkAccountAsMain(id)
-		if err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+		if err := l.accountProvider.MarkAccountAsMain(id); err != nil {
+			return setAccountsMessage{err: err}
 		}
 
 		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
 		if err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
-		return setAccountsMessage{
-			accounts: accounts,
-		}
+		return setAccountsMessage{accounts: accountsToRows(accounts, existingRows)}
 	}
 }
 
@@ -247,9 +494,7 @@ func (l List) removeAccountRefresh(id string) tea.Cmd {
 	return func() tea.Msg {
 		acc, err := l.accountProvider.GetAccountBy(id)
 		if err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
 		if acc.IsAnonymous {
@@ -261,27 +506,20 @@ func (l List) removeAccountRefresh(id string) tea.Cmd {
 		defer cancel()
 
 		if err := srv.RevokeToken(ctx, acc.AccessToken); err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
 		if err := l.accountProvider.Remove(acc.ID); err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
 		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
 		if err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
-		return setAccountsMessage{
-			accounts: accounts,
-		}
+		// After delete, don't preserve old validation status (account is gone)
+		return setAccountsMessage{accounts: accountsToRows(accounts, nil)}
 	}
 }
 
@@ -293,29 +531,45 @@ func (l List) addNewAccountRefresh(account save.Account) tea.Cmd {
 			accounts = slices.DeleteFunc(accounts, func(a save.Account) bool {
 				return a.IsAnonymous
 			})
-
 			shouldSetMain = len(accounts) == 0
 		}
 
 		account.IsMain = shouldSetMain
 
 		if err := l.accountProvider.Add(account); err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
 		accounts, err := fetchAccountsNonAnonymous(l.accountProvider)
 		if err != nil {
-			return setAccountsMessage{
-				err: err,
-			}
+			return setAccountsMessage{err: err}
 		}
 
-		return setAccountsMessage{
-			accounts: accounts,
-		}
+		// New account, no existing validation status to preserve
+		return setAccountsMessage{accounts: accountsToRows(accounts, nil)}
 	}
+}
+
+// accountsToRows converts save.Account slice to accountRow slice, preserving token validation status from existing rows.
+func accountsToRows(accounts []save.Account, existingRows []accountRow) []accountRow {
+	rows := make([]accountRow, 0, len(accounts))
+	for _, acc := range accounts {
+		valid := true
+		for _, existing := range existingRows {
+			if existing.id == acc.ID {
+				valid = existing.tokenValid
+				break
+			}
+		}
+		rows = append(rows, accountRow{
+			id:          acc.ID,
+			displayName: acc.DisplayName,
+			isMain:      acc.IsMain,
+			createdAt:   acc.CreatedAt,
+			tokenValid:  valid,
+		})
+	}
+	return rows
 }
 
 func fetchAccountsNonAnonymous(provider AccountProvider) ([]save.Account, error) {

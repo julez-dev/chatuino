@@ -89,6 +89,7 @@ func defaultTrie() *trie.Trie {
 func NewSuggestionTextInput(userCache map[string]func(...string) string, customSuggestions map[string]string) *SuggestionTextInput {
 	input := textinput.New()
 	input.Width = 20
+	input.CharLimit = 500
 
 	input.Validate = func(s string) error {
 		if strings.ContainsRune(s, '\n') {

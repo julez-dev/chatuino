@@ -102,6 +102,14 @@ func (l *liveNotificationTab) View() string {
 	return l.chatWindow.View()
 }
 
+func (l *liveNotificationTab) ViewWithoutStatusBar() string {
+	return l.chatWindow.View() // live notification tab has no status bar
+}
+
+func (l *liveNotificationTab) StatusBarView() string {
+	return "" // live notification tab has no status bar
+}
+
 func (l *liveNotificationTab) Focus() {
 	l.focused = true
 	l.chatWindow.Focus()
@@ -149,6 +157,10 @@ func (l *liveNotificationTab) HandleResize() {
 func (l *liveNotificationTab) SetSize(width, height int) {
 	l.width = width
 	l.height = height
+}
+
+func (l *liveNotificationTab) SetFullWidth(_ int) {
+	// No-op for live notification tab (no status bar)
 }
 
 func (l *liveNotificationTab) Kind() tabKind {

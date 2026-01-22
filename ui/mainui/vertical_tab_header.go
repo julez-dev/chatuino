@@ -15,14 +15,14 @@ import (
 type verticalTabHeader struct {
 	width  int
 	height int
+	deps   *DependencyContainer
 
 	list     list.Model
 	delegate verticalTabDelegate
 }
 
 type verticalTabDelegate struct {
-	tabHeaderStyle       lipgloss.Style
-	tabHeaderActiveStyle lipgloss.Style
+	deps *DependencyContainer
 }
 
 func (d verticalTabDelegate) Height() int {
@@ -43,43 +43,56 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 		return
 	}
 
-	var (
-		name     = entry.name
-		identity = entry.identity
-	)
-
-	title := fmt.Sprintf("%s (%s)", name, identity)
-	if entry.hasNotification {
-		title = fmt.Sprintf("%s%s", bellEmojiPrefix, title)
-	}
-
-	diff := m.Width() - lipgloss.Width(title)
-	if diff > 0 {
-		title += strings.Repeat(" ", diff)
-	}
+	bulletStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.deps.UserConfig.Theme.InputPromptColor))
+	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(d.deps.UserConfig.Theme.InputPromptColor))
+	notificationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.deps.UserConfig.Theme.ChatNoticeAlertColor))
 
 	selected := m.Index() == index
+
+	var line strings.Builder
+
+	// Bullet for selected tab
 	if selected {
-		fmt.Fprint(w, d.tabHeaderActiveStyle.Render(title))
-		return
+		line.WriteString(bulletStyle.Render("▸ "))
+	} else {
+		line.WriteString("  ")
 	}
 
-	fmt.Fprint(w, d.tabHeaderStyle.Render(title))
+	// Tab content
+	content := entry.render()
+	if selected {
+		line.WriteString(activeStyle.Render(content))
+	} else if entry.hasNotification {
+		line.WriteString(notificationStyle.Render(content))
+	} else {
+		line.WriteString(content)
+	}
+
+	// Pad to width
+	currentWidth := lipgloss.Width(line.String())
+	if diff := m.Width() - currentWidth; diff > 0 {
+		line.WriteString(strings.Repeat(" ", diff))
+	}
+
+	fmt.Fprint(w, line.String())
 }
 
 func newVerticalTabHeader(width, height int, deps *DependencyContainer) *verticalTabHeader {
 	delegate := verticalTabDelegate{
-		tabHeaderStyle:       lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderBackgroundColor)),
-		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderActiveBackgroundColor)),
+		deps: deps,
 	}
 
-	l := list.New(nil, delegate, width, height)
+	// Adjust dimensions for border: -2 width for left/right │, -2 height for top/bottom borders
+	listWidth := max(1, width-2)
+	listHeight := max(1, height-2)
+
+	l := list.New(nil, delegate, listWidth, listHeight)
 	l.SetShowPagination(false)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
-	l.SetWidth(width)
-	l.SetHeight(height)
+	l.SetWidth(listWidth)
+	l.SetHeight(listHeight)
 	l.SetDelegate(delegate)
 	l.Title = ""
 	l.InfiniteScrolling = true
@@ -89,6 +102,7 @@ func newVerticalTabHeader(width, height int, deps *DependencyContainer) *vertica
 	return &verticalTabHeader{
 		width:    width,
 		height:   height,
+		deps:     deps,
 		list:     l,
 		delegate: delegate,
 	}
@@ -143,14 +157,16 @@ func (v *verticalTabHeader) MinWidth() int {
 		}
 	}
 
-	return minWidth
+	// Add 4 for left/right border characters (2) + bullet prefix (2)
+	return minWidth + 4
 }
 
 func (v *verticalTabHeader) Resize(width, height int) {
 	v.width = width
 	v.height = height
-	v.list.SetWidth(width)
-	v.list.SetHeight(height)
+	// Adjust for border: -2 width for left/right │, -2 height for top/bottom borders
+	v.list.SetWidth(max(1, width-2))
+	v.list.SetHeight(max(1, height-2))
 }
 
 func (v *verticalTabHeader) Init() tea.Cmd {
@@ -182,9 +198,72 @@ func (v *verticalTabHeader) Update(msg tea.Msg) (header, tea.Cmd) {
 }
 
 func (v *verticalTabHeader) View() string {
+	borderColor := lipgloss.Color(v.deps.UserConfig.Theme.InputPromptColor)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	innerWidth := v.width - 2   // -2 for left/right │
+	innerHeight := v.height - 2 // -2 for top/bottom borders
+
+	// Get list content
 	view := v.list.View()
 	if idx := strings.Index(view, "\n"); idx != -1 {
 		view = view[idx+1:]
 	}
-	return view
+
+	// Check if we need scroll indicators
+	totalItems := len(v.list.Items())
+	visibleItems := innerHeight
+	currentIndex := v.list.Index()
+
+	showUpArrow := currentIndex > 0 && totalItems > visibleItems
+	showDownArrow := currentIndex < totalItems-1 && totalItems > visibleItems
+
+	// Build top label with optional scroll indicator
+	topLabel := "[ Channels ]"
+	if totalItems > visibleItems {
+		// Show position indicator
+		topLabel = fmt.Sprintf("[ Channels %d/%d ]", currentIndex+1, totalItems)
+	}
+
+	// Top border: ┌─[ Channels ]───...─┐ or with ▲
+	topFill := innerWidth - lipgloss.Width(topLabel) - 2
+	if showUpArrow {
+		topFill -= 2 // space for " ▲"
+	}
+	if topFill < 0 {
+		topFill = 0
+	}
+	topBorder := "┌─" + topLabel + strings.Repeat("─", topFill)
+	if showUpArrow {
+		topBorder += " ▲"
+	}
+	topBorder += "─┐"
+
+	// Bottom border: └───...───┘ or with ▼
+	bottomFill := innerWidth
+	if showDownArrow {
+		bottomFill -= 2 // space for "▼ "
+	}
+	if bottomFill < 0 {
+		bottomFill = 0
+	}
+	bottomBorder := "└"
+	if showDownArrow {
+		bottomBorder += "▼ "
+	}
+	bottomBorder += strings.Repeat("─", bottomFill) + "┘"
+
+	// Wrap each line with │ borders
+	lines := strings.Split(view, "\n")
+	var borderedLines []string
+	for _, line := range lines {
+		padNeeded := max(0, innerWidth-lipgloss.Width(line))
+		borderedLines = append(borderedLines, borderStyle.Render("│")+line+strings.Repeat(" ", padNeeded)+borderStyle.Render("│"))
+	}
+
+	result := borderStyle.Render(topBorder) + "\n"
+	result += strings.Join(borderedLines, "\n") + "\n"
+	result += borderStyle.Render(bottomBorder)
+
+	return result
 }

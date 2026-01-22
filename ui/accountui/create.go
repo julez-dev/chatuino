@@ -29,6 +29,8 @@ type setAccountMessage struct {
 	err     error
 }
 
+type cancelCreateMessage struct{}
+
 type createModel struct {
 	state     createState
 	textinput textinput.Model
@@ -84,6 +86,14 @@ func (c createModel) Update(msg tea.Msg) (createModel, tea.Cmd) {
 		c.account = msg.account
 		c.state = finished
 	case tea.KeyMsg:
+		if key.Matches(msg, c.keymap.Quit) {
+			return c, tea.Quit
+		}
+		if key.Matches(msg, c.keymap.Escape) {
+			if c.state == input {
+				return c, func() tea.Msg { return cancelCreateMessage{} }
+			}
+		}
 		if key.Matches(msg, c.keymap.Confirm) {
 			if c.state == input {
 				cmd = c.handleSent(c.textinput.Value())
@@ -110,7 +120,7 @@ func (c createModel) View() string {
 	switch c.state {
 	case input:
 		view = fmt.Sprintf(
-			"Please enter the Access Token + Refresh Token combination.\nAccess %s/auth/start to start auth flow\nDon't show on stream!\n%s\n", c.apiHost, c.textinput.View(),
+			"Please enter the Access Token + Refresh Token combination.\nAccess %s/auth/start to start auth flow\nDon't show on stream!\n%s\n\nEsc: Cancel", c.apiHost, c.textinput.View(),
 		)
 	case loading:
 		view = c.spinner.View() + " Loading user information"

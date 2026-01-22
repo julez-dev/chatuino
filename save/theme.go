@@ -45,44 +45,60 @@ type Theme struct {
 
 	ListBackgroundColor string `yaml:"list_background_color"`
 	ListFontColor       string `yaml:"list_font_color"`
+
+	// UI chrome
+	DimmedTextColor string `yaml:"dimmed_text_color"`
 }
 
 func BuildDefaultTheme() Theme {
 	return Theme{
-		SevenTVEmoteColor:   "#8aadf4",
-		TwitchTVEmoteColor:  "#c6a0f6",
-		BetterTTVEmoteColor: "#ed8796",
+		// Emote provider colors - slightly more vibrant
+		SevenTVEmoteColor:   "#88c0d0",
+		TwitchTVEmoteColor:  "#b48ead",
+		BetterTTVEmoteColor: "#bf616a",
 
-		InputPromptColor: "#8aadf4",
+		// Input
+		InputPromptColor: "#88c0d0",
 
-		ChatStreamerColor:  "#fe640b",
-		ChatVIPColor:       "#E005B9",
-		ChatSubColor:       "#c6a0f6",
-		ChatTurboColor:     "#c6a0f6",
-		ChatModeratorColor: "#a6e3a1",
-		ChatIndicatorColor: "#8aadf4",
+		// Chat user colors - improved contrast
+		ChatStreamerColor:  "#d08770",
+		ChatVIPColor:       "#b48ead",
+		ChatSubColor:       "#a3be8c",
+		ChatTurboColor:     "#5e81ac",
+		ChatModeratorColor: "#a3be8c",
+		ChatIndicatorColor: "#88c0d0",
 
-		ChatSubAlertColor:    "#c6a0f6",
-		ChatNoticeAlertColor: "#f5bde6",
-		ChatClearChatColor:   "#a35df2",
-		ChatErrorColor:       "#ed8796",
+		// Alert colors - better visibility
+		ChatSubAlertColor:    "#b48ead",
+		ChatNoticeAlertColor: "#ebcb8b",
+		ChatClearChatColor:   "#d08770",
+		ChatErrorColor:       "#bf616a",
 
-		ListSelectedColor: "#a6da95",
-		ListLabelColor:    "#c6a0f6",
-		ActiveLabelColor:  "#f5a97f",
+		// List/selection colors
+		ListSelectedColor: "#88c0d0",
+		ListLabelColor:    "#81a1c1",
+		ActiveLabelColor:  "#ebcb8b",
 
-		StatusColor: "#8aadf4",
+		// Status
+		StatusColor: "#88c0d0",
 
-		ChatuinoSplashColor:  "#94e2d5",
-		SplashHighlightColor: "#bac2de",
+		// Splash screen
+		ChatuinoSplashColor:  "#8fbcbb",
+		SplashHighlightColor: "#d8dee9",
 
-		TabHeaderBackgroundColor:       "#5b6078",
-		TabHeaderActiveBackgroundColor: "#1e2030",
+		// Tab headers - deeper contrast
+		TabHeaderBackgroundColor:       "#3b4252",
+		TabHeaderActiveBackgroundColor: "#2e3440",
 
-		InspectBorderColor: "#c6a0f6",
+		// Borders
+		InspectBorderColor: "#5e81ac",
 
-		ListBackgroundColor: "#303446",
-		ListFontColor:       "#c6d0f5",
+		// List styling
+		ListBackgroundColor: "#2e3440",
+		ListFontColor:       "#d8dee9",
+
+		// UI chrome
+		DimmedTextColor: "#4c566a",
 	}
 }
 

@@ -204,10 +204,10 @@ func ParseIRC(message string) (IRCer, error) {
 		n := Notice{
 			MsgID:           MsgID(c.tags["msg-id"]),
 			ChannelUserName: strings.TrimPrefix(c.Params[0], "#"),
+			FakeTimestamp:   time.Now(),
 		}
 
 		if len(c.Params) > 1 {
-			n.ChannelUserName = strings.TrimPrefix(c.Params[0], "#")
 			n.Message = c.Params[1]
 		}
 
