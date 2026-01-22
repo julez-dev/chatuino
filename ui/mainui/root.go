@@ -628,7 +628,7 @@ func (r *Root) View() string {
 			return lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
 		}
 
-		return "  " + r.header.View() + " \n" + r.tabs[r.tabCursor].View()
+		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
 	case inputScreen:
 		// Composite join modal over the current active tab
 		var background string
@@ -636,7 +636,7 @@ func (r *Root) View() string {
 			if r.dependencies.UserConfig.Settings.VerticalTabList {
 				background = lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].View())
 			} else {
-				background = "  " + r.header.View() + " \n" + r.tabs[r.tabCursor].View()
+				background = r.header.View() + "\n" + r.tabs[r.tabCursor].View()
 			}
 		} else {
 			background = r.splash.View()
