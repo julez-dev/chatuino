@@ -702,3 +702,29 @@ func parseResponse[T any](resp *http.Response) (T, error) {
 
 	return data, nil
 }
+
+const validateURL = "https://id.twitch.tv/oauth2/validate"
+
+// ValidateToken checks if an access token is still valid by calling Twitch's validate endpoint.
+// Returns true if valid, false if invalid/expired.
+func ValidateToken(ctx context.Context, httpClient *http.Client, accessToken string) (bool, error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, validateURL, nil)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Add("Authorization", "OAuth "+accessToken)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	// 200 = valid token, 401 = invalid/expired token
+	return resp.StatusCode == http.StatusOK, nil
+}
