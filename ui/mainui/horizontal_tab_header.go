@@ -259,16 +259,6 @@ func (h *horizontalTabHeader) SelectTab(id string) {
 	}
 }
 
-func (h *horizontalTabHeader) indexForEntry(id string) int {
-	for i, e := range h.entries {
-		if e.id == id {
-			return i
-		}
-	}
-
-	return 0
-}
-
 func (h *horizontalTabHeader) RemoveTab(id string) {
 	h.entries = slices.DeleteFunc(h.entries, func(e tabHeaderEntry) bool {
 		return e.id == id
