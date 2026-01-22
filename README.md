@@ -2,77 +2,77 @@
 
 [![chatuino-bin](https://img.shields.io/aur/version/chatuino-bin?color=1793d1&label=chatuino-bin&logo=arch-linux&style=for-the-badge)](https://aur.archlinux.org/packages/chatuino-bin/)
 
-Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich Twitch Chat Client to your terminal.
+A Twitch chat client that runs in your terminal.
 
 ![Demo of chatuino.](doc/demo.gif)
 
 ![vertical chatuino.](doc/screenshot/vertical-mode.png)
 
-[More screenshots available here](doc/SCREENSHOTS.md)
+[More screenshots](doc/SCREENSHOTS.md)
 
 ## Table of Contents
 
-- [Introduction](#introduction)
+- [Intro](#intro)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
 - [License](#license)
 
-## Introduction
+## Intro
 
-Chatuino is a feature rich and portable Twitch Chat Client for your terminal.
+If you spend time in Twitch chat and prefer working in a terminal, Chatuino gives you a native experience without the browser overhead. It handles multiple accounts, displays emotes directly in supported terminals, and stays out of your way.
 
-The name and idea to create a Twitch Chat Client and many features are inspired by [Chatterino](https://github.com/Chatterino/chatterino2) and [twitch-tui](https://github.com/Xithrius/twitch-tui).
+The project draws inspiration from [Chatterino](https://github.com/Chatterino/chatterino2) and [twitch-tui](https://github.com/Xithrius/twitch-tui).
 
 ## Features
 
-- Multi Account support
-- Join as many Chats as you want
-- Join Chats as Anonymous User
-- [Custom Themes](/doc/THEME.md)
-- You can host the server component for authentication/anonymous usage yourself
-- Graphical display of emotes (kitty terminal only; ghostty only non-animated emotes)
-- Emote and User Suggestions/Autocompletion
-- Local save state to persist sessions
-- View detailed user data with user inspect mode
-- Quick ban users with ctrl+shift+t
-- Copy and Paste messages with alt+c
-- Simple Twitch duplicate message bypass
-- Support for viewing twitch polls in your own channel
-- Custom chat commands for fast copy pasta spamming
-- Use feature rich templating for custom commands and message inputs
-- Special tabs like mentions and live notifications
-- Chat is moving too fast? Try the /localsubscribers and /uniqueonly chat modes
-- 3rd party emote support (7TV, BTTV)
+- Multiple accounts with easy switching
+- Join any number of chats simultaneously
+- Anonymous lurking without an account
+- Emotes rendered in-terminal (Kitty, Ghostty)
+- 7TV and BTTV emote support
+- Tab completion for emotes and usernames
+- User inspect mode for viewing chat history per user
+- Mention notifications and live alerts in dedicated tabs
+- Message search and local chat logging
+- Moderator tools with quick timeout shortcuts
+- Custom commands with templating support
+- Theming and configurable keybinds
+- Self-hostable server component
 
-Read more about Chatuinos features [here](doc/FEATURES.md)
+For the full list, see [Features](doc/FEATURES.md).
 
 ## Installation
 
-You can use go install to install the program (`go install github.com/julez-dev/chatuino@latest`) or grab a binary from the [releases](https://github.com/julez-dev/chatuino/releases) page.
+**Go install:**
+```
+go install github.com/julez-dev/chatuino@latest
+```
+
+**Pre-built binaries:** Available on the [releases page](https://github.com/julez-dev/chatuino/releases).
+
+**Arch Linux:** Install `chatuino-bin` from the AUR.
 
 ## Usage
 
-The binary comes with the account management, the TUI itself and the server component if you want to self host the server.
+Run `chatuino --help` to see available commands.
 
-You can use the --help flag to get help.
+### Adding an account
 
-### Account sub-command
+```
+chatuino account
+```
 
-You can use the account sub-command to link your twitch account to Chatuino. The command will launch a TUI to help you manage your accounts.
+This opens the account manager. To link a Twitch account, you'll need to authenticate through `https://chatuino.net/auth/start` (or your own server) and paste the resulting token.
 
-If want to link a new account you need to provide a user token to Chatuino which you can generate with the server component. You can start the auth flow here: `https://chatuino.net/auth/start` or your own server if you want to.
+### Configuration
 
-### Settings
+See [Settings](doc/SETTINGS.md) for keybinds, emote display options, chat logging, and other configuration.
 
-Make sure to take a look at [the settings doc](doc/SETTINGS.md) to find more details about configuration and more advanced features like key-binds, emote display and chat log storage.
+### Self-hosting
 
-### server sub-command and hosting you own server
-
-The server is responsible for dealing with authentication flows and proxying requests to the Twitch API that require an App Access Token when using an anonymous user. My hosted version is available under `https://chatuino.net` but you can just run your own version as well. This server is running on the lowest tier possible on hetzner cloud, so don't expect too much performance.
-
-For a guide on how to host your own server see the [self-host guide](doc/SELF_HOST.md).
+Chatuino connects to `chatuino.net` by default for authentication and API proxying. If you prefer to run your own server, follow the [self-host guide](doc/SELF_HOST.md).
 
 ## License
 
-This project is licensed under the MIT license. See the [LICENSE](LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).
