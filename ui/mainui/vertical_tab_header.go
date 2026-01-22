@@ -15,6 +15,7 @@ import (
 type verticalTabHeader struct {
 	width  int
 	height int
+	deps   *DependencyContainer
 
 	list     list.Model
 	delegate verticalTabDelegate
@@ -73,13 +74,17 @@ func newVerticalTabHeader(width, height int, deps *DependencyContainer) *vertica
 		tabHeaderActiveStyle: lipgloss.NewStyle().Background(lipgloss.Color(deps.UserConfig.Theme.TabHeaderActiveBackgroundColor)),
 	}
 
-	l := list.New(nil, delegate, width, height)
+	// Adjust dimensions for border: -2 width for left/right │, -2 height for top/bottom borders
+	listWidth := max(1, width-2)
+	listHeight := max(1, height-2)
+
+	l := list.New(nil, delegate, listWidth, listHeight)
 	l.SetShowPagination(false)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
-	l.SetWidth(width)
-	l.SetHeight(height)
+	l.SetWidth(listWidth)
+	l.SetHeight(listHeight)
 	l.SetDelegate(delegate)
 	l.Title = ""
 	l.InfiniteScrolling = true
@@ -89,6 +94,7 @@ func newVerticalTabHeader(width, height int, deps *DependencyContainer) *vertica
 	return &verticalTabHeader{
 		width:    width,
 		height:   height,
+		deps:     deps,
 		list:     l,
 		delegate: delegate,
 	}
@@ -143,14 +149,16 @@ func (v *verticalTabHeader) MinWidth() int {
 		}
 	}
 
-	return minWidth
+	// Add 2 for left/right border characters
+	return minWidth + 2
 }
 
 func (v *verticalTabHeader) Resize(width, height int) {
 	v.width = width
 	v.height = height
-	v.list.SetWidth(width)
-	v.list.SetHeight(height)
+	// Adjust for border: -2 width for left/right │, -2 height for top/bottom borders
+	v.list.SetWidth(max(1, width-2))
+	v.list.SetHeight(max(1, height-2))
 }
 
 func (v *verticalTabHeader) Init() tea.Cmd {
@@ -186,5 +194,34 @@ func (v *verticalTabHeader) View() string {
 	if idx := strings.Index(view, "\n"); idx != -1 {
 		view = view[idx+1:]
 	}
-	return view
+
+	borderColor := lipgloss.Color(v.deps.UserConfig.Theme.InputPromptColor)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	topLabel := "[ Channels ]"
+	innerWidth := v.width - 2 // -2 for left/right │
+
+	// Top border: ┌─[ Channels ]───...─┐
+	topFill := innerWidth - lipgloss.Width(topLabel) - 2
+	if topFill < 0 {
+		topFill = 0
+	}
+	topBorder := "┌─" + topLabel + strings.Repeat("─", topFill) + "─┐"
+
+	// Bottom border: └───...───┘
+	bottomBorder := "└" + strings.Repeat("─", innerWidth) + "┘"
+
+	// Wrap each line with │ borders
+	lines := strings.Split(view, "\n")
+	var borderedLines []string
+	for _, line := range lines {
+		padNeeded := max(0, innerWidth-lipgloss.Width(line))
+		borderedLines = append(borderedLines, "│"+line+strings.Repeat(" ", padNeeded)+"│")
+	}
+
+	result := borderStyle.Render(topBorder) + "\n"
+	result += borderStyle.Render(strings.Join(borderedLines, "\n")) + "\n"
+	result += borderStyle.Render(bottomBorder)
+
+	return result
 }
