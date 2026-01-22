@@ -44,14 +44,28 @@ For the full list, see [Features](doc/FEATURES.md).
 
 ## Installation
 
-**Go install:**
+**Arch Linux:** Install `chatuino-bin` from the AUR.
+
+**Install script (Linux/macOS):**
+```sh
+curl -sSfL https://chatuino.net/install | sh
 ```
-go install github.com/julez-dev/chatuino@latest
+
+Options:
+```sh
+# Install to a specific directory
+curl -sSfL https://chatuino.net/install | sh -s -- -b /usr/local/bin
+
+# Install a specific version
+curl -sSfL https://chatuino.net/install | sh -s -- -v v0.6.2
 ```
 
 **Pre-built binaries:** Available on the [releases page](https://github.com/julez-dev/chatuino/releases).
 
-**Arch Linux:** Install `chatuino-bin` from the AUR.
+**Install from source:**
+```
+go install github.com/julez-dev/chatuino@latest
+```
 
 ## Usage
 

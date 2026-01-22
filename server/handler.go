@@ -250,6 +250,14 @@ func (a *API) handleGetHealth() http.HandlerFunc {
 	})
 }
 
+const installScriptURL = "https://raw.githubusercontent.com/julez-dev/chatuino/main/install/install.sh"
+
+func (a *API) handleInstallScript() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, installScriptURL, http.StatusFound)
+	})
+}
+
 func randomString(n int) (string, error) {
 	b := make([]byte, n)
 

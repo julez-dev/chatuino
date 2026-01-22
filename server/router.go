@@ -16,6 +16,8 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 		middleware.Recoverer,
 	)
 
+	c.Get("/install", api.handleInstallScript())
+
 	c.Route("/internal", func(r chi.Router) {
 		r.Get("/health", api.handleGetHealth())
 		r.Get("/ready", api.handleGetHealth())
