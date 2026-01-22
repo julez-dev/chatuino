@@ -809,7 +809,7 @@ func (t *broadcastTab) View() string {
 
 	mi := t.renderMessageInput()
 	if mi != "" {
-		builder.WriteString("\n ")
+		builder.WriteString("\n")
 		builder.WriteString(mi)
 	}
 
@@ -1556,7 +1556,38 @@ func (t *broadcastTab) renderMessageInput() string {
 		return ""
 	}
 
-	return t.messageInput.View()
+	inputView := t.messageInput.View()
+	borderColor := lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	// Labels
+	topLabel := "[ Chat ]"
+	charCount := fmt.Sprintf("[ %d / %d ]", len([]rune(t.messageInput.Value())), t.messageInput.InputModel.CharLimit)
+
+	innerWidth := t.width - 2 // -2 for left/right border chars
+
+	// Top border: ┌─[ Chat ]─────...─┐
+	topFill := innerWidth - len(topLabel) - 2
+	topBorder := "┌─" + topLabel + strings.Repeat("─", topFill) + "─┐"
+
+	// Bottom border: └─────...─[ 7 / 500 ]─┘ (counter on RIGHT)
+	bottomFill := innerWidth - len(charCount) - 2
+	bottomBorder := "└─" + strings.Repeat("─", bottomFill) + charCount + "─┘"
+
+	// Wrap input lines with │ borders
+	inputLines := strings.Split(inputView, "\n")
+	var borderedLines []string
+	for _, line := range inputLines {
+		padNeeded := max(0, innerWidth-lipgloss.Width(line))
+		borderedLines = append(borderedLines, "│"+line+strings.Repeat(" ", padNeeded)+"│")
+	}
+
+	// Combine
+	result := borderStyle.Render(topBorder) + "\n"
+	result += borderStyle.Render(strings.Join(borderedLines, "\n")) + "\n"
+	result += borderStyle.Render(bottomBorder)
+
+	return result
 }
 
 func (t *broadcastTab) HandleResize() {
