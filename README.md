@@ -6,6 +6,10 @@ Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich T
 
 ![Demo of chatuino.](doc/demo.gif)
 
+![vertical chatuino.](doc/screenshot/vertical-mode.png)
+
+[More screenshots available here](doc/SCREENSHOTS.md)
+
 ## Table of Contents
 
 - [Introduction](#introduction)
@@ -16,7 +20,7 @@ Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich T
 
 ## Introduction
 
-Chatuino aims to be a feature rich and portable Twitch Chat Client for your terminal.
+Chatuino is a feature rich and portable Twitch Chat Client for your terminal.
 
 The name and idea to create a Twitch Chat Client and many features are inspired by [Chatterino](https://github.com/Chatterino/chatterino2) and [twitch-tui](https://github.com/Xithrius/twitch-tui).
 
@@ -39,6 +43,7 @@ The name and idea to create a Twitch Chat Client and many features are inspired 
 - Use feature rich templating for custom commands and message inputs
 - Special tabs like mentions and live notifications
 - Chat is moving too fast? Try the /localsubscribers and /uniqueonly chat modes
+- 3rd party emote support (7TV, BTTV)
 
 Read more about Chatuinos features [here](doc/FEATURES.md)
 
