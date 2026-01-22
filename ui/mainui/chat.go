@@ -79,6 +79,7 @@ type chatWindow struct {
 	noticeAlertStyle    lipgloss.Style
 	clearChatAlertStyle lipgloss.Style
 	errorAlertStyle     lipgloss.Style
+	dimmedStyle         lipgloss.Style
 }
 
 func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
@@ -90,7 +91,7 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	input.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.Width = width
 
-	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render("@")
+	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render(">")
 
 	c := chatWindow{
 		deps:           deps,
@@ -103,11 +104,12 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 		searchInput: input,
 
 		indicator:           indicator,
-		indicatorWidth:      lipgloss.Width(indicator) + 1,
+		indicatorWidth:      lipgloss.Width(indicator),
 		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatSubAlertColor)).Bold(true),
 		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)).Bold(true),
 		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatClearChatColor)).Bold(true),
 		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatErrorColor)).Bold(true),
+		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.DimmedTextColor)),
 	}
 
 	return &c
@@ -575,7 +577,7 @@ func (c *chatWindow) handleMessageDeletion(msg chatEventMessage) {
 // buildAlertPrefix creates a standardized prefix with timestamp and styled alert label.
 // Example output: "  15:04:05 [Notice]: "
 func (c *chatWindow) buildAlertPrefix(timestamp time.Time, label string, style lipgloss.Style) string {
-	return "  " + c.timeFormatFunc(timestamp) + " [" + style.Render(label) + "]: "
+	return "  " + c.dimmedStyle.Render(c.timeFormatFunc(timestamp)) + " [" + style.Render(label) + "]: "
 }
 
 // formatMessageText applies word replacements and color processing to message content.
@@ -665,7 +667,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		userRenderFunc := c.getSetUserColorFunc(msg.LoginName, msg.Color)
 
 		// Build prefix components: time, [guest channel], [badges], username
-		parts := []string{"  " + c.timeFormatFunc(msg.TMISentTS)}
+		parts := []string{"  " + c.dimmedStyle.Render(c.timeFormatFunc(msg.TMISentTS))}
 
 		if event.channelGuestDisplayName != "" {
 			parts = append(parts, "|"+event.channelGuestDisplayName+"|")

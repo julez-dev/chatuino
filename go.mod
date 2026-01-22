@@ -1,6 +1,6 @@
 module github.com/julez-dev/chatuino
 
-go 1.25.4
+go 1.25.6
 
 require (
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081

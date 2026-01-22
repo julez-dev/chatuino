@@ -4,8 +4,6 @@ import (
 	"fmt"
 )
 
-const bellEmojiPrefix = string(rune(128276)) + " "
-
 type tabHeaderEntry struct {
 	id              string
 	name            string
@@ -19,9 +17,11 @@ func (t tabHeaderEntry) FilterValue() string {
 }
 
 func (t tabHeaderEntry) render() string {
+	base := fmt.Sprintf("%s (%s)", t.name, t.identity)
+
 	if t.hasNotification {
-		return fmt.Sprintf("%s [%s]", bellEmojiPrefix+t.name, t.identity)
+		return base + "[!]"
 	}
 
-	return fmt.Sprintf("%s [%s]", t.name, t.identity)
+	return base
 }

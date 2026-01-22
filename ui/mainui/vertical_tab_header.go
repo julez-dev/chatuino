@@ -50,7 +50,7 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 
 	title := fmt.Sprintf("%s (%s)", name, identity)
 	if entry.hasNotification {
-		title = fmt.Sprintf("%s%s", bellEmojiPrefix, title)
+		title += "[!]"
 	}
 
 	diff := m.Width() - lipgloss.Width(title)

@@ -108,7 +108,7 @@ func (s *streamStatus) View() string {
 		state = "Inspect / Search"
 	}
 
-	stateStr := fmt.Sprintf("-- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(state))
+	stateStr := fmt.Sprintf("-- %s --", state)
 
 	settingsBuilder := strings.Builder{}
 

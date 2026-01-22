@@ -788,6 +788,8 @@ func (t *broadcastTab) View() string {
 	if si != "" {
 		builder.WriteString(si)
 		builder.WriteString("\n")
+	} else {
+		builder.WriteString("\n")
 	}
 
 	pollView := t.poll.View()
@@ -1583,7 +1585,7 @@ func (t *broadcastTab) HandleResize() {
 		streamInfo := t.streamInfo.View()
 		heightStreamInfo := lipgloss.Height(streamInfo)
 		if streamInfo == "" {
-			heightStreamInfo = 0
+			heightStreamInfo = 1
 		}
 
 		pollView := t.poll.View()

@@ -151,15 +151,31 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		}
 
 		for _, stvEmote := range stvResp.EmoteSet.Emotes {
-			var url string
-			if stvEmote.Data.Animated {
-				url = fmt.Sprintf("%s/1x.avif", stvEmote.Data.Host.URL)
-			} else {
-				url = fmt.Sprintf("%s/1x.webp", stvEmote.Data.Host.URL)
+			var filename string
+			for _, f := range stvEmote.Data.Host.Files {
+				if !strings.HasPrefix(f.Name, "1x") {
+					continue
+				}
+
+				// prefer avif over others
+				if f.Name == "1x.avif" {
+					filename = f.Name
+				}
+
+				// then webp
+				if filename == "" && f.Name == "1x.webp" {
+					filename = f.Name
+				}
+
+				if filename == "" {
+					filename = f.Name
+				}
 			}
+
+			url := fmt.Sprintf("%s/%s", stvEmote.Data.Host.URL, filename)
 			url, _ = strings.CutPrefix(url, "//")
 			url = "https://" + url
-
+			log.Logger.Info().Msg(url)
 			emoteSet = append(emoteSet, Emote{
 				ID:         stvEmote.ID,
 				Text:       stvEmote.Name,
