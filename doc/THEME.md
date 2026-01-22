@@ -63,36 +63,3 @@ list_font_color: "#d8dee9"
 # UI chrome
 dimmed_text_color: "#4c566a"
 ```
-
-## Color Guidelines
-
-When creating custom themes, consider:
-
-- **Contrast:** Ensure text colors have good contrast against backgrounds for readability
-- **Cohesion:** Use a harmonious color palette (e.g., all warm tones or all cool tones)
-- **Accessibility:** Avoid color combinations that are hard to distinguish for colorblind users
-- **Terminal compatibility:** Test your theme in both light and dark terminal backgrounds
-
-## UI Improvements
-
-The following improvements were made:
-
-- **Modernized color palette** - Nord-inspired colors with better contrast
-- **Dimmed timestamps** - Secondary text (timestamps, hints) use `dimmed_text_color` for better visual hierarchy
-- **ASCII indicators** - Tab notifications use `[!]` instead of emoji bell, message indicator is `>` instead of colored `@`
-- **Semantic state colors** - Status bar mode indicator uses color-coded states:
-  - **View mode** (blue): Default viewing state
-  - **Insert mode** (green): Actively typing/inputting
-  - **Search mode** (yellow): Searching through chat
-  - **Inspect mode** (purple): Examining user details
-
-### State Color Fields
-
-The following fields control the status bar mode indicator colors:
-
-- `status_state_view_color` - Color for View and Emote Overview modes (default: `#88c0d0`)
-- `status_state_insert_color` - Color for Insert mode (default: `#a3be8c`)
-- `status_state_search_color` - Color for Search mode (default: `#ebcb8b`)
-- `status_state_inspect_color` - Color for Inspect mode (default: `#b48ead`)
-
-These colors provide instant visual feedback about the current application state.
