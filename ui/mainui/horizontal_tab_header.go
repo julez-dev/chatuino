@@ -79,10 +79,11 @@ func (h *horizontalTabHeader) View() string {
 	if padNeeded < 0 {
 		padNeeded = 0
 	}
-	contentRow := "│" + content + strings.Repeat(" ", padNeeded) + "│"
+	// Only apply borderStyle to the │ characters, not the content
+	contentRow := borderStyle.Render("│") + content + strings.Repeat(" ", padNeeded) + borderStyle.Render("│")
 
 	return borderStyle.Render(topBorder) + "\n" +
-		borderStyle.Render(contentRow) + "\n" +
+		contentRow + "\n" +
 		borderStyle.Render(bottomBorder)
 }
 
@@ -169,7 +170,7 @@ func (h *horizontalTabHeader) renderTabContent(pages [][]int, currentPage, total
 
 	bulletStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.InputPromptColor))
 	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.DimmedTextColor))
-	activeStyle := lipgloss.NewStyle().Bold(true)
+	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(h.deps.UserConfig.Theme.InputPromptColor))
 	notificationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.ChatNoticeAlertColor))
 
 	var b strings.Builder
