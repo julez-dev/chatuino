@@ -4,11 +4,7 @@
 
 Cha*tui*no is a cross-platform TUI utilizing bubbletea to bring a feature rich Twitch Chat Client to your terminal.
 
-> **Note**: This project is still in early development (colors may be weird, terminals may not work, panics may happen and resizing may cause issues/become glitchy etc.)
-
-![Demo of chatuino.](doc/demo.gif)
-
-![Demo of chatuino with emotes enabled.](doc/emote-demo.gif)
+![Demo of chatuino.](doc/demo.mp4)
 
 ## Table of Contents
 
