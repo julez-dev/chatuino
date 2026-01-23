@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -164,6 +166,8 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 		return KittyDisplayUnit{}, err
 	}
 
+	log.Logger.Info().Str("id", unit.ID).Str("type", contentType).Msg("downloaded image")
+
 	defer imageBody.Close()
 
 	decoded, err := d.convertImageBytes(imageBody, unit, contentType)
@@ -243,7 +247,7 @@ func (d *DisplayManager) convertAnimatedAvif(r io.Reader, unit DisplayUnit) (Dec
 			cols = c
 		}
 
-		frame.DelayInMS = int(images.Delay[i] * 1000)
+		frame.DelayInMS = int(images.Delay[i] * 1000) // Delay is in seconds
 		decodedEmote.Images = append(decodedEmote.Images, frame)
 	}
 
@@ -258,10 +262,34 @@ func (d *DisplayManager) convertAnimatedGif(r io.Reader, unit DisplayUnit) (Deco
 		return DecodedImage{}, fmt.Errorf("failed to convert animated gif: %w", err)
 	}
 
+	// Get canvas dimensions from config, or fall back to first frame
+	width, height := images.Config.Width, images.Config.Height
+	if width == 0 || height == 0 {
+		width = images.Image[0].Bounds().Dx()
+		height = images.Image[0].Bounds().Dy()
+	}
+
+	// Create canvas for compositing frames
+	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
+
 	var cols int
 	var decodedEmote DecodedImage
-	for i, img := range images.Image {
-		frame, c, err := d.convertImageFrame(img, unit, i)
+	for i, srcFrame := range images.Image {
+		// Get disposal method for this frame
+		disposal := byte(0)
+		if i < len(images.Disposal) {
+			disposal = images.Disposal[i]
+		}
+
+		// Draw frame onto canvas at its position
+		draw.Draw(canvas, srcFrame.Bounds(), srcFrame, srcFrame.Bounds().Min, draw.Over)
+
+		// Convert the composited canvas to a frame
+		// We need to copy the canvas since we'll modify it for the next frame
+		compositedFrame := image.NewRGBA(canvas.Bounds())
+		draw.Draw(compositedFrame, compositedFrame.Bounds(), canvas, image.Point{}, draw.Src)
+
+		frame, c, err := d.convertImageFrame(compositedFrame, unit, i)
 		if err != nil {
 			return DecodedImage{}, err
 		}
@@ -270,8 +298,20 @@ func (d *DisplayManager) convertAnimatedGif(r io.Reader, unit DisplayUnit) (Deco
 			cols = c
 		}
 
-		frame.DelayInMS = int(images.Delay[i] * 1000)
+		frame.DelayInMS = images.Delay[i] * 10 // Delay is in centiseconds (1/100s)
 		decodedEmote.Images = append(decodedEmote.Images, frame)
+
+		// Handle disposal for next frame
+		switch disposal {
+		case gif.DisposalBackground:
+			// Clear the frame area to background/transparent
+			draw.Draw(canvas, srcFrame.Bounds(), image.NewUniform(color.Transparent), image.Point{}, draw.Src)
+		case gif.DisposalPrevious:
+			// Restore to previous state - for simplicity, clear to transparent
+			// A proper implementation would save/restore the canvas state
+			draw.Draw(canvas, srcFrame.Bounds(), image.NewUniform(color.Transparent), image.Point{}, draw.Src)
+			// DisposalNone (0) or DisposalNone (1): leave canvas as-is
+		}
 	}
 
 	decodedEmote.Cols = cols
@@ -297,7 +337,7 @@ func (d *DisplayManager) convertAnimatedWebP(r io.Reader, unit DisplayUnit) (Dec
 			cols = c
 		}
 
-		frame.DelayInMS = int(images.Delay[i] * 1000)
+		frame.DelayInMS = images.Delay[i] // Delay is already in milliseconds
 		decodedEmote.Images = append(decodedEmote.Images, frame)
 	}
 

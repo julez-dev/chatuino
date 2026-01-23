@@ -57,6 +57,102 @@ type channelMessageCount struct {
 	Count   int64
 }
 
+var cacheCMD = &cli.Command{
+	Name:        "cache",
+	Description: "Analyse cache data for images and message data used by Chatuino",
+	Commands: []*cli.Command{
+		{
+			Name:        "clear",
+			Usage:       "Manage deletion of cached data",
+			Description: "Delete specified cached data",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "emotes", Usage: "Delete emote image cache"},
+				&cli.BoolFlag{Name: "database", Usage: "Delete database cache"},
+				&cli.BoolFlag{Name: "badges", Usage: "Delete badge image cache"},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				checkmark := cacheSuccessStyle.Render("✓")
+
+				if c.Bool("emotes") {
+					if err := os.RemoveAll(filepath.Join(kittyimg.BaseImageDirectory, "emote")); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return fmt.Errorf("failed to delete emote cache: %w", err)
+					}
+					fmt.Println(checkmark + " " + cacheEmoteStyle.Render("Emote cache") + cacheTextStyle.Render(" deleted"))
+				}
+
+				if c.Bool("badges") {
+					if err := os.RemoveAll(filepath.Join(kittyimg.BaseImageDirectory, "badge")); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return fmt.Errorf("failed to delete badge cache: %w", err)
+					}
+					fmt.Println(checkmark + " " + cacheBadgeStyle.Render("Badge cache") + cacheTextStyle.Render(" deleted"))
+				}
+
+				if c.Bool("database") {
+					if err := os.Remove(dbFileName); err != nil && !errors.Is(err, os.ErrNotExist) {
+						return fmt.Errorf("failed to delete database cache: %w", err)
+					}
+					fmt.Println(checkmark + " " + cacheHeaderStyle.Render("Database") + cacheTextStyle.Render(" deleted"))
+				}
+
+				return nil
+			},
+		},
+	},
+	Action: func(ctx context.Context, command *cli.Command) error {
+		db, err := openDB(true)
+		if err != nil {
+			return fmt.Errorf("failed to open chatuino database: %w", err)
+		}
+
+		defer db.Close()
+
+		// Collect emote stats
+		emoteSizeBytes, emoteImages, emoteFrames, err := statsForImageDirectory(filepath.Join(kittyimg.BaseImageDirectory, "emote"))
+		if err != nil {
+			return fmt.Errorf("failed to calculate emote cache size: %w", err)
+		}
+		emoteStats := imageStats{
+			SizeBytes: emoteSizeBytes,
+			Images:    emoteImages,
+			Frames:    emoteFrames,
+		}
+
+		// Collect badge stats
+		badgeSizeBytes, badgeImages, badgeFrames, err := statsForImageDirectory(filepath.Join(kittyimg.BaseImageDirectory, "badge"))
+		if err != nil {
+			return fmt.Errorf("failed to calculate badge cache size: %w", err)
+		}
+		badgeStats := imageStats{
+			SizeBytes: badgeSizeBytes,
+			Images:    badgeImages,
+			Frames:    badgeFrames,
+		}
+
+		// Collect message stats from database
+		rows, err := db.QueryContext(ctx, "SELECT broadcast_channel, COUNT(*) as count FROM messages GROUP BY broadcast_channel ORDER BY count DESC")
+		if err != nil {
+			return fmt.Errorf("failed to query database: %w", err)
+		}
+		defer rows.Close()
+
+		var channels []channelMessageCount
+		var totalMessages int64
+		for rows.Next() {
+			var ch channelMessageCount
+			if err := rows.Scan(&ch.Channel, &ch.Count); err != nil {
+				return fmt.Errorf("failed to scan row: %w", err)
+			}
+			totalMessages += ch.Count
+			channels = append(channels, ch)
+		}
+
+		// Render and print the styled output
+		fmt.Println(renderCacheOutput(emoteStats, badgeStats, channels, totalMessages))
+
+		return nil
+	},
+}
+
 // Border rendering helpers
 
 func cacheTopBorder(label string) string {
@@ -225,102 +321,6 @@ func renderCacheOutput(emote, badge imageStats, channels []channelMessageCount, 
 	b.WriteString(cacheBottomBorder())
 
 	return b.String()
-}
-
-var cacheCMD = &cli.Command{
-	Name:        "cache",
-	Description: "Analyse cache data for images and message data used by Chatuino",
-	Commands: []*cli.Command{
-		{
-			Name:        "clear",
-			Usage:       "Manage deletion of cached data",
-			Description: "Delete specified cached data",
-			Flags: []cli.Flag{
-				&cli.BoolFlag{Name: "emotes", Usage: "Delete emote image cache"},
-				&cli.BoolFlag{Name: "database", Usage: "Delete database cache"},
-				&cli.BoolFlag{Name: "badges", Usage: "Delete badge image cache"},
-			},
-			Action: func(ctx context.Context, c *cli.Command) error {
-				checkmark := cacheSuccessStyle.Render("✓")
-
-				if c.Bool("emotes") {
-					if err := os.RemoveAll(filepath.Join(kittyimg.BaseImageDirectory, "emote")); err != nil && !errors.Is(err, os.ErrNotExist) {
-						return fmt.Errorf("failed to delete emote cache: %w", err)
-					}
-					fmt.Println(checkmark + " " + cacheEmoteStyle.Render("Emote cache") + cacheTextStyle.Render(" deleted"))
-				}
-
-				if c.Bool("badges") {
-					if err := os.RemoveAll(filepath.Join(kittyimg.BaseImageDirectory, "badge")); err != nil && !errors.Is(err, os.ErrNotExist) {
-						return fmt.Errorf("failed to delete badge cache: %w", err)
-					}
-					fmt.Println(checkmark + " " + cacheBadgeStyle.Render("Badge cache") + cacheTextStyle.Render(" deleted"))
-				}
-
-				if c.Bool("database") {
-					if err := os.Remove(dbFileName); err != nil && !errors.Is(err, os.ErrNotExist) {
-						return fmt.Errorf("failed to delete database cache: %w", err)
-					}
-					fmt.Println(checkmark + " " + cacheHeaderStyle.Render("Database") + cacheTextStyle.Render(" deleted"))
-				}
-
-				return nil
-			},
-		},
-	},
-	Action: func(ctx context.Context, command *cli.Command) error {
-		db, err := openDB(true)
-		if err != nil {
-			return fmt.Errorf("failed to open chatuino database: %w", err)
-		}
-
-		defer db.Close()
-
-		// Collect emote stats
-		emoteSizeBytes, emoteImages, emoteFrames, err := statsForImageDirectory(filepath.Join(kittyimg.BaseImageDirectory, "emote"))
-		if err != nil {
-			return fmt.Errorf("failed to calculate emote cache size: %w", err)
-		}
-		emoteStats := imageStats{
-			SizeBytes: emoteSizeBytes,
-			Images:    emoteImages,
-			Frames:    emoteFrames,
-		}
-
-		// Collect badge stats
-		badgeSizeBytes, badgeImages, badgeFrames, err := statsForImageDirectory(filepath.Join(kittyimg.BaseImageDirectory, "badge"))
-		if err != nil {
-			return fmt.Errorf("failed to calculate badge cache size: %w", err)
-		}
-		badgeStats := imageStats{
-			SizeBytes: badgeSizeBytes,
-			Images:    badgeImages,
-			Frames:    badgeFrames,
-		}
-
-		// Collect message stats from database
-		rows, err := db.QueryContext(ctx, "SELECT broadcast_channel, COUNT(*) as count FROM messages GROUP BY broadcast_channel ORDER BY count DESC")
-		if err != nil {
-			return fmt.Errorf("failed to query database: %w", err)
-		}
-		defer rows.Close()
-
-		var channels []channelMessageCount
-		var totalMessages int64
-		for rows.Next() {
-			var ch channelMessageCount
-			if err := rows.Scan(&ch.Channel, &ch.Count); err != nil {
-				return fmt.Errorf("failed to scan row: %w", err)
-			}
-			totalMessages += ch.Count
-			channels = append(channels, ch)
-		}
-
-		// Render and print the styled output
-		fmt.Println(renderCacheOutput(emoteStats, badgeStats, channels, totalMessages))
-
-		return nil
-	},
 }
 
 func statsForImageDirectory(path string) (int64, int, int, error) {
