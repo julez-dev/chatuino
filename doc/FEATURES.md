@@ -1,52 +1,52 @@
 # Features
 
-## Account management
+## Account Management
 
-Chatuino allows you to manage multiple account additionally to an anonymous account, which allows you to view a chat without logging in
+Chatuino allows you to manage multiple accounts in addition to an anonymous account, which lets you view chat without logging in.
 
 ![Account UI](screenshot/account-ui.png)
 
-## State persistence
+## State Persistence
 
-Chatuino saves your open tab when you exit the application. When you start Chatuino again the application tries to restore the last session with all open tabs.
+Chatuino saves your open tabs when you exit the application. When you restart, it attempts to restore your last session with all open tabs.
 
-Chatuino is designed for Chatters who use multiple channels at once and for a long time.
+Chatuino is designed for users who monitor multiple channels simultaneously over extended periods.
 
-## Chats
+## Chat
 
-In Chats various twitch events will be displayed like messages, sub-gifts, timeouts, announcements, polls in your own chat etc.
+Chatuino displays various Twitch events including messages, sub-gifts, timeouts, announcements, and polls in your own chat.
 
-You can use local commands like /localsubscribers and /uniqueonly to slow down chat for you locally.
+Use local commands like `/localsubscribers` and `/uniqueonly` to filter chat locally.
 
-Tap the / key to start a fuzzy search for messages or usernames which you can navigate with the arrow keys
+Press `/` to start a fuzzy search for messages or usernames. Navigate with arrow keys.
 
-Insert mode (aka writing a chat message/command) can be enabled with key-bind i and disabled with escape. Enter is used to send a message while alt+enter is used to send a messages but keep it in text input.
-A simple message duplication bypass is also added when your message is the same as the last message.
-You can also copy a message to your message input by pressing alt+c on a message.
+Enable insert mode (for writing messages/commands) with `i` and exit with Escape. Press Enter to send a message, or Alt+Enter to send while keeping the text in the input.
+A simple duplication bypass is included when your message matches the last message.
+Copy a message to your input by pressing Alt+C on the message.
 
-Use t to go to top of buffer and b to go down.
+Press `t` to jump to the top of the buffer and `b` to jump to the bottom.
 
-Hit the `?` key-bind to discover more key-binds.
+Press `?` to view all key bindings.
 
 ![Chat View](screenshot/chat-view.png)
 
 ![Search](screenshot/message-search.png)
 
-## Auto Completions
+## Auto-Completion
 
-Chatuino allows auto completion for completing channel names when joining a new chat, usernames in chat or emotes.
+Chatuino provides auto-completion for channel names when joining new chats, usernames in chat, and emotes.
 
-Commands like ban, unban, timeout will also be suggested to you
+Commands like `/ban`, `/unban`, and `/timeout` are also suggested.
 
-![Auto complete](screenshot/auto-completions.png)
+![Auto-complete](screenshot/auto-completions.png)
 
-## User Inspect
+## User Inspection
 
-You can closely inspect a single chatter, showing you all their messages (that you saw only), their follow age and subscription status.
+Inspect individual chatters to view all their messages (that you've seen), follow age, and subscription status.
 
-Fuzzy search is also supported. You can start user inspect mode with the key-bind ctrl+l or the command /inspect username. Chatuino will also display all messages that mention the user.
+Fuzzy search is supported. Start user inspection with Ctrl+L or the `/inspect username` command. Chatuino also displays all messages that mention the user.
 
-While Chatuino is only allowed to show messages that you saw, every message will be persisted locally, when configured in settings, allowing you to keep a local log of all chats you visit. See [settings](SETTINGS.md) for details.
+Chatuino only shows messages you've seen, but every message can be persisted locally when configured in settings, allowing you to maintain a local log of all chats you visit. See [settings](SETTINGS.md) for details.
 
 ![User Inspect](screenshot/message-log.png)
 
@@ -56,17 +56,10 @@ Chatuino can display emotes as text or graphical images, depending on terminal a
 
 ![Emotes](emote-demo.gif)
 
-## Tab kinds
+## Tab Types
 
-Chatuino offers three different tab kinds when creating a new tab with ctrl+t.
+Chatuino offers three tab types when creating a new tab with Ctrl+T:
 
-- Channel
-- Mention
-- Live Notification
-
-*Channel* is the default tab kind. You join a specific channel/broadcaster just like the normal web chat.
-
-*Mention* displays all messages from all open *Channel* tabs that mention one of the users configured to be used by Chatuino.
-A bell emoji in the tab name will notify you that you have been mentioned.
-
-*Live Notification* will notify you once a *Channel* in an open tab went online or offline. If a channel went offline a bell emoji will be displayed next to the tab.
+- **Channel**: The default tab type. Join a specific channel/broadcaster, similar to the normal web chat.
+- **Mention**: Displays all messages from open Channel tabs that mention one of your configured users. A bell icon in the tab name indicates new mentions.
+- **Live Notification**: Notifies you when channels in open tabs go online or offline. A bell icon appears next to the tab when a channel goes offline.
