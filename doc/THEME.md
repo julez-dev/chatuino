@@ -39,12 +39,6 @@ active_label_color: "#ebcb8b"
 # Status
 status_color: "#88c0d0"
 
-# Status bar state colors (mode indicators)
-status_state_view_color: "#88c0d0"      # Default view mode - calm blue
-status_state_insert_color: "#a3be8c"    # Insert mode - green (active/go)
-status_state_search_color: "#ebcb8b"    # Search mode - yellow (attention)
-status_state_inspect_color: "#b48ead"   # Inspect mode - purple (examine)
-
 # Splash screen
 chatuino_splash_color: "#8fbcbb"
 splash_highlight_color: "#d8dee9"
