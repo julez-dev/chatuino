@@ -11,6 +11,58 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
+// humanizeDuration converts a duration to a human-readable string like "5 minutes" or "1 day 2 hours"
+func humanizeDuration(d time.Duration) string {
+	if d < time.Second {
+		return "0 seconds"
+	}
+
+	var parts []string
+
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	if days > 0 {
+		if days == 1 {
+			parts = append(parts, "1 day")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d days", days))
+		}
+	}
+
+	if hours > 0 {
+		if hours == 1 {
+			parts = append(parts, "1 hour")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d hours", hours))
+		}
+	}
+
+	if minutes > 0 && days == 0 { // Only show minutes if less than a day
+		if minutes == 1 {
+			parts = append(parts, "1 minute")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d minutes", minutes))
+		}
+	}
+
+	if seconds > 0 && hours == 0 && days == 0 { // Only show seconds if less than an hour
+		if seconds == 1 {
+			parts = append(parts, "1 second")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d seconds", seconds))
+		}
+	}
+
+	if len(parts) == 0 {
+		return "0 seconds"
+	}
+
+	return strings.Join(parts, " ")
+}
+
 type setSteamStatusDataMessage struct {
 	target   string
 	err      error
@@ -113,7 +165,7 @@ func (s *streamStatus) View() string {
 	settingsBuilder := strings.Builder{}
 
 	if s.settings.SlowMode {
-		dur := time.Duration(s.settings.SlowModeWaitTime * 1e9).String()
+		dur := humanizeDuration(time.Duration(s.settings.SlowModeWaitTime) * time.Second)
 		settingsBuilder.WriteString("Slow Mode: ")
 		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
 	}
@@ -123,7 +175,7 @@ func (s *streamStatus) View() string {
 			settingsBuilder.WriteString(" | ")
 		}
 
-		dur := time.Duration(s.settings.FollowerModeDuration * 6e+10).String()
+		dur := humanizeDuration(time.Duration(s.settings.FollowerModeDuration) * time.Minute)
 		settingsBuilder.WriteString("Follow Only: ")
 		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
 	}
