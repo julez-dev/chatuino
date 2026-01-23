@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/adrg/xdg"
 	"github.com/spf13/afero"
 )
 
@@ -38,7 +39,7 @@ func NewAppStateManager(fs afero.Fs) *AppStateManager {
 }
 
 func (a *AppStateManager) SaveAppState(state AppState) error {
-	f, err := openCreateConfigFile(a.fs, stateFileName)
+	f, err := openCreateDataFile(a.fs, stateFileName)
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,7 @@ func (a *AppStateManager) SaveAppState(state AppState) error {
 }
 
 func (a *AppStateManager) LoadAppState() (AppState, error) {
-	f, err := openCreateConfigFile(a.fs, stateFileName)
+	f, err := openCreateDataFile(a.fs, stateFileName)
 	if err != nil {
 		return AppState{}, err
 	}
@@ -124,4 +125,8 @@ func openCreateConfigFile(fs afero.Fs, file string) (afero.File, error) {
 	}
 
 	return openCreateFile(fs, configDir, file)
+}
+
+func openCreateDataFile(fs afero.Fs, file string) (afero.File, error) {
+	return openCreateFile(fs, xdg.DataHome, file)
 }
