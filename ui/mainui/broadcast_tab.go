@@ -167,6 +167,7 @@ func newBroadcastTab(
 		height:       height,
 		account:      account,
 		channel:      channel,
+		channelLogin: channel, // Initialize from param; updated to canonical value after init
 		lastMessages: cache,
 		deps:         deps,
 		modFetcher:   ivr.NewAPI(http.DefaultClient),
@@ -1828,10 +1829,11 @@ func (t *broadcastTab) handleEventSubMessage(msg eventsub.Message[eventsub.Notif
 	case "channel.ad_break.begin":
 		var chatMsg string
 
+		adDuration := humanizeDuration(time.Duration(msg.Payload.Event.DurationInSeconds) * time.Second)
 		if msg.Payload.Event.IsAutomatic {
-			chatMsg = fmt.Sprintf("A automatic %d second ad just started!", msg.Payload.Event.DurationInSeconds)
+			chatMsg = fmt.Sprintf("An automatic %s ad just started!", adDuration)
 		} else {
-			chatMsg = fmt.Sprintf("A %d second ad, requested by %s, just started!", msg.Payload.Event.DurationInSeconds, msg.Payload.Event.RequesterUserName)
+			chatMsg = fmt.Sprintf("A %s ad, requested by %s, just started!", adDuration, msg.Payload.Event.RequesterUserName)
 		}
 
 		return createCMDFunc(

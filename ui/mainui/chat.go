@@ -712,7 +712,7 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		text := *msg.UserName
 
 		if msg.BanDuration != nil && *msg.BanDuration > 0 {
-			text += " was timed out for " + time.Duration(*msg.BanDuration*1e9).String()
+			text += " was timed out for " + humanizeDuration(time.Duration(*msg.BanDuration)*time.Second)
 		} else {
 			text += " was permanently banned."
 		}

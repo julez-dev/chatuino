@@ -296,7 +296,7 @@ func (r *Root) Init() tea.Cmd {
 					resp, err := r.dependencies.ServerAPI.GetUsers(ctx, logins, nil)
 					if err != nil {
 						log.Logger.Error().Err(err).Msg("could not fetch users for tabs")
-						return nil
+						return fmt.Errorf("could not fetch users for tabs: %w", err)
 					}
 
 					for _, data := range resp.Data {
@@ -985,7 +985,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				}
 			}
 
-			if account.ID == "" {
+			if account.ID == "" || t.Channel == "" {
 				continue
 			}
 
@@ -1020,6 +1020,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
 			r.header.SelectTab(newTab.ID())
 		}
+		log.Logger.Info().Any("data", msg.ttvUsers).Msg("Initialized tab with user data")
 		cmds = append(cmds, newTab.InitWithUserData(msg.ttvUsers[t.Channel]))
 	}
 

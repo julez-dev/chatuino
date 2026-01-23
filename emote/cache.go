@@ -151,31 +151,11 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		}
 
 		for _, stvEmote := range stvResp.EmoteSet.Emotes {
-			var filename string
-			for _, f := range stvEmote.Data.Host.Files {
-				if !strings.HasPrefix(f.Name, "1x") {
-					continue
-				}
-
-				// prefer avif over others
-				if f.Name == "1x.avif" {
-					filename = f.Name
-				}
-
-				// then webp
-				if filename == "" && f.Name == "1x.webp" {
-					filename = f.Name
-				}
-
-				if filename == "" {
-					filename = f.Name
-				}
-			}
-
+			filename := pickSevenTVFile(stvEmote.Data.Animated, stvEmote.Data.Host.Files)
 			url := fmt.Sprintf("%s/%s", stvEmote.Data.Host.URL, filename)
 			url, _ = strings.CutPrefix(url, "//")
 			url = "https://" + url
-			log.Logger.Info().Msg(url)
+
 			emoteSet = append(emoteSet, Emote{
 				ID:         stvEmote.ID,
 				Text:       stvEmote.Name,
@@ -192,7 +172,18 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 				IsAnimated: bttvEmote.Animated,
 				Format:     bttvEmote.ImageType,
 				Platform:   BTTV,
-				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
+				URL:        bttvEmoteURL(bttvEmote.ID, bttvEmote.Animated),
+			})
+		}
+
+		for _, bttvEmote := range bttvResp.SharedEmotes {
+			emoteSet = append(emoteSet, Emote{
+				ID:         bttvEmote.ID,
+				Text:       bttvEmote.Code,
+				IsAnimated: bttvEmote.Animated,
+				Format:     bttvEmote.ImageType,
+				Platform:   BTTV,
+				URL:        bttvEmoteURL(bttvEmote.ID, bttvEmote.Animated),
 			})
 		}
 
@@ -276,12 +267,8 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 		}
 
 		for _, stvEmote := range stvResp.Emotes {
-			var url string
-			if stvEmote.Data.Animated {
-				url = fmt.Sprintf("%s/1x.avif", stvEmote.Data.Host.URL)
-			} else {
-				url = fmt.Sprintf("%s/1x.webp", stvEmote.Data.Host.URL)
-			}
+			filename := pickSevenTVFile(stvEmote.Data.Animated, stvEmote.Data.Host.Files)
+			url := fmt.Sprintf("%s/%s", stvEmote.Data.Host.URL, filename)
 			url, _ = strings.CutPrefix(url, "//")
 			url = "https://" + url
 
@@ -301,7 +288,7 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 				Platform:   BTTV,
 				IsAnimated: bttvEmote.Animated,
 				Format:     bttvEmote.ImageType,
-				URL:        fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x", bttvEmote.ID),
+				URL:        bttvEmoteURL(bttvEmote.ID, bttvEmote.Animated),
 			})
 		}
 
@@ -479,4 +466,51 @@ func (s *Cache) LoadSetForeignEmote(emoteID, emoteText string) Emote {
 	s.foreignEmotes[emoteID] = e
 
 	return e
+}
+
+// bttvEmoteURL returns the BTTV CDN URL for an emote.
+// Animated emotes use gif, static emotes use png.
+func bttvEmoteURL(id string, animated bool) string {
+	if animated {
+		return fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x.gif", id)
+	}
+	return fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x.png", id)
+}
+
+// pickSevenTVFile selects the best 1x file format from available files.
+// For animated emotes: prefers gif > avif > webp
+// For static emotes: prefers png > avif > webp
+func pickSevenTVFile(animated bool, files []seventv.Files) string {
+	var preferred, fallback1, fallback2 string
+	if animated {
+		preferred, fallback1, fallback2 = "1x.gif", "1x.avif", "1x.webp"
+	} else {
+		preferred, fallback1, fallback2 = "1x.png", "1x.avif", "1x.webp"
+	}
+
+	var hasFallback1, hasFallback2 bool
+	for _, f := range files {
+		switch f.Name {
+		case preferred:
+			return preferred
+		case fallback1:
+			hasFallback1 = true
+		case fallback2:
+			hasFallback2 = true
+		}
+	}
+
+	if hasFallback1 {
+		return fallback1
+	}
+	if hasFallback2 {
+		return fallback2
+	}
+	// last resort: return first 1x file found
+	for _, f := range files {
+		if strings.HasPrefix(f.Name, "1x") {
+			return f.Name
+		}
+	}
+	return ""
 }
