@@ -167,6 +167,7 @@ func newBroadcastTab(
 		height:       height,
 		account:      account,
 		channel:      channel,
+		channelLogin: channel, // Initialize from param; updated to canonical value after init
 		lastMessages: cache,
 		deps:         deps,
 		modFetcher:   ivr.NewAPI(http.DefaultClient),
