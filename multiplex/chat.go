@@ -135,8 +135,14 @@ func (m *ChatMultiplexer) ListenAndServe(inbound <-chan InboundMessage) <-chan O
 				continue // don't forward message
 			}
 
+			ircer, ok := msg.Msg.(twitchirc.IRCer)
+			if !ok {
+				m.logger.Error().Str("account-id", accountID).Type("msg-type", msg.Msg).Msg("unexpected message type, expected IRCer")
+				continue
+			}
+
 			select {
-			case in <- msg.Msg.(twitchirc.IRCer): // we know it's an IRCer
+			case in <- ircer:
 			case <-chatDones[accountID]:
 				// cancels[accountID]()
 				// close(chatIns[accountID])
