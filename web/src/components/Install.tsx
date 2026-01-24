@@ -80,9 +80,9 @@ function CodeBlock(props: { code: string }) {
   };
 
   return (
-    <div class="group relative">
-      <pre class="overflow-x-auto rounded-md bg-nord0 p-4 text-sm text-nord4">
-        <code>{props.code}</code>
+    <div class="group relative min-w-0">
+      <pre class="overflow-x-auto rounded-md bg-nord0 p-4 text-xs text-nord4 sm:text-sm">
+        <code class="block whitespace-pre">{props.code}</code>
       </pre>
       <button
         type="button"
@@ -98,7 +98,7 @@ function CodeBlock(props: { code: string }) {
 
 function InstallCard(props: { method: InstallMethod }) {
   return (
-    <div class="rounded-lg border border-nord2 bg-nord1 p-4">
+    <div class="min-w-0 rounded-lg border border-nord2 bg-nord1 p-4">
       <h4 class="mb-2 font-medium text-nord4">{props.method.name}</h4>
       <Show when={props.method.description}>
         <p class="mb-3 text-sm text-nord4">{props.method.description}</p>
