@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,13 +17,12 @@ import (
 	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/kittyimg"
-	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch/bttv"
-	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
@@ -167,8 +165,7 @@ func main() {
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
-			chatMultiplexer := multiplex.NewChatMultiplexer(log.Logger, accountProvider)
-			eventSubMultiplexer := multiplex.NewEventMultiplexer(log.Logger)
+			pool := wspool.NewPool(accountProvider, log.Logger)
 			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
 			badgeCache := badge.NewCache(serverAPI)
 			appStateManager := save.NewAppStateManager(afero.NewOsFs())
@@ -264,8 +261,7 @@ func main() {
 				ImageDisplayManager:  displayManager,
 				RecentMessageService: recentMessageService,
 				MessageLogger:        messageLogger,
-				ChatPool:             chatMultiplexer,
-				EventSubPool:         eventSubMultiplexer,
+				Pool:                 pool,
 				APIUserClients:       clients,
 			}
 
@@ -306,32 +302,21 @@ func main() {
 				tea.WithFPS(120),
 			)
 
-			eventSubMultiplexer.BuildEventSub = func() multiplex.EventSub {
-				eventSub := eventsub.NewConn(log.Logger, http.DefaultClient)
-				eventSub.HandleMessage = func(msg eventsub.Message[eventsub.NotificationPayload]) {
-					p.Send(mainui.EventSubMessage{Payload: msg})
-				}
-				eventSub.HandleError = func(err error) {
-					var twitchApiErr twitchapi.APIError
-					if errors.As(err, &twitchApiErr) {
-						log.Logger.Info().Any("twitch-error", twitchApiErr).Send()
-					}
-
-					log.Logger.Err(err).Msg("error in eventsub connection error handler")
-				}
-
-				return eventSub
-			}
+			// Connect the pool to the Bubble Tea program
+			pool.SetSend(p.Send)
 
 			final, err := p.Run()
+
+			// Close pool after UI exits (before checking error)
+			if closeErr := pool.Close(); closeErr != nil {
+				log.Logger.Err(closeErr).Msg("failed to close connection pool")
+			}
+
 			if err != nil {
 				return err
 			}
 
 			if final, ok := final.(*mainui.Root); ok {
-				if err := final.Close(); err != nil && !errors.Is(err, context.Canceled) {
-					return err
-				}
 
 				// persist open tabs on disk when session was actually loaded
 				// to prevent saving empty state when Chatuino was closed while loading

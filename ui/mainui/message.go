@@ -1,7 +1,6 @@
 package mainui
 
 import (
-	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -61,18 +60,8 @@ type requestLocalMessageHandleBatchMessage struct {
 	tabID     string
 }
 
-// requestLocalMessageHandleBatchMessage comes when program requests a message to be sent to the IRC stream
-type forwardChatMessage struct {
-	msg multiplex.InboundMessage
-}
-
-// forwardEventSubMessage comes when program requests a message to be sent to the event sub stream
-type forwardEventSubMessage struct {
-	accountID string
-	msg       eventsub.InboundMessage
-}
-
-// EventSubMessage comes when we get a message from the event sub
+// EventSubMessage is kept for backward compatibility but no longer used.
+// Events now come through wspool.EventSubEvent.
 type EventSubMessage struct {
 	Payload eventsub.Message[eventsub.NotificationPayload]
 }

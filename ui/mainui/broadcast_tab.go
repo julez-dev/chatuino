@@ -26,12 +26,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cli/browser"
-	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
 )
 
@@ -400,24 +400,13 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 		})
 
+		// Connect to IRC and join channel via Pool
+		accountID := t.account.ID
+		channelLogin := msg.channelLogin
 		ircCmds = append(ircCmds, func() tea.Msg {
-			return forwardChatMessage{
-				msg: multiplex.InboundMessage{
-					AccountID: t.account.ID,
-					Msg:       multiplex.IncrementTabCounter{},
-				},
-			}
-		})
-
-		ircCmds = append(ircCmds, func() tea.Msg {
-			return forwardChatMessage{
-				msg: multiplex.InboundMessage{
-					AccountID: t.account.ID,
-					Msg: twitchirc.JoinMessage{
-						Channel: msg.channelLogin,
-					},
-				},
-			}
+			t.deps.Pool.ConnectIRC(accountID)
+			t.deps.Pool.JoinChannel(accountID, channelLogin)
+			return nil
 		})
 
 		cmds = append(cmds, t.refreshEmotes(msg.channelLogin, msg.channelID, false))
@@ -426,55 +415,44 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		//  - if authenticated user
 		//  - if channel belongs to user
 		// sadly due to cost limits, we only allow this events users channel not other channels
-		if eventSubAPI, ok := t.deps.APIUserClients[t.account.ID].(eventsub.EventSubService); ok && t.account.ID == msg.channelID {
+		if eventSubAPI, ok := t.deps.APIUserClients[t.account.ID].(wspool.EventSubService); ok && t.account.ID == msg.channelID {
+			accountID := t.account.ID
+			channelID := msg.channelID
+
 			for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end", "channel.ad_break.begin"} {
+				subType := subType // capture for closure
 				cmds = append(cmds, func() tea.Msg {
-					return forwardEventSubMessage{
-						accountID: t.account.ID,
-						msg: eventsub.InboundMessage{
-							Service: eventSubAPI,
-							Req: twitchapi.CreateEventSubSubscriptionRequest{
-								Type:    subType,
-								Version: "1",
-								Condition: map[string]string{
-									"broadcaster_user_id": msg.channelID,
-								},
-							},
+					t.deps.Pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+						Type:    subType,
+						Version: "1",
+						Condition: map[string]string{
+							"broadcaster_user_id": channelID,
 						},
-					}
+					}, eventSubAPI)
+					return nil
 				})
 			}
 
 			cmds = append(cmds, func() tea.Msg {
-				return forwardEventSubMessage{
-					accountID: t.account.ID,
-					msg: eventsub.InboundMessage{
-						Service: eventSubAPI,
-						Req: twitchapi.CreateEventSubSubscriptionRequest{
-							Type:    "channel.raid",
-							Version: "1",
-							Condition: map[string]string{
-								"to_broadcaster_user_id": msg.channelID, // broadcaster gets raided
-							},
-						},
+				t.deps.Pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+					Type:    "channel.raid",
+					Version: "1",
+					Condition: map[string]string{
+						"to_broadcaster_user_id": channelID, // broadcaster gets raided
 					},
-				}
+				}, eventSubAPI)
+				return nil
 			})
 
 			cmds = append(cmds, func() tea.Msg {
-				return forwardEventSubMessage{
-					accountID: t.account.ID,
-					msg: eventsub.InboundMessage{
-						Service: eventSubAPI,
-						Req: twitchapi.CreateEventSubSubscriptionRequest{
-							Type:    "channel.raid",
-							Version: "1",
-							Condition: map[string]string{
-								"from_broadcaster_user_id": msg.channelID, // another channel gets raided from broadcaster
-							},
-						},
+				t.deps.Pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+					Type:    "channel.raid",
+					Version: "1",
+					Condition: map[string]string{
+						"from_broadcaster_user_id": channelID, // another channel gets raided from broadcaster
 					},
-				}
+				}, eventSubAPI)
+				return nil
 			})
 		}
 
@@ -544,8 +522,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		return t, nil
-	case EventSubMessage:
-		cmd = t.handleEventSubMessage(msg.Payload)
+	case wspool.EventSubEvent:
+		if msg.Error != nil {
+			log.Logger.Err(msg.Error).Msg("EventSub error")
+			return t, nil
+		}
+		cmd = t.handleEventSubMessage(msg.Message)
 		return t, cmd
 	case chatEventMessage: // delegate message event to chat window
 		// ignore all messages that don't target this account and channel
@@ -587,16 +569,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				t.lastMessages.Set(cast.Message, struct{}{}, ttlcache.DefaultTTL)
 			}
 
-		}
-
-		if err, ok := msg.message.(error); ok {
-			// if is error returned from final retry, don't wait again and return early
-			var matchErr twitchirc.RetryReachedError
-
-			if errors.As(err, &matchErr) {
-				log.Logger.Info().Err(err).Msg("retry limit reached error matched, don't wait for next message")
-				return t, tea.Batch(cmds...)
-			}
 		}
 
 		return t, tea.Batch(cmds...)

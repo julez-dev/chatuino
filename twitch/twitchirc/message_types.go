@@ -8,6 +8,11 @@ import (
 	"unicode"
 )
 
+// IRCer are types that can be turned into an IRC command
+type IRCer interface {
+	IRC() string
+}
+
 type Badge struct {
 	Name    string
 	Version string
