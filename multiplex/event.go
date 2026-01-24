@@ -1,13 +1,16 @@
 package multiplex
 
 import (
+	"context"
+
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
 type EventSub interface {
-	Connect(inbound <-chan eventsub.InboundMessage) error
+	Connect(ctx context.Context, inbound <-chan eventsub.InboundMessage) error
 }
 
 type EventMultiplexer struct {
@@ -30,7 +33,7 @@ func NewEventMultiplexer(logger zerolog.Logger) *EventMultiplexer {
 	}
 }
 
-func (e *EventMultiplexer) ListenAndServe(inbound <-chan EventSubInboundMessage) error {
+func (e *EventMultiplexer) ListenAndServe(ctx context.Context, inbound <-chan EventSubInboundMessage) error {
 	internalInbounds := map[string]chan<- eventsub.InboundMessage{}
 	doneAgg := make(chan string) // signals when a ws connection is done (value is account ID) / mostly for errors
 	connWG := &errgroup.Group{}
@@ -47,6 +50,9 @@ SELECT:
 				e.logger.Info().Msg("event multiplex inbound channel closed")
 				break SELECT
 			}
+
+			log.Logger.Info().Str("t", msg.Msg.Req.Type).Msg("ListenAndServe received inbound #1")
+
 			var internalInbound chan<- eventsub.InboundMessage
 			internalInbound, ok = internalInbounds[msg.AccountID]
 
@@ -54,7 +60,7 @@ SELECT:
 			if !ok {
 				e.logger.Info().Str("account-id", msg.AccountID).Msg("creating new event sub connection")
 				var doneChan <-chan struct{}
-				internalInbound, doneChan = e.startEventSub(connWG)
+				internalInbound, doneChan = e.startEventSub(ctx, connWG)
 				internalInbounds[msg.AccountID] = internalInbound
 
 				connWG.Go(func() error {
@@ -65,8 +71,12 @@ SELECT:
 				})
 			}
 
+			log.Logger.Info().Str("t", msg.Msg.Req.Type).Msg("ListenAndServe forward message to internal inbounc to ws conn #2")
+
 			// forward message to ws connection
 			internalInbound <- msg.Msg
+
+			log.Logger.Info().Str("t", msg.Msg.Req.Type).Msg("ListenAndServe done forward message to internal inbounc to ws conn #3")
 		}
 	}
 
@@ -98,13 +108,13 @@ SELECT:
 	return nil
 }
 
-func (e *EventMultiplexer) startEventSub(wg *errgroup.Group) (chan<- eventsub.InboundMessage, <-chan struct{}) {
+func (e *EventMultiplexer) startEventSub(ctx context.Context, wg *errgroup.Group) (chan<- eventsub.InboundMessage, <-chan struct{}) {
 	internalInbound := make(chan eventsub.InboundMessage)
 	done := make(chan struct{})
 	wg.Go(func() error {
 		defer close(done)
 		conn := e.BuildEventSub()
-		return conn.Connect(internalInbound)
+		return conn.Connect(ctx, internalInbound)
 	})
 	return internalInbound, done
 }

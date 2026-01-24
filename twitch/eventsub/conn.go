@@ -13,12 +13,13 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
 	maxMessageSize = 5 * 1024 * 1024 // 5MB
-	eventSubURL    = "wss://eventsub.wss.twitch.tv/ws?keepalive_timeout_seconds=30"
-	// eventSubURL = "ws://127.0.0.1:8080/ws?keepalive_timeout_seconds=30"
+	//eventSubURL    = "wss://eventsub.wss.twitch.tv/ws?keepalive_timeout_seconds=30"
+	eventSubURL = "ws://127.0.0.1:8080/ws?keepalive_timeout_seconds=30"
 )
 
 type EventSubService interface {
@@ -74,8 +75,10 @@ func (t twitchForcedReconnect) Error() string {
 // Connect will try to reconnect if the connection is dropped until inboud is closed.
 // If twitch sends reconnect messsage, Connect will reconnect to the session.
 // Duplicate messages are filtered out.
-func (c *Conn) Connect(inbound <-chan InboundMessage) error {
+func (c *Conn) Connect(ctx context.Context, inbound <-chan InboundMessage) error {
 	defer func() {
+		log.Logger.Info().Msg("Connect(inbound <-chan InboundMessage) drain start")
+
 		go func() {
 			// drain the inbound channel
 			for range inbound {
@@ -93,9 +96,13 @@ func (c *Conn) Connect(inbound <-chan InboundMessage) error {
 		return fmt.Errorf("inbound channel was closed early")
 	}
 
+	log.Logger.Info().Str("t", initial.Req.Type).Msg("Connect(inbound <-chan InboundMessage) got intial message")
+
 	subURL := eventSubURL
 	var err error
 	for {
+		log.Logger.Info().Str("t", initial.Req.Type).Msg("Connect(inbound <-chan InboundMessage) for loop start")
+
 		// If old connection was closed by application, don't reconnect
 		c.m.Lock()
 		if c.inboundWasClosed {
@@ -120,7 +127,8 @@ func (c *Conn) Connect(inbound <-chan InboundMessage) error {
 			}
 		}
 
-		if err = c.startListeningWS(subURL, inbound, maybeInitial); err != nil {
+		log.Logger.Info().Str("t", initial.Req.Type).Msg("Connect(inbound <-chan InboundMessage) startListeningWS()")
+		if err = c.startListeningWS(ctx, subURL, inbound, maybeInitial); err != nil {
 			var forcedReconnectErr twitchForcedReconnect
 			if errors.As(err, &forcedReconnectErr) {
 				subURL = forcedReconnectErr.NewWSURL
@@ -129,14 +137,16 @@ func (c *Conn) Connect(inbound <-chan InboundMessage) error {
 
 			c.logger.Err(err).Msg("failed during startListeningWS")
 		}
+
+		log.Logger.Info().Str("t", initial.Req.Type).Msg("Connect(inbound <-chan InboundMessage) for loop end")
 	}
 }
 
-func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMessage, initialInbound *InboundMessage) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-	defer cancel()
+func (c *Conn) startListeningWS(ctx context.Context, eventSubURL string, inboundChan <-chan InboundMessage, initialInbound *InboundMessage) error {
+	dialCtx, dialCancel := context.WithTimeout(ctx, time.Second*30)
+	defer dialCancel()
 
-	ws, _, err := websocket.Dial(ctx, eventSubURL, &websocket.DialOptions{
+	ws, _, err := websocket.Dial(dialCtx, eventSubURL, &websocket.DialOptions{
 		HTTPClient: c.httpClient,
 	})
 	if err != nil {
@@ -151,13 +161,22 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 	defer func() {
 		close(done)
 		wg.Wait()
+		log.Logger.Info().Msg("startListeningWS defer done")
 	}()
 
 	for {
-		_, data, err := ws.Read(context.Background())
+		log.Logger.Info().Msg("startListeningWS for loop start")
+
+		_, data, err := ws.Read(ctx)
 		if err != nil {
+			// Check if context was cancelled (clean shutdown)
+			if ctx.Err() != nil {
+				c.logger.Info().Msg("EventSub connection cancelled by context")
+				return nil
+			}
 			return fmt.Errorf("failed to read message: %w", err)
 		}
+		log.Logger.Info().Msg("startListeningWS ws.Read done")
 
 		var untypedData untypedMessagePayload
 		if err := json.Unmarshal(data, &untypedData); err != nil {
@@ -172,9 +191,12 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 			}
 
 			if initialInbound != nil {
+				log.Logger.Info().Str("session_id", welcome.Payload.Session.ID).Msg("Creating initial subscription")
+
 				_, err := initialInbound.Service.CreateEventSubSubscription(context.Background(), addTransportFunc(initialInbound.Req, welcome.Payload.Session.ID))
 				if err != nil {
 					err := fmt.Errorf("failed to create initial subscription: %w", err)
+					log.Logger.Error().Err(err).Msg("Failed to create initial subscription")
 					c.HandleError(err)
 					continue
 				}
@@ -213,12 +235,20 @@ func (c *Conn) startListeningWS(eventSubURL string, inboundChan <-chan InboundMe
 		default:
 			c.logger.Info().Any("event-message", untypedData).Msg("unhandled message type")
 		}
+		log.Logger.Info().Msg("startListeningWS for loop done")
+
 	}
 }
 
 func (c *Conn) listenInboundMessages(wg *sync.WaitGroup, done <-chan struct{}, msg <-chan InboundMessage, sessionID string, ws *websocket.Conn) {
-	defer wg.Done()
+	defer func() {
+		log.Logger.Info().Msg("listenInboundMessages defer start")
+		wg.Done()
+		log.Logger.Info().Msg("listenInboundMessages defer done")
+	}()
 	for {
+		log.Logger.Info().Msg("listenInboundMessages for pre select")
+
 		select {
 		case <-done:
 			return
@@ -238,6 +268,9 @@ func (c *Conn) listenInboundMessages(wg *sync.WaitGroup, done <-chan struct{}, m
 				c.logger.Info().Any("resp-event", resp).Msg("subscription created")
 			}
 		}
+
+		log.Logger.Info().Msg("listenInboundMessages for post select")
+
 	}
 }
 

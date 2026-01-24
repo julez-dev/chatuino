@@ -122,6 +122,8 @@ type Root struct {
 	// event sub
 	initErr            error
 	eventSub           EventSubPool
+	eventSubCtx        context.Context
+	eventSubCtxCancel  context.CancelFunc
 	eventSubInInFlight *sync.WaitGroup
 	eventSubIn         chan multiplex.EventSubInboundMessage
 
@@ -145,6 +147,8 @@ func NewUI(
 	inChat := make(chan multiplex.InboundMessage)
 	outChat := dependencies.ChatPool.ListenAndServe(inChat)
 	inEventSub := make(chan multiplex.EventSubInboundMessage)
+
+	eventSubCtx, eventSubCtxCancel := context.WithCancel(context.Background())
 
 	var header header
 	if dependencies.UserConfig.Settings.VerticalTabList {
@@ -174,6 +178,8 @@ func NewUI(
 		out:      outChat,
 
 		// event sub
+		eventSubCtx:        eventSubCtx,
+		eventSubCtxCancel:  eventSubCtxCancel,
 		eventSubInInFlight: &sync.WaitGroup{},
 		eventSub:           dependencies.EventSubPool,
 		eventSubIn:         inEventSub,
@@ -189,7 +195,7 @@ func (r *Root) Init() tea.Cmd {
 			r.closerWG.Add(1)
 			go func() {
 				defer r.closerWG.Done()
-				if err := r.eventSub.ListenAndServe(r.eventSubIn); err != nil {
+				if err := r.eventSub.ListenAndServe(r.eventSubCtx, r.eventSubIn); err != nil {
 					log.Logger.Err(err).Msg("failed to connect to eventsub")
 					return
 				}
@@ -356,7 +362,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case forwardEventSubMessage:
 		r.eventSubInInFlight.Add(1)
 		cmd := func() tea.Msg {
-			defer r.eventSubInInFlight.Done()
+			log.Logger.Info().Any("data", msg.msg).Msg("sending into event sub")
+			defer func() {
+				r.eventSubInInFlight.Done()
+				log.Logger.Info().Msg("done sending into event sub")
+			}()
+
 			r.eventSubIn <- multiplex.EventSubInboundMessage{
 				AccountID: msg.accountID,
 				Msg:       msg.msg,
@@ -395,9 +406,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.Sequence(batched...))
 		return r, tea.Batch(cmds...)
 	case forwardChatMessage:
-		r.eventSubInInFlight.Add(1)
+		r.closerWG.Add(1)
 		cmd := func() tea.Msg {
-			defer r.eventSubInInFlight.Done()
+			defer r.closerWG.Done()
 			r.in <- msg.msg
 			return nil
 		}
@@ -706,10 +717,15 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 }
 
 func (r *Root) Close() error {
-	if r.eventSubIn != nil {
-		r.eventSubInInFlight.Wait()
-		close(r.eventSubIn)
-	}
+	log.Logger.Info().Msg("cancelling event subscription context")
+	r.eventSubCtxCancel()
+
+	log.Logger.Info().Msg("waiting for in-flight event subscription messages")
+	r.eventSubInInFlight.Wait()
+
+	log.Logger.Info().Msg("closing event subscription input channel")
+	close(r.eventSubIn)
+	log.Logger.Info().Msg("closed event subscription input channel")
 
 	r.closerWG.Wait() // wait for all inbound messages to be processed
 

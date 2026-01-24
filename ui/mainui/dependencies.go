@@ -65,7 +65,7 @@ type ChatPool interface {
 }
 
 type EventSubPool interface {
-	ListenAndServe(inbound <-chan multiplex.EventSubInboundMessage) error
+	ListenAndServe(ctx context.Context, inbound <-chan multiplex.EventSubInboundMessage) error
 }
 
 type RecentMessageService interface {
