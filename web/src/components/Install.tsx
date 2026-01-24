@@ -1,4 +1,4 @@
-import { createSignal, Show, For, onMount } from "solid-js";
+import { createSignal, For, onMount, Show } from "solid-js";
 import { detectOS, getOSDisplayName, type OS } from "@/lib/os-detect";
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,7 @@ const installMethods: InstallMethod[] = [
     name: "Install Script",
     os: "linux",
     primary: true,
-    code: 'curl -sSfL https://chatuino.net/install | sh',
+    code: "curl -sSfL https://chatuino.net/install | sh",
     description: "Recommended for Linux. Downloads the latest release.",
   },
   {
@@ -27,7 +27,7 @@ const installMethods: InstallMethod[] = [
     name: "Install Script",
     os: "macos",
     primary: true,
-    code: 'curl -sSfL https://chatuino.net/install | sh',
+    code: "curl -sSfL https://chatuino.net/install | sh",
     description: "Recommended for macOS. Downloads the latest release.",
   },
   {
@@ -85,6 +85,7 @@ function CodeBlock(props: { code: string }) {
         <code>{props.code}</code>
       </pre>
       <button
+        type="button"
         onClick={copyToClipboard}
         class="absolute right-2 top-2 rounded bg-nord2 px-2 py-1 text-xs text-nord4 opacity-0 transition-opacity hover:bg-nord3 group-hover:opacity-100"
         aria-label="Copy to clipboard"
@@ -102,8 +103,8 @@ function InstallCard(props: { method: InstallMethod }) {
       <Show when={props.method.description}>
         <p class="mb-3 text-sm text-nord3">{props.method.description}</p>
       </Show>
-      <Show when={props.method.code}>
-        <CodeBlock code={props.method.code!} />
+      <Show when={props.method.code} keyed>
+        {(code) => <CodeBlock code={code} />}
       </Show>
       <Show when={props.method.link}>
         <a
@@ -114,8 +115,19 @@ function InstallCard(props: { method: InstallMethod }) {
           style={{ color: "#000b1e" }}
         >
           {props.method.linkText}
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
           </svg>
         </a>
       </Show>
@@ -172,20 +184,22 @@ export default function Install() {
         {/* Toggle for other methods */}
         <div class="mb-6">
           <button
+            type="button"
             onClick={() => setShowAll(!showAll())}
             class={cn(
               "flex items-center gap-2 text-sm transition-colors",
-              showAll() ? "text-nord8" : "text-nord4 hover:text-nord8"
+              showAll() ? "text-nord8" : "text-nord4 hover:text-nord8",
             )}
           >
             <svg
               class={cn(
                 "h-4 w-4 transition-transform",
-                showAll() && "rotate-90"
+                showAll() && "rotate-90",
               )}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 stroke-linecap="round"
@@ -211,11 +225,20 @@ export default function Install() {
         <div class="mt-12 rounded-lg border border-nord2 bg-nord1 p-6">
           <h3 class="mb-2 font-medium text-nord4">After Installation</h3>
           <p class="mb-4 text-sm text-nord3">
-            Run <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">chatuino</code> to start the application.
-            Use <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">chatuino account</code> to manage your Twitch accounts.
+            Run{" "}
+            <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">
+              chatuino
+            </code>{" "}
+            to start the application. Use{" "}
+            <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">
+              chatuino account
+            </code>{" "}
+            to manage your Twitch accounts.
           </p>
           <p class="text-sm text-nord3">
-            Press <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">?</code> inside Chatuino to view all keybindings.
+            Press{" "}
+            <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">?</code>{" "}
+            inside Chatuino to view all keybindings.
           </p>
         </div>
       </div>

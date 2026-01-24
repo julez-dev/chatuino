@@ -8,17 +8,23 @@ export default function Settings() {
       </h1>
 
       <p class="mb-6 text-nord4">
-        Chatuino can run without a settings file, but you may want to configure its default behavior.
+        Chatuino can run without a settings file, but you may want to configure
+        its default behavior.
       </p>
 
       <p class="mb-6 text-nord4">
         Your settings file is read from{" "}
-        <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">~/.config/chatuino/settings.yaml</code>{" "}
-        (the config directory may differ depending on your OS). Create the file if it doesn't exist.
+        <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+          ~/.config/chatuino/settings.yaml
+        </code>{" "}
+        (the config directory may differ depending on your OS). Create the file
+        if it doesn't exist.
       </p>
 
       <section class="mb-12">
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Example Configuration</h2>
+        <h2 class="mb-4 text-xl font-semibold text-nord4">
+          Example Configuration
+        </h2>
         <pre class="overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
           <code class="text-nord4">{`vertical_tab_list: false # Display tabs vertically instead of horizontally
 moderation:
@@ -52,7 +58,9 @@ custom_commands:
         <h2 class="mb-4 text-xl font-semibold text-nord4">NO_COLOR</h2>
         <p class="mb-4 text-nord4">
           Chatuino respects the{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">NO_COLOR</code>{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            NO_COLOR
+          </code>{" "}
           environment variable and will not render colors if enabled.
         </p>
         <pre class="overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
@@ -64,19 +72,22 @@ custom_commands:
         <h2 class="mb-4 text-xl font-semibold text-nord4">Key Bindings</h2>
         <p class="mb-4 text-nord4">
           Key bindings are configurable in the{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">~/.config/chatuino/keymap.yaml</code>{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            ~/.config/chatuino/keymap.yaml
+          </code>{" "}
           file (the config directory may differ depending on your OS).
         </p>
         <p class="text-nord4">
-          Press <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">?</code> inside Chatuino 
-          to view an overview of available key bindings.
+          Press <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">?</code>{" "}
+          inside Chatuino to view an overview of available key bindings.
         </p>
       </section>
 
       <section class="mb-12">
         <h2 class="mb-4 text-xl font-semibold text-nord4">Custom Commands</h2>
         <p class="mb-4 text-nord4">
-          The settings allow you to configure custom commands which will be suggested to you during text input.
+          The settings allow you to configure custom commands which will be
+          suggested to you during text input.
         </p>
         <pre class="mb-6 overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
           <code class="text-nord4">{`custom_commands:
@@ -101,7 +112,9 @@ custom_commands:
           All features of Go's templating engine are available.
         </p>
 
-        <h3 class="mb-2 text-lg font-medium text-nord4">Available Template Variables</h3>
+        <h3 class="mb-2 text-lg font-medium text-nord4">
+          Available Template Variables
+        </h3>
         <div class="overflow-x-auto">
           <table class="w-full border-collapse">
             <thead>
@@ -113,47 +126,65 @@ custom_commands:
             </thead>
             <tbody class="text-nord4">
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">CurrentTime</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">CurrentTime</code>
+                </td>
                 <td class="px-4 py-2">Any</td>
                 <td class="px-4 py-2">The current local time</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">CurrentDateTime</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">CurrentDateTime</code>
+                </td>
                 <td class="px-4 py-2">Any</td>
                 <td class="px-4 py-2">The current local date time</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">BroadcastID</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">BroadcastID</code>
+                </td>
                 <td class="px-4 py-2">Any</td>
                 <td class="px-4 py-2">The broadcaster ID</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">BroadcastName</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">BroadcastName</code>
+                </td>
                 <td class="px-4 py-2">Any</td>
                 <td class="px-4 py-2">The broadcaster name</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">SelectedDisplayName</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">SelectedDisplayName</code>
+                </td>
                 <td class="px-4 py-2">Chat Message Selected</td>
                 <td class="px-4 py-2">The sender's display name</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">SelectedUserID</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">SelectedUserID</code>
+                </td>
                 <td class="px-4 py-2">Chat Message Selected</td>
                 <td class="px-4 py-2">The sender's user ID</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">SelectedMessageContent</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">SelectedMessageContent</code>
+                </td>
                 <td class="px-4 py-2">Chat Message Selected</td>
                 <td class="px-4 py-2">The sender's message</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">RawMessage</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">RawMessage</code>
+                </td>
                 <td class="px-4 py-2">Any</td>
                 <td class="px-4 py-2">The complete internal message struct</td>
               </tr>
               <tr class="border-b border-nord2">
-                <td class="px-4 py-2"><code class="text-nord8">MessageType</code></td>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">MessageType</code>
+                </td>
                 <td class="px-4 py-2">Any</td>
                 <td class="px-4 py-2">Type of message</td>
               </tr>
@@ -163,8 +194,10 @@ custom_commands:
 
         <div class="mt-4 rounded-lg border border-nord13 bg-nord13/10 p-4">
           <p class="text-sm text-nord4">
-            <strong class="text-nord13">Note:</strong> Templates are never rendered when you press Enter. 
-            The data is inserted when you accept the suggestion (default: Tab). Always review your input before sending.
+            <strong class="text-nord13">Note:</strong> Templates are never
+            rendered when you press Enter. The data is inserted when you accept
+            the suggestion (default: Tab). Always review your input before
+            sending.
           </p>
         </div>
       </section>
@@ -174,46 +207,74 @@ custom_commands:
 
         <h3 class="mb-2 text-lg font-medium text-nord4">Text Emotes</h3>
         <p class="mb-4 text-nord4">
-          When <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">graphic_emotes</code> is disabled, 
-          Chatuino displays emotes as colored text. The color depends on the emote provider:
+          When{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            graphic_emotes
+          </code>{" "}
+          is disabled, Chatuino displays emotes as colored text. The color
+          depends on the emote provider:
         </p>
         <ul class="mb-6 list-inside list-disc space-y-2 text-nord4">
-          <li><span class="text-nord8">Blue</span> - SevenTV</li>
-          <li><span class="text-nord15">Purple</span> - Twitch</li>
-          <li><span class="text-nord11">Red</span> - BetterTTV</li>
+          <li>
+            <span class="text-nord8">Blue</span> - SevenTV
+          </li>
+          <li>
+            <span class="text-nord15">Purple</span> - Twitch
+          </li>
+          <li>
+            <span class="text-nord11">Red</span> - BetterTTV
+          </li>
         </ul>
 
         <h3 class="mb-2 text-lg font-medium text-nord4">Graphic Emotes</h3>
         <p class="mb-4 text-nord4">
-          Chatuino can display images and animated images as Twitch emotes using the Kitty Graphics Protocol. 
-          This protocol is implemented by Kitty and some other terminals. However, it uses the Unicode 
-          placeholder method, which is currently only fully implemented by Kitty. It also works with Ghostty, 
-          but animated emotes display as static images.
+          Chatuino can display images and animated images as Twitch emotes using
+          the Kitty Graphics Protocol. This protocol is implemented by Kitty and
+          some other terminals. However, it uses the Unicode placeholder method,
+          which is currently only fully implemented by Kitty. It also works with
+          Ghostty, but animated emotes display as static images.
         </p>
         <p class="mb-4 text-nord4">
-          Currently, this feature is <strong class="text-nord8">only</strong> available in Kitty and Ghostty 
-          terminals on Unix platforms.
+          Currently, this feature is <strong class="text-nord8">only</strong>{" "}
+          available in Kitty and Ghostty terminals on Unix platforms.
         </p>
 
-        <h3 class="mb-2 text-lg font-medium text-nord4">Format Support and Caching</h3>
+        <h3 class="mb-2 text-lg font-medium text-nord4">
+          Format Support and Caching
+        </h3>
         <p class="mb-4 text-nord4">
-          Chatuino is statically compiled without dynamic library dependencies. Emote format support 
-          prioritizes native Go decoding:
+          Chatuino is statically compiled without dynamic library dependencies.
+          Emote format support prioritizes native Go decoding:
         </p>
         <ul class="mb-4 list-inside list-disc space-y-2 text-nord4">
-          <li><strong>PNG</strong> (static images) - Native Go support</li>
-          <li><strong>GIF</strong> (animated images) - Native Go support</li>
-          <li><strong>WebP</strong> (static images) - Native Go support</li>
-          <li><strong>AVIF</strong> and <strong>animated WebP</strong> - Decoded via WASM when necessary</li>
+          <li>
+            <strong>PNG</strong> (static images) - Native Go support
+          </li>
+          <li>
+            <strong>GIF</strong> (animated images) - Native Go support
+          </li>
+          <li>
+            <strong>WebP</strong> (static images) - Native Go support
+          </li>
+          <li>
+            <strong>AVIF</strong> and <strong>animated WebP</strong> - Decoded
+            via WASM when necessary
+          </li>
         </ul>
         <p class="mb-4 text-nord4">
           Emotes are cached in{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">~/.local/share/chatuino/emote</code>.
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            ~/.local/share/chatuino/emote
+          </code>
+          .
         </p>
 
         <h3 class="mb-2 text-lg font-medium text-nord4">Cache Management</h3>
         <pre class="mb-4 overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
-          <code class="text-nord4"># Query current cache size{"\n"}chatuino cache{"\n\n"}# Delete cached data{"\n"}chatuino cache clear --emotes --database --badges</code>
+          <code class="text-nord4">
+            # Query current cache size{"\n"}chatuino cache{"\n\n"}# Delete
+            cached data{"\n"}chatuino cache clear --emotes --database --badges
+          </code>
         </pre>
         <div class="overflow-hidden rounded-lg border border-nord2">
           <img

@@ -8,12 +8,14 @@ export default function SelfHost() {
       </h1>
 
       <p class="mb-6 text-nord4">
-        Chatuino requires a server component to handle the user authentication flow with Twitch.
+        Chatuino requires a server component to handle the user authentication
+        flow with Twitch.
       </p>
 
       <p class="mb-6 text-nord4">
-        Additionally, the server component serves responses from Twitch API endpoints that normally 
-        require an authenticated user or app when the anonymous account is used to connect to chat.
+        Additionally, the server component serves responses from Twitch API
+        endpoints that normally require an authenticated user or app when the
+        anonymous account is used to connect to chat.
       </p>
 
       <p class="mb-6 text-nord4">
@@ -23,9 +25,16 @@ export default function SelfHost() {
       <section class="mb-12">
         <h2 class="mb-4 text-xl font-semibold text-nord4">Prerequisites</h2>
         <p class="mb-4 text-nord4">
-          To self-host Chatuino, you need to register an app with Twitch and obtain a{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">client_id</code> and{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">client_secret</code>.
+          To self-host Chatuino, you need to register an app with Twitch and
+          obtain a{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            client_id
+          </code>{" "}
+          and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            client_secret
+          </code>
+          .
         </p>
         <p class="mb-4 text-nord4">
           Register your application in the{" "}
@@ -40,35 +49,47 @@ export default function SelfHost() {
           under "Register Your Application".
         </p>
         <p class="mb-4 text-nord4">
-          Twitch allows localhost as a valid non-HTTPS redirect URL. Use the port that the server will use.
+          Twitch allows localhost as a valid non-HTTPS redirect URL. Use the
+          port that the server will use.
         </p>
 
         <div class="mb-6 rounded-lg border border-nord2 bg-nord1 p-4">
           <h3 class="mb-2 font-medium text-nord4">Environment Variables</h3>
           <ul class="list-inside list-disc space-y-2 text-nord4">
             <li>
-              <code class="text-nord8">CHATUINO_CLIENT_ID</code> - Your Twitch application client ID
+              <code class="text-nord8">CHATUINO_CLIENT_ID</code> - Your Twitch
+              application client ID
             </li>
             <li>
-              <code class="text-nord8">CHATUINO_CLIENT_SECRET</code> - Your Twitch application client secret
+              <code class="text-nord8">CHATUINO_CLIENT_SECRET</code> - Your
+              Twitch application client secret
             </li>
             <li>
-              <code class="text-nord8">CHATUINO_API_HOST</code> - The URL of your Chatuino server (e.g., http://localhost:8080)
+              <code class="text-nord8">CHATUINO_API_HOST</code> - The URL of
+              your Chatuino server (e.g., http://localhost:8080)
             </li>
           </ul>
         </div>
       </section>
 
       <section class="mb-12">
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Running the Server</h2>
+        <h2 class="mb-4 text-xl font-semibold text-nord4">
+          Running the Server
+        </h2>
 
-        <h3 class="mb-2 text-lg font-medium text-nord4">Running the Binary Directly</h3>
+        <h3 class="mb-2 text-lg font-medium text-nord4">
+          Running the Binary Directly
+        </h3>
         <p class="mb-4 text-nord4">
           Run the server by executing the Chatuino binary with the{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">server</code> subcommand:
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">server</code>{" "}
+          subcommand:
         </p>
         <pre class="mb-6 overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
-          <code class="text-nord4">chatuino --log --human-readable server --redirect-url=http://localhost:8080/auth/redirect</code>
+          <code class="text-nord4">
+            chatuino --log --human-readable server
+            --redirect-url=http://localhost:8080/auth/redirect
+          </code>
         </pre>
 
         <h3 class="mb-2 text-lg font-medium text-nord4">Running with Docker</h3>
@@ -84,26 +105,35 @@ export default function SelfHost() {
 
         <div class="rounded-lg border border-nord13 bg-nord13/10 p-4">
           <p class="text-sm text-nord4">
-            <strong class="text-nord13">Note:</strong> Don't forget the http:// prefix in the{" "}
-            <code class="text-nord8">CHATUINO_REDIRECT_URL</code> environment variable.
+            <strong class="text-nord13">Note:</strong> Don't forget the http://
+            prefix in the <code class="text-nord8">CHATUINO_REDIRECT_URL</code>{" "}
+            environment variable.
           </p>
         </div>
       </section>
 
       <section class="mb-12">
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Launching Chatuino</h2>
+        <h2 class="mb-4 text-xl font-semibold text-nord4">
+          Launching Chatuino
+        </h2>
         <p class="mb-4 text-nord4">
           Once the server is running and{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">CHATUINO_API_HOST</code> is configured, 
-          start the Chatuino application:
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            CHATUINO_API_HOST
+          </code>{" "}
+          is configured, start the Chatuino application:
         </p>
         <pre class="overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
-          <code class="text-nord4">CHATUINO_API_HOST=http://localhost:8080 chatuino</code>
+          <code class="text-nord4">
+            CHATUINO_API_HOST=http://localhost:8080 chatuino
+          </code>
         </pre>
       </section>
 
       <section>
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Docker Compose Example</h2>
+        <h2 class="mb-4 text-xl font-semibold text-nord4">
+          Docker Compose Example
+        </h2>
         <p class="mb-4 text-nord4">
           For a production setup, you might use Docker Compose:
         </p>

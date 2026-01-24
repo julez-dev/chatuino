@@ -1,5 +1,5 @@
 import { A, useLocation } from "@solidjs/router";
-import { createSignal, Show, type ParentProps } from "solid-js";
+import { createSignal, type ParentProps, Show } from "solid-js";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -24,6 +24,7 @@ export default function DocsLayout(props: ParentProps) {
     <div class="mx-auto flex max-w-6xl gap-8 px-4 py-8">
       {/* Mobile sidebar toggle */}
       <button
+        type="button"
         class="fixed bottom-4 right-4 z-50 rounded-full bg-nord8 p-3 text-nord0 shadow-lg md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen())}
         aria-label="Toggle sidebar"
@@ -31,22 +32,47 @@ export default function DocsLayout(props: ParentProps) {
         <Show
           when={sidebarOpen()}
           fallback={
-            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+            <svg
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
             </svg>
           }
         >
-          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          <svg
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </Show>
       </button>
 
       {/* Sidebar overlay (mobile) */}
       <Show when={sidebarOpen()}>
-        <div
-          class="fixed inset-0 z-40 bg-nord0/80 md:hidden"
+        <button
+          type="button"
+          class="fixed inset-0 z-40 cursor-default border-none bg-nord0/80 md:hidden"
           onClick={() => setSidebarOpen(false)}
+          onKeyDown={(e) => e.key === "Escape" && setSidebarOpen(false)}
+          aria-label="Close sidebar"
         />
       </Show>
 
@@ -54,7 +80,7 @@ export default function DocsLayout(props: ParentProps) {
       <aside
         class={cn(
           "fixed inset-y-0 left-0 z-40 w-64 transform border-r border-nord2 bg-nord0 p-6 pt-20 transition-transform md:relative md:inset-auto md:translate-x-0 md:border-0 md:bg-transparent md:p-0 md:pt-0",
-          sidebarOpen() ? "translate-x-0" : "-translate-x-full"
+          sidebarOpen() ? "translate-x-0" : "-translate-x-full",
         )}
       >
         <nav class="sticky top-24">
@@ -68,7 +94,7 @@ export default function DocsLayout(props: ParentProps) {
                     "block rounded-md px-3 py-2 text-sm transition-colors",
                     isActive(item.href)
                       ? "bg-nord1 text-nord8"
-                      : "text-nord4 hover:bg-nord1 hover:text-nord8"
+                      : "text-nord4 hover:bg-nord1 hover:text-nord8",
                   )}
                   onClick={() => setSidebarOpen(false)}
                 >

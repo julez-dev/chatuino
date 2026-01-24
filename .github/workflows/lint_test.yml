@@ -35,14 +35,19 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "25"
           cache: "npm"
           cache-dependency-path: web/package-lock.json
+
+      - name: Lint web frontend
+        run: |
+          cd web
+          npm ci
+          npm run lint
 
       - name: Build web frontend
         run: |
           cd web
-          npm ci
           npm run build
           cp -r dist ../server/dist
 

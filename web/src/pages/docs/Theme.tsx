@@ -13,8 +13,11 @@ export default function Theme() {
 
       <p class="mb-6 text-nord4">
         Your theme file is read from{" "}
-        <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">~/.config/chatuino/theme.yaml</code>{" "}
-        (the config directory may differ depending on your OS). Create the file if it doesn't exist.
+        <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+          ~/.config/chatuino/theme.yaml
+        </code>{" "}
+        (the config directory may differ depending on your OS). Create the file
+        if it doesn't exist.
       </p>
 
       <section class="mb-12">
@@ -95,19 +98,31 @@ dimmed_text_color: "#4c566a"`}</code>
             <h3 class="mb-2 text-sm font-medium text-nord3">Polar Night</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#2e3440" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#2e3440" }}
+                />
                 <code class="text-xs text-nord4">#2e3440</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#3b4252" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#3b4252" }}
+                />
                 <code class="text-xs text-nord4">#3b4252</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#434c5e" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#434c5e" }}
+                />
                 <code class="text-xs text-nord4">#434c5e</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#4c566a" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#4c566a" }}
+                />
                 <code class="text-xs text-nord4">#4c566a</code>
               </div>
             </div>
@@ -118,15 +133,24 @@ dimmed_text_color: "#4c566a"`}</code>
             <h3 class="mb-2 text-sm font-medium text-nord3">Snow Storm</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded border border-nord2" style={{ "background-color": "#d8dee9" }} />
+                <div
+                  class="h-6 w-6 rounded border border-nord2"
+                  style={{ "background-color": "#d8dee9" }}
+                />
                 <code class="text-xs text-nord4">#d8dee9</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded border border-nord2" style={{ "background-color": "#e5e9f0" }} />
+                <div
+                  class="h-6 w-6 rounded border border-nord2"
+                  style={{ "background-color": "#e5e9f0" }}
+                />
                 <code class="text-xs text-nord4">#e5e9f0</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded border border-nord2" style={{ "background-color": "#eceff4" }} />
+                <div
+                  class="h-6 w-6 rounded border border-nord2"
+                  style={{ "background-color": "#eceff4" }}
+                />
                 <code class="text-xs text-nord4">#eceff4</code>
               </div>
             </div>
@@ -137,19 +161,31 @@ dimmed_text_color: "#4c566a"`}</code>
             <h3 class="mb-2 text-sm font-medium text-nord3">Frost</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#8fbcbb" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#8fbcbb" }}
+                />
                 <code class="text-xs text-nord4">#8fbcbb</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#88c0d0" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#88c0d0" }}
+                />
                 <code class="text-xs text-nord4">#88c0d0</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#81a1c1" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#81a1c1" }}
+                />
                 <code class="text-xs text-nord4">#81a1c1</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#5e81ac" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#5e81ac" }}
+                />
                 <code class="text-xs text-nord4">#5e81ac</code>
               </div>
             </div>
@@ -160,23 +196,38 @@ dimmed_text_color: "#4c566a"`}</code>
             <h3 class="mb-2 text-sm font-medium text-nord3">Aurora</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#bf616a" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#bf616a" }}
+                />
                 <code class="text-xs text-nord4">#bf616a</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#d08770" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#d08770" }}
+                />
                 <code class="text-xs text-nord4">#d08770</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#ebcb8b" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#ebcb8b" }}
+                />
                 <code class="text-xs text-nord4">#ebcb8b</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#a3be8c" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#a3be8c" }}
+                />
                 <code class="text-xs text-nord4">#a3be8c</code>
               </div>
               <div class="flex items-center gap-2">
-                <div class="h-6 w-6 rounded" style={{ "background-color": "#b48ead" }} />
+                <div
+                  class="h-6 w-6 rounded"
+                  style={{ "background-color": "#b48ead" }}
+                />
                 <code class="text-xs text-nord4">#b48ead</code>
               </div>
             </div>
@@ -185,9 +236,12 @@ dimmed_text_color: "#4c566a"`}</code>
       </section>
 
       <section>
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Custom Theme Example</h2>
+        <h2 class="mb-4 text-xl font-semibold text-nord4">
+          Custom Theme Example
+        </h2>
         <p class="mb-4 text-nord4">
-          You can override any of the default colors. For example, to use a warmer color scheme:
+          You can override any of the default colors. For example, to use a
+          warmer color scheme:
         </p>
         <pre class="overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
           <code class="text-nord4">{`# Custom warm theme

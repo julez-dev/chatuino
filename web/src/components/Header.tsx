@@ -29,7 +29,7 @@ export default function Header() {
               "transition-colors hover:text-nord8",
               isActive("/") && location.pathname === "/"
                 ? "text-nord8"
-                : "text-nord4"
+                : "text-nord4",
             )}
           >
             Home
@@ -38,7 +38,7 @@ export default function Header() {
             href="/docs/features"
             class={cn(
               "transition-colors hover:text-nord8",
-              isActive("/docs") ? "text-nord8" : "text-nord4"
+              isActive("/docs") ? "text-nord8" : "text-nord4",
             )}
           >
             Documentation
@@ -55,6 +55,7 @@ export default function Header() {
 
         {/* Mobile menu button */}
         <button
+          type="button"
           class="text-nord4 hover:text-nord8 md:hidden"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen())}
           aria-label="Toggle menu"
@@ -67,6 +68,7 @@ export default function Header() {
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
+                aria-hidden="true"
               >
                 <path
                   stroke-linecap="round"
@@ -82,6 +84,7 @@ export default function Header() {
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
+              aria-hidden="true"
             >
               <path
                 stroke-linecap="round"
@@ -104,7 +107,7 @@ export default function Header() {
                 "transition-colors hover:text-nord8",
                 isActive("/") && location.pathname === "/"
                   ? "text-nord8"
-                  : "text-nord4"
+                  : "text-nord4",
               )}
               onClick={() => setMobileMenuOpen(false)}
             >
@@ -114,7 +117,7 @@ export default function Header() {
               href="/docs/features"
               class={cn(
                 "transition-colors hover:text-nord8",
-                isActive("/docs") ? "text-nord8" : "text-nord4"
+                isActive("/docs") ? "text-nord8" : "text-nord4",
               )}
               onClick={() => setMobileMenuOpen(false)}
             >
