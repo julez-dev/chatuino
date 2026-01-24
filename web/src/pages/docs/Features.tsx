@@ -222,22 +222,6 @@ export default function Features() {
       </section>
 
       <section class="mb-12">
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Emotes</h2>
-        <p class="mb-4 text-nord4">
-          Chatuino can display emotes as text or graphical images, depending on
-          terminal and OS.
-        </p>
-        <div class="overflow-hidden rounded-lg border border-nord2">
-          <PreviewImage
-            src="/emote-demo.gif"
-            alt="Graphical emotes demonstration"
-            class="w-full"
-            loading="lazy"
-          />
-        </div>
-      </section>
-
-      <section class="mb-12">
         <h2 class="mb-4 text-xl font-semibold text-nord4">Tab Types</h2>
         <p class="mb-4 text-nord4">
           Chatuino offers three tab types when creating a new tab with{" "}
