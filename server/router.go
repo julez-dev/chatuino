@@ -43,5 +43,9 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 		r.Get("/*", api.handleHelixProxy())
 	})
 
+	// Serve static files for the landing page and documentation
+	// This is a catchall that handles SPA routing
+	c.NotFound(staticFileServer().ServeHTTP)
+
 	return c
 }

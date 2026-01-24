@@ -12,3 +12,9 @@ chatuino
 secrets
 .zed
 report.*
+
+# Web frontend build output (generated from web/dist)
+server/dist/
+
+# Node modules
+web/node_modules/
