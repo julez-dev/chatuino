@@ -87,7 +87,7 @@ function CodeBlock(props: { code: string }) {
       <button
         type="button"
         onClick={copyToClipboard}
-        class="absolute right-2 top-2 rounded bg-nord2 px-2 py-1 text-xs text-nord4 opacity-0 transition-opacity hover:bg-nord3 group-hover:opacity-100"
+        class="absolute right-2 top-2 rounded bg-nord2 px-2 py-1 text-xs text-nord4 opacity-0 transition-opacity hover:bg-nord3 focus:opacity-100 group-hover:opacity-100"
         aria-label="Copy to clipboard"
       >
         {copied() ? "Copied!" : "Copy"}
@@ -101,7 +101,7 @@ function InstallCard(props: { method: InstallMethod }) {
     <div class="rounded-lg border border-nord2 bg-nord1 p-4">
       <h4 class="mb-2 font-medium text-nord4">{props.method.name}</h4>
       <Show when={props.method.description}>
-        <p class="mb-3 text-sm text-nord3">{props.method.description}</p>
+        <p class="mb-3 text-sm text-nord4">{props.method.description}</p>
       </Show>
       <Show when={props.method.code} keyed>
         {(code) => <CodeBlock code={code} />}
@@ -111,8 +111,7 @@ function InstallCard(props: { method: InstallMethod }) {
           href={props.method.link}
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 rounded-md bg-nord8 px-4 py-2 text-sm font-medium transition-colors hover:bg-nord7"
-          style={{ color: "#000b1e" }}
+          class="inline-flex items-center gap-2 rounded-md bg-nord8 px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-nord7"
         >
           {props.method.linkText}
           <svg
@@ -172,7 +171,7 @@ export default function Install() {
         <Show when={primaryMethod()}>
           {(method) => (
             <div class="mb-8">
-              <div class="mb-4 flex items-center gap-2 text-sm text-nord3">
+              <div class="mb-4 flex items-center gap-2 text-sm text-nord4">
                 <span class="text-nord14">*</span>
                 <span>Recommended for {getOSDisplayName(detectedOS())}</span>
               </div>
@@ -187,9 +186,11 @@ export default function Install() {
             type="button"
             onClick={() => setShowAll(!showAll())}
             class={cn(
-              "flex items-center gap-2 text-sm transition-colors",
+              "flex items-center gap-2 py-2 text-sm transition-colors",
               showAll() ? "text-nord8" : "text-nord4 hover:text-nord8",
             )}
+            aria-expanded={showAll()}
+            aria-controls="other-methods"
           >
             <svg
               class={cn(
@@ -214,7 +215,7 @@ export default function Install() {
 
         {/* Other methods */}
         <Show when={showAll()}>
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div id="other-methods" class="grid gap-4 sm:grid-cols-2">
             <For each={otherMethods()}>
               {(method) => <InstallCard method={method} />}
             </For>
@@ -224,7 +225,7 @@ export default function Install() {
         {/* Post-install note */}
         <div class="mt-12 rounded-lg border border-nord2 bg-nord1 p-6">
           <h3 class="mb-2 font-medium text-nord4">After Installation</h3>
-          <p class="mb-4 text-sm text-nord3">
+          <p class="mb-4 text-sm text-nord4">
             Run{" "}
             <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">
               chatuino
@@ -235,7 +236,7 @@ export default function Install() {
             </code>{" "}
             to manage your Twitch accounts.
           </p>
-          <p class="text-sm text-nord3">
+          <p class="text-sm text-nord4">
             Press{" "}
             <code class="rounded bg-nord0 px-1.5 py-0.5 text-nord8">?</code>{" "}
             inside Chatuino to view all keybindings.

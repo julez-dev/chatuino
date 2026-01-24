@@ -13,6 +13,13 @@ export default function Header() {
 
   return (
     <header class="sticky top-0 z-50 border-b border-nord2 bg-nord0/95 backdrop-blur-sm">
+      {/* Skip to content link */}
+      <a
+        href="#main-content"
+        class="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-nord8 focus:px-4 focus:py-2 focus:text-nord0"
+      >
+        Skip to content
+      </a>
       <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         {/* Logo */}
         <A href="/" class="flex items-center gap-2 text-lg font-semibold">
@@ -56,9 +63,11 @@ export default function Header() {
         {/* Mobile menu button */}
         <button
           type="button"
-          class="text-nord4 hover:text-nord8 md:hidden"
+          class="min-h-11 min-w-11 p-2 text-nord4 hover:text-nord8 md:hidden"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen())}
           aria-label="Toggle menu"
+          aria-expanded={mobileMenuOpen()}
+          aria-controls="mobile-menu"
         >
           <Show
             when={mobileMenuOpen()}
@@ -99,7 +108,10 @@ export default function Header() {
 
       {/* Mobile menu */}
       <Show when={mobileMenuOpen()}>
-        <div class="border-t border-nord2 bg-nord1 px-4 py-4 md:hidden">
+        <div
+          id="mobile-menu"
+          class="border-t border-nord2 bg-nord1 px-4 py-4 md:hidden"
+        >
           <div class="flex flex-col gap-4">
             <A
               href="/"
@@ -128,6 +140,7 @@ export default function Header() {
               target="_blank"
               rel="noopener noreferrer"
               class="text-nord4 transition-colors hover:text-nord8"
+              onClick={() => setMobileMenuOpen(false)}
             >
               GitHub
             </a>

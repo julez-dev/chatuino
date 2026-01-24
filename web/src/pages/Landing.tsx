@@ -4,10 +4,10 @@ import Install from "@/components/Install";
 
 export default function Landing() {
   return (
-    <div class="flex flex-col">
+    <main id="main-content" class="flex flex-col">
       <Hero />
       <Features />
       <Install />
-    </div>
+    </main>
   );
 }

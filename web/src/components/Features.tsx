@@ -135,7 +135,7 @@ export default function Features() {
                   </div>
                   <h3 class="font-semibold text-nord4">{feature.title}</h3>
                 </div>
-                <p class="text-sm text-nord3">{feature.description}</p>
+                <p class="text-sm text-nord4">{feature.description}</p>
               </div>
             )}
           </For>

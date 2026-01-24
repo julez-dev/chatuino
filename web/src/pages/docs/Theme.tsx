@@ -95,7 +95,7 @@ dimmed_text_color: "#4c566a"`}</code>
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* Polar Night */}
           <div>
-            <h3 class="mb-2 text-sm font-medium text-nord3">Polar Night</h3>
+            <h3 class="mb-2 text-sm font-medium text-nord4">Polar Night</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <div
@@ -130,7 +130,7 @@ dimmed_text_color: "#4c566a"`}</code>
 
           {/* Snow Storm */}
           <div>
-            <h3 class="mb-2 text-sm font-medium text-nord3">Snow Storm</h3>
+            <h3 class="mb-2 text-sm font-medium text-nord4">Snow Storm</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <div
@@ -158,7 +158,7 @@ dimmed_text_color: "#4c566a"`}</code>
 
           {/* Frost */}
           <div>
-            <h3 class="mb-2 text-sm font-medium text-nord3">Frost</h3>
+            <h3 class="mb-2 text-sm font-medium text-nord4">Frost</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <div
@@ -193,7 +193,7 @@ dimmed_text_color: "#4c566a"`}</code>
 
           {/* Aurora */}
           <div>
-            <h3 class="mb-2 text-sm font-medium text-nord3">Aurora</h3>
+            <h3 class="mb-2 text-sm font-medium text-nord4">Aurora</h3>
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <div

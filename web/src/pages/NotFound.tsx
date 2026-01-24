@@ -10,15 +10,14 @@ export default function NotFound() {
       </h1>
 
       <p class="mb-2 text-xl text-nord4">Page not found</p>
-      <p class="mb-8 text-nord3">
+      <p class="mb-8 text-nord4">
         The page you're looking for doesn't exist or has been moved.
       </p>
 
       <div class="flex gap-4">
         <A
           href="/"
-          class="rounded-md bg-nord8 px-6 py-3 font-medium transition-colors hover:bg-nord7"
-          style={{ color: "#000b1e" }}
+          class="rounded-md bg-nord8 px-6 py-3 font-medium text-primary-foreground transition-colors hover:bg-nord7"
         >
           Go Home
         </A>

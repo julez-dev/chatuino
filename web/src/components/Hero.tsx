@@ -24,8 +24,7 @@ export default function Hero() {
           <div class="mb-12 flex flex-wrap items-center justify-center gap-4">
             <a
               href="#install"
-              class="rounded-md bg-nord8 px-6 py-3 font-medium transition-colors hover:bg-nord7"
-              style={{ color: "#000b1e" }}
+              class="rounded-md bg-nord8 px-6 py-3 font-medium text-primary-foreground transition-colors hover:bg-nord7"
             >
               Install Now
             </a>
@@ -44,31 +43,39 @@ export default function Hero() {
               <div class="h-3 w-3 rounded-full bg-nord11" />
               <div class="h-3 w-3 rounded-full bg-nord13" />
               <div class="h-3 w-3 rounded-full bg-nord14" />
-              <span class="ml-4 text-sm text-nord3">chatuino</span>
+              <span class="ml-4 text-sm text-nord4">chatuino</span>
             </div>
             <img
               src="/demo.gif"
               alt="Chatuino demo showing Twitch chat in a terminal"
               class="w-full"
+              width="896"
+              height="504"
               loading="eager"
             />
           </div>
 
           {/* Feature highlights */}
-          <div class="mt-12 grid grid-cols-1 gap-6 text-sm text-nord4 sm:grid-cols-3">
-            <div class="flex items-center gap-2">
-              <span class="text-nord14">*</span>
+          <ul class="mt-12 grid list-none grid-cols-1 gap-6 text-sm text-nord4 sm:grid-cols-3">
+            <li class="flex items-center gap-2">
+              <span class="text-nord14" aria-hidden="true">
+                *
+              </span>
               <span>Multiple accounts</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-nord14">*</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-nord14" aria-hidden="true">
+                *
+              </span>
               <span>Graphical emotes</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-nord14">*</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-nord14" aria-hidden="true">
+                *
+              </span>
               <span>7TV & BTTV support</span>
-            </div>
-          </div>
+            </li>
+          </ul>
         </div>
       </div>
     </section>

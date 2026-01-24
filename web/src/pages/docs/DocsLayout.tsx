@@ -1,5 +1,5 @@
 import { A, useLocation } from "@solidjs/router";
-import { createSignal, type ParentProps, Show } from "solid-js";
+import { createSignal, For, type ParentProps, Show } from "solid-js";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -25,9 +25,11 @@ export default function DocsLayout(props: ParentProps) {
       {/* Mobile sidebar toggle */}
       <button
         type="button"
-        class="fixed bottom-4 right-4 z-50 rounded-full bg-nord8 p-3 text-nord0 shadow-lg md:hidden"
+        class="fixed bottom-4 right-4 z-50 min-h-11 min-w-11 rounded-full bg-nord8 p-3 text-nord0 shadow-lg md:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen())}
         aria-label="Toggle sidebar"
+        aria-expanded={sidebarOpen()}
+        aria-controls="docs-sidebar"
       >
         <Show
           when={sidebarOpen()}
@@ -67,47 +69,48 @@ export default function DocsLayout(props: ParentProps) {
 
       {/* Sidebar overlay (mobile) */}
       <Show when={sidebarOpen()}>
-        <button
-          type="button"
-          class="fixed inset-0 z-40 cursor-default border-none bg-nord0/80 md:hidden"
+        <div
+          class="fixed inset-0 z-40 bg-nord0/80 md:hidden"
           onClick={() => setSidebarOpen(false)}
-          onKeyDown={(e) => e.key === "Escape" && setSidebarOpen(false)}
-          aria-label="Close sidebar"
+          aria-hidden="true"
         />
       </Show>
 
       {/* Sidebar */}
       <aside
+        id="docs-sidebar"
         class={cn(
           "fixed inset-y-0 left-0 z-40 w-64 transform border-r border-nord2 bg-nord0 p-6 pt-20 transition-transform md:relative md:inset-auto md:translate-x-0 md:border-0 md:bg-transparent md:p-0 md:pt-0",
           sidebarOpen() ? "translate-x-0" : "-translate-x-full",
         )}
       >
         <nav class="sticky top-24">
-          <h3 class="mb-4 text-sm font-semibold text-nord3">Documentation</h3>
-          <ul class="space-y-2">
-            {navItems.map((item) => (
-              <li>
-                <A
-                  href={item.href}
-                  class={cn(
-                    "block rounded-md px-3 py-2 text-sm transition-colors",
-                    isActive(item.href)
-                      ? "bg-nord1 text-nord8"
-                      : "text-nord4 hover:bg-nord1 hover:text-nord8",
-                  )}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  {item.label}
-                </A>
-              </li>
-            ))}
+          <h3 class="mb-4 text-sm font-semibold text-nord4">Documentation</h3>
+          <ul class="space-y-1">
+            <For each={navItems}>
+              {(item) => (
+                <li>
+                  <A
+                    href={item.href}
+                    class={cn(
+                      "block rounded-md px-3 py-3 text-sm transition-colors",
+                      isActive(item.href)
+                        ? "bg-nord1 text-nord8"
+                        : "text-nord4 hover:bg-nord1 hover:text-nord8",
+                    )}
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    {item.label}
+                  </A>
+                </li>
+              )}
+            </For>
           </ul>
         </nav>
       </aside>
 
       {/* Main content */}
-      <main class="min-w-0 flex-1">
+      <main id="main-content" class="min-w-0 flex-1">
         <article class="prose prose-invert max-w-none">
           {props.children}
         </article>
