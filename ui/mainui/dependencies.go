@@ -6,12 +6,12 @@ import (
 	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/kittyimg"
-	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/wspool"
 )
 
 type UserConfiguration struct {
@@ -60,12 +60,14 @@ type UserEmoteClient interface {
 	FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.UserEmoteImage, string, error)
 }
 
-type ChatPool interface {
-	ListenAndServe(inbound <-chan multiplex.InboundMessage) <-chan multiplex.OutboundMessage
-}
-
-type EventSubPool interface {
-	ListenAndServe(inbound <-chan multiplex.EventSubInboundMessage) error
+// ConnectionPool manages WebSocket connections for IRC and EventSub.
+type ConnectionPool interface {
+	ConnectIRC(accountID string) error
+	DisconnectIRC(accountID string)
+	SendIRC(accountID string, msg twitchirc.IRCer) error
+	JoinChannel(accountID, channel string) error
+	SubscribeEventSub(accountID string, req twitchapi.CreateEventSubSubscriptionRequest, service wspool.EventSubService) error
+	Close() error
 }
 
 type RecentMessageService interface {
@@ -97,7 +99,6 @@ type DependencyContainer struct {
 	ImageDisplayManager  *kittyimg.DisplayManager
 	RecentMessageService RecentMessageService
 	MessageLogger        MessageLogger
-	ChatPool             ChatPool
-	EventSubPool         EventSubPool
+	Pool                 ConnectionPool
 	AppStateManager      AppStateManager
 }

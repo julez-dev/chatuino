@@ -1,31 +1,31 @@
 # Settings
 
-Chatuino can be run without creating any settings file but you may want to configure some of Chatuinos default behavior.
+Chatuino can run without a settings file, but you may want to configure its default behavior.
 
-Your settings file is read from ~/.config/chatuino/settings.yaml (config directory may be different depending on OS). You may want to create a new settings file if it doesn't exists already.
+Your settings file is read from `~/.config/chatuino/settings.yaml` (the config directory may differ depending on your OS). Create the file if it doesn't exist.
 
 ```yaml
-vertical_tab_list: false # If Chatuino should display tabs vertically instead of horizontally
+vertical_tab_list: false # Display tabs vertically instead of horizontally
 moderation:
-  store_chat_logs: true # If Chatuino should store chat logs in a sqlite database; Default: false
+  store_chat_logs: true # Store chat logs in a SQLite database; Default: false
 
   # NOTE: logs_channel_include and logs_channel_exclude are mutually exclusive.
-  logs_channel_include: ["lirik", "sodapoppin"] # Chatuino will only log channels that are in this list, if set
-  logs_channel_exclude: ["lec"] # Chatuino will not log channels that are in this list, but all others, if set
+  logs_channel_include: ["lirik", "sodapoppin"] # Only log specified channels
+  logs_channel_exclude: ["lec"] # Log all channels except those specified
 
 security:
-  check_links: true # If Chatuino should check and display http redirects next to URLs. Uses chatuino server to hide IP when resolving; Default: true
+  check_links: true # Check and display HTTP redirects next to URLs. Uses Chatuino server to hide IP when resolving; Default: true
 
-# Globaly block specific users and words
+# Globally block specific users and words
 block_settings:
   users:
     - julezdev
   words:
     - Kappa
 chat:
-  # NOTE: read the README for more information about how emote rendering works before enabling this feature
-  graphic_emotes: true # If Chatuino should display emotes as images instead of text; Default: false
-  graphic_badges: true # If Chatuino should display badges as images instead of text; Default: false
+  # NOTE: Read the README for more information about emote rendering before enabling this feature
+  graphic_emotes: true # Display emotes as images instead of text; Default: false
+  graphic_badges: true # Display badges as images instead of text; Default: false
 custom_commands:
   # Custom commands are available as command suggestions
   - trigger: "/ocean"
@@ -40,11 +40,11 @@ Chatuino respects the `NO_COLOR` environment variable and will not render colors
 NO_COLOR=1 chatuino
 ```
 
-## key-binds
+## Key Bindings
 
-Key-binds are configurable in the ~/.config/chatuino/keymap.yaml file (config directory may be different depending on OS)
+Key bindings are configurable in the `~/.config/chatuino/keymap.yaml` file (the config directory may differ depending on your OS).
 
-An overview of the keybinds can be opened with `?` inside Chatuino.
+Press `?` inside Chatuino to view an overview of available key bindings.
 
 ## Custom Commands
 
@@ -56,7 +56,7 @@ custom_commands:
     replacement: "OCEAN MAN 🌊 😍 Take me by the hand ✋ lead me to the land that you understand 🙌 🌊 OCEAN MAN 🌊 😍 The voyage 🚲 to the corner of the 🌎 globe is a real trip 👌 🌊 OCEAN MAN 🌊 😍 The crust of a tan man 👳 imbibed by the sand 👍 Soaking up the 💦 thirst of the land 💯"
 ```
 
-Additionally you can also template dynamic commands like this
+You can also create templated dynamic commands:
 
 ```yaml
 custom_commands:
@@ -67,9 +67,9 @@ custom_commands:
     replacement: "/timeout {{ .SelectedDisplayName }} 10 Please stop spamming."
 ```
 
-All features of [Go's templating engine](https://pkg.go.dev/text/template) are available to you.
+All features of [Go's templating engine](https://pkg.go.dev/text/template) are available.
 
-Here is an overview which data is available inside templates
+Available template data:
 
 | Name | Situation | Description |
 | ---- | --------- | ----------- |
@@ -91,17 +91,17 @@ Here is an overview which data is available inside templates
 | RawMessage | Any | The complete internal message struct |
 | MessageType | Any | Type of message (PrivateMessage, SubMessage, SubGiftMessage) |
 
-The data is inserted on the accept suggestion keybind (default tab) press so the text can be viewed before sending the message.
+The data is inserted when you accept the suggestion (default: Tab), allowing you to review the text before sending.
 
-You can use the templating feature at any time when composing a message, the data will be inserted once the accept suggestion keybind is pressed.
+You can use templating at any time when composing a message. The data is inserted when you accept the suggestion.
 
-> **Note**: Templates are never rendered on enter pressed. Be sure to review your input before pressing send.
+> **Note**: Templates are never rendered when you press Enter. Always review your input before sending.
 
-## A word about Chatuinos emote support
+## Emote Support
 
-### Text emotes
+### Text Emotes
 
-When the graphic_emotes setting is disabled, Chatuino will display emotes as colored text. The color of the emote depends on the emote provider.
+When `graphic_emotes` is disabled, Chatuino displays emotes as colored text. The color depends on the emote provider:
 
 | Color | Provider |
 | ----- | -------- |
@@ -109,31 +109,33 @@ When the graphic_emotes setting is disabled, Chatuino will display emotes as col
 | <span style="color:#a35df2">Purple</span> | Twitch |
 | <span style="color:#d50014">Red</span> | BetterTTV |
 
-### Graphic emotes
+### Graphic Emotes
 
-Chatuino can display rendered images and animated images as twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by the Kitty and some other terminals. **However** it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders) which as of right now is only implemented by Kitty. It's also works with Ghostty, but sadly animated emotes are displayed as static images.
+Chatuino can display images and animated images as Twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by Kitty and some other terminals. However, it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders), which is currently only fully implemented by Kitty. It also works with Ghostty, but animated emotes display as static images.
 
-Right now this feature is **only** available in Kitty and Ghostty terminals on Unix platforms. This may change in the future.
+Currently, this feature is **only** available in Kitty and Ghostty terminals on Unix platforms. This may change in the future.
 
-#### Drawbacks and workarounds
+#### Format Support and Caching
 
-Chatuino is statically compiled without any dynamic library dependencies. This has some advantage but also a drawback when it comes to emote support. Not all formats used by emote providers are supported by native Go image modules. For example while .webp images can be decoded, animated .webp images can't be decoded.
+Chatuino is statically compiled without dynamic library dependencies, allowing it to run on any system without additional requirements. Emote format support prioritizes native Go decoding for performance and stability.
 
-Since animated .webps can't be decoded Chatuino tries to fallback to .avifs versions if possible.
+Chatuino prefers formats that can be decoded natively in Go:
+- **PNG** (static images) - Native Go support
+- **GIF** (animated images) - Native Go support
+- **WebP** (static images) - Native Go support
+- **AVIF** and **animated WebP** - Decoded via WASM (libavif/libwebp) when necessary
 
-There is a module to decode static and animated .avif files but it's not a native implementation and uses wazero to run a WASM build of libavif.
+The WASM-based decoders may consume more memory but are only used as a fallback. Chatuino caches all decoded images, so each emote is decoded only once per session.
 
-During development I noticed a high memory consumption (sometimes 10x over non graphic usage) by the avif decoder, which I could not resolve. Chatuino caches all decoded images so once an emote is decoded for the first it never needs to be decoded again.
+Emotes are cached in the `~/.local/share/chatuino/emote` directory using the Kitty image transmission format, compressed with RFC 1950 ZLIB deflate compression.
 
-The emotes are cached at the same location Chatuino will put the message log sqlite database at: In the `$HOME/chatuino` directory. The format used to store the image data is the same format Kitty requires to be used to transmit images, compressed with RFC 1950 ZLIB based deflate compression.
-
-You can query the current cache size using
+Query the current cache size:
 
 ```sh
 chatuino cache
 ```
 
-You can delete cached data with
+Delete cached data:
 
 ```sh
 chatuino cache clear --emotes --database --badges

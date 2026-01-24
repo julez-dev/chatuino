@@ -71,7 +71,7 @@ func (p *PlainKeyringFallback) write(data string) error {
 
 	defer f.Close()
 
-	if f.Truncate(0) != nil {
+	if err := f.Truncate(0); err != nil {
 		return err
 	}
 

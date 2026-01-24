@@ -21,8 +21,8 @@
 ## Cache Statistics
 ![Cache Statistics](screenshot/cache-stats.png)
 
-### Emote Completions
+## Emote Completions
 ![Emote Completions](screenshot/auto-completions-emotes.png)
 
-### User Completions
+## User Completions
 ![User Completions](screenshot/auto-completions_user.png)

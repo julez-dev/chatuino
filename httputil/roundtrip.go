@@ -41,6 +41,7 @@ func (t *ChatuinoRoundTrip) RoundTrip(req *http.Request) (*http.Response, error)
 	// 	req.URL.Scheme = "http"
 	// 	req.URL.Host = "127.0.0.1:8080"
 	// 	req.URL.Path = strings.TrimPrefix(req.URL.Path, "/helix")
+	// 	log.Logger.Info().Stack().Str("path", req.URL.String()).Msg("rewrote URL path")
 	// }
 
 	req.Header.Set("User-Agent", fmt.Sprintf("Chatuino/%s", t.version))
@@ -57,7 +58,7 @@ func (t *ChatuinoRoundTrip) RoundTrip(req *http.Request) (*http.Response, error)
 		Str("method", req.Method).
 		Str("url", req.URL.String()).
 		Dur("took", dur).
-		Int("status", resp.StatusCode).Msg("request made")
+		Int("status", resp.StatusCode).Send()
 
 	return resp, nil
 }

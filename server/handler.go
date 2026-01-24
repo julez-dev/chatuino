@@ -126,6 +126,7 @@ func (a *API) handleAuthRedirect() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not create new http.Request")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -134,6 +135,7 @@ func (a *API) handleAuthRedirect() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not do http request")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		defer resp.Body.Close()
@@ -142,17 +144,20 @@ func (a *API) handleAuthRedirect() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not read response body")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			logger.Error().Int("status", resp.StatusCode).Str("body", string(bodyBytes)).Msg("got non-200 status code while requesting token pair")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		var tokenData tokenPair
 		if err := json.Unmarshal(bodyBytes, &tokenData); err != nil {
 			logger.Err(err).Msg("could not json unmarshal response body")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		w.WriteHeader(resp.StatusCode)
@@ -180,6 +185,7 @@ func (a *API) handleAuthRevoke() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not create new http.Request")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -188,6 +194,7 @@ func (a *API) handleAuthRevoke() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not do http request")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		defer resp.Body.Close()
@@ -225,6 +232,7 @@ func (a *API) handleAuthRefresh() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not create new http.Request")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -233,6 +241,7 @@ func (a *API) handleAuthRefresh() http.HandlerFunc {
 		if err != nil {
 			logger.Err(err).Msg("could not do http request")
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		defer resp.Body.Close()

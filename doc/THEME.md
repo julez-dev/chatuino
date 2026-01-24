@@ -1,12 +1,12 @@
 # Themes
 
-You can configure colors used by Chatuino using the theme.yaml file.
+You can configure the colors used by Chatuino with the theme.yaml file.
 
-Your theme file is read from ~/.config/chatuino/theme.yaml (config directory may be different depending on OS). You may want to create a new theme file if it doesn't exists already.
+Your theme file is read from `~/.config/chatuino/theme.yaml` (the config directory may differ depending on your OS). Create the file if it doesn't exist.
 
 ## Default Theme
 
-Here is the default theme used by Chatuino (inspired by Nord color scheme):
+The default theme is inspired by the Nord color scheme:
 
 ```yaml
 # Emote provider colors
@@ -38,12 +38,6 @@ active_label_color: "#ebcb8b"
 
 # Status
 status_color: "#88c0d0"
-
-# Status bar state colors (mode indicators)
-status_state_view_color: "#88c0d0"      # Default view mode - calm blue
-status_state_insert_color: "#a3be8c"    # Insert mode - green (active/go)
-status_state_search_color: "#ebcb8b"    # Search mode - yellow (attention)
-status_state_inspect_color: "#b48ead"   # Inspect mode - purple (examine)
 
 # Splash screen
 chatuino_splash_color: "#8fbcbb"

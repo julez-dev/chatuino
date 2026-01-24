@@ -17,10 +17,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/multiplex"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/wspool"
 	overlay "github.com/rmhubbert/bubbletea-overlay"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
@@ -114,18 +114,7 @@ type Root struct {
 
 	dependencies *DependencyContainer
 
-	// chat multiplexer channels
-	closerWG *sync.WaitGroup
-	in       chan multiplex.InboundMessage
-	out      <-chan multiplex.OutboundMessage
-
-	// event sub
-	initErr            error
-	eventSub           EventSubPool
-	eventSubInInFlight *sync.WaitGroup
-	eventSubIn         chan multiplex.EventSubInboundMessage
-
-	// message logge
+	// message logger
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
 	// components
@@ -142,10 +131,6 @@ func NewUI(
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
 	dependencies *DependencyContainer,
 ) *Root {
-	inChat := make(chan multiplex.InboundMessage)
-	outChat := dependencies.ChatPool.ListenAndServe(inChat)
-	inEventSub := make(chan multiplex.EventSubInboundMessage)
-
 	var header header
 	if dependencies.UserConfig.Settings.VerticalTabList {
 		header = newVerticalTabHeader(10, 10, dependencies)
@@ -168,16 +153,6 @@ func NewUI(
 		help:      newHelp(10, 10, dependencies),
 		joinInput: newJoin(10, dependencies),
 
-		// chat multiplex channels
-		closerWG: &sync.WaitGroup{},
-		in:       inChat,
-		out:      outChat,
-
-		// event sub
-		eventSubInInFlight: &sync.WaitGroup{},
-		eventSub:           dependencies.EventSubPool,
-		eventSubIn:         inEventSub,
-
 		messageLoggerChan: messageLoggerChan,
 	}
 }
@@ -186,17 +161,6 @@ func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
 		tea.SetWindowTitle("Chatuino"),
 		func() tea.Msg {
-			r.closerWG.Add(1)
-			go func() {
-				defer r.closerWG.Done()
-				if err := r.eventSub.ListenAndServe(r.eventSubIn); err != nil {
-					log.Logger.Err(err).Msg("failed to connect to eventsub")
-					return
-				}
-
-				log.Logger.Info().Msg("init event sub routine done")
-			}()
-
 			state, err := r.dependencies.AppStateManager.LoadAppState()
 			if err != nil {
 				return persistedDataLoadedMessage{
@@ -317,7 +281,6 @@ func (r *Root) Init() tea.Cmd {
 				err:      err,
 			}
 		},
-		r.waitChatEvents(),
 		r.tickPollStreamInfos(),
 		r.imageCleanUpCommand(),
 	)
@@ -337,7 +300,6 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, r.imageCleanUpCommand()
 	case joinChannelMessage:
 		r.screenType = mainScreen
-		r.initErr = nil
 
 		nTab, cmd := r.createTab(msg.account, msg.channel, msg.tabKind)
 		nTab.Focus()
@@ -353,18 +315,32 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.handleResize()
 
 		return r, tea.Batch(nTab.Init(), cmd)
-	case forwardEventSubMessage:
-		r.eventSubInInFlight.Add(1)
-		cmd := func() tea.Msg {
-			defer r.eventSubInInFlight.Done()
-			r.eventSubIn <- multiplex.EventSubInboundMessage{
-				AccountID: msg.accountID,
-				Msg:       msg.msg,
+	case wspool.IRCEvent:
+		// Handle IRC events from the connection pool
+		if msg.Error != nil {
+			// Connection error - display as notice in all tabs for this account
+			errEvt := r.buildChatEventMessage(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
+			for i := range r.tabs {
+				r.tabs[i], cmd = r.tabs[i].Update(errEvt)
+				cmds = append(cmds, cmd)
 			}
-			return nil
+			return r, tea.Batch(cmds...)
 		}
-		return r, cmd
+
+		// Log private messages
+		if privateMsg, ok := msg.Message.(*twitchirc.PrivateMessage); ok {
+			r.messageLoggerChan <- privateMsg.Clone()
+		}
+
+		// Build and forward event to tabs
+		evt := r.buildChatEventMessage(msg.AccountID, "", msg.Message, false)
+		for i := range r.tabs {
+			r.tabs[i], cmd = r.tabs[i].Update(evt)
+			cmds = append(cmds, cmd)
+		}
+		return r, tea.Batch(cmds...)
 	case chatEventMessage:
+		// Handle locally-generated chat events (e.g., from recent messages)
 		for i := range r.tabs {
 			if msg.tabID != "" && msg.tabID != r.tabs[i].ID() {
 				continue
@@ -372,11 +348,6 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			r.tabs[i], cmd = r.tabs[i].Update(msg)
 			cmds = append(cmds, cmd)
-		}
-
-		// only start new wait command when event was actually from the websocket/twitch connection
-		if !msg.isFakeEvent {
-			cmds = append(cmds, r.waitChatEvents())
 		}
 		return r, tea.Batch(cmds...)
 	case requestLocalMessageHandleMessage:
@@ -394,15 +365,6 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cmds = append(cmds, tea.Sequence(batched...))
 		return r, tea.Batch(cmds...)
-	case forwardChatMessage:
-		r.eventSubInInFlight.Add(1)
-		cmd := func() tea.Msg {
-			defer r.eventSubInInFlight.Done()
-			r.in <- msg.msg
-			return nil
-		}
-
-		return r, cmd
 	case polledStreamInfoMessage:
 		return r, r.handlePolledStreamInfo(msg)
 	case appStateSaveMessage:
@@ -556,13 +518,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if !hasTabsSameAccountAndChannel {
 							// send part message
 							log.Logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
+							accountID := currentTab.AccountID()
+							channel := currentTab.Channel()
 							cmds = append(cmds, func() tea.Msg {
-								r.in <- multiplex.InboundMessage{
-									AccountID: currentTab.AccountID(),
-									Msg: twitchirc.PartMessage{
-										Channel: currentTab.Channel(),
-									},
-								}
+								r.dependencies.Pool.SendIRC(accountID, twitchirc.PartMessage{Channel: channel})
 								return nil
 							})
 						}
@@ -572,13 +531,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							r.dependencies.EmoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
 						}
 
-						r.closerWG.Add(1)
+						// Disconnect IRC for this account
+						accountID := currentTab.AccountID()
 						cmds = append(cmds, func() tea.Msg {
-							defer r.closerWG.Done()
-							r.in <- multiplex.InboundMessage{
-								AccountID: currentTab.AccountID(),
-								Msg:       multiplex.DecrementTabCounter{},
-							}
+							r.dependencies.Pool.DisconnectIRC(accountID)
 							return nil
 						})
 
@@ -620,10 +576,6 @@ func (r *Root) View() string {
 	switch r.screenType {
 	case mainScreen:
 		if len(r.tabs) == 0 {
-			if r.initErr != nil {
-				return r.splash.ViewError(r.initErr)
-			}
-
 			return r.splash.View()
 		}
 
@@ -703,19 +655,6 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 	}
 
 	return appState
-}
-
-func (r *Root) Close() error {
-	if r.eventSubIn != nil {
-		r.eventSubInInFlight.Wait()
-		close(r.eventSubIn)
-	}
-
-	r.closerWG.Wait() // wait for all inbound messages to be processed
-
-	close(r.in)
-
-	return nil
 }
 
 func (r *Root) tickSaveAppState() tea.Cmd {
@@ -962,7 +901,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	r.hasLoadedSession = true
 
 	if msg.err != nil {
-		r.initErr = msg.err
+		log.Logger.Err(msg.err).Msg("failed to load persisted data")
 		return nil
 	}
 
@@ -1221,30 +1160,6 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	}
 
 	return event
-}
-
-func (r *Root) waitChatEvents() tea.Cmd {
-	return func() tea.Msg {
-		msg, ok := <-r.out
-
-		if !ok {
-			return nil
-		}
-
-		if msg.Err != nil {
-			return chatEventMessage{
-				accountID: msg.ID,
-				channel:   "",
-				message:   ircConnectionError{err: msg.Err},
-			}
-		}
-
-		if privateMsg, ok := msg.Msg.(*twitchirc.PrivateMessage); ok {
-			r.messageLoggerChan <- privateMsg.Clone()
-		}
-
-		return r.buildChatEventMessage(msg.ID, "", msg.Msg, false)
-	}
 }
 
 // imageCleanUpCommand returns a command that ticks after 1 minute and

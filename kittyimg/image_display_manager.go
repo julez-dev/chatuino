@@ -129,14 +129,19 @@ func NewDisplayManager(fs afero.Fs, cellWidth, cellHeight float32) *DisplayManag
 func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	// 1st: image was already placed in this session, reusing placement
 	if cached, ok := globalPlacedImages.Load(unit.ID); ok {
-		i := cached.(DecodedImage)
-		i.lastUsed = time.Now()
-		globalPlacedImages.Swap(unit.ID, i)
+		i, ok := cached.(DecodedImage)
+		if !ok {
+			log.Logger.Error().Str("id", unit.ID).Type("type", cached).Msg("unexpected type in session cache")
+			globalPlacedImages.Delete(unit.ID)
+		} else {
+			i.lastUsed = time.Now()
+			globalPlacedImages.Swap(unit.ID, i)
 
-		return KittyDisplayUnit{
-			// don't resend placement command
-			ReplacementText: i.DisplayUnicodePlaceholder(),
-		}, nil
+			return KittyDisplayUnit{
+				// don't resend placement command
+				ReplacementText: i.DisplayUnicodePlaceholder(),
+			}, nil
+		}
 	}
 
 	// 2nd: image was not placed in session yet, but is already cached on FS
@@ -144,7 +149,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 
 	cachedDecoded, found, err := d.openCached(unit)
 	if err != nil {
-		return KittyDisplayUnit{}, nil
+		log.Logger.Warn().Err(err).Str("id", unit.ID).Msg("failed to open cached image, will re-download")
 	}
 
 	if found {
@@ -180,7 +185,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	decoded.lastUsed = time.Now()                              // last used for clean up
 	globalPlacedImages.Store(unit.ID, decoded)                 // store placement
 	if err := d.cacheDecodedImage(decoded, unit); err != nil { // cache decoded image
-		return KittyDisplayUnit{}, nil
+		log.Logger.Warn().Err(err).Str("id", unit.ID).Msg("failed to cache decoded image")
 	}
 
 	return KittyDisplayUnit{
@@ -193,7 +198,11 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 	var cmd strings.Builder
 
 	globalPlacedImages.Range(func(key, value any) bool {
-		c := value.(DecodedImage)
+		c, ok := value.(DecodedImage)
+		if !ok {
+			globalPlacedImages.Delete(key)
+			return true
+		}
 		if time.Since(c.lastUsed) > maxAge {
 			fmt.Fprintf(&cmd, "\x1b_Ga=D,i=%d,q=2\x1b\\", c.ID)
 			globalPlacedImages.Delete(key)
@@ -490,20 +499,65 @@ func (d *DisplayManager) createGetCacheDirectory(dir string) (string, error) {
 
 func imageToKittyBytes(img image.Image) []byte {
 	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+	buff := make([]byte, width*height*4) // 4 bytes per pixel
 
-	buff := make([]byte, 0, bounds.Dx()*bounds.Dy()*4) // 4 bytes per pixel
+	// Fast path for *image.RGBA (most common after compositing)
+	if rgba, ok := img.(*image.RGBA); ok {
+		i := 0
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			rowStart := (y-rgba.Rect.Min.Y)*rgba.Stride + (bounds.Min.X-rgba.Rect.Min.X)*4
+			for x := 0; x < width; x++ {
+				off := rowStart + x*4
+				buff[i] = rgba.Pix[off]     // R
+				buff[i+1] = rgba.Pix[off+1] // G
+				buff[i+2] = rgba.Pix[off+2] // B
+				buff[i+3] = rgba.Pix[off+3] // A
+				i += 4
+			}
+		}
+		return buff
+	}
 
+	// Fast path for *image.NRGBA
+	if nrgba, ok := img.(*image.NRGBA); ok {
+		i := 0
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			rowStart := (y-nrgba.Rect.Min.Y)*nrgba.Stride + (bounds.Min.X-nrgba.Rect.Min.X)*4
+			for x := 0; x < width; x++ {
+				off := rowStart + x*4
+				// NRGBA stores non-premultiplied, kitty expects premultiplied
+				a := nrgba.Pix[off+3]
+				if a == 255 {
+					buff[i] = nrgba.Pix[off]
+					buff[i+1] = nrgba.Pix[off+1]
+					buff[i+2] = nrgba.Pix[off+2]
+				} else if a == 0 {
+					// fully transparent
+				} else {
+					// premultiply
+					buff[i] = uint8(uint16(nrgba.Pix[off]) * uint16(a) / 255)
+					buff[i+1] = uint8(uint16(nrgba.Pix[off+1]) * uint16(a) / 255)
+					buff[i+2] = uint8(uint16(nrgba.Pix[off+2]) * uint16(a) / 255)
+				}
+				buff[i+3] = a
+				i += 4
+			}
+		}
+		return buff
+	}
+
+	// Fallback for other image types (uses slower img.At interface)
+	i := 0
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			pixel := img.At(x, y)
-			r, g, b, a := pixel.RGBA()
-
-			r = r >> 8
-			g = g >> 8
-			b = b >> 8
-			a = a >> 8
-
-			buff = append(buff, byte(r), byte(g), byte(b), byte(a))
+			r, g, b, a := img.At(x, y).RGBA()
+			buff[i] = byte(r >> 8)
+			buff[i+1] = byte(g >> 8)
+			buff[i+2] = byte(b >> 8)
+			buff[i+3] = byte(a >> 8)
+			i += 4
 		}
 	}
 

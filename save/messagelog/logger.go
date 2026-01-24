@@ -93,9 +93,7 @@ func (b *BatchedMessageLogger) LogMessages(twitchMsgChan <-chan *twitchirc.Priva
 	var batch []*twitchirc.PrivateMessage
 
 	timer := time.NewTimer(maxBatchWait)
-	defer func() {
-		timer.Stop()
-	}()
+	defer timer.Stop()
 
 SELECT_LOOP:
 	for {
@@ -135,10 +133,8 @@ SELECT_LOOP:
 			// clear batch
 			batch = []*twitchirc.PrivateMessage{}
 
-			// reset timer, drain channel if needed
-			if !timer.Stop() {
-				<-timer.C
-			}
+			// reset timer (Go 1.23+ handles channel drain automatically)
+			timer.Stop()
 			timer.Reset(maxBatchWait)
 		case <-timer.C:
 			if len(batch) == 0 {

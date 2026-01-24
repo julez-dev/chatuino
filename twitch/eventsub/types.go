@@ -1,7 +1,6 @@
 package eventsub
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -11,11 +10,6 @@ type metadata struct {
 	MessageTimeStamp    time.Time `json:"message_timestamp"`
 	SubscriptionType    string    `json:"subscription_type"`
 	SubscriptionVersion string    `json:"subscription_version"`
-}
-
-type untypedMessagePayload struct {
-	Metadata metadata        `json:"metadata"`
-	Payload  json.RawMessage `json:"payload"`
 }
 
 type Message[T any] struct {

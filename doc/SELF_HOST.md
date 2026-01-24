@@ -1,38 +1,38 @@
-# Self Host
+# Self-Hosting
 
-Chatuino needs a server component for handling the user authentication flow with Twitch.
+Chatuino requires a server component to handle the user authentication flow with Twitch.
 
-Additionally, the server component is used for serving responses from Twitch API endpoints that normally require a authenticated user or app, when the anonymous account user is used to connect to a chat.
+Additionally, the server component serves responses from Twitch API endpoints that normally require an authenticated user or app when the anonymous account is used to connect to chat.
 
-The server component in included inside the Chatuino binary.
+The server component is included in the Chatuino binary.
 
-## Prerequisite
+## Prerequisites
 
-In order to self host Chatuino, you need to authenticate an app with Twitch and obtain a `client_id` and `client_secret` for the app.
+To self-host Chatuino, you need to register an app with Twitch and obtain a `client_id` and `client_secret`.
 
-You can do this in the [twitch dev console](https://dev.twitch.tv/console/apps) under `Register Your Application`.
+Register your application in the [Twitch Dev Console](https://dev.twitch.tv/console/apps) under "Register Your Application".
 
-Twitch allows localhost as a valid non https redirect URL, make sure to use the port which will later be used by the server.
+Twitch allows localhost as a valid non-HTTPS redirect URL. Use the port that the server will use.
 
-![Screenshot on how to create app in twitch dev console.](twitch_dev.png)
+![Creating an app in the Twitch Dev Console](twitch_dev.png)
 
-You can pass the client_id and client_secret to the server component via environment variables (`CHATUINO_CLIENT_ID` and `CHATUINO_CLIENT_SECRET`).
+Pass the `client_id` and `client_secret` to the server via environment variables `CHATUINO_CLIENT_ID` and `CHATUINO_CLIENT_SECRET`.
 
-You also want to configure the `CHATUINO_API_HOST` (<http://localhost:8080> in this example) environment variable which is used by the Chatuino main app.
+Configure the `CHATUINO_API_HOST` environment variable (e.g., `http://localhost:8080`) for the Chatuino main application.
 
-## Running the server
+## Running the Server
 
-### Running the binary directly
+### Running the Binary Directly
 
-You can run the server component by executing the Chatuino binary with the `server` subcommand.
+Run the server by executing the Chatuino binary with the `server` subcommand:
 
 ```sh
 chatuino --log --human-readable server --redirect-url=http://localhost:8080/auth/redirect
 ```
 
-### Running the server inside docker
+### Running with Docker
 
-You can run the server component inside a docker container.
+Run the server in a Docker container:
 
 ```sh
 docker run -d \
@@ -47,9 +47,7 @@ docker run -d \
 
 ## Launching Chatuino
 
-After the server is started and `CHATUINO_API_HOST` is configured, you can start the Chatuino main app.
-
-Example:
+Once the server is running and `CHATUINO_API_HOST` is configured, start the Chatuino application:
 
 ```sh
 CHATUINO_API_HOST=http://localhost:8080 chatuino

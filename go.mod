@@ -20,7 +20,6 @@ require github.com/cli/browser v1.3.0
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/adrg/xdg v0.5.3
-	github.com/avast/retry-go/v4 v4.7.0
 	github.com/coder/websocket v1.8.14
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gen2brain/avif v0.4.4
