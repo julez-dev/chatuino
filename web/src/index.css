@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+/* IBM Plex Mono - self-hosted */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Bold.woff2") format("woff2");
+}
+
+/* Color Palette as CSS Variables */
+@theme {
+  /* Custom deep navy background */
+  --color-bg-deep: #000b1e;
+  --color-bg-card: #0a1628;
+  --color-bg-elevated: #122035;
+
+  /* Backgrounds - adjusted for deep navy */
+  --color-nord0: #000b1e;
+  --color-nord1: #0a1628;
+  --color-nord2: #1a2d45;
+  --color-nord3: #6b7f99;
+
+  /* Snow Storm - text */
+  --color-nord4: #d8dee9;
+  --color-nord5: #e5e9f0;
+  --color-nord6: #eceff4;
+
+  /* Frost - accents */
+  --color-nord7: #8fbcbb;
+  --color-nord8: #88c0d0;
+  --color-nord9: #81a1c1;
+  --color-nord10: #5e81ac;
+
+  /* Aurora - semantic */
+  --color-nord11: #bf616a;
+  --color-nord12: #d08770;
+  --color-nord13: #ebcb8b;
+  --color-nord14: #a3be8c;
+  --color-nord15: #b48ead;
+
+  /* Semantic aliases */
+  --color-background: var(--color-bg-deep);
+  --color-foreground: var(--color-nord4);
+  --color-muted: var(--color-nord3);
+  --color-muted-foreground: var(--color-nord4);
+  --color-card: var(--color-bg-card);
+  --color-card-foreground: var(--color-nord4);
+  --color-border: var(--color-nord2);
+  --color-primary: var(--color-nord8);
+  --color-primary-foreground: #000b1e;
+  --color-secondary: var(--color-nord9);
+  --color-secondary-foreground: #000b1e;
+  --color-accent: var(--color-nord7);
+  --color-accent-foreground: #000b1e;
+  --color-destructive: var(--color-nord11);
+  --color-destructive-foreground: var(--color-nord6);
+  --color-success: var(--color-nord14);
+  --color-warning: var(--color-nord13);
+
+  /* Typography */
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Spacing */
+  --radius: 0.375rem;
+}
+
+/* Base styles */
+html {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-background);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--color-nord8);
+  color: var(--color-nord0);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-nord1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-nord3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-nord8);
+}
+
+/* Code blocks */
+pre,
+code {
+  font-family: var(--font-mono);
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-nord8);
+  outline-offset: 2px;
+}
+
+/* Link styles */
+a {
+  color: var(--color-nord8);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: var(--color-nord7);
+}
+
+/* TUI-style panel borders */
+.panel {
+  border: 1px solid var(--color-nord2);
+  background-color: var(--color-nord1);
+  border-radius: var(--radius);
+}
+
+/* TUI-style header with brackets */
+.panel-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-nord8);
+  font-weight: 500;
+}
+
+.panel-header::before {
+  content: "[";
+  color: var(--color-nord3);
+}
+
+.panel-header::after {
+  content: "]";
+  color: var(--color-nord3);
+}
