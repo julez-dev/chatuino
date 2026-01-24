@@ -96,7 +96,7 @@ func NewAPI(clientID string, opts ...APIOptionFunc) (*API, error) {
 	}
 
 	if api.client == nil {
-		api.client = &http.Client{}
+		api.client = http.DefaultClient
 	}
 
 	// Wrap the client's transport with rate limit retry logic

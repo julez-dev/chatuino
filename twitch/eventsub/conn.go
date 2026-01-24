@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	DefaultEventSubURL     = "wss://eventsub.wss.twitch.tv/ws?keepalive_timeout_seconds=30"
+	DefaultEventSubURL = "wss://eventsub.wss.twitch.tv/ws?keepalive_timeout_seconds=30"
+	//DefaultEventSubURL     = "ws://127.0.0.1:8080/ws"
 	eventSubDialTimeout    = 30 * time.Second
 	eventSubReconnectDelay = 5 * time.Second
 	eventSubDuplicateTTL   = 15 * time.Minute
