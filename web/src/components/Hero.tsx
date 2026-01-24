@@ -4,7 +4,7 @@ export default function Hero() {
   return (
     <section class="relative overflow-hidden py-16 md:py-24">
       {/* Background gradient */}
-      <div class="absolute inset-0 bg-gradient-to-b from-nord1/50 to-transparent" />
+      <div class="absolute inset-0 bg-linear-to-b from-nord1/50 to-transparent" />
 
       <div class="relative mx-auto max-w-6xl px-4">
         <div class="flex flex-col items-center text-center">

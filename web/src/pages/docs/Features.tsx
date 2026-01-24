@@ -1,6 +1,14 @@
+import { Link, Meta, Title } from "@solidjs/meta";
+
 export default function Features() {
   return (
     <div>
+      <Title>Features - Chatuino</Title>
+      <Meta
+        name="description"
+        content="Explore Chatuino features: account management, graphical emotes, 7TV/BTTV support, user inspection, message logging, and more."
+      />
+      <Link rel="canonical" href="https://chatuino.net/docs/features" />
       <h1 class="mb-8 text-3xl font-bold text-nord4">
         <span class="text-nord3">[</span>
         <span class="text-nord8"> Features </span>

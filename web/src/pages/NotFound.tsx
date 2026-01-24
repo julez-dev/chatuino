@@ -1,8 +1,10 @@
+import { Title } from "@solidjs/meta";
 import { A } from "@solidjs/router";
 
 export default function NotFound() {
   return (
     <div class="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+      <Title>404 - Page Not Found - Chatuino</Title>
       <h1 class="mb-4 text-6xl font-bold">
         <span class="text-nord3">[</span>
         <span class="text-nord8"> 404 </span>

@@ -1,6 +1,14 @@
+import { Link, Meta, Title } from "@solidjs/meta";
+
 export default function Settings() {
   return (
     <div>
+      <Title>Settings - Chatuino</Title>
+      <Meta
+        name="description"
+        content="Configure Chatuino settings: YAML configuration, keybindings, filters, notification templates, and cache management."
+      />
+      <Link rel="canonical" href="https://chatuino.net/docs/settings" />
       <h1 class="mb-8 text-3xl font-bold text-nord4">
         <span class="text-nord3">[</span>
         <span class="text-nord8"> Settings </span>

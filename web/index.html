@@ -2,14 +2,70 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Chatuino - A Twitch chat client that runs in your terminal" />
-    <meta name="theme-color" content="#2e3440" />
+    
+    <!-- Primary Meta Tags -->
     <title>Chatuino - Terminal Twitch Chat Client</title>
+    <meta name="title" content="Chatuino - Terminal Twitch Chat Client" />
+    <meta name="description" content="A Twitch chat client that runs in your terminal. Multiple accounts, graphical emotes, 7TV & BTTV support, message logging, and more." />
+    <meta name="keywords" content="twitch, chat, terminal, cli, tui, emotes, 7tv, bttv, ffz, irc" />
+    <meta name="author" content="julez-dev" />
+    <meta name="theme-color" content="#000b1e" />
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://chatuino.net/" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://chatuino.net/" />
+    <meta property="og:title" content="Chatuino - Terminal Twitch Chat Client" />
+    <meta property="og:description" content="A Twitch chat client that runs in your terminal. Multiple accounts, graphical emotes, 7TV & BTTV support, message logging, and more." />
+    <meta property="og:image" content="https://chatuino.net/preview.png" />
+    <meta property="og:site_name" content="Chatuino" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://chatuino.net/" />
+    <meta name="twitter:title" content="Chatuino - Terminal Twitch Chat Client" />
+    <meta name="twitter:description" content="A Twitch chat client that runs in your terminal. Multiple accounts, graphical emotes, 7TV & BTTV support, message logging, and more." />
+    <meta name="twitter:image" content="https://chatuino.net/preview.png" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    
     <!-- Preload fonts -->
     <link rel="preload" href="/fonts/IBMPlexMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/IBMPlexMono-Medium.woff2" as="font" type="font/woff2" crossorigin />
+    
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Chatuino",
+      "description": "A Twitch chat client that runs in your terminal",
+      "url": "https://chatuino.net",
+      "applicationCategory": "CommunicationApplication",
+      "operatingSystem": "Linux, macOS, Windows",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "julez-dev",
+        "url": "https://github.com/julez-dev"
+      },
+      "sourceOrganization": {
+        "@type": "Organization",
+        "name": "GitHub",
+        "url": "https://github.com/julez-dev/chatuino"
+      },
+      "license": "https://opensource.org/licenses/MIT"
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

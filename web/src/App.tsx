@@ -1,3 +1,4 @@
+import { MetaProvider } from "@solidjs/meta";
 import { Route, Router } from "@solidjs/router";
 import { type JSX, lazy } from "solid-js";
 import Footer from "@/components/Footer";
@@ -23,17 +24,19 @@ function Layout(props: { children?: JSX.Element }) {
 
 function App() {
   return (
-    <Router root={Layout}>
-      <Route path="/" component={Landing} />
-      <Route path="/docs" component={DocsLayout}>
-        <Route path="/" component={Features} />
-        <Route path="/features" component={Features} />
-        <Route path="/settings" component={Settings} />
-        <Route path="/theme" component={Theme} />
-        <Route path="/self-host" component={SelfHost} />
-      </Route>
-      <Route path="*" component={NotFound} />
-    </Router>
+    <MetaProvider>
+      <Router root={Layout}>
+        <Route path="/" component={Landing} />
+        <Route path="/docs" component={DocsLayout}>
+          <Route path="/" component={Features} />
+          <Route path="/features" component={Features} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/theme" component={Theme} />
+          <Route path="/self-host" component={SelfHost} />
+        </Route>
+        <Route path="*" component={NotFound} />
+      </Router>
+    </MetaProvider>
   );
 }
 

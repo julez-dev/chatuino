@@ -1,6 +1,14 @@
+import { Link, Meta, Title } from "@solidjs/meta";
+
 export default function SelfHost() {
   return (
     <div>
+      <Title>Self-Hosting - Chatuino</Title>
+      <Meta
+        name="description"
+        content="Run your own Chatuino server for Twitch authentication. Docker setup, environment configuration, and Twitch app registration."
+      />
+      <Link rel="canonical" href="https://chatuino.net/docs/self-host" />
       <h1 class="mb-8 text-3xl font-bold text-nord4">
         <span class="text-nord3">[</span>
         <span class="text-nord8"> Self-Hosting </span>

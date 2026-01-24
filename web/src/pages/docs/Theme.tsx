@@ -1,6 +1,14 @@
+import { Link, Meta, Title } from "@solidjs/meta";
+
 export default function Theme() {
   return (
     <div>
+      <Title>Theme - Chatuino</Title>
+      <Meta
+        name="description"
+        content="Customize Chatuino colors with theme.yaml. Nord color scheme by default, fully customizable."
+      />
+      <Link rel="canonical" href="https://chatuino.net/docs/theme" />
       <h1 class="mb-8 text-3xl font-bold text-nord4">
         <span class="text-nord3">[</span>
         <span class="text-nord8"> Theme </span>
