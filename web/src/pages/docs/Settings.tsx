@@ -1,4 +1,5 @@
 import { Link, Meta, Title } from "@solidjs/meta";
+import { PreviewImage } from "@/components/ImagePreview";
 
 export default function Settings() {
   return (
@@ -285,7 +286,7 @@ custom_commands:
           </code>
         </pre>
         <div class="overflow-hidden rounded-lg border border-nord2">
-          <img
+          <PreviewImage
             src="/screenshots/cache-stats.png"
             alt="Cache statistics output"
             class="w-full"

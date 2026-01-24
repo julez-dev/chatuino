@@ -3,6 +3,7 @@ import { Route, Router } from "@solidjs/router";
 import { type JSX, lazy } from "solid-js";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
+import { ImagePreviewModal } from "@/components/ImagePreview";
 
 const Landing = lazy(() => import("@/pages/Landing"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
@@ -18,6 +19,7 @@ function Layout(props: { children?: JSX.Element }) {
       <Header />
       <main class="flex-1">{props.children}</main>
       <Footer />
+      <ImagePreviewModal />
     </div>
   );
 }

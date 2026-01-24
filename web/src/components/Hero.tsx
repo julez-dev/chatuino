@@ -1,4 +1,5 @@
 import { A } from "@solidjs/router";
+import { PreviewImage } from "@/components/ImagePreview";
 
 export default function Hero() {
   return (
@@ -46,12 +47,12 @@ export default function Hero() {
               <div class="h-3 w-3 rounded-full bg-nord14" />
               <span class="ml-4 text-sm text-nord4">chatuino</span>
             </div>
-            <img
+            <PreviewImage
               src="/demo.gif"
               alt="Chatuino demo showing Twitch chat in a terminal"
               class="w-full"
-              width="896"
-              height="504"
+              width={896}
+              height={504}
               loading="eager"
             />
           </div>

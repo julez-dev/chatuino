@@ -1,4 +1,5 @@
 import { Link, Meta, Title } from "@solidjs/meta";
+import { PreviewImage } from "@/components/ImagePreview";
 
 export default function Features() {
   return (
@@ -24,7 +25,7 @@ export default function Features() {
           anonymous account, which lets you view chat without logging in.
         </p>
         <div class="overflow-hidden rounded-lg border border-nord2">
-          <img
+          <PreviewImage
             src="/screenshots/account-ui.png"
             alt="Account UI showing account management interface"
             class="w-full"
@@ -124,24 +125,24 @@ export default function Features() {
 
         <div class="mt-6 grid gap-4 md:grid-cols-2">
           <div class="overflow-hidden rounded-lg border border-nord2">
-            <img
+            <PreviewImage
               src="/screenshots/chat-view.png"
               alt="Chat view showing Twitch chat"
               class="w-full"
               loading="lazy"
             />
-            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord3">
+            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord4">
               Chat View
             </p>
           </div>
           <div class="overflow-hidden rounded-lg border border-nord2">
-            <img
+            <PreviewImage
               src="/screenshots/message-search.png"
               alt="Message search interface"
               class="w-full"
               loading="lazy"
             />
-            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord3">
+            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord4">
               Message Search
             </p>
           </div>
@@ -166,24 +167,24 @@ export default function Features() {
         </p>
         <div class="grid gap-4 md:grid-cols-2">
           <div class="overflow-hidden rounded-lg border border-nord2">
-            <img
+            <PreviewImage
               src="/screenshots/auto-completions-emotes.png"
               alt="Emote auto-completion"
               class="w-full"
               loading="lazy"
             />
-            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord3">
+            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord4">
               Emote Completion
             </p>
           </div>
           <div class="overflow-hidden rounded-lg border border-nord2">
-            <img
+            <PreviewImage
               src="/screenshots/auto-completions_user.png"
               alt="Username auto-completion"
               class="w-full"
               loading="lazy"
             />
-            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord3">
+            <p class="border-t border-nord2 bg-nord1 px-3 py-2 text-sm text-nord4">
               Username Completion
             </p>
           </div>
@@ -211,25 +212,9 @@ export default function Features() {
           maintain a local log of all chats you visit.
         </p>
         <div class="overflow-hidden rounded-lg border border-nord2">
-          <img
+          <PreviewImage
             src="/screenshots/message-log.png"
             alt="User inspection showing message log"
-            class="w-full"
-            loading="lazy"
-          />
-        </div>
-      </section>
-
-      <section class="mb-12">
-        <h2 class="mb-4 text-xl font-semibold text-nord4">Emotes</h2>
-        <p class="mb-4 text-nord4">
-          Chatuino can display emotes as text or graphical images, depending on
-          terminal and OS.
-        </p>
-        <div class="overflow-hidden rounded-lg border border-nord2">
-          <img
-            src="/emote-demo.gif"
-            alt="Graphical emotes demonstration"
             class="w-full"
             loading="lazy"
           />
@@ -259,7 +244,7 @@ export default function Features() {
           </li>
         </ul>
         <div class="mt-4 overflow-hidden rounded-lg border border-nord2">
-          <img
+          <PreviewImage
             src="/screenshots/new-window-prompt.png"
             alt="New tab creation prompt"
             class="w-full"
@@ -275,7 +260,7 @@ export default function Features() {
           arrangement.
         </p>
         <div class="overflow-hidden rounded-lg border border-nord2">
-          <img
+          <PreviewImage
             src="/screenshots/vertical-mode.png"
             alt="Vertical tab layout"
             class="w-full"
