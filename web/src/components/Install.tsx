@@ -111,7 +111,7 @@ function InstallCard(props: { method: InstallMethod }) {
           href={props.method.link}
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 rounded-md bg-nord8 px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-nord7"
+          class="inline-flex items-center gap-2 rounded-md bg-nord8 px-4 py-2 text-sm font-medium text-nord0 transition-colors hover:bg-nord7"
         >
           {props.method.linkText}
           <svg

@@ -24,7 +24,7 @@ export default function Hero() {
           <div class="mb-12 flex flex-wrap items-center justify-center gap-4">
             <a
               href="#install"
-              class="rounded-md bg-nord8 px-6 py-3 font-medium text-primary-foreground transition-colors hover:bg-nord7"
+              class="rounded-md bg-nord8 px-6 py-3 font-medium text-nord0 transition-colors hover:bg-nord7"
             >
               Install Now
             </a>

@@ -17,7 +17,7 @@ export default function NotFound() {
       <div class="flex gap-4">
         <A
           href="/"
-          class="rounded-md bg-nord8 px-6 py-3 font-medium text-primary-foreground transition-colors hover:bg-nord7"
+          class="rounded-md bg-nord8 px-6 py-3 font-medium text-nord0 transition-colors hover:bg-nord7"
         >
           Go Home
         </A>
