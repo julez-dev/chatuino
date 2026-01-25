@@ -11,43 +11,6 @@ import (
 //go:embed all:dist
 var frontendFS embed.FS
 
-// setCacheHeaders sets appropriate cache headers based on the file path.
-// - Hashed assets (in /assets/): immutable, 1 year cache
-// - Fonts: 1 year cache
-// - Images/GIFs: 1 week cache
-// - HTML/XML/TXT: no-cache (revalidate)
-func setCacheHeaders(w http.ResponseWriter, filePath string) {
-	switch {
-	// Vite hashed assets - immutable, cache forever
-	case strings.HasPrefix(filePath, "assets/"):
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-
-	// Fonts - long cache
-	case strings.HasSuffix(filePath, ".woff2") || strings.HasSuffix(filePath, ".woff"):
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-
-	// Images and GIFs - 1 week cache
-	case strings.HasSuffix(filePath, ".png") ||
-		strings.HasSuffix(filePath, ".jpg") ||
-		strings.HasSuffix(filePath, ".jpeg") ||
-		strings.HasSuffix(filePath, ".gif") ||
-		strings.HasSuffix(filePath, ".webp") ||
-		strings.HasSuffix(filePath, ".svg") ||
-		strings.HasSuffix(filePath, ".ico"):
-		w.Header().Set("Cache-Control", "public, max-age=604800")
-
-	// HTML, sitemap, robots - revalidate every time
-	case strings.HasSuffix(filePath, ".html") ||
-		strings.HasSuffix(filePath, ".xml") ||
-		strings.HasSuffix(filePath, ".txt"):
-		w.Header().Set("Cache-Control", "no-cache")
-
-	// Default - short cache with revalidation
-	default:
-		w.Header().Set("Cache-Control", "public, max-age=3600")
-	}
-}
-
 // staticFileServer serves the embedded static files from web/dist
 // It handles SPA routing by returning index.html for non-file paths
 func staticFileServer() http.Handler {
@@ -111,4 +74,43 @@ func staticFileServer() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		w.Write(content)
 	})
+}
+
+// setCacheHeaders sets appropriate cache headers based on the file path.
+// - Hashed assets (in /assets/): immutable, 1 year cache
+// - Fonts: 1 year cache
+// - Images/GIFs: 1 week cache
+// - HTML/XML/TXT: no-cache (revalidate)
+func setCacheHeaders(w http.ResponseWriter, filePath string) {
+	switch {
+	// Vite hashed assets - immutable, cache forever
+	case strings.HasPrefix(filePath, "assets/"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+	// Fonts - long cache
+	case strings.HasSuffix(filePath, ".woff2") || strings.HasSuffix(filePath, ".woff"):
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+	// Images, GIFs, and videos - 1 week cache
+	case strings.HasSuffix(filePath, ".png") ||
+		strings.HasSuffix(filePath, ".jpg") ||
+		strings.HasSuffix(filePath, ".jpeg") ||
+		strings.HasSuffix(filePath, ".gif") ||
+		strings.HasSuffix(filePath, ".webp") ||
+		strings.HasSuffix(filePath, ".svg") ||
+		strings.HasSuffix(filePath, ".ico") ||
+		strings.HasSuffix(filePath, ".mp4") ||
+		strings.HasSuffix(filePath, ".webm"):
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+
+	// HTML, sitemap, robots - revalidate every time
+	case strings.HasSuffix(filePath, ".html") ||
+		strings.HasSuffix(filePath, ".xml") ||
+		strings.HasSuffix(filePath, ".txt"):
+		w.Header().Set("Cache-Control", "no-cache")
+
+	// Default - short cache with revalidation
+	default:
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+	}
 }
