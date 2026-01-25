@@ -1,6 +1,17 @@
 import { A } from "@solidjs/router";
+import { createSignal, onMount } from "solid-js";
 
 export default function Hero() {
+  const [videoFailed, setVideoFailed] = createSignal(false);
+
+  let videoRef: HTMLVideoElement | undefined;
+
+  onMount(() => {
+    if (!videoRef) return;
+    // Detect if video fails to play (Safari/iOS issues)
+    videoRef.play().catch(() => setVideoFailed(true));
+  });
+
   return (
     <section class="relative overflow-hidden py-16 md:py-24">
       {/* Background gradient */}
@@ -46,18 +57,29 @@ export default function Hero() {
               <div class="h-3 w-3 rounded-full bg-nord14" />
               <span class="ml-4 text-sm text-nord4">chatuino</span>
             </div>
-            <video
-              autoplay
-              loop
-              muted
-              playsinline
-              class="w-full"
-              width={896}
-              height={504}
-            >
-              <source src="/demo_optimized.mp4" type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
+            {videoFailed() ? (
+              <img
+                src="/demo.gif"
+                alt="Chatuino demo"
+                class="w-full"
+                width={896}
+                height={504}
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                autoplay
+                loop
+                muted
+                playsinline
+                class="w-full"
+                width={896}
+                height={504}
+                onError={() => setVideoFailed(true)}
+              >
+                <source src="/demo_optimized.mp4" type="video/mp4" />
+              </video>
+            )}
           </div>
 
           {/* Feature highlights */}
