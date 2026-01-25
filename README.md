@@ -1,6 +1,8 @@
-# <img src="doc/chatuino_logo_trans.png" alt="Chatuino logo" height="32"> Chatuino
-
 [![chatuino-bin](https://img.shields.io/aur/version/chatuino-bin?color=1793d1&label=chatuino-bin&logo=arch-linux&style=for-the-badge)](https://aur.archlinux.org/packages/chatuino-bin/)
+
+<p align="center">
+  <img src="doc/chatuino_splash.png" alt="Chatuino" width="400">
+</p>
 
 A Twitch chat client that runs in your terminal.
 

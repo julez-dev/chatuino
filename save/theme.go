@@ -83,8 +83,8 @@ func BuildDefaultTheme() Theme {
 		StatusColor: "#88c0d0",
 
 		// Splash screen
-		ChatuinoSplashColor:  "#8fbcbb",
-		SplashHighlightColor: "#d8dee9",
+		ChatuinoSplashColor:  "#fd00eb",
+		SplashHighlightColor: "#88c0d0",
 
 		// Tab headers - deeper contrast
 		TabHeaderBackgroundColor:       "#3b4252",
