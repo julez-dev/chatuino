@@ -19,11 +19,15 @@ export default function Hero() {
 
       <div class="relative mx-auto max-w-6xl px-4">
         <div class="flex flex-col items-center text-center">
-          {/* Terminal-style title */}
-          <h1 class="mb-4 text-4xl font-bold md:text-6xl">
-            <span class="text-nord3">[</span>
-            <span class="text-nord8"> Chatuino </span>
-            <span class="text-nord3">]</span>
+          {/* Logo */}
+          <h1 class="mb-4">
+            <img
+              src="/chatuino_splash_brackets_cropped.png"
+              alt="Chatuino"
+              class="h-12 md:h-16"
+              width={400}
+              height={103}
+            />
           </h1>
 
           {/* Tagline */}

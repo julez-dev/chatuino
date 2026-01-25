@@ -3,11 +3,15 @@ package mainui
 import (
 	"strings"
 
+	_ "embed"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/common-nighthawk/go-figure"
 	"github.com/julez-dev/chatuino/save"
 )
+
+//go:embed splash.txt
+var splashArt string
 
 type splash struct {
 	width, height     int
@@ -43,7 +47,7 @@ func (s splash) view(loading bool, err error) string {
 		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
 	}
 
-	logo := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.ChatuinoSplashColor)).Render(figure.NewFigure("CHATUINO", "isometric1", true).String())
+	logo := splashArt
 	splash := style.Render(logo + "\n" + "Welcome to " + name.String() + "!\n" + help)
 
 	return splash
