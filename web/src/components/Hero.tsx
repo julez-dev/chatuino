@@ -1,5 +1,4 @@
 import { A } from "@solidjs/router";
-import { PreviewImage } from "@/components/ImagePreview";
 
 export default function Hero() {
   return (
@@ -38,7 +37,7 @@ export default function Hero() {
             </A>
           </div>
 
-          {/* Demo GIF */}
+          {/* Demo Video */}
           <div class="w-full max-w-4xl overflow-hidden rounded-lg border border-nord2 bg-nord1 shadow-2xl">
             {/* Terminal header bar */}
             <div class="flex items-center gap-2 border-b border-nord2 bg-nord1 px-4 py-2">
@@ -47,14 +46,18 @@ export default function Hero() {
               <div class="h-3 w-3 rounded-full bg-nord14" />
               <span class="ml-4 text-sm text-nord4">chatuino</span>
             </div>
-            <PreviewImage
-              src="/demo.gif"
-              alt="Chatuino demo showing Twitch chat in a terminal"
+            <video
+              autoplay
+              loop
+              muted
+              playsinline
               class="w-full"
               width={896}
               height={504}
-              loading="eager"
-            />
+            >
+              <source src="/demo_optimized.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
           </div>
 
           {/* Feature highlights */}
