@@ -102,10 +102,11 @@ func intToRGB(i int32) (byte, byte, byte) {
 }
 
 type DisplayUnit struct {
-	ID         string
-	Directory  string
-	IsAnimated bool
-	Load       func() (io.ReadCloser, string, error) `json:"-"`
+	ID           string
+	Directory    string
+	IsAnimated   bool
+	RightPadding int                                   // pixels of transparent padding to add on right side
+	Load         func() (io.ReadCloser, string, error) `json:"-"`
 }
 
 type KittyDisplayUnit struct {
@@ -380,6 +381,13 @@ func (d *DisplayManager) convertImageFrame(img image.Image, unit DisplayUnit, of
 	height := bounds.Dy()
 	width := bounds.Dx()
 
+	// Apply right padding if specified
+	if unit.RightPadding > 0 {
+		img = addRightPadding(img, unit.RightPadding)
+		bounds = img.Bounds()
+		width = bounds.Dx()
+	}
+
 	ratio := d.cellHeight / float32(height)
 	width = int(math.Round(float64(float32(width) * ratio)))
 	cols := int(math.Ceil(float64(float32(width) / d.cellWidth)))
@@ -495,6 +503,18 @@ func (d *DisplayManager) createGetCacheDirectory(dir string) (string, error) {
 	}
 
 	return path, nil
+}
+
+// addRightPadding creates a new image with transparent padding on the right side.
+func addRightPadding(img image.Image, padding int) image.Image {
+	bounds := img.Bounds()
+	newWidth := bounds.Dx() + padding
+	newHeight := bounds.Dy()
+
+	padded := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
+	draw.Draw(padded, bounds, img, bounds.Min, draw.Src)
+
+	return padded
 }
 
 func imageToKittyBytes(img image.Image) []byte {

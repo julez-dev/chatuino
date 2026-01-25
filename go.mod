@@ -28,12 +28,12 @@ require (
 	github.com/julez-dev/reflow v0.0.0-20250718145208-b4c12bfbd7f7
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mailru/easyjson v0.9.1
-	github.com/redis/go-redis/v9 v9.17.2
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/rmhubbert/bubbletea-overlay v0.6.4
 	github.com/spf13/afero v1.15.0
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/image v0.35.0
-	modernc.org/sqlite v1.44.2
+	modernc.org/sqlite v1.44.3
 	resenje.org/singleflight v0.4.3
 )
 
@@ -48,7 +48,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.7.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.3.1 // indirect
+	github.com/clipperhouse/uax29/v2 v2.4.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect

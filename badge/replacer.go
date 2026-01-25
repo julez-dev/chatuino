@@ -19,6 +19,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// badgePadding is the number of transparent pixels added to the right of each badge.
+const badgePadding = 1
+
 type BadgeCache interface {
 	MatchBadgeSet(broadcasterID string, ircBadge []twitchirc.Badge) map[string]twitchapi.BadgeVersion
 }
@@ -85,8 +88,9 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (s
 		b := badgeMap[k]
 
 		u, err := r.displayManager.Convert(kittyimg.DisplayUnit{
-			ID:        broadcasterID + k + b.ID,
-			Directory: "badge",
+			ID:           broadcasterID + k + b.ID,
+			Directory:    "badge",
+			RightPadding: badgePadding,
 			Load: func() (io.ReadCloser, string, error) {
 				url := b.Image_URL_1x
 
@@ -141,8 +145,9 @@ func (r *Replacer) InjectContributorBadge(loginName string, badges map[string]st
 	}
 
 	u, err := r.displayManager.Convert(kittyimg.DisplayUnit{
-		ID:        "chatuino-contributor",
-		Directory: "badge",
+		ID:           "chatuino-contributor",
+		Directory:    "badge",
+		RightPadding: badgePadding,
 		Load: func() (io.ReadCloser, string, error) {
 			return io.NopCloser(bytes.NewReader(contributor.LogoPNG())), "image/png", nil
 		},
