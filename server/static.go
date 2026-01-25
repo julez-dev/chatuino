@@ -8,14 +8,14 @@ import (
 	"strings"
 )
 
-//go:embed all:dist
+//go:embed all:webdist
 var frontendFS embed.FS
 
 // staticFileServer serves the embedded static files from web/dist
 // It handles SPA routing by returning index.html for non-file paths
 func staticFileServer() http.Handler {
-	// Get the dist subdirectory from the embedded filesystem
-	distFS, err := fs.Sub(frontendFS, "dist")
+	// Get the webdist subdirectory from the embedded filesystem
+	distFS, err := fs.Sub(frontendFS, "webdist")
 	if err != nil {
 		panic("failed to get frontend subdirectory: " + err.Error())
 	}

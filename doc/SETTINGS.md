@@ -11,7 +11,7 @@ moderation:
 
   # NOTE: logs_channel_include and logs_channel_exclude are mutually exclusive.
   logs_channel_include: ["lirik", "sodapoppin"] # Only log specified channels
-  logs_channel_exclude: ["lec"] # Log all channels except those specified
+  # logs_channel_exclude: ["lec"] # Log all channels except those specified
 
 security:
   check_links: true # Check and display HTTP redirects next to URLs. Uses Chatuino server to hide IP when resolving; Default: true
