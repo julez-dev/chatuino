@@ -76,7 +76,7 @@ aurs:
     # Your app's homepage.
     #
     # Default: inferred from global metadata.
-    homepage: "https://github.com/julez-dev/chatuino"
+    homepage: "https://chatuino.net"
 
     # Your app's description.
     description: "A client for twitch's IRC service."
