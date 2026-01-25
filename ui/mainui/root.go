@@ -989,6 +989,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelID               string
 		channelGuestID          string
 		channelGuestDisplayName string
+		loginName               string
 	)
 
 	// Check when currently in shared session.
@@ -1021,6 +1022,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channelGuestID = ircMessage.SourceRoomID
 		channel = ircMessage.ChannelUserName
 		message = ircMessage.Message
+		loginName = ircMessage.LoginName
 
 		// if is shared display emotes from guest channel, when message is from guest
 		emoteSourceRoom = channelID
@@ -1119,6 +1121,14 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		}
 
 		event.displayModifier.badgeReplacement = replace
+		replaceCommand += p
+	}
+
+	if loginName != "" {
+		p, err := r.dependencies.BadgeReplacer.InjectContributorBadge(loginName, event.displayModifier.badgeReplacement)
+		if err != nil {
+			log.Logger.Info().Err(err).Str("login", loginName).Msg("failed to inject contributor badge")
+		}
 		replaceCommand += p
 	}
 

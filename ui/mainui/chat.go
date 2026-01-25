@@ -674,10 +674,17 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		}
 
 		if len(event.displayModifier.badgeReplacement) > 0 {
-			parts = append(parts, formatBadgeReplacement(c.deps.UserConfig.Settings, event.displayModifier.badgeReplacement))
+			badges := formatBadgeReplacement(c.deps.UserConfig.Settings, event.displayModifier.badgeReplacement)
+			if c.deps.UserConfig.Settings.Chat.GraphicBadges {
+				// Hair space (U+200A) - narrower gap since badges have pixel padding
+				parts = append(parts, badges+" "+userRenderFunc(msg.DisplayName)+": ")
+			} else {
+				parts = append(parts, badges)
+				parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
+			}
+		} else {
+			parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
 		}
-
-		parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
 		prefix := strings.Join(parts, " ")
 
 		c.setUserColorModifier(msg.Message, &event.displayModifier)
