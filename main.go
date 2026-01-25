@@ -88,6 +88,7 @@ func main() {
 			accountCMD,
 			serverCMD,
 			cacheCMD,
+			contributorsCMD,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{

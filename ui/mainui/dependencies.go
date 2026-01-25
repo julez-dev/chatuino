@@ -42,6 +42,7 @@ type EmoteReplacer interface {
 
 type BadgeReplacer interface {
 	Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, map[string]string, error)
+	InjectContributorBadge(loginName string, badges map[string]string) (string, error)
 }
 
 type APIClient interface {

@@ -87,6 +87,10 @@ See [Settings](doc/SETTINGS.md) for keybinds, emote display options, chat loggin
 
 Chatuino connects to `chatuino.net` by default for authentication and API proxying. If you prefer to run your own server, follow the [self-host guide](doc/SELF_HOST.md).
 
+## Contributing
+
+Contributions are welcome! If you contribute to Chatuino, add yourself to `contributor/contributors.json` with your GitHub username, email, and optionally your Twitch login name to receive attribution and a special contributor badge in chat.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

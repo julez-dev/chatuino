@@ -1,6 +1,7 @@
 package badge
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/julez-dev/chatuino/contributor"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -121,4 +123,34 @@ func (r *Replacer) fetch(ctx context.Context, reqURL string) (io.ReadCloser, str
 	}
 
 	return resp.Body, resp.Header.Get("content-type"), nil
+}
+
+// contributorBadgeText is the styled text badge for contributors in non-graphics mode.
+var contributorBadgeText = lipgloss.NewStyle().Foreground(lipgloss.Color("#88c0d0")).Render("Chatuino")
+
+// InjectContributorBadge adds a Chatuino contributor badge to the badge map if the user is a contributor.
+// The badge key "!chatuino" sorts before all other badges (ASCII '!' < letters).
+func (r *Replacer) InjectContributorBadge(loginName string, badges map[string]string) (string, error) {
+	if !contributor.IsContributor(loginName) {
+		return "", nil
+	}
+
+	if !r.enableGraphics {
+		badges["!chatuino"] = contributorBadgeText
+		return "", nil
+	}
+
+	u, err := r.displayManager.Convert(kittyimg.DisplayUnit{
+		ID:        "chatuino-contributor",
+		Directory: "badge",
+		Load: func() (io.ReadCloser, string, error) {
+			return io.NopCloser(bytes.NewReader(contributor.LogoPNG())), "image/png", nil
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to convert contributor badge: %w", err)
+	}
+
+	badges["!chatuino"] = u.ReplacementText
+	return u.PrepareCommand, nil
 }
