@@ -55,7 +55,7 @@ export default function Hero() {
               width={896}
               height={504}
             >
-              <source src="/demo.mp4" type="video/mp4" />
+              <source src="/demo_optimized.mp4" type="video/mp4" />
               Your browser does not support the video tag.
             </video>
           </div>
