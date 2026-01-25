@@ -16,7 +16,7 @@ interface InstallMethod {
 const installMethods: InstallMethod[] = [
   {
     id: "curl-linux",
-    name: "Install Script",
+    name: "Install Script (Linux)",
     os: "linux",
     primary: true,
     code: "curl -sSfL https://chatuino.net/install | sh",
@@ -24,7 +24,7 @@ const installMethods: InstallMethod[] = [
   },
   {
     id: "curl-macos",
-    name: "Install Script",
+    name: "Install Script (macOS)",
     os: "macos",
     primary: true,
     code: "curl -sSfL https://chatuino.net/install | sh",
@@ -44,14 +44,15 @@ const installMethods: InstallMethod[] = [
     name: "AUR (Arch Linux)",
     os: "linux",
     code: "yay -S chatuino-bin",
-    description: "Available in the Arch User Repository.",
+    description:
+      "Available in the Arch User Repository. Use your favorite AUR helper",
   },
   {
     id: "go-install",
     name: "Go Install",
     os: "all",
     code: "go install github.com/julez-dev/chatuino@latest",
-    description: "Requires Go 1.21+.",
+    description: "Requires Go 1.25+.",
   },
   {
     id: "releases",

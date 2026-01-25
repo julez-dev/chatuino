@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:server": "tsc -b && vite build && rm -rf ../server/dist && cp -r dist ../server/dist",
+    "build:server": "tsc -b && vite build && rm -rf ../server/webdist && cp -r dist ../server/webdist",
     "preview": "vite preview",
     "lint": "biome check src",
     "lint:fix": "biome check --write src",

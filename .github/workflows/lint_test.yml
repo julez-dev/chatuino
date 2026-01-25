@@ -48,8 +48,7 @@ jobs:
       - name: Build web frontend
         run: |
           cd web
-          npm run build
-          cp -r dist ../server/dist
+          npm run build:server
 
       - name: Verify dependencies
         run: |

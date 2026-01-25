@@ -41,7 +41,7 @@ moderation:
 
   # NOTE: logs_channel_include and logs_channel_exclude are mutually exclusive.
   logs_channel_include: ["lirik", "sodapoppin"] # Only log specified channels
-  logs_channel_exclude: ["lec"] # Log all channels except those specified
+  # logs_channel_exclude: ["lec"] # Log all channels except those specified
 
 security:
   check_links: true # Check and display HTTP redirects next to URLs. Uses Chatuino server to hide IP when resolving; Default: true
@@ -59,7 +59,7 @@ chat:
 custom_commands:
   # Custom commands are available as command suggestions
   - trigger: "/ocean"
-    replacement: "OCEAN MAN Take me by the hand lead me to the land that you understand"`}</code>
+    replacement: "OCEAN MAN 🌊 😍 Take me by the hand ✋ lead me to the land that you understand 🙌 🌊 OCEAN MAN 🌊 😍 The voyage 🚲 to the corner of the 🌎 globe is a real trip 👌 🌊 OCEAN MAN 🌊 😍 The crust of a tan man 👳 imbibed by the sand 👍 Soaking up the 💦 thirst of the land 💯"`}</code>
         </pre>
       </section>
 
@@ -101,7 +101,7 @@ custom_commands:
         <pre class="mb-6 overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
           <code class="text-nord4">{`custom_commands:
   - trigger: "/ocean"
-    replacement: "OCEAN MAN Take me by the hand..."`}</code>
+    replacement: "OCEAN MAN 🌊 😍 Take me by the hand..."`}</code>
         </pre>
 
         <h3 class="mb-2 text-lg font-medium text-nord4">Templated Commands</h3>
