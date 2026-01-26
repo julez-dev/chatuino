@@ -46,7 +46,7 @@ const features: Feature[] = [
   {
     title: "Message Search",
     description:
-      "Fuzzy search through chat history. Find messages and usernames quickly.",
+      "Search through chat history. Find messages and usernames quickly.",
     icon: "search",
   },
   {
@@ -57,13 +57,13 @@ const features: Feature[] = [
   },
   {
     title: "Configurable",
-    description:
-      "Customize themes, keybinds, and behavior. Make Chatuino yours.",
+    description: "Customize themes, keybinds, and behavior.",
     icon: "config",
   },
   {
     title: "Self-Hostable",
-    description: "Run your own server component. Full control over your data.",
+    description:
+      "Don't want to use chatuino.net? Run your own server component. Full control over your data.",
     icon: "server",
   },
 ];
