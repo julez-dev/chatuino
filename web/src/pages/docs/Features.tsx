@@ -22,7 +22,7 @@ export default function Features() {
         </h2>
         <p class="mb-4 text-nord4">
           Chatuino allows you to manage multiple accounts in addition to an
-          anonymous account, which lets you view chat without logging in.
+          anonymous account, which lets you view chats without logging in.
         </p>
         <div class="overflow-hidden rounded-lg border border-nord2">
           <PreviewImage
@@ -69,7 +69,7 @@ export default function Features() {
           <li>
             Press{" "}
             <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/</code> to
-            start a fuzzy search for messages or usernames
+            start a search for messages or usernames
           </li>
           <li>
             Press{" "}
@@ -198,7 +198,7 @@ export default function Features() {
           seen), follow age, and subscription status.
         </p>
         <p class="mb-4 text-nord4">
-          Fuzzy search is supported. Start user inspection with{" "}
+          Search is supported. Start user inspection with{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">Ctrl+L</code>{" "}
           or the{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
