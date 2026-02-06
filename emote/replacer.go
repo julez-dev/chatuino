@@ -34,6 +34,7 @@ type Replacer struct {
 	stvStyle  lipgloss.Style
 	ttvStyle  lipgloss.Style
 	bttvStyle lipgloss.Style
+	ffzStyle  lipgloss.Style
 }
 
 func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool, theme save.Theme, displayManager DisplayManager) *Replacer {
@@ -50,6 +51,7 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 		stvStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SevenTVEmoteColor)),
 		ttvStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color(theme.TwitchTVEmoteColor)),
 		bttvStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.BetterTTVEmoteColor)),
+		ffzStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color(theme.FFZEmoteColor)),
 	}
 }
 
@@ -147,6 +149,8 @@ func (i *Replacer) replaceEmoteColored(emote Emote) string {
 		return i.stvStyle.Render(emote.Text)
 	case BTTV:
 		return i.bttvStyle.Render(emote.Text)
+	case FFZ:
+		return i.ffzStyle.Render(emote.Text)
 	}
 
 	return emote.Text

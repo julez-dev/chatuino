@@ -15,6 +15,7 @@ type Theme struct {
 	SevenTVEmoteColor   string `yaml:"seven_tv_emote_color"`
 	TwitchTVEmoteColor  string `yaml:"twitch_tv_emote_color"`
 	BetterTTVEmoteColor string `yaml:"better_ttv_emote_color"`
+	FFZEmoteColor       string `yaml:"ffz_emote_color"`
 
 	InputPromptColor string `yaml:"input_prompt_color"`
 
@@ -56,6 +57,7 @@ func BuildDefaultTheme() Theme {
 		SevenTVEmoteColor:   "#88c0d0",
 		TwitchTVEmoteColor:  "#b48ead",
 		BetterTTVEmoteColor: "#bf616a",
+		FFZEmoteColor:       "#a3be8c",
 
 		// Input
 		InputPromptColor: "#88c0d0",
