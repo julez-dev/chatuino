@@ -9,19 +9,25 @@ import (
 	"strconv"
 )
 
-const baseURL = "https://api.frankerfacez.com/v1"
+const defaultBaseURL = "https://api.frankerfacez.com/v1"
 
 type API struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
-func NewAPI(client *http.Client) *API {
+func NewAPI(client *http.Client, baseURL string) *API {
 	if client == nil {
 		client = http.DefaultClient
 	}
 
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+
 	return &API{
-		client: client,
+		client:  client,
+		baseURL: baseURL,
 	}
 }
 
@@ -76,7 +82,7 @@ func collectEmotes(sets map[string]emoteSet) []Emote {
 func doRequest[T any](ctx context.Context, api API, method, url string, body io.Reader) (T, error) {
 	var data T
 
-	url = fmt.Sprintf("%s%s", baseURL, url)
+	url = fmt.Sprintf("%s%s", api.baseURL, url)
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
