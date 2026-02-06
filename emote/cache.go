@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/julez-dev/chatuino/twitch/bttv"
+	"github.com/julez-dev/chatuino/twitch/ffz"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 
 	"golang.org/x/sync/errgroup"
@@ -35,6 +37,11 @@ type BTTVEmoteFetcher interface {
 	GetChannelEmotes(ctx context.Context, broadcaster string) (bttv.UserResponse, error)
 }
 
+type FFZEmoteFetcher interface {
+	GetGlobalEmotes(context.Context) ([]ffz.Emote, error)
+	GetChannelEmotes(ctx context.Context, broadcaster string) ([]ffz.Emote, error)
+}
+
 type Cache struct {
 	logger zerolog.Logger
 	m      *sync.RWMutex
@@ -50,6 +57,7 @@ type Cache struct {
 	twitchEmotes  TwitchEmoteFetcher
 	sevenTVEmotes SevenTVEmoteFetcher
 	bttvEmotes    BTTVEmoteFetcher
+	ffzEmotes     FFZEmoteFetcher
 
 	// supress duplicated calls
 	single          *singleflight.Group
@@ -57,7 +65,7 @@ type Cache struct {
 	globalFetched   bool
 }
 
-func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher) *Cache {
+func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmotes SevenTVEmoteFetcher, bttvEmotes BTTVEmoteFetcher, ffzEmotes FFZEmoteFetcher) *Cache {
 	return &Cache{
 		logger:          logger,
 		m:               &sync.RWMutex{},
@@ -65,6 +73,7 @@ func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 		twitchEmotes:    twitchEmotes,
 		sevenTVEmotes:   sevenTVEmotes,
 		bttvEmotes:      bttvEmotes,
+		ffzEmotes:       ffzEmotes,
 		single:          &singleflight.Group{},
 		channelsFetched: map[string]struct{}{},
 		user:            map[string]EmoteSet{},
@@ -87,10 +96,12 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			ttvResp  twitchapi.EmoteResponse
 			stvResp  seventv.ChannelEmoteResponse
 			bttvResp bttv.UserResponse
+			ffzResp  []ffz.Emote
 
 			fetchErrs  error
-			errSevenTV error // routine will not cancel when 3rd pa
+			errSevenTV error // routine will not cancel when 3rd party fails
 			errBTTV    error
+			errFFZ     error
 		)
 
 		group, ctx := errgroup.WithContext(ctx)
@@ -132,13 +143,26 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			return nil
 		})
 
+		group.Go(func() error {
+			resp, err := s.ffzEmotes.GetChannelEmotes(ctx, channelID)
+			if err != nil {
+				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch FFZ emotes")
+				errFFZ = fmt.Errorf("could not fetch FFZ emotes: %w", err)
+				return nil
+			}
+
+			ffzResp = resp
+
+			return nil
+		})
+
 		if err := group.Wait(); err != nil {
 			return nil, err
 		}
 
-		fetchErrs = errors.Join(errSevenTV, errBTTV)
+		fetchErrs = errors.Join(errSevenTV, errBTTV, errFFZ)
 
-		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes)+len(bttvResp.ChannelEmotes))
+		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes)+len(bttvResp.ChannelEmotes)+len(ffzResp))
 
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
@@ -187,6 +211,19 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 			})
 		}
 
+		for _, ffzEmote := range ffzResp {
+			if ffzEmote.Modifier {
+				continue
+			}
+
+			emoteSet = append(emoteSet, Emote{
+				ID:       strconv.Itoa(ffzEmote.ID),
+				Text:     ffzEmote.Name,
+				Platform: FFZ,
+				URL:      ffzEmoteURL(ffzEmote),
+			})
+		}
+
 		if fetchErrs != nil {
 			return emoteSet, fmt.Errorf("%w: %w", ErrPartialFetch, fetchErrs)
 		}
@@ -217,6 +254,7 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 			ttvResp  twitchapi.EmoteResponse
 			stvResp  seventv.EmoteResponse
 			bttvResp bttv.GlobalEmoteResponse
+			ffzResp  []ffz.Emote
 		)
 
 		group.Go(func() error {
@@ -251,11 +289,22 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 			return nil
 		})
 
+		group.Go(func() error {
+			resp, err := s.ffzEmotes.GetGlobalEmotes(ctx)
+			if err != nil {
+				s.logger.Error().Err(err).Msg("could not fetch FFZ global emotes")
+				return nil
+			}
+
+			ffzResp = resp
+			return nil
+		})
+
 		if err := group.Wait(); err != nil {
 			return nil, err
 		}
 
-		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes)+len(bttvResp))
+		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes)+len(bttvResp)+len(ffzResp))
 		for _, ttvEmote := range ttvResp.Data {
 			emoteSet = append(emoteSet, Emote{
 				ID:           ttvEmote.ID,
@@ -289,6 +338,19 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 				IsAnimated: bttvEmote.Animated,
 				Format:     bttvEmote.ImageType,
 				URL:        bttvEmoteURL(bttvEmote.ID, bttvEmote.Animated),
+			})
+		}
+
+		for _, ffzEmote := range ffzResp {
+			if ffzEmote.Modifier {
+				continue
+			}
+
+			emoteSet = append(emoteSet, Emote{
+				ID:       strconv.Itoa(ffzEmote.ID),
+				Text:     ffzEmote.Name,
+				Platform: FFZ,
+				URL:      ffzEmoteURL(ffzEmote),
 			})
 		}
 
@@ -475,6 +537,15 @@ func bttvEmoteURL(id string, animated bool) string {
 		return fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x.gif", id)
 	}
 	return fmt.Sprintf("https://cdn.betterttv.net/emote/%s/1x.png", id)
+}
+
+// ffzEmoteURL returns the FFZ CDN URL for an emote.
+// Prefers the URL from the API response (urls["1"]), falls back to CDN pattern.
+func ffzEmoteURL(emote ffz.Emote) string {
+	if url, ok := emote.URLs["1"]; ok {
+		return url
+	}
+	return fmt.Sprintf("https://cdn.frankerfacez.com/emote/%d/1", emote.ID)
 }
 
 // pickSevenTVFile selects the best 1x file format from available files.
