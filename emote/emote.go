@@ -9,16 +9,19 @@ const (
 	Twitch
 	SevenTV
 	BTTV
+	FFZ
 )
 
 func (p Platform) String() string {
 	switch p {
-	case 1:
+	case Twitch:
 		return "Twitch"
-	case 2:
+	case SevenTV:
 		return "SevenTV"
-	case 3:
+	case BTTV:
 		return "BTTV"
+	case FFZ:
+		return "FFZ"
 	}
 
 	return "Unknown"
