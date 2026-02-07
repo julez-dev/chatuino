@@ -233,6 +233,9 @@ custom_commands:
           <li>
             <span class="text-nord11">Red</span> - BetterTTV
           </li>
+          <li>
+            <span class="text-nord14">Green</span> - FrankerFaceZ
+          </li>
         </ul>
 
         <h3 class="mb-2 text-lg font-medium text-nord4">Graphic Emotes</h3>

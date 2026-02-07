@@ -104,7 +104,7 @@ export default function Hero() {
               <span class="text-nord14" aria-hidden="true">
                 *
               </span>
-              <span>7TV & BTTV support</span>
+              <span>7TV, BTTV & FFZ support</span>
             </li>
           </ul>
         </div>

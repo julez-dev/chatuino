@@ -9,7 +9,7 @@ export default function Landing() {
       <Title>Chatuino - Terminal Twitch Chat Client</Title>
       <Meta
         name="description"
-        content="A Twitch chat client that runs in your terminal. Multiple accounts, graphical emotes, 7TV & BTTV support, message logging, and more."
+        content="A Twitch chat client that runs in your terminal. Multiple accounts, graphical emotes, 7TV, BTTV & FFZ support, message logging, and more."
       />
       <Link rel="canonical" href="https://chatuino.net/" />
       <Hero />

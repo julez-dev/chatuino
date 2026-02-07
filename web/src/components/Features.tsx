@@ -20,9 +20,9 @@ const features: Feature[] = [
     icon: "emote",
   },
   {
-    title: "7TV & BTTV",
+    title: "7TV, BTTV & FFZ",
     description:
-      "Full support for third-party emote providers. See all your favorite emotes.",
+      "Full support for third-party emote providers including FrankerFaceZ. See all your favorite emotes.",
     icon: "provider",
   },
   {
