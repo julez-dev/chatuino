@@ -19,6 +19,7 @@ import (
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch/bttv"
+	"github.com/julez-dev/chatuino/twitch/ffz"
 	"github.com/julez-dev/chatuino/twitch/recentmessage"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -165,9 +166,10 @@ func main() {
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
+			ffzAPI := ffz.NewAPI(http.DefaultClient, "")
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			pool := wspool.NewPool(accountProvider, log.Logger)
-			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI)
+			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI, ffzAPI)
 			badgeCache := badge.NewCache(serverAPI)
 			appStateManager := save.NewAppStateManager(afero.NewOsFs())
 
@@ -210,7 +212,7 @@ func main() {
 				ttvAPI, err := twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
 					clients[mainAccount.ID] = ttvAPI
-					emoteCache = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI)
+					emoteCache = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI, ffzAPI)
 					badgeCache = badge.NewCache(ttvAPI)
 				}
 			}
