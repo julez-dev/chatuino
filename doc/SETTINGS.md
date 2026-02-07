@@ -109,6 +109,7 @@ When `graphic_emotes` is disabled, Chatuino displays emotes as colored text. The
 | <span style="color:#0aa6ec">Blue</span> | SevenTV |
 | <span style="color:#a35df2">Purple</span> | Twitch |
 | <span style="color:#d50014">Red</span> | BetterTTV |
+| <span style="color:#a3be8c">Green</span> | FFZ |
 
 ### Graphic Emotes
 

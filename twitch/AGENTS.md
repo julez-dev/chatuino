@@ -4,7 +4,7 @@
 **Score:** 12 (parent of complex modules)
 
 ## OVERVIEW
-Integration layer for Twitch + third-party services: IRC, API, EventSub, 7TV, BTTV, IVR, recent messages.
+Integration layer for Twitch + third-party services: IRC, API, EventSub, 7TV, BTTV, FFZ, IVR, recent messages.
 
 ## STRUCTURE
 ```
@@ -14,6 +14,7 @@ twitch/
 ├── eventsub/          # EventSub WebSocket: lifecycle, duplicate filtering
 ├── seventv/           # 7TV emote API (global + channel)
 ├── bttv/              # BTTV emote API (global + channel)
+├── ffz/               # FFZ emote API (global + channel)
 ├── ivr/               # IVR: subage, mod/VIP lists
 └── recentmessage/     # Recent messages API (robotty.de)
 ```
@@ -32,6 +33,7 @@ twitch/
 | **EventSub subscriptions** | `twitchapi/api.go:536-605` | Create, fetch, delete subscriptions |
 | **7TV emotes** | `seventv/api.go` | `/users/twitch/{id}`, `/emote-sets/global` |
 | **BTTV emotes** | `bttv/api.go` | `/cached/users/twitch/{id}`, `/cached/emotes/global` |
+| **FFZ emotes** | `ffz/api.go` | `/room/id/{twitch_id}`, `/set/global` (nested sets flattened) |
 | **IVR API** | `ivr/ivr.go` | Subage (`/twitch/subage/{user}/{channel}`), mod/VIP lists |
 | **Recent messages** | `recentmessage/api.go` | Fetch last 100 messages, parse via `twitchirc.ParseIRC` |
 
@@ -61,7 +63,7 @@ twitch/
 - **Duplicate filtering**: TTL cache (15min), messageID key (conn.go:39-41, 199-203)
 - **Inbound channel**: Blocking receive before dial (conn.go:91), goroutine listens after `session_welcome` (conn.go:183-184)
 
-### Third-party APIs (seventv/, bttv/, ivr/, recentmessage/)
+### Third-party APIs (seventv/, bttv/, ffz/, ivr/, recentmessage/)
 - **Shared pattern**: `doRequest[T]` generic helper, `APIError` type
 - **No auth**: All use unauthenticated GET requests
 - **Error handling**: Status code + JSON unmarshal fallback (seventv/api.go:68-77, bttv/api.go:68-79)
