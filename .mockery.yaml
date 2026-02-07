@@ -8,6 +8,7 @@ packages:
       TwitchEmoteFetcher:
       SevenTVEmoteFetcher:
       BTTVEmoteFetcher:
+      FFZEmoteFetcher:
       EmoteStore:
       DisplayManager:
   github.com/julez-dev/chatuino/save/messagelog:
