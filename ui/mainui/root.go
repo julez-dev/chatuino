@@ -220,8 +220,15 @@ func (r *Root) Init() tea.Cmd {
 
 					emotes := make(emote.EmoteSet, 0, len(set))
 					for _, e := range set {
+						animated := slices.Contains(e.Format, "animated")
+
+						format := "static"
+						if animated {
+							format = "animated"
+						}
+
 						url := strings.ReplaceAll(template, "{{id}}", e.ID)
-						url = strings.ReplaceAll(url, "{{format}}", "static")
+						url = strings.ReplaceAll(url, "{{format}}", format)
 						url = strings.ReplaceAll(url, "{{theme_mode}}", "light")
 						url = strings.ReplaceAll(url, "{{scale}}", "1.0")
 
@@ -229,7 +236,7 @@ func (r *Root) Init() tea.Cmd {
 							ID:         e.ID,
 							Text:       e.Name,
 							Platform:   emote.Twitch,
-							IsAnimated: false,
+							IsAnimated: animated,
 							URL:        url,
 						})
 					}

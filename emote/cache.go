@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -165,11 +166,13 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.EmoteSet.Emotes)+len(bttvResp.ChannelEmotes)+len(ffzResp))
 
 		for _, ttvEmote := range ttvResp.Data {
+			animated := slices.Contains(ttvEmote.Format, "animated")
 			emoteSet = append(emoteSet, Emote{
 				ID:           ttvEmote.ID,
 				Text:         ttvEmote.Name,
 				Platform:     Twitch,
-				URL:          ttvEmote.Images.URL1X,
+				URL:          twitchEmoteURL(ttvEmote.ID, animated),
+				IsAnimated:   animated,
 				TTVEmoteType: ttvEmote.EmoteType,
 			})
 		}
@@ -306,11 +309,13 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 
 		emoteSet := make(EmoteSet, 0, len(ttvResp.Data)+len(stvResp.Emotes)+len(bttvResp)+len(ffzResp))
 		for _, ttvEmote := range ttvResp.Data {
+			animated := slices.Contains(ttvEmote.Format, "animated")
 			emoteSet = append(emoteSet, Emote{
 				ID:           ttvEmote.ID,
 				Text:         ttvEmote.Name,
 				Platform:     Twitch,
-				URL:          ttvEmote.Images.URL1X,
+				URL:          twitchEmoteURL(ttvEmote.ID, animated),
+				IsAnimated:   animated,
 				TTVEmoteType: ttvEmote.EmoteType,
 			})
 		}
@@ -508,26 +513,37 @@ func (s *Cache) LoadSetForeignEmote(emoteID, emoteText string) Emote {
 	s.m.RLock()
 
 	// emote was already added, reuse
-	if e, ok := s.foreignEmotes[emoteID]; ok {
+	if e, ok := s.foreignEmotes[emoteText]; ok {
 		s.m.RUnlock()
 		return e
 	}
 	s.m.RUnlock()
 
 	// fake new emote entry, since we can't ask the API for a single emote, but also can't infer
-	// the channelID or the channel name of a sub emote
+	// the channelID or the channel name of a sub emote.
+	// Use animated format — Twitch CDN gracefully falls back to static if no animated version exists.
 	e := Emote{
 		ID:       emoteID,
 		Text:     emoteText,
 		Platform: Twitch, // only supported by twitch
-		URL:      fmt.Sprintf("https://static-cdn.jtvnw.net/emoticons/v2/%s/default/light/1.0", emoteID),
+		URL:      twitchEmoteURL(emoteID, true),
 	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
-	s.foreignEmotes[emoteID] = e
+	s.foreignEmotes[emoteText] = e
 
 	return e
+}
+
+// twitchEmoteURL returns the Twitch CDN URL for an emote.
+// Animated emotes use the "animated" format, static emotes use "default".
+func twitchEmoteURL(id string, animated bool) string {
+	format := "default"
+	if animated {
+		format = "animated"
+	}
+	return fmt.Sprintf("https://static-cdn.jtvnw.net/emoticons/v2/%s/%s/light/1.0", id, format)
 }
 
 // bttvEmoteURL returns the BTTV CDN URL for an emote.
