@@ -27,11 +27,37 @@ chat:
   graphic_emotes: true # Display emotes as images instead of text; Default: false
   graphic_badges: true # Display badges as images instead of text; Default: false
   disable_badges: false # Hide badges entirely; Default: false
+  time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
 custom_commands:
   # Custom commands are available as command suggestions
   - trigger: "/ocean"
     replacement: "OCEAN MAN 🌊 😍 Take me by the hand ✋ lead me to the land that you understand 🙌 🌊 OCEAN MAN 🌊 😍 The voyage 🚲 to the corner of the 🌎 globe is a real trip 👌 🌊 OCEAN MAN 🌊 😍 The crust of a tan man 👳 imbibed by the sand 👍 Soaking up the 💦 thirst of the land 💯"
 ```
+
+## Time Format
+
+The `time_format` setting uses Go's reference time format. Go uses a specific reference time (`Mon Jan 2 15:04:05 MST 2006`) to define formats. You construct your desired format by showing how this reference time should be displayed.
+
+Common format examples:
+
+| Format String | Example Output | Description |
+| ------------- | -------------- | ----------- |
+| `15:04:05` | `14:30:45` | 24-hour with seconds (default) |
+| `15:04` | `14:30` | 24-hour without seconds |
+| `3:04 PM` | `2:30 PM` | 12-hour with AM/PM |
+| `3:04:05 PM` | `2:30:45 PM` | 12-hour with seconds and AM/PM |
+| `Jan 2 15:04` | `Dec 25 14:30` | Month, day, and time |
+| `2006-01-02 15:04` | `2024-12-25 14:30` | ISO date and time |
+
+Reference components:
+- Year: `2006`
+- Month: `01` or `Jan`
+- Day: `02`
+- Hour (24h): `15`
+- Hour (12h): `3`
+- Minute: `04`
+- Second: `05`
+- AM/PM: `PM`
 
 ## NO_COLOR
 

@@ -47,8 +47,9 @@ type userInspect struct {
 
 func newUserInspect(tabID string, width, height int, user, channel string, accountID string, deps *DependencyContainer) *userInspect {
 	c := newChatWindow(width, height, deps)
+	timeFormat := deps.UserConfig.Settings.Chat.UserInspectTimeFormat
 	c.timeFormatFunc = func(t time.Time) string {
-		return t.Local().Format("2006-01-02 15:04:05")
+		return t.Local().Format(timeFormat)
 	}
 
 	return &userInspect{
