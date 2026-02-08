@@ -221,7 +221,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	switch msg := chatEvent.message.(type) {
 	case *twitchirc.PrivateMessage:
 		// user inspect user is not sender and message does not contain current user
-		if !strings.EqualFold(msg.DisplayName, u.user) && !messageContainsCaseInsensitive(msg, u.user) {
+		if !strings.EqualFold(msg.LoginName, u.user) && !messageContainsCaseInsensitive(msg, u.user) {
 			return u, nil
 		}
 	case *twitchirc.ClearChat:
@@ -234,7 +234,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		}
 
 		for _, e := range u.chatWindow.entries {
-			if priv, ok := e.Event.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(priv.DisplayName, *msg.UserName) {
+			if priv, ok := e.Event.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(priv.LoginName, *msg.UserName) {
 				affectsUserInChat = true
 				break
 			}
@@ -250,7 +250,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 
 	// set badges, update for each message
 	// update badges if user inspect user is sender
-	if msg, ok := chatEvent.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(msg.DisplayName, u.user) {
+	if msg, ok := chatEvent.message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(msg.LoginName, u.user) {
 		u.badges = msg.Badges
 		u.formattedBadges = chatEvent.displayModifier.badgeReplacement
 	}
@@ -279,9 +279,7 @@ func (u *userInspect) handleResize() {
 		uiViewHeight = lipgloss.Height(uiView)
 	}
 
-	u.chatWindow.height = u.height - uiViewHeight
-	u.chatWindow.width = u.width
-	u.chatWindow.recalculateLines()
+	u.chatWindow.Resize(u.width, u.height-uiViewHeight)
 }
 
 func (u *userInspect) renderUserInfo() string {
