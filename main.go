@@ -64,7 +64,7 @@ var maybeLogFile *os.File
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -pkg ./twitch/recentmessage
 
-//go:generate go run github.com/vektra/mockery/v3@v3.6.1
+//go:generate go run github.com/vektra/mockery/v3@v3.6.3
 func main() {
 	defer func() {
 		if maybeLogFile != nil {
