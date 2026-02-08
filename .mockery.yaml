@@ -1,6 +1,7 @@
 dir: "mocks"
 filename: "{{.InterfaceName}}.go"
-outpkg: mocks
+pkgname: mocks
+template: testify
 
 packages:
   github.com/julez-dev/chatuino/emote:
@@ -15,8 +16,9 @@ packages:
     interfaces:
       DB:
         configs:
-          - mockname: DBVariadic
-            unroll-variadic: true
+          - structname: DBVariadic
+            template-data:
+              unroll-variadic: true
   github.com/julez-dev/chatuino/badge:
     interfaces:
       BadgeFetcher:
