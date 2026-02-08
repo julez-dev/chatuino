@@ -149,9 +149,7 @@ func (l *liveNotificationTab) ChannelID() string {
 }
 
 func (l *liveNotificationTab) HandleResize() {
-	l.chatWindow.width = l.width
-	l.chatWindow.height = l.height
-	l.chatWindow.recalculateLines()
+	l.chatWindow.Resize(l.width, l.height)
 }
 
 func (l *liveNotificationTab) SetSize(width, height int) {

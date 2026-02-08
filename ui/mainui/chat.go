@@ -91,6 +91,10 @@ type chatWindow struct {
 	userColorCache map[string]func(...string) string
 	searchInput    textinput.Model
 
+	// cached filtered entries for search mode; invalidated when entries/filters change
+	filteredEntries      []*chatEntry
+	filteredEntriesDirty bool
+
 	// styles
 	indicator      string
 	indicatorWidth int
@@ -247,6 +251,7 @@ func (c *chatWindow) handleStopSearchMode() {
 		last.Selected = true
 	}
 	c.searchInput.SetValue("")
+	c.invalidateFilteredEntries()
 	c.recalculateLines()
 	c.moveToBottom()
 	c.snapScroll()
@@ -283,15 +288,11 @@ func (c *chatWindow) View() string {
 
 	src := c.lines[renderStart:renderEnd]
 
-	var visible []string
-	if c.animating {
-		// Copy so we can apply the indicator without mutating c.lines.
-		visible = make([]string, len(src))
-		copy(visible, src)
-		c.applyIndicatorToVisible(visible, renderStart)
-	} else {
-		visible = src
-	}
+	// Always copy visible lines and apply indicator at render time.
+	// This avoids mutating c.lines and unifies the animation/non-animation paths.
+	visible := make([]string, len(src))
+	copy(visible, src)
+	c.applyIndicatorToVisible(visible, renderStart)
 
 	spaces := make([]string, height-len(visible))
 	lines := append(visible, spaces...)
@@ -304,17 +305,10 @@ func (c *chatWindow) View() string {
 }
 
 // applyIndicatorToVisible applies the selection indicator to a copy of visible
-// lines during smooth scroll animation. Falls back to the bottom-most visible
-// entry when the selected entry is outside the rendered range.
+// lines. Falls back to the bottom-most visible entry when the selected entry
+// is outside the rendered range.
 func (c *chatWindow) applyIndicatorToVisible(visible []string, renderStart int) {
 	renderEnd := renderStart + len(visible)
-
-	// Strip any pre-existing indicators from the copy.
-	for i, s := range visible {
-		if trimmed, found := strings.CutPrefix(s, c.indicator+" "); found {
-			visible[i] = "  " + trimmed
-		}
-	}
 
 	// Find the selected entry; fall back to the bottom-most visible entry.
 	var target *chatEntry
@@ -337,10 +331,22 @@ func (c *chatWindow) applyIndicatorToVisible(visible []string, renderStart int) 
 	hi := min(target.Position.CursorEnd+1, renderEnd) - renderStart
 
 	for i := lo; i < hi; i++ {
-		if strings.HasPrefix(visible[i], c.indicator) {
-			continue
-		}
 		visible[i] = c.indicator + " " + strings.TrimPrefix(visible[i], "  ")
+	}
+}
+
+// Resize updates dimensions. Only recalculates lines when width changes since
+// word-wrap depends on width. Height-only changes just reposition the viewport.
+func (c *chatWindow) Resize(width, height int) {
+	widthChanged := width != c.width
+	c.width = width
+	c.height = height
+
+	if widthChanged {
+		c.recalculateLines()
+	} else {
+		c.updatePort()
+		c.snapScroll()
 	}
 }
 
@@ -412,14 +418,24 @@ func (c *chatWindow) debugDumpChat() {
 
 func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
 	active := c.activeEntries()
-	if len(active) < 1 {
+	if len(active) == 0 {
 		return -1, nil
 	}
 
-	for i, e := range active {
-		if c.cursor >= e.Position.CursorStart && c.cursor <= e.Position.CursorEnd {
-			return i, e
+	// Binary search: entries are sorted by position. Find the first entry
+	// whose CursorEnd >= cursor, then verify cursor is within its range.
+	lo, hi := 0, len(active)-1
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+		if active[mid].Position.CursorEnd < c.cursor {
+			lo = mid + 1
+		} else {
+			hi = mid - 1
 		}
+	}
+
+	if lo < len(active) && active[lo].Position.CursorStart <= c.cursor {
+		return lo, active[lo]
 	}
 
 	return -1, nil
@@ -440,7 +456,6 @@ func (c *chatWindow) goToEntry(entry *chatEntry) {
 			e.Selected = true
 			c.cursor = e.Position.CursorEnd
 			c.updatePort()
-			c.markSelectedMessage()
 			return
 		}
 	}
@@ -466,7 +481,6 @@ func (c *chatWindow) messageDown(n int) {
 	c.cursor = active[i].Position.CursorEnd
 
 	c.updatePort()
-	c.markSelectedMessage()
 }
 
 func (c *chatWindow) messageUp(n int) {
@@ -489,7 +503,6 @@ func (c *chatWindow) messageUp(n int) {
 	c.cursor = active[i].Position.CursorStart
 
 	c.updatePort()
-	c.markSelectedMessage()
 }
 
 func (c *chatWindow) moveToBottom() {
@@ -522,37 +535,6 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 	return nil
 }
 
-func (c *chatWindow) markSelectedMessage() {
-	// Clear all indicators — not just the viewport range — so smooth scroll
-	// animation never shows stale markers on lines outside lineStart:lineEnd.
-	for i, s := range c.lines {
-		s, found := strings.CutPrefix(s, c.indicator+" ")
-		if found {
-			c.lines[i] = "  " + s
-		}
-	}
-
-	active := c.activeEntries()
-
-	for e := range slices.Values(active) {
-		if !e.Selected {
-			continue
-		}
-
-		m := min(len(c.lines), e.Position.CursorEnd+1)
-		lines := c.lines[e.Position.CursorStart:m]
-
-		for i, s := range lines {
-			if strings.HasPrefix(s, c.indicator) {
-				continue
-			}
-
-			s = strings.TrimPrefix(s, "  ")
-			lines[i] = c.indicator + " " + s
-		}
-	}
-}
-
 func (c *chatWindow) cleanup() {
 	// todo: make this smarter, so we can delete more often
 	// c.logger.Info().Msgf("(%d/%d)", len(c.entries), cleanupThreshold)
@@ -571,6 +553,7 @@ func (c *chatWindow) cleanup() {
 
 	log.Logger.Info().Int("cleanup-after", int(cleanupAfterMessage)).Int("len", len(c.entries)).Msg("cleanup")
 	c.entries = c.entries[int(cleanupAfterMessage):]
+	c.invalidateFilteredEntries()
 	c.recalculateLines()
 
 	// users that should not be removed from the color cache
@@ -646,9 +629,11 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) tea.Cmd {
 	if c.state == searchChatWindowState && !c.entryMatchesSearch(entry) {
 		entry.IsFiltered = true
 		c.entries = append(c.entries, entry)
+		c.invalidateFilteredEntries()
 	} else {
 		c.entries = append(c.entries, entry)
 		c.lines = append(c.lines, lines...)
+		c.invalidateFilteredEntries()
 	}
 
 	c.updatePort()
@@ -1062,7 +1047,6 @@ func (c *chatWindow) recalculateLines() {
 
 	c.updatePort()
 	c.snapScroll()
-	c.markSelectedMessage()
 }
 
 func (c *chatWindow) activeEntries() []*chatEntry {
@@ -1070,14 +1054,24 @@ func (c *chatWindow) activeEntries() []*chatEntry {
 		return c.entries
 	}
 
-	activeEntries := make([]*chatEntry, 0, c.height)
-	for e := range slices.Values(c.entries) {
-		if !e.IsFiltered {
-			activeEntries = append(activeEntries, e)
-		}
+	if !c.filteredEntriesDirty && c.filteredEntries != nil {
+		return c.filteredEntries
 	}
 
-	return activeEntries
+	c.filteredEntries = make([]*chatEntry, 0, c.height)
+	for _, e := range c.entries {
+		if !e.IsFiltered {
+			c.filteredEntries = append(c.filteredEntries, e)
+		}
+	}
+	c.filteredEntriesDirty = false
+
+	return c.filteredEntries
+}
+
+func (c *chatWindow) invalidateFilteredEntries() {
+	c.filteredEntriesDirty = true
+	c.filteredEntries = nil
 }
 
 func (c *chatWindow) applySearch() {
@@ -1097,6 +1091,7 @@ func (c *chatWindow) applySearch() {
 		last.Selected = true
 	}
 
+	c.invalidateFilteredEntries()
 	c.recalculateLines()
 	c.moveToBottom()
 }
