@@ -166,7 +166,7 @@ func main() {
 			serverAPI := server.NewClient(command.String("api-host"), http.DefaultClient)
 			stvAPI := seventv.NewAPI(http.DefaultClient)
 			bttvAPI := bttv.NewAPI(http.DefaultClient)
-			ffzAPI := ffz.NewAPI(http.DefaultClient, "")
+			ffzAPI := ffz.NewAPI(http.DefaultClient)
 			recentMessageService := recentmessage.NewAPI(http.DefaultClient)
 			pool := wspool.NewPool(accountProvider, log.Logger)
 			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI, ffzAPI)

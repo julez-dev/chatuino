@@ -3,31 +3,24 @@ package ffz
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 )
 
-const defaultBaseURL = "https://api.frankerfacez.com/v1"
+const baseURL = "https://api.frankerfacez.com/v1"
 
 type API struct {
-	client  *http.Client
-	baseURL string
+	client *http.Client
 }
 
-func NewAPI(client *http.Client, baseURL string) *API {
+func NewAPI(client *http.Client) *API {
 	if client == nil {
 		client = http.DefaultClient
 	}
 
-	if baseURL == "" {
-		baseURL = defaultBaseURL
-	}
-
 	return &API{
-		client:  client,
-		baseURL: baseURL,
+		client: client,
 	}
 }
 
@@ -82,7 +75,7 @@ func collectEmotes(sets map[string]emoteSet) []Emote {
 func doRequest[T any](ctx context.Context, api API, method, url string, body io.Reader) (T, error) {
 	var data T
 
-	url = fmt.Sprintf("%s%s", api.baseURL, url)
+	url = baseURL + url
 
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {

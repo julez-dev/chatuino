@@ -265,8 +265,8 @@ func TestReplacer_Replace_ForeignEmote(t *testing.T) {
 	store := &mockEmoteStore{
 		emotes: map[string]Emote{},
 		foreignEmotes: map[string]Emote{
-			"ForeignEmoteID": {
-				ID:       "foreign-emote-id",
+			"ForeignEmote": {
+				ID:       "ForeignEmoteID",
 				Text:     "ForeignEmote",
 				URL:      "https://example.com/foreign.png",
 				Platform: Twitch,
@@ -357,10 +357,10 @@ func (m *mockEmoteStore) GetByText(_ string, text string) (Emote, bool) {
 
 func (m *mockEmoteStore) LoadSetForeignEmote(id, text string) Emote {
 	log.Logger.Info().Str("id", id).Str("text", text).Msg("loading foreign emote")
-	if emote, ok := m.foreignEmotes[id]; ok {
+	if emote, ok := m.foreignEmotes[text]; ok {
 		return emote
 	}
-	return m.emotes[id]
+	return Emote{}
 }
 
 type mockDisplayManager struct {
