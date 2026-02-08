@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -25,7 +26,22 @@ const (
 	cleanupThreshold            = int(cleanupAfterMessage * 1.5)
 	// prefixPadding               = 41
 	prefixPadding = 0
+
+	// Smooth scroll animation parameters.
+	smoothScrollFPS        = 30
+	smoothScrollInterval   = time.Second / smoothScrollFPS
+	smoothScrollLerpFactor = 0.20 // per-frame interpolation factor
+	smoothScrollSnap       = 0.3  // snap when within this many lines of target
 )
+
+// smoothScrollTick drives the viewport scroll animation.
+type smoothScrollTick struct{}
+
+func smoothScrollTickCmd() tea.Cmd {
+	return tea.Tick(smoothScrollInterval, func(time.Time) tea.Msg {
+		return smoothScrollTick{}
+	})
+}
 
 type chatEntry struct {
 	Position   position
@@ -58,6 +74,10 @@ type chatWindow struct {
 
 	cursor             int
 	lineStart, lineEnd int
+
+	// Smooth scroll: smoothLineStart interpolates toward lineStart.
+	smoothLineStart float64
+	animating       bool
 
 	// Entries keep track which actual original message is behind a single row.
 	// A single message can span multiple lines so this is needed to resolve a message based on a line
@@ -128,9 +148,24 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case smoothScrollTick:
+		if !c.animating {
+			return c, nil
+		}
+
+		target := float64(c.lineStart)
+		diff := target - c.smoothLineStart
+
+		if math.Abs(diff) < smoothScrollSnap {
+			c.smoothLineStart = target
+			c.animating = false
+			return c, nil
+		}
+
+		c.smoothLineStart += diff * smoothScrollLerpFactor
+		return c, smoothScrollTickCmd()
 	case chatEventMessage:
-		c.handleMessage(msg)
-		return c, nil
+		return c, c.handleMessage(msg)
 	case tea.KeyMsg:
 		if c.focused {
 			switch {
@@ -152,13 +187,17 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				return c, tea.Batch(cmds...)
 			case key.Matches(msg, c.deps.Keymap.Down):
 				c.messageDown(1)
+				c.snapScroll()
 			case key.Matches(msg, c.deps.Keymap.Up):
 				c.messageUp(1)
+				c.snapScroll()
 				return c, nil
 			case key.Matches(msg, c.deps.Keymap.GoToBottom):
 				c.moveToBottom()
+				c.snapScroll()
 			case key.Matches(msg, c.deps.Keymap.GoToTop):
 				c.moveToTop()
+				c.snapScroll()
 			case key.Matches(msg, c.deps.Keymap.DumpChat):
 				c.debugDumpChat()
 			}
@@ -179,6 +218,7 @@ func (c *chatWindow) handleStartSearchMode() tea.Cmd {
 	c.state = searchChatWindowState
 	c.searchInput.Focus()
 	c.recalculateLines()
+	c.snapScroll()
 	return c.searchInput.Focus()
 }
 
@@ -209,6 +249,7 @@ func (c *chatWindow) handleStopSearchMode() {
 	c.searchInput.SetValue("")
 	c.recalculateLines()
 	c.moveToBottom()
+	c.snapScroll()
 }
 
 func (c *chatWindow) View() string {
@@ -222,8 +263,38 @@ func (c *chatWindow) View() string {
 		return ""
 	}
 
-	spaces := make([]string, height-len(c.lines[c.lineStart:c.lineEnd]))
-	lines := append(c.lines[c.lineStart:c.lineEnd], spaces...)
+	// Use smooth scroll position for rendering when animating.
+	renderStart := c.lineStart
+	renderEnd := c.lineEnd
+	if c.animating {
+		renderStart = int(math.Round(c.smoothLineStart))
+		if renderStart < 0 {
+			renderStart = 0
+		}
+		renderEnd = renderStart + height
+		if renderEnd > len(c.lines) {
+			renderEnd = len(c.lines)
+			renderStart = renderEnd - height
+			if renderStart < 0 {
+				renderStart = 0
+			}
+		}
+	}
+
+	src := c.lines[renderStart:renderEnd]
+
+	var visible []string
+	if c.animating {
+		// Copy so we can apply the indicator without mutating c.lines.
+		visible = make([]string, len(src))
+		copy(visible, src)
+		c.applyIndicatorToVisible(visible, renderStart)
+	} else {
+		visible = src
+	}
+
+	spaces := make([]string, height-len(visible))
+	lines := append(visible, spaces...)
 
 	if c.state == searchChatWindowState {
 		return c.searchInput.View() + "\n" + strings.Join(lines, "\n")
@@ -232,12 +303,68 @@ func (c *chatWindow) View() string {
 	return strings.Join(lines, "\n")
 }
 
+// applyIndicatorToVisible applies the selection indicator to a copy of visible
+// lines during smooth scroll animation. Falls back to the bottom-most visible
+// entry when the selected entry is outside the rendered range.
+func (c *chatWindow) applyIndicatorToVisible(visible []string, renderStart int) {
+	renderEnd := renderStart + len(visible)
+
+	// Strip any pre-existing indicators from the copy.
+	for i, s := range visible {
+		if trimmed, found := strings.CutPrefix(s, c.indicator+" "); found {
+			visible[i] = "  " + trimmed
+		}
+	}
+
+	// Find the selected entry; fall back to the bottom-most visible entry.
+	var target *chatEntry
+	for _, e := range c.activeEntries() {
+		if e.Position.CursorEnd < renderStart || e.Position.CursorStart >= renderEnd {
+			continue
+		}
+		if e.Selected {
+			target = e
+			break
+		}
+		target = e // last visible entry as fallback
+	}
+
+	if target == nil {
+		return
+	}
+
+	lo := max(target.Position.CursorStart, renderStart) - renderStart
+	hi := min(target.Position.CursorEnd+1, renderEnd) - renderStart
+
+	for i := lo; i < hi; i++ {
+		if strings.HasPrefix(visible[i], c.indicator) {
+			continue
+		}
+		visible[i] = c.indicator + " " + strings.TrimPrefix(visible[i], "  ")
+	}
+}
+
 func (c *chatWindow) Focus() {
 	c.focused = true
 }
 
 func (c *chatWindow) Blur() {
 	c.focused = false
+}
+
+// startAnimating begins the smooth scroll animation loop if not already running.
+func (c *chatWindow) startAnimating() tea.Cmd {
+	if c.animating {
+		return nil
+	}
+	c.animating = true
+	return smoothScrollTickCmd()
+}
+
+// snapScroll instantly sets smoothLineStart to lineStart, stopping any animation.
+func (c *chatWindow) snapScroll() {
+	c.smoothLineStart = float64(c.lineStart)
+	c.animating = false
 }
 
 func (c *chatWindow) debugDumpChat() {
@@ -396,11 +523,12 @@ func (c *chatWindow) getNewestEntry() *chatEntry {
 }
 
 func (c *chatWindow) markSelectedMessage() {
-	linesInView := c.lines[c.lineStart:c.lineEnd]
-	for i, s := range linesInView {
+	// Clear all indicators — not just the viewport range — so smooth scroll
+	// animation never shows stale markers on lines outside lineStart:lineEnd.
+	for i, s := range c.lines {
 		s, found := strings.CutPrefix(s, c.indicator+" ")
 		if found {
-			linesInView[i] = "  " + s
+			c.lines[i] = "  " + s
 		}
 	}
 
@@ -480,11 +608,11 @@ func (c *chatWindow) cleanup() {
 	// }
 }
 
-func (c *chatWindow) handleMessage(msg chatEventMessage) {
+func (c *chatWindow) handleMessage(msg chatEventMessage) tea.Cmd {
 	switch msg.message.(type) {
 	case error, *twitchirc.PrivateMessage, *twitchirc.Notice, *twitchirc.ClearChat, *twitchirc.SubMessage, *twitchirc.SubGiftMessage, *twitchirc.AnnouncementMessage, *twitchirc.ClearMessage: // supported Message types
 	default: // exit only on other types
-		return
+		return nil
 	}
 
 	c.cleanup()
@@ -527,7 +655,12 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) {
 
 	if wasLatestMessage {
 		c.moveToBottom()
+		if c.deps.UserConfig.Settings.Chat.SmoothScroll {
+			return c.startAnimating()
+		}
 	}
+
+	return nil
 }
 
 func (c *chatWindow) handleTimeoutMessage(msg chatEventMessage) {
@@ -928,6 +1061,7 @@ func (c *chatWindow) recalculateLines() {
 	}
 
 	c.updatePort()
+	c.snapScroll()
 	c.markSelectedMessage()
 }
 
