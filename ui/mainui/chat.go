@@ -35,11 +35,15 @@ const (
 )
 
 // smoothScrollTick drives the viewport scroll animation.
-type smoothScrollTick struct{}
+// The owner pointer scopes ticks to the originating chatWindow so other
+// windows (tabs, user inspect) don't process ticks meant for a different window.
+type smoothScrollTick struct {
+	owner *chatWindow
+}
 
-func smoothScrollTickCmd() tea.Cmd {
+func (c *chatWindow) smoothScrollTickCmd() tea.Cmd {
 	return tea.Tick(smoothScrollInterval, func(time.Time) tea.Msg {
-		return smoothScrollTick{}
+		return smoothScrollTick{owner: c}
 	})
 }
 
@@ -153,7 +157,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case smoothScrollTick:
-		if !c.animating {
+		if msg.owner != c || !c.animating {
 			return c, nil
 		}
 
@@ -167,7 +171,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		}
 
 		c.smoothLineStart += diff * smoothScrollLerpFactor
-		return c, smoothScrollTickCmd()
+		return c, c.smoothScrollTickCmd()
 	case chatEventMessage:
 		return c, c.handleMessage(msg)
 	case tea.KeyMsg:
@@ -192,6 +196,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 			case key.Matches(msg, c.deps.Keymap.Down):
 				c.messageDown(1)
 				c.snapScroll()
+				return c, nil
 			case key.Matches(msg, c.deps.Keymap.Up):
 				c.messageUp(1)
 				c.snapScroll()
@@ -199,9 +204,11 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 			case key.Matches(msg, c.deps.Keymap.GoToBottom):
 				c.moveToBottom()
 				c.snapScroll()
+				return c, nil
 			case key.Matches(msg, c.deps.Keymap.GoToTop):
 				c.moveToTop()
 				c.snapScroll()
+				return c, nil
 			case key.Matches(msg, c.deps.Keymap.DumpChat):
 				c.debugDumpChat()
 			}
@@ -305,22 +312,28 @@ func (c *chatWindow) View() string {
 }
 
 // applyIndicatorToVisible applies the selection indicator to a copy of visible
-// lines. Falls back to the bottom-most visible entry when the selected entry
-// is outside the rendered range.
+// lines. Uses the selected entry (via binary search) or falls back to the
+// bottom-most visible entry when the selected entry is outside the rendered range.
 func (c *chatWindow) applyIndicatorToVisible(visible []string, renderStart int) {
 	renderEnd := renderStart + len(visible)
 
-	// Find the selected entry; fall back to the bottom-most visible entry.
-	var target *chatEntry
-	for _, e := range c.activeEntries() {
-		if e.Position.CursorEnd < renderStart || e.Position.CursorStart >= renderEnd {
-			continue
+	// Try to find the selected entry via binary search (O(log n)).
+	_, target := c.entryForCurrentCursor()
+
+	// If the selected entry is outside the visible range, fall back to the
+	// bottom-most visible entry.
+	if target == nil || target.Position.CursorEnd < renderStart || target.Position.CursorStart >= renderEnd {
+		target = nil
+		active := c.activeEntries()
+		for i := len(active) - 1; i >= 0; i-- {
+			e := active[i]
+			if e.Position.CursorEnd < renderStart {
+				break
+			}
+			if e.Position.CursorStart < renderEnd {
+				target = e
+			}
 		}
-		if e.Selected {
-			target = e
-			break
-		}
-		target = e // last visible entry as fallback
 	}
 
 	if target == nil {
@@ -364,7 +377,7 @@ func (c *chatWindow) startAnimating() tea.Cmd {
 		return nil
 	}
 	c.animating = true
-	return smoothScrollTickCmd()
+	return c.smoothScrollTickCmd()
 }
 
 // snapScroll instantly sets smoothLineStart to lineStart, stopping any animation.
@@ -456,6 +469,7 @@ func (c *chatWindow) goToEntry(entry *chatEntry) {
 			e.Selected = true
 			c.cursor = e.Position.CursorEnd
 			c.updatePort()
+			c.snapScroll()
 			return
 		}
 	}
@@ -629,12 +643,12 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) tea.Cmd {
 	if c.state == searchChatWindowState && !c.entryMatchesSearch(entry) {
 		entry.IsFiltered = true
 		c.entries = append(c.entries, entry)
-		c.invalidateFilteredEntries()
 	} else {
 		c.entries = append(c.entries, entry)
 		c.lines = append(c.lines, lines...)
-		c.invalidateFilteredEntries()
 	}
+
+	c.invalidateFilteredEntries()
 
 	c.updatePort()
 
