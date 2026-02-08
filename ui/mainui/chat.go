@@ -28,10 +28,10 @@ const (
 	prefixPadding = 0
 
 	// Smooth scroll animation parameters.
-	smoothScrollFPS        = 30
+	smoothScrollFPS        = 60
 	smoothScrollInterval   = time.Second / smoothScrollFPS
-	smoothScrollLerpFactor = 0.20 // per-frame interpolation factor
-	smoothScrollSnap       = 0.3  // snap when within this many lines of target
+	smoothScrollLerpFactor = 0.08 // per-frame interpolation factor
+	smoothScrollSnap       = 0.2  // snap when within this many lines of target
 )
 
 // smoothScrollTick drives the viewport scroll animation.
@@ -332,6 +332,7 @@ func (c *chatWindow) applyIndicatorToVisible(visible []string, renderStart int) 
 			}
 			if e.Position.CursorStart < renderEnd {
 				target = e
+				break
 			}
 		}
 	}
