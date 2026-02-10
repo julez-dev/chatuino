@@ -56,11 +56,132 @@ chat:
   # NOTE: Read the README for more information about emote rendering before enabling this feature
   graphic_emotes: true # Display emotes as images instead of text; Default: false
   graphic_badges: true # Display badges as images instead of text; Default: false
+  disable_badges: false # Hide badges entirely; Default: false
+  smooth_scroll: true # Animate chat scrolling when new messages arrive; Default: false
+  time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
 custom_commands:
   # Custom commands are available as command suggestions
   - trigger: "/ocean"
     replacement: "OCEAN MAN 🌊 😍 Take me by the hand ✋ lead me to the land that you understand 🙌 🌊 OCEAN MAN 🌊 😍 The voyage 🚲 to the corner of the 🌎 globe is a real trip 👌 🌊 OCEAN MAN 🌊 😍 The crust of a tan man 👳 imbibed by the sand 👍 Soaking up the 💦 thirst of the land 💯"`}</code>
         </pre>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="mb-4 text-xl font-semibold text-nord4">Time Format</h2>
+        <p class="mb-4 text-nord4">
+          The{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            time_format
+          </code>{" "}
+          setting uses Go's reference time format. Go uses a specific reference
+          time (
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            Mon Jan 2 15:04:05 MST 2006
+          </code>
+          ) to define formats. You construct your desired format by showing how
+          this reference time should be displayed.
+        </p>
+
+        <h3 class="mb-2 text-lg font-medium text-nord4">Common Examples</h3>
+        <div class="mb-6 overflow-x-auto">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-nord2">
+                <th class="px-4 py-2 text-left text-nord4">Format String</th>
+                <th class="px-4 py-2 text-left text-nord4">Example Output</th>
+                <th class="px-4 py-2 text-left text-nord4">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-nord4">
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">15:04:05</code>
+                </td>
+                <td class="px-4 py-2">14:30:45</td>
+                <td class="px-4 py-2">24-hour with seconds (default)</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">15:04</code>
+                </td>
+                <td class="px-4 py-2">14:30</td>
+                <td class="px-4 py-2">24-hour without seconds</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">3:04 PM</code>
+                </td>
+                <td class="px-4 py-2">2:30 PM</td>
+                <td class="px-4 py-2">12-hour with AM/PM</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">3:04:05 PM</code>
+                </td>
+                <td class="px-4 py-2">2:30:45 PM</td>
+                <td class="px-4 py-2">12-hour with seconds and AM/PM</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">Jan 2 15:04</code>
+                </td>
+                <td class="px-4 py-2">Dec 25 14:30</td>
+                <td class="px-4 py-2">Month, day, and time</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">2006-01-02 15:04</code>
+                </td>
+                <td class="px-4 py-2">2024-12-25 14:30</td>
+                <td class="px-4 py-2">ISO date and time</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="mb-4 text-nord4">
+          You can use{" "}
+          <a
+            href="https://go.dev/play/p/mgHrQLytjZM"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-nord8 underline hover:text-nord7"
+          >
+            this Go Playground link
+          </a>{" "}
+          to prototype and test custom time formats.
+        </p>
+
+        <h3 class="mb-2 text-lg font-medium text-nord4">
+          Reference Components
+        </h3>
+        <ul class="list-inside list-disc space-y-1 text-nord4">
+          <li>
+            Year: <code class="text-nord8">2006</code>
+          </li>
+          <li>
+            Month: <code class="text-nord8">01</code> or{" "}
+            <code class="text-nord8">Jan</code>
+          </li>
+          <li>
+            Day: <code class="text-nord8">02</code>
+          </li>
+          <li>
+            Hour (24h): <code class="text-nord8">15</code>
+          </li>
+          <li>
+            Hour (12h): <code class="text-nord8">3</code>
+          </li>
+          <li>
+            Minute: <code class="text-nord8">04</code>
+          </li>
+          <li>
+            Second: <code class="text-nord8">05</code>
+          </li>
+          <li>
+            AM/PM: <code class="text-nord8">PM</code>
+          </li>
+        </ul>
       </section>
 
       <section class="mb-12">

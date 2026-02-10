@@ -18,3 +18,5 @@ server/dist/
 
 # Node modules
 web/node_modules/
+
+.opencode

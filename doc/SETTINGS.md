@@ -27,6 +27,7 @@ chat:
   graphic_emotes: true # Display emotes as images instead of text; Default: false
   graphic_badges: true # Display badges as images instead of text; Default: false
   disable_badges: false # Hide badges entirely; Default: false
+  smooth_scroll: true # Animate chat scrolling when new messages arrive; Default: false
   time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
 custom_commands:
   # Custom commands are available as command suggestions
@@ -48,6 +49,8 @@ Common format examples:
 | `3:04:05 PM` | `2:30:45 PM` | 12-hour with seconds and AM/PM |
 | `Jan 2 15:04` | `Dec 25 14:30` | Month, day, and time |
 | `2006-01-02 15:04` | `2024-12-25 14:30` | ISO date and time |
+
+You can use [this Go Playground link](https://go.dev/play/p/mgHrQLytjZM) to prototype and test custom time formats.
 
 Reference components:
 - Year: `2006`
