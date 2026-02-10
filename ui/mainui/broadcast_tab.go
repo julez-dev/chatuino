@@ -1691,24 +1691,21 @@ func (t *broadcastTab) HandleResize() {
 		}
 
 		if t.state == userInspectMode || t.state == userInspectInsertMode {
-			t.chatWindow.height = (t.height - heightStreamInfo - pollHeight - heightStatusInfo) / 2
-			t.chatWindow.width = t.width
+			chatHeight := (t.height - heightStreamInfo - pollHeight - heightStatusInfo) / 2
 
-			t.userInspect.height = t.height - heightStreamInfo - pollHeight - t.chatWindow.height - heightStatusInfo - heightMessageInput
+			t.userInspect.height = t.height - heightStreamInfo - pollHeight - chatHeight - heightStatusInfo - heightMessageInput
 			t.userInspect.width = t.width
 			t.userInspect.handleResize()
-			t.chatWindow.recalculateLines()
+			t.chatWindow.Resize(t.width, chatHeight)
 		} else {
-			t.chatWindow.height = t.height - pollHeight - heightMessageInput - heightStreamInfo - heightStatusInfo
-
-			if t.chatWindow.height < 0 {
-				t.chatWindow.height = 0
+			chatHeight := t.height - pollHeight - heightMessageInput - heightStreamInfo - heightStatusInfo
+			if chatHeight < 0 {
+				chatHeight = 0
 			}
 
-			log.Logger.Info().Int("t.chatWindow.height", t.chatWindow.height).Int("height", t.height).Int("heightStreamInfo", heightStreamInfo).Int("heightStatusInfo", heightStatusInfo).Msg("handleResize")
+			log.Logger.Info().Int("chatHeight", chatHeight).Int("height", t.height).Int("heightStreamInfo", heightStreamInfo).Int("heightStatusInfo", heightStatusInfo).Msg("handleResize")
 
-			t.chatWindow.width = t.width
-			t.chatWindow.recalculateLines()
+			t.chatWindow.Resize(t.width, chatHeight)
 		}
 
 		if t.state == emoteOverviewMode {

@@ -194,9 +194,7 @@ func (m *mentionTab) ChannelID() string {
 }
 
 func (m *mentionTab) HandleResize() {
-	m.chatWindow.width = m.width
-	m.chatWindow.height = m.height
-	m.chatWindow.recalculateLines()
+	m.chatWindow.Resize(m.width, m.height)
 }
 
 func (m *mentionTab) SetSize(width, height int) {

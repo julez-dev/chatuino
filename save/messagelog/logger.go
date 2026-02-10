@@ -158,7 +158,7 @@ SELECT_LOOP:
 }
 
 func (b *BatchedMessageLogger) MessagesFromUserInChannel(username string, broadcasterChannel string) ([]LogEntry, error) {
-	query := `SELECT id, broadcast_id, user_id, broadcast_channel, sent_at, sender_display, payload FROM messages WHERE sender_display = ? AND broadcast_channel = ?`
+	query := `SELECT id, broadcast_id, user_id, broadcast_channel, sent_at, sender_display, payload FROM messages WHERE json_extract(payload, '$.login_name') = ? COLLATE NOCASE AND broadcast_channel = ?`
 	rows, err := b.roDB.Query(query, username, broadcasterChannel)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

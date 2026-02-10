@@ -35,6 +35,7 @@ type ChatSettings struct {
 	GraphicEmotes              bool   `yaml:"graphic_emotes"`
 	DisableBadges              bool   `yaml:"disable_badges"`
 	DisablePaddingWrappedLines bool   `yaml:"disable_padding_wrapped_lines"`
+	SmoothScroll               bool   `yaml:"smooth_scroll"`
 	TimeFormat                 string `yaml:"time_format"`              // Go time format string, default: "15:04:05"
 	UserInspectTimeFormat      string `yaml:"user_inspect_time_format"` // Go time format string, default: "2006-01-02 15:04:05"
 }
