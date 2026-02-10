@@ -1,6 +1,0 @@
-# Chatuino robots.txt
-User-agent: *
-Allow: /
-
-# Sitemap
-Sitemap: https://chatuino.net/sitemap.xml
