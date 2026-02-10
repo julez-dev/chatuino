@@ -13,8 +13,8 @@ secrets
 .zed
 report.*
 
-# Web frontend build output (generated from web/dist)
-server/dist/
+# Web frontend build output (embedded at build time with -tags webdist)
+server/webdist/
 
 # Node modules
 web/node_modules/
