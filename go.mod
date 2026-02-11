@@ -1,10 +1,10 @@
 module github.com/julez-dev/chatuino
 
-go 1.25.6
+go 1.26.0
 
 require (
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
-	github.com/charmbracelet/bubbles v0.21.1
+	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/uuid v1.6.0
@@ -28,11 +28,11 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mailru/easyjson v0.9.1
 	github.com/redis/go-redis/v9 v9.17.3
-	github.com/rmhubbert/bubbletea-overlay v0.6.4
+	github.com/rmhubbert/bubbletea-overlay v0.6.5
 	github.com/spf13/afero v1.15.0
 	github.com/zalando/go-keyring v0.2.6
-	golang.org/x/image v0.35.0
-	modernc.org/sqlite v1.44.3
+	golang.org/x/image v0.36.0
+	modernc.org/sqlite v1.45.0
 	resenje.org/singleflight v0.4.3
 )
 
@@ -45,9 +45,8 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250211183012-cd7b2ce3af48 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.9.0 // indirect
-	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
+	github.com/clipperhouse/displaywidth v0.10.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
@@ -60,7 +59,7 @@ require (
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/tetratelabs/wazero v1.11.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
+	golang.org/x/exp v0.0.0-20260211191109-2735e65f0518 // indirect
 	modernc.org/libc v1.67.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
@@ -81,7 +80,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7
 	github.com/sahilm/fuzzy v0.1.1 // indirect
-	golang.org/x/sys v0.40.0
-	golang.org/x/text v0.33.0
+	golang.org/x/sys v0.41.0
+	golang.org/x/text v0.34.0
 	gopkg.in/yaml.v3 v3.0.1
 )
