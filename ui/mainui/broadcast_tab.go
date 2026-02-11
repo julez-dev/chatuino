@@ -993,6 +993,40 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 	return nil
 }
 
+func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
+	if len(args) < 1 || args[0] == "" {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channelLogin,
+				channelID: t.channelID,
+				tabID:     t.id,
+				message: &twitchirc.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Expected Usage: /join <channel>",
+				},
+			}
+		}
+	}
+
+	channel := strings.ToLower(args[0])
+	account := t.account
+	client := t.deps.APIUserClients[account.ID]
+
+	return func() tea.Msg {
+		resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+		if err == nil && len(resp.Data) > 0 {
+			channel = resp.Data[0].Login
+		}
+
+		return joinChannelMessage{
+			tabKind: broadcastTabKind,
+			channel: channel,
+			account: account,
+		}
+	}
+}
+
 // handlePyramidMessagesCommand build a message pyramid with the given word and count
 // like this:
 // word
@@ -1322,6 +1356,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleOpenEmoteOverview()
 		case "refreshemotes":
 			return t.handleManualRefreshEmotes()
+		case "join":
+			return t.handleJoinCommand(args)
 		}
 
 		if !t.isUserMod {
