@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/emote"
@@ -151,6 +152,7 @@ func NewUI(
 		splash: splash{
 			keymap:            dependencies.Keymap,
 			userConfiguration: dependencies.UserConfig,
+			spinner:           spinner.New(spinner.WithSpinner(loadingSpinner)),
 		},
 		header:         header,
 		help:           newHelp(10, 10, dependencies),
@@ -164,6 +166,7 @@ func NewUI(
 func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
 		tea.SetWindowTitle("Chatuino"),
+		r.splash.Init(),
 		func() tea.Msg {
 			state, err := r.dependencies.AppStateManager.LoadAppState()
 			if err != nil {
@@ -663,6 +666,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+	}
+
+	if !r.hasLoadedSession {
+		r.splash, cmd = r.splash.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	r.header, cmd = r.header.Update(msg)

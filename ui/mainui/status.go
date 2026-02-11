@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -77,6 +78,7 @@ type streamStatus struct {
 	deps          *DependencyContainer
 
 	userConfig UserConfiguration
+	spinner    spinner.Model
 
 	settings      twitchapi.ChatSettingData
 	err           error
@@ -91,11 +93,12 @@ func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID 
 		width:     width,
 		height:    height,
 		channelID: channelID,
+		spinner:   spinner.New(spinner.WithSpinner(loadingSpinner)),
 	}
 }
 
 func (s *streamStatus) Init() tea.Cmd {
-	return func() tea.Msg {
+	return tea.Batch(s.spinner.Tick, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
@@ -119,7 +122,7 @@ func (s *streamStatus) Init() tea.Cmd {
 			settings: settingsResp.Data[0],
 			err:      err,
 		}
-	}
+	})
 }
 
 func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
@@ -137,6 +140,12 @@ func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
 		return s, nil
 	}
 
+	if !s.isDataFetched {
+		var cmd tea.Cmd
+		s.spinner, cmd = s.spinner.Update(msg)
+		return s, cmd
+	}
+
 	return s, nil
 }
 
@@ -144,7 +153,7 @@ func (s *streamStatus) View() string {
 	padded := lipgloss.NewStyle().MaxWidth(s.width).Render
 
 	if !s.isDataFetched {
-		return padded("Fetching chat settings...")
+		return padded(s.spinner.View() + " Fetching chat settings")
 	}
 
 	if s.err != nil {

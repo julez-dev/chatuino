@@ -45,10 +45,8 @@ type emoteOverview struct {
 	isLoaded      bool
 }
 
-var customEllipsisSpinner = spinner.Spinner{
-	Frames: []string{"   ", "  .", " ..", "..."},
-	FPS:    time.Second / 3, //nolint:mnd
-}
+// loadingSpinner is the unified spinner used across all loading states.
+var loadingSpinner = spinner.Points
 
 func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer, width, height int) *emoteOverview {
 	vp := viewport.New(width, height)
@@ -61,7 +59,7 @@ func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer
 		channelID:     channelID,
 		emoteReplacer: replacer,
 		vp:            vp,
-		spinner:       spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
+		spinner:       spinner.New(spinner.WithSpinner(loadingSpinner)),
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -167,7 +165,7 @@ func (e *emoteOverview) Update(msg tea.Msg) (*emoteOverview, tea.Cmd) {
 
 func (e *emoteOverview) View() string {
 	if !e.isLoaded {
-		return lipgloss.NewStyle().Width(e.vp.Width).Height(e.vp.Height).AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Render(e.spinner.View() + " Loading Emote Overview")
+		return lipgloss.NewStyle().Width(e.vp.Width).Height(e.vp.Height).AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Render(e.spinner.View() + " Loading emote overview")
 	}
 
 	return e.vp.View()

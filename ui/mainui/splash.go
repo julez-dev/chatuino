@@ -5,6 +5,7 @@ import (
 
 	_ "embed"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/save"
@@ -17,14 +18,17 @@ type splash struct {
 	width, height     int
 	keymap            save.KeyMap
 	userConfiguration UserConfiguration
+	spinner           spinner.Model
 }
 
 func (s splash) Init() tea.Cmd {
-	return nil
+	return s.spinner.Tick
 }
 
-func (s splash) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return s, nil
+func (s splash) Update(msg tea.Msg) (splash, tea.Cmd) {
+	var cmd tea.Cmd
+	s.spinner, cmd = s.spinner.Update(msg)
+	return s, cmd
 }
 
 func (s splash) view(loading bool, err error) string {
@@ -39,7 +43,7 @@ func (s splash) view(loading bool, err error) string {
 
 	var help string
 	if loading {
-		help = "loading initial state..."
+		help = s.spinner.View() + " Loading initial state"
 	} else if err != nil {
 		help = err.Error() + "\n"
 		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
