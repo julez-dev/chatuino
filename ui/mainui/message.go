@@ -96,6 +96,12 @@ type setStreamInfoMessage struct {
 	isLive   bool
 }
 
+// channelSuggestionsLoadedMessage delivers channel names for /join autocomplete
+type channelSuggestionsLoadedMessage struct {
+	targetID string
+	channels []string
+}
+
 // requestNotificationIconMessage comes when app requests an notification icon for a tab
 type requestNotificationIconMessage struct {
 	tabID string

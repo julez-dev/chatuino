@@ -460,6 +460,27 @@ func (s *SuggestionTextInput) updateSuggestions() {
 
 		s.suggestions = append(s.suggestions, matchedUsers...)
 	}
+
+	// Channel suggestions for /join command argument
+	// if strings.HasPrefix(s.InputModel.Value(), "/join ") && startIndex > 0 && len(s.channelCache) > 0 {
+	// 	var matchedChannels []string
+
+	// 	lower := strings.ToLower(currWord)
+	// 	for ch := range s.channelCache {
+	// 		if strings.Contains(ch, lower) {
+	// 			matchedChannels = append(matchedChannels, ch)
+	// 		}
+	// 	}
+
+	// 	slices.SortFunc(matchedChannels, func(a, b string) int {
+	// 		if len(a) == len(b) {
+	// 			return strings.Compare(a, b)
+	// 		}
+	// 		return len(a) - len(b)
+	// 	})
+
+	// 	s.suggestions = append(s.suggestions, matchedChannels...)
+	// }
 }
 
 func (s *SuggestionTextInput) nextSuggestion() {

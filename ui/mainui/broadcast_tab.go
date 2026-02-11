@@ -457,7 +457,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		t.HandleResize()
-		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
+		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), t.loadChannelSuggestions(), tea.Sequence(ircCmds...))
 		return t, tea.Batch(cmds...)
 	case emoteSetRefreshedMessage:
 		if !t.account.IsAnonymous && msg.targetID == t.id {
@@ -521,6 +521,21 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 		}
 
+		return t, nil
+	case channelSuggestionsLoadedMessage:
+		if msg.targetID == t.id {
+			fn := func(s string) func(...string) string {
+				return func(args ...string) string {
+					return s
+				}
+			}
+
+			for ch := range slices.Values(msg.channels) {
+				if _, ok := t.chatWindow.userColorCache[ch]; !ok {
+					t.chatWindow.userColorCache[ch] = fn(ch)
+				}
+			}
+		}
 		return t, nil
 	case wspool.EventSubEvent:
 		if msg.Error != nil {
@@ -991,6 +1006,48 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 	}
 
 	return nil
+}
+
+func (t *broadcastTab) loadChannelSuggestions() tea.Cmd {
+	tabID := t.id
+	accountID := t.account.ID
+
+	return func() tea.Msg {
+		seen := make(map[string]struct{})
+		var channels []string
+
+		// recent channels from history
+		if t.deps.ChannelHistory != nil {
+			entries, err := t.deps.ChannelHistory.LoadHistory()
+			if err == nil {
+				for _, e := range entries {
+					if _, ok := seen[e.ChannelLogin]; !ok {
+						seen[e.ChannelLogin] = struct{}{}
+						channels = append(channels, e.ChannelLogin)
+					}
+				}
+			}
+		}
+
+		// followed channels
+		if client, ok := t.deps.APIUserClients[accountID].(followedFetcher); ok {
+			followed, err := client.FetchUserFollowedChannels(context.Background(), accountID, "")
+			if err == nil {
+				for _, f := range followed {
+					login := strings.ToLower(f.BroadcasterLogin)
+					if _, ok := seen[login]; !ok {
+						seen[login] = struct{}{}
+						channels = append(channels, login)
+					}
+				}
+			}
+		}
+
+		return channelSuggestionsLoadedMessage{
+			targetID: tabID,
+			channels: channels,
+		}
+	}
 }
 
 func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
