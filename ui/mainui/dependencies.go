@@ -84,6 +84,12 @@ type AppStateManager interface {
 	SaveAppState(save.AppState) error
 }
 
+// ChannelHistory tracks recently visited channels.
+type ChannelHistory interface {
+	LoadHistory() ([]save.ChannelHistoryEntry, error)
+	RecordChannel(login string) error
+}
+
 type DependencyContainer struct {
 	UserConfig UserConfiguration
 	Keymap     save.KeyMap
@@ -102,4 +108,5 @@ type DependencyContainer struct {
 	MessageLogger        MessageLogger
 	Pool                 ConnectionPool
 	AppStateManager      AppStateManager
+	ChannelHistory       ChannelHistory
 }

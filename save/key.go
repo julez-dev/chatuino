@@ -38,6 +38,9 @@ type KeyMap struct {
 	Next     key.Binding `yaml:"next"`
 	Previous key.Binding `yaml:"previous"`
 
+	// Quick Join
+	QuickJoin key.Binding `yaml:"quick_join"`
+
 	// Chat Binds
 	InsertMode   key.Binding `yaml:"insert_mode"`
 	InspectMode  key.Binding `yaml:"inspect_mode"`
@@ -145,6 +148,10 @@ func BuildDefaultKeyMap() KeyMap {
 		DumpScreen: key.NewBinding(
 			key.WithKeys("ctrl+alt+d"),
 			key.WithHelp("ctrl+alt+d", "dump screen"),
+		),
+		QuickJoin: key.NewBinding(
+			key.WithKeys("ctrl+j"),
+			key.WithHelp("ctrl+j", "quick join channel"),
 		),
 		Next: key.NewBinding(
 			key.WithKeys("tab"),

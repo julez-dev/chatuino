@@ -85,6 +85,7 @@ type activeScreen int
 const (
 	mainScreen activeScreen = iota
 	inputScreen
+	quickJoinScreen
 	helpScreen
 )
 
@@ -118,10 +119,11 @@ type Root struct {
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
 	// components
-	splash    splash
-	header    header
-	joinInput *join
-	help      *help
+	splash         splash
+	header         header
+	joinInput      *join
+	quickJoinInput *quickJoin
+	help           *help
 
 	tabCursor int
 	tabs      []tab
@@ -149,9 +151,10 @@ func NewUI(
 			keymap:            dependencies.Keymap,
 			userConfiguration: dependencies.UserConfig,
 		},
-		header:    header,
-		help:      newHelp(10, 10, dependencies),
-		joinInput: newJoin(10, dependencies),
+		header:         header,
+		help:           newHelp(10, 10, dependencies),
+		joinInput:      newJoin(10, dependencies),
+		quickJoinInput: newQuickJoin(10, dependencies),
 
 		messageLoggerChan: messageLoggerChan,
 	}
@@ -318,10 +321,24 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		r.joinInput.blur()
 		r.joinInput.input.SetSuggestions(nil) // free up some memory
+		r.quickJoinInput.blur()
 
 		r.handleResize()
 
-		return r, tea.Batch(nTab.Init(), cmd)
+		initCmds := []tea.Cmd{nTab.Init(), cmd}
+
+		// Record channel in history for broadcast tabs
+		if msg.tabKind == broadcastTabKind && msg.channel != "" && r.dependencies.ChannelHistory != nil {
+			channel := msg.channel
+			initCmds = append(initCmds, func() tea.Msg {
+				if err := r.dependencies.ChannelHistory.RecordChannel(channel); err != nil {
+					log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
+				}
+				return nil
+			})
+		}
+
+		return r, tea.Batch(initCmds...)
 	case wspool.IRCEvent:
 		// Handle IRC events from the connection pool
 		if msg.Error != nil {
@@ -373,7 +390,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.Sequence(batched...))
 		return r, tea.Batch(cmds...)
 	case polledStreamInfoMessage:
-		return r, r.handlePolledStreamInfo(msg)
+		if r.screenType == quickJoinScreen {
+			r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		cmds = append(cmds, r.handlePolledStreamInfo(msg))
+		return r, tea.Batch(cmds...)
 	case appStateSaveMessage:
 		return r, r.tickSaveAppState()
 	case tea.WindowSizeMsg:
@@ -411,12 +433,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.Escape) {
-			if r.screenType == inputScreen || r.screenType == helpScreen {
+			if r.screenType == inputScreen || r.screenType == helpScreen || r.screenType == quickJoinScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].Focus()
 				}
 
 				r.joinInput.blur()
+				r.quickJoinInput.blur()
 				r.screenType = mainScreen
 
 				return r, nil
@@ -475,6 +498,29 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.joinInput.blur()
+				r.screenType = mainScreen
+			}
+
+			return r, nil
+		}
+
+		if key.Matches(msg, r.dependencies.Keymap.QuickJoin) {
+			switch r.screenType {
+			case mainScreen:
+				if len(r.tabs) > r.tabCursor {
+					r.tabs[r.tabCursor].Blur()
+				}
+
+				r.screenType = quickJoinScreen
+				r.quickJoinInput = newQuickJoin(r.width, r.dependencies)
+				r.quickJoinInput.focus()
+				return r, r.quickJoinInput.Init()
+			case quickJoinScreen:
+				if len(r.tabs) > r.tabCursor {
+					r.tabs[r.tabCursor].Focus()
+				}
+
+				r.quickJoinInput.blur()
 				r.screenType = mainScreen
 			}
 
@@ -567,6 +613,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	if r.screenType == quickJoinScreen {
+		r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	if r.screenType == helpScreen {
 		r.help, cmd = r.help.Update(msg)
 		cmds = append(cmds, cmd)
@@ -625,6 +676,36 @@ func (r *Root) View() string {
 
 		return overlay.Composite(
 			foreground,
+			dimmedBackground,
+			overlay.Center,
+			overlay.Center,
+			0,
+			0,
+		)
+	case quickJoinScreen:
+		var background string
+		if len(r.tabs) > 0 && r.tabCursor < len(r.tabs) {
+			if r.dependencies.UserConfig.Settings.VerticalTabList {
+				mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
+				statusBar := r.tabs[r.tabCursor].StatusBarView()
+				if statusBar != "" {
+					background = mainContent + "\n" + statusBar
+				} else {
+					background = mainContent
+				}
+			} else {
+				background = r.header.View() + "\n" + r.tabs[r.tabCursor].View()
+			}
+		} else {
+			background = r.splash.View()
+		}
+
+		dimmedBackground := lipgloss.NewStyle().
+			Faint(true).
+			Render(background)
+
+		return overlay.Composite(
+			r.quickJoinInput.View(),
 			dimmedBackground,
 			overlay.Center,
 			overlay.Center,
@@ -829,6 +910,7 @@ func (r *Root) handleResize() {
 
 	// channel join input
 	r.joinInput.handleResize(r.width, r.height)
+	r.quickJoinInput.handleResize(r.width, r.height)
 
 	// help
 	r.help.handleResize(r.width, r.height)
