@@ -122,9 +122,10 @@ type broadcastTab struct {
 	isUserMod bool
 	focused   bool
 
-	channelDataLoaded bool
-	lastMessageSent   string
-	lastMessageSentAt time.Time
+	channelDataLoaded         bool
+	pendingChannelSuggestions []string
+	lastMessageSent           string
+	lastMessageSentAt         time.Time
 
 	channel      string
 	channelID    string
@@ -358,6 +359,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
 		t.messageInput.SetMaxVisibleLines(3) // allow input to grow up to 3 lines
 
+		if len(t.pendingChannelSuggestions) > 0 {
+			t.messageInput.SetChannelSuggestions(t.pendingChannelSuggestions)
+			t.pendingChannelSuggestions = nil
+		}
+
 		t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.deps)
 
 		// set chat suggestions if non-anonymous user
@@ -524,7 +530,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, nil
 	case channelSuggestionsLoadedMessage:
 		if msg.targetID == t.id {
-			t.messageInput.SetChannelSuggestions(msg.channels)
+			if t.messageInput != nil {
+				t.messageInput.SetChannelSuggestions(msg.channels)
+			} else {
+				t.pendingChannelSuggestions = msg.channels
+			}
 		}
 		return t, nil
 	case wspool.EventSubEvent:
