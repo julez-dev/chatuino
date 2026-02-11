@@ -53,7 +53,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 
 	s := spinner.New()
 
-	s.Spinner = spinner.Dot
+	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ListFontColor))
 
 	return createModel{

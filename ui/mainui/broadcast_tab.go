@@ -172,7 +172,7 @@ func newBroadcastTab(
 		lastMessages: cache,
 		deps:         deps,
 		modFetcher:   ivr.NewAPI(http.DefaultClient),
-		spinner:      spinner.New(spinner.WithSpinner(customEllipsisSpinner)),
+		spinner:      spinner.New(spinner.WithSpinner(loadingSpinner)),
 	}
 }
 
@@ -748,7 +748,7 @@ func (t *broadcastTab) View() string {
 			MaxHeight(t.height).
 			AlignHorizontal(lipgloss.Center).
 			AlignVertical(lipgloss.Center).
-			Render(t.spinner.View() + " Loading")
+			Render(t.spinner.View() + " Loading channel")
 	}
 
 	builder := strings.Builder{}
@@ -832,7 +832,7 @@ func (t *broadcastTab) ViewWithoutStatusBar() string {
 			MaxHeight(t.height).
 			AlignHorizontal(lipgloss.Center).
 			AlignVertical(lipgloss.Center).
-			Render(t.spinner.View() + " Loading")
+			Render(t.spinner.View() + " Loading channel")
 	}
 
 	builder := strings.Builder{}

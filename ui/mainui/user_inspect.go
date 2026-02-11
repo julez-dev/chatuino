@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/twitch/ivr"
@@ -39,8 +40,9 @@ type userInspect struct {
 	badges          []twitchirc.Badge
 	formattedBadges wordReplacement
 
-	ivr  *ivr.API
-	deps *DependencyContainer
+	ivr     *ivr.API
+	deps    *DependencyContainer
+	spinner spinner.Model
 
 	chatWindow *chatWindow
 }
@@ -59,6 +61,7 @@ func newUserInspect(tabID string, width, height int, user, channel string, accou
 		user:      user,
 		ivr:       ivr.NewAPI(http.DefaultClient),
 		deps:      deps,
+		spinner:   spinner.New(spinner.WithSpinner(loadingSpinner)),
 		// start chat window in full size, will be resized once data is fetched
 		chatWindow: c,
 	}
@@ -71,7 +74,7 @@ func (u *userInspect) Init() tea.Cmd {
 func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 	var cmds []tea.Cmd
 
-	cmds = append(cmds, u.chatWindow.Init())
+	cmds = append(cmds, u.chatWindow.Init(), u.spinner.Tick)
 	cmds = append(cmds, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
@@ -209,6 +212,12 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		return u, tea.Batch(cmds...)
 	}
 
+	// update spinner while loading
+	if !u.isDataFetched {
+		u.spinner, cmd = u.spinner.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	chatEvent, ok := msg.(chatEventMessage)
 
 	// we don't need to intervene if the message is not a chat event, the window can handle it
@@ -297,8 +306,7 @@ func (u *userInspect) renderUserInfo() string {
 	styleCentered := style.MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
 
 	if !u.isDataFetched {
-		// render with some new lines to look a little bit better once all data is available
-		return styleCentered.Render("\n", "Fetching data...", "\n")
+		return styleCentered.Render("\n", u.spinner.View()+" Fetching user data", "\n")
 	}
 
 	if u.err != nil {
