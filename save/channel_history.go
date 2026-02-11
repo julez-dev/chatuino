@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/spf13/afero"
@@ -24,6 +25,7 @@ type ChannelHistoryEntry struct {
 
 // ChannelHistoryManager persists recently visited channels to a JSON file.
 type ChannelHistoryManager struct {
+	mu sync.Mutex
 	fs afero.Fs
 }
 
@@ -33,6 +35,9 @@ func NewChannelHistoryManager(fs afero.Fs) *ChannelHistoryManager {
 
 // LoadHistory reads the channel history from disk, sorted by most-recent first.
 func (m *ChannelHistoryManager) LoadHistory() ([]ChannelHistoryEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	f, err := openCreateDataFile(m.fs, channelHistoryFileName)
 	if err != nil {
 		return nil, err
@@ -64,6 +69,9 @@ func (m *ChannelHistoryManager) LoadHistory() ([]ChannelHistoryEntry, error) {
 // RecordChannel upserts a channel into the history, updating its timestamp.
 // The history is capped at maxChannelHistory entries.
 func (m *ChannelHistoryManager) RecordChannel(login string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	f, err := openCreateDataFile(m.fs, channelHistoryFileName)
 	if err != nil {
 		return err

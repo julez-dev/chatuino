@@ -386,24 +386,15 @@ func (q *quickJoin) confirmSelection() tea.Cmd {
 	}
 
 	account := q.accounts[q.accountCursor]
+	client := q.deps.APIUserClients[account.ID]
 
 	return func() tea.Msg {
-		for accountID, client := range q.deps.APIUserClients {
-			if accountID != account.ID {
-				continue
-			}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-			resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
-			if err != nil {
-				break
-			}
-
-			if len(resp.Data) < 1 {
-				break
-			}
-
+		resp, err := client.GetUsers(ctx, []string{channel}, nil)
+		if err == nil && len(resp.Data) > 0 {
 			channel = resp.Data[0].Login
-			break
 		}
 
 		return joinChannelMessage{
@@ -436,7 +427,6 @@ func updateItemStreamInfo(items []quickJoinChannelItem, info setStreamInfoMessag
 func (q *quickJoin) View() string {
 	style := lipgloss.NewStyle().
 		Width(q.width).
-		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(q.deps.UserConfig.Theme.ListLabelColor))
 
@@ -489,7 +479,7 @@ func (q *quickJoin) View() string {
 	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(q.deps.UserConfig.Theme.StatusColor)).Render(q.activeSection.String()))
 	b.WriteString(stateStr)
 
-	return style.Padding(0).Render(b.String())
+	return style.Render(b.String())
 }
 
 // renderTabBar renders the [Recent | Followed] toggle.

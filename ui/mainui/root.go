@@ -125,8 +125,9 @@ type Root struct {
 	quickJoinInput *quickJoin
 	help           *help
 
-	tabCursor int
-	tabs      []tab
+	tabCursor          int
+	tabs               []tab
+	channelSuggestions []string // cached for broadcast to new tabs
 }
 
 func NewUI(
@@ -283,12 +284,56 @@ func (r *Root) Init() tea.Cmd {
 				})
 			}
 
+			// pre-fetch channel suggestions (history + followed) once for all tabs
+			var channelSuggestions []string
+			wg.Go(func() error {
+				seen := make(map[string]struct{})
+
+				if r.dependencies.ChannelHistory != nil {
+					entries, err := r.dependencies.ChannelHistory.LoadHistory()
+					if err != nil {
+						log.Logger.Err(err).Msg("could not load channel history for suggestions")
+					} else {
+						for _, e := range entries {
+							if _, ok := seen[e.ChannelLogin]; !ok {
+								seen[e.ChannelLogin] = struct{}{}
+								channelSuggestions = append(channelSuggestions, e.ChannelLogin)
+							}
+						}
+					}
+				}
+
+				for accountID, client := range r.dependencies.APIUserClients {
+					fc, ok := client.(followedFetcher)
+					if !ok {
+						continue
+					}
+
+					followed, err := fc.FetchUserFollowedChannels(ctx, accountID, "")
+					if err != nil {
+						log.Logger.Err(err).Str("account-id", accountID).Msg("could not fetch followed channels for suggestions")
+						continue
+					}
+
+					for _, f := range followed {
+						login := strings.ToLower(f.BroadcasterLogin)
+						if _, ok := seen[login]; !ok {
+							seen[login] = struct{}{}
+							channelSuggestions = append(channelSuggestions, login)
+						}
+					}
+				}
+
+				return nil
+			})
+
 			err = wg.Wait()
 
 			return persistedDataLoadedMessage{
-				state:    state,
-				ttvUsers: ttvUsers,
-				err:      err,
+				state:              state,
+				ttvUsers:           ttvUsers,
+				channelSuggestions: channelSuggestions,
+				err:                err,
 			}
 		},
 		r.tickPollStreamInfos(),
@@ -328,13 +373,33 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		initCmds := []tea.Cmd{nTab.Init(), cmd}
 
 		// Record channel in history for broadcast tabs
-		if msg.tabKind == broadcastTabKind && msg.channel != "" && r.dependencies.ChannelHistory != nil {
+		if msg.tabKind == broadcastTabKind && msg.channel != "" {
 			channel := msg.channel
+
+			// update cached suggestions with new channel
+			if !slices.Contains(r.channelSuggestions, channel) {
+				r.channelSuggestions = append(r.channelSuggestions, channel)
+			}
+
+			if r.dependencies.ChannelHistory != nil {
+				initCmds = append(initCmds, func() tea.Msg {
+					if err := r.dependencies.ChannelHistory.RecordChannel(channel); err != nil {
+						log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
+					}
+					return nil
+				})
+			}
+		}
+
+		// send cached suggestions to new tab
+		if len(r.channelSuggestions) > 0 {
+			tabID := nTab.ID()
+			suggestions := r.channelSuggestions
 			initCmds = append(initCmds, func() tea.Msg {
-				if err := r.dependencies.ChannelHistory.RecordChannel(channel); err != nil {
-					log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
+				return channelSuggestionsLoadedMessage{
+					targetID: tabID,
+					channels: suggestions,
 				}
-				return nil
 			})
 		}
 
@@ -1061,6 +1126,21 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	}
 
 	r.handleResize()
+
+	// cache and broadcast channel suggestions to all tabs
+	r.channelSuggestions = msg.channelSuggestions
+	if len(r.channelSuggestions) > 0 {
+		for _, t := range r.tabs {
+			suggestions := r.channelSuggestions
+			tabID := t.ID()
+			cmds = append(cmds, func() tea.Msg {
+				return channelSuggestionsLoadedMessage{
+					targetID: tabID,
+					channels: suggestions,
+				}
+			})
+		}
+	}
 
 	// initial app state tick
 	cmds = append(cmds, r.tickSaveAppState())

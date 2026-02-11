@@ -457,7 +457,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		t.HandleResize()
-		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), t.loadChannelSuggestions(), tea.Sequence(ircCmds...))
+		cmds = append(cmds, t.streamInfo.Init(), t.statusInfo.Init(), tea.Sequence(ircCmds...))
 		return t, tea.Batch(cmds...)
 	case emoteSetRefreshedMessage:
 		if !t.account.IsAnonymous && msg.targetID == t.id {
@@ -998,57 +998,6 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 	return nil
 }
 
-func (t *broadcastTab) loadChannelSuggestions() tea.Cmd {
-	tabID := t.id
-	accountID := t.account.ID
-	channelHistory := t.deps.ChannelHistory
-
-	var followClient followedFetcher
-	if c, ok := t.deps.APIUserClients[accountID].(followedFetcher); ok {
-		followClient = c
-	}
-
-	return func() tea.Msg {
-		seen := make(map[string]struct{})
-		var channels []string
-
-		// recent channels from history
-		if channelHistory != nil {
-			entries, err := channelHistory.LoadHistory()
-			if err == nil {
-				for _, e := range entries {
-					if _, ok := seen[e.ChannelLogin]; !ok {
-						seen[e.ChannelLogin] = struct{}{}
-						channels = append(channels, e.ChannelLogin)
-					}
-				}
-			}
-		}
-
-		// followed channels
-		if followClient != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			followed, err := followClient.FetchUserFollowedChannels(ctx, accountID, "")
-			if err == nil {
-				for _, f := range followed {
-					login := strings.ToLower(f.BroadcasterLogin)
-					if _, ok := seen[login]; !ok {
-						seen[login] = struct{}{}
-						channels = append(channels, login)
-					}
-				}
-			}
-		}
-
-		return channelSuggestionsLoadedMessage{
-			targetID: tabID,
-			channels: channels,
-		}
-	}
-}
-
 func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
 	if len(args) < 1 || args[0] == "" {
 		return func() tea.Msg {
@@ -1070,7 +1019,10 @@ func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
 	client := t.deps.APIUserClients[account.ID]
 
 	return func() tea.Msg {
-		resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		resp, err := client.GetUsers(ctx, []string{channel}, nil)
 		if err == nil && len(resp.Data) > 0 {
 			channel = resp.Data[0].Login
 		}
