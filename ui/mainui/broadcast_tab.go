@@ -524,17 +524,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, nil
 	case channelSuggestionsLoadedMessage:
 		if msg.targetID == t.id {
-			fn := func(s string) func(...string) string {
-				return func(args ...string) string {
-					return s
-				}
-			}
-
-			for ch := range slices.Values(msg.channels) {
-				if _, ok := t.chatWindow.userColorCache[ch]; !ok {
-					t.chatWindow.userColorCache[ch] = fn(ch)
-				}
-			}
+			t.messageInput.SetChannelSuggestions(msg.channels)
 		}
 		return t, nil
 	case wspool.EventSubEvent:
@@ -1011,14 +1001,20 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 func (t *broadcastTab) loadChannelSuggestions() tea.Cmd {
 	tabID := t.id
 	accountID := t.account.ID
+	channelHistory := t.deps.ChannelHistory
+
+	var followClient followedFetcher
+	if c, ok := t.deps.APIUserClients[accountID].(followedFetcher); ok {
+		followClient = c
+	}
 
 	return func() tea.Msg {
 		seen := make(map[string]struct{})
 		var channels []string
 
 		// recent channels from history
-		if t.deps.ChannelHistory != nil {
-			entries, err := t.deps.ChannelHistory.LoadHistory()
+		if channelHistory != nil {
+			entries, err := channelHistory.LoadHistory()
 			if err == nil {
 				for _, e := range entries {
 					if _, ok := seen[e.ChannelLogin]; !ok {
@@ -1030,8 +1026,11 @@ func (t *broadcastTab) loadChannelSuggestions() tea.Cmd {
 		}
 
 		// followed channels
-		if client, ok := t.deps.APIUserClients[accountID].(followedFetcher); ok {
-			followed, err := client.FetchUserFollowedChannels(context.Background(), accountID, "")
+		if followClient != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			followed, err := followClient.FetchUserFollowedChannels(ctx, accountID, "")
 			if err == nil {
 				for _, f := range followed {
 					login := strings.ToLower(f.BroadcasterLogin)
