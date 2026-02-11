@@ -172,6 +172,7 @@ func main() {
 			emoteCache := emote.NewCache(log.Logger, serverAPI, stvAPI, bttvAPI, ffzAPI)
 			badgeCache := badge.NewCache(serverAPI)
 			appStateManager := save.NewAppStateManager(afero.NewOsFs())
+			channelHistoryManager := save.NewChannelHistoryManager(afero.NewOsFs())
 
 			// message logger setup
 			db, err := openDB(false)
@@ -266,6 +267,7 @@ func main() {
 				MessageLogger:        messageLogger,
 				Pool:                 pool,
 				APIUserClients:       clients,
+				ChannelHistory:       channelHistoryManager,
 			}
 
 			// Fetch all Accounts

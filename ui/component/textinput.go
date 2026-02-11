@@ -65,7 +65,8 @@ type SuggestionTextInput struct {
 	customSuggestions map[string]string
 	emoteReplacements map[string]string // emoteText:unicode
 
-	userCache map[string]func(...string) string // [username]render func
+	userCache    map[string]func(...string) string // [username]render func
+	channelCache map[string]struct{}               // channel logins for /join autocomplete
 
 	// Multi-line display support
 	maxVisibleLines int // 1 = single line (default), >1 = wrapped multi-line display
@@ -360,6 +361,15 @@ func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
 	s.updateSuggestions()
 }
 
+// SetChannelSuggestions replaces the channel cache used for /join autocomplete.
+func (s *SuggestionTextInput) SetChannelSuggestions(channels []string) {
+	m := make(map[string]struct{}, len(channels))
+	for _, ch := range channels {
+		m[ch] = struct{}{}
+	}
+	s.channelCache = m
+}
+
 func (s *SuggestionTextInput) SetValue(val string) {
 	s.InputModel.SetValue(val)
 	s.InputModel.CursorEnd()
@@ -459,6 +469,27 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		})
 
 		s.suggestions = append(s.suggestions, matchedUsers...)
+	}
+
+	// Channel suggestions for /join argument: @-prefixed like usernames, but only in /join context
+	if strings.HasPrefix(currWord, "@") && strings.HasPrefix(s.InputModel.Value(), "/join ") && startIndex > 0 && len(s.channelCache) > 0 {
+		var matchedChannels []string
+
+		lower := strings.ToLower(currWord[1:])
+		for ch := range s.channelCache {
+			if strings.Contains(ch, lower) {
+				matchedChannels = append(matchedChannels, ch)
+			}
+		}
+
+		slices.SortFunc(matchedChannels, func(a, b string) int {
+			if len(a) == len(b) {
+				return strings.Compare(a, b)
+			}
+			return len(a) - len(b)
+		})
+
+		s.suggestions = append(s.suggestions, matchedChannels...)
 	}
 }
 

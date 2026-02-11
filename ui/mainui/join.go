@@ -98,14 +98,7 @@ func createDefaultList(height int, selectedColor string) list.Model {
 func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	emptyUserMap := map[string]func(...string) string{}
 
-	// Calculate modal width as 60% of parent
-	modalWidth := int(float64(parentWidth) * 0.6)
-	if modalWidth < 40 {
-		modalWidth = 40 // Minimum width
-	}
-	if modalWidth > 80 {
-		modalWidth = 80 // Maximum width to prevent being too wide on large terminals
-	}
+	modalWidth := calcModalWidth(parentWidth)
 
 	input := component.NewSuggestionTextInput(emptyUserMap, nil)
 	input.DisableAutoSpaceSuggestion = true
@@ -498,17 +491,8 @@ func (c *join) blur() {
 }
 
 func (c *join) handleResize(parentWidth, parentHeight int) {
-	// Recalculate modal width as 60% of parent
-	modalWidth := int(float64(parentWidth) * 0.6)
-	if modalWidth < 40 {
-		modalWidth = 40 // Minimum width
-	}
-	if modalWidth > 80 {
-		modalWidth = 80 // Maximum width to prevent being too wide on large terminals
-	}
-
-	c.width = modalWidth
-	c.height = 0 // Dynamic height based on content
+	c.width = calcModalWidth(parentWidth)
+	c.height = 0
 }
 
 func (c *join) setTabOptions(kinds ...tabKind) {

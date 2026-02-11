@@ -85,6 +85,7 @@ type activeScreen int
 const (
 	mainScreen activeScreen = iota
 	inputScreen
+	quickJoinScreen
 	helpScreen
 )
 
@@ -118,13 +119,15 @@ type Root struct {
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
 	// components
-	splash    splash
-	header    header
-	joinInput *join
-	help      *help
+	splash         splash
+	header         header
+	joinInput      *join
+	quickJoinInput *quickJoin
+	help           *help
 
-	tabCursor int
-	tabs      []tab
+	tabCursor          int
+	tabs               []tab
+	channelSuggestions []string // cached for broadcast to new tabs
 }
 
 func NewUI(
@@ -149,9 +152,10 @@ func NewUI(
 			keymap:            dependencies.Keymap,
 			userConfiguration: dependencies.UserConfig,
 		},
-		header:    header,
-		help:      newHelp(10, 10, dependencies),
-		joinInput: newJoin(10, dependencies),
+		header:         header,
+		help:           newHelp(10, 10, dependencies),
+		joinInput:      newJoin(10, dependencies),
+		quickJoinInput: newQuickJoin(10, dependencies),
 
 		messageLoggerChan: messageLoggerChan,
 	}
@@ -280,12 +284,56 @@ func (r *Root) Init() tea.Cmd {
 				})
 			}
 
+			// pre-fetch channel suggestions (history + followed) once for all tabs
+			var channelSuggestions []string
+			wg.Go(func() error {
+				seen := make(map[string]struct{})
+
+				if r.dependencies.ChannelHistory != nil {
+					entries, err := r.dependencies.ChannelHistory.LoadHistory()
+					if err != nil {
+						log.Logger.Err(err).Msg("could not load channel history for suggestions")
+					} else {
+						for _, e := range entries {
+							if _, ok := seen[e.ChannelLogin]; !ok {
+								seen[e.ChannelLogin] = struct{}{}
+								channelSuggestions = append(channelSuggestions, e.ChannelLogin)
+							}
+						}
+					}
+				}
+
+				for accountID, client := range r.dependencies.APIUserClients {
+					fc, ok := client.(followedFetcher)
+					if !ok {
+						continue
+					}
+
+					followed, err := fc.FetchUserFollowedChannels(ctx, accountID, "")
+					if err != nil {
+						log.Logger.Err(err).Str("account-id", accountID).Msg("could not fetch followed channels for suggestions")
+						continue
+					}
+
+					for _, f := range followed {
+						login := strings.ToLower(f.BroadcasterLogin)
+						if _, ok := seen[login]; !ok {
+							seen[login] = struct{}{}
+							channelSuggestions = append(channelSuggestions, login)
+						}
+					}
+				}
+
+				return nil
+			})
+
 			err = wg.Wait()
 
 			return persistedDataLoadedMessage{
-				state:    state,
-				ttvUsers: ttvUsers,
-				err:      err,
+				state:              state,
+				ttvUsers:           ttvUsers,
+				channelSuggestions: channelSuggestions,
+				err:                err,
 			}
 		},
 		r.tickPollStreamInfos(),
@@ -318,10 +366,44 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		r.joinInput.blur()
 		r.joinInput.input.SetSuggestions(nil) // free up some memory
+		r.quickJoinInput.blur()
 
 		r.handleResize()
 
-		return r, tea.Batch(nTab.Init(), cmd)
+		initCmds := []tea.Cmd{nTab.Init(), cmd}
+
+		// Record channel in history for broadcast tabs
+		if msg.tabKind == broadcastTabKind && msg.channel != "" {
+			channel := msg.channel
+
+			// update cached suggestions with new channel
+			if !slices.Contains(r.channelSuggestions, channel) {
+				r.channelSuggestions = append(r.channelSuggestions, channel)
+			}
+
+			if r.dependencies.ChannelHistory != nil {
+				initCmds = append(initCmds, func() tea.Msg {
+					if err := r.dependencies.ChannelHistory.RecordChannel(channel); err != nil {
+						log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
+					}
+					return nil
+				})
+			}
+		}
+
+		// send cached suggestions to new tab
+		if len(r.channelSuggestions) > 0 {
+			tabID := nTab.ID()
+			suggestions := r.channelSuggestions
+			initCmds = append(initCmds, func() tea.Msg {
+				return channelSuggestionsLoadedMessage{
+					targetID: tabID,
+					channels: suggestions,
+				}
+			})
+		}
+
+		return r, tea.Batch(initCmds...)
 	case wspool.IRCEvent:
 		// Handle IRC events from the connection pool
 		if msg.Error != nil {
@@ -373,7 +455,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.Sequence(batched...))
 		return r, tea.Batch(cmds...)
 	case polledStreamInfoMessage:
-		return r, r.handlePolledStreamInfo(msg)
+		if r.screenType == quickJoinScreen {
+			r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		cmds = append(cmds, r.handlePolledStreamInfo(msg))
+		return r, tea.Batch(cmds...)
 	case appStateSaveMessage:
 		return r, r.tickSaveAppState()
 	case tea.WindowSizeMsg:
@@ -411,12 +498,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.Escape) {
-			if r.screenType == inputScreen || r.screenType == helpScreen {
+			if r.screenType == inputScreen || r.screenType == helpScreen || r.screenType == quickJoinScreen {
 				if len(r.tabs) > r.tabCursor {
 					r.tabs[r.tabCursor].Focus()
 				}
 
 				r.joinInput.blur()
+				r.quickJoinInput.blur()
 				r.screenType = mainScreen
 
 				return r, nil
@@ -475,6 +563,29 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				r.joinInput.blur()
+				r.screenType = mainScreen
+			}
+
+			return r, nil
+		}
+
+		if key.Matches(msg, r.dependencies.Keymap.QuickJoin) {
+			switch r.screenType {
+			case mainScreen:
+				if len(r.tabs) > r.tabCursor {
+					r.tabs[r.tabCursor].Blur()
+				}
+
+				r.screenType = quickJoinScreen
+				r.quickJoinInput = newQuickJoin(r.width, r.dependencies)
+				r.quickJoinInput.focus()
+				return r, r.quickJoinInput.Init()
+			case quickJoinScreen:
+				if len(r.tabs) > r.tabCursor {
+					r.tabs[r.tabCursor].Focus()
+				}
+
+				r.quickJoinInput.blur()
 				r.screenType = mainScreen
 			}
 
@@ -567,6 +678,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	if r.screenType == quickJoinScreen {
+		r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	if r.screenType == helpScreen {
 		r.help, cmd = r.help.Update(msg)
 		cmds = append(cmds, cmd)
@@ -625,6 +741,36 @@ func (r *Root) View() string {
 
 		return overlay.Composite(
 			foreground,
+			dimmedBackground,
+			overlay.Center,
+			overlay.Center,
+			0,
+			0,
+		)
+	case quickJoinScreen:
+		var background string
+		if len(r.tabs) > 0 && r.tabCursor < len(r.tabs) {
+			if r.dependencies.UserConfig.Settings.VerticalTabList {
+				mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
+				statusBar := r.tabs[r.tabCursor].StatusBarView()
+				if statusBar != "" {
+					background = mainContent + "\n" + statusBar
+				} else {
+					background = mainContent
+				}
+			} else {
+				background = r.header.View() + "\n" + r.tabs[r.tabCursor].View()
+			}
+		} else {
+			background = r.splash.View()
+		}
+
+		dimmedBackground := lipgloss.NewStyle().
+			Faint(true).
+			Render(background)
+
+		return overlay.Composite(
+			r.quickJoinInput.View(),
 			dimmedBackground,
 			overlay.Center,
 			overlay.Center,
@@ -829,6 +975,7 @@ func (r *Root) handleResize() {
 
 	// channel join input
 	r.joinInput.handleResize(r.width, r.height)
+	r.quickJoinInput.handleResize(r.width, r.height)
 
 	// help
 	r.help.handleResize(r.width, r.height)
@@ -979,6 +1126,21 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	}
 
 	r.handleResize()
+
+	// cache and broadcast channel suggestions to all tabs
+	r.channelSuggestions = msg.channelSuggestions
+	if len(r.channelSuggestions) > 0 {
+		for _, t := range r.tabs {
+			suggestions := r.channelSuggestions
+			tabID := t.ID()
+			cmds = append(cmds, func() tea.Msg {
+				return channelSuggestionsLoadedMessage{
+					targetID: tabID,
+					channels: suggestions,
+				}
+			})
+		}
+	}
 
 	// initial app state tick
 	cmds = append(cmds, r.tickSaveAppState())

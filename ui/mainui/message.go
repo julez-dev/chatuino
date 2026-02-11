@@ -9,9 +9,10 @@ import (
 
 // persistedDataLoadedMessage comes when state and user data is loaded
 type persistedDataLoadedMessage struct {
-	err      error
-	ttvUsers map[string]twitchapi.UserData
-	state    save.AppState
+	err                error
+	ttvUsers           map[string]twitchapi.UserData
+	state              save.AppState
+	channelSuggestions []string
 }
 
 // chatEventMessage comes when we receive a IRC event
@@ -94,6 +95,12 @@ type setStreamInfoMessage struct {
 	title    string
 	game     string
 	isLive   bool
+}
+
+// channelSuggestionsLoadedMessage delivers channel names for /join autocomplete
+type channelSuggestionsLoadedMessage struct {
+	targetID string
+	channels []string
 }
 
 // requestNotificationIconMessage comes when app requests an notification icon for a tab

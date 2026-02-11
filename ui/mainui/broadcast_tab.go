@@ -122,9 +122,10 @@ type broadcastTab struct {
 	isUserMod bool
 	focused   bool
 
-	channelDataLoaded bool
-	lastMessageSent   string
-	lastMessageSentAt time.Time
+	channelDataLoaded         bool
+	pendingChannelSuggestions []string
+	lastMessageSent           string
+	lastMessageSentAt         time.Time
 
 	channel      string
 	channelID    string
@@ -358,6 +359,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
 		t.messageInput.SetMaxVisibleLines(3) // allow input to grow up to 3 lines
 
+		if len(t.pendingChannelSuggestions) > 0 {
+			t.messageInput.SetChannelSuggestions(t.pendingChannelSuggestions)
+			t.pendingChannelSuggestions = nil
+		}
+
 		t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.deps)
 
 		// set chat suggestions if non-anonymous user
@@ -521,6 +527,15 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 		}
 
+		return t, nil
+	case channelSuggestionsLoadedMessage:
+		if msg.targetID == t.id {
+			if t.messageInput != nil {
+				t.messageInput.SetChannelSuggestions(msg.channels)
+			} else {
+				t.pendingChannelSuggestions = msg.channels
+			}
+		}
 		return t, nil
 	case wspool.EventSubEvent:
 		if msg.Error != nil {
@@ -993,6 +1008,43 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 	return nil
 }
 
+func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
+	if len(args) < 1 || args[0] == "" {
+		return func() tea.Msg {
+			return chatEventMessage{
+				accountID: t.account.ID,
+				channel:   t.channelLogin,
+				channelID: t.channelID,
+				tabID:     t.id,
+				message: &twitchirc.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Expected Usage: /join <channel>",
+				},
+			}
+		}
+	}
+
+	channel := strings.ToLower(args[0])
+	account := t.account
+	client := t.deps.APIUserClients[account.ID]
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		resp, err := client.GetUsers(ctx, []string{channel}, nil)
+		if err == nil && len(resp.Data) > 0 {
+			channel = resp.Data[0].Login
+		}
+
+		return joinChannelMessage{
+			tabKind: broadcastTabKind,
+			channel: channel,
+			account: account,
+		}
+	}
+}
+
 // handlePyramidMessagesCommand build a message pyramid with the given word and count
 // like this:
 // word
@@ -1322,6 +1374,8 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 			return t.handleOpenEmoteOverview()
 		case "refreshemotes":
 			return t.handleManualRefreshEmotes()
+		case "join":
+			return t.handleJoinCommand(args)
 		}
 
 		if !t.isUserMod {

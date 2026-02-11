@@ -30,4 +30,5 @@ var CommandSuggestions = [...]string{
 	"/createclip",
 	"/emotes",
 	"/refreshemotes",
+	"/join <channel>",
 }
