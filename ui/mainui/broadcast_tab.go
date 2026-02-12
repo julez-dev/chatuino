@@ -58,6 +58,7 @@ type setChannelDataMessage struct {
 	channelID       string
 	initialMessages []twitchirc.IRCer
 	isUserMod       bool
+	modFetchErr     error
 }
 
 type emoteSetRefreshedMessage struct {
@@ -119,9 +120,10 @@ type broadcastTab struct {
 	isUniqueOnlyChat bool
 	lastMessages     *ttlcache.Cache[string, struct{}]
 
-	isUserMod  bool
-	focused    bool
-	updateInfo *UpdateInfo
+	isUserMod          bool
+	isModStatusAssumed bool // true when mod fetch failed; don't show "Mod" in status
+	focused            bool
+	updateInfo         *UpdateInfo
 
 	channelDataLoaded         bool
 	pendingChannelSuggestions []string
@@ -228,10 +230,15 @@ func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 		})
 
 		var isUserMod bool
+		var modFetchErr error
 		group.Go(func() error {
 			modVips, err := t.modFetcher.GetModVIPList(ctx, userData.Login)
 			if err != nil {
-				return fmt.Errorf("could not fetch mods for %s (%s): %w", userData.Login, userData.ID, err)
+				// Don't fail the tab — assume mod so commands remain available.
+				// The actual mod status will be corrected by USERSTATE from IRC.
+				isUserMod = true
+				modFetchErr = err
+				return nil
 			}
 
 			for _, mod := range modVips.Mods {
@@ -258,6 +265,7 @@ func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 			channelLogin:    userData.Login,
 			initialMessages: recentMessages,
 			isUserMod:       isUserMod,
+			modFetchErr:     modFetchErr,
 		}
 	}
 
@@ -370,10 +378,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		// set chat suggestions if non-anonymous user
 		if !t.account.IsAnonymous {
 			t.isUserMod = msg.isUserMod
+			t.isModStatusAssumed = msg.modFetchErr != nil
 
 			// if user is broadcaster, allow mod commands
 			if t.account.ID == msg.channelID {
 				t.isUserMod = true
+				t.isModStatusAssumed = false
 			}
 
 			// user is mod or broadcaster, include mod commands
@@ -387,6 +397,15 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		ircCmds := make([]tea.Cmd, 0, 3)
+
+		if msg.modFetchErr != nil {
+			msg.initialMessages = append(msg.initialMessages, &twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("Could not fetch mod status, assuming mod. (%s)", msg.modFetchErr),
+			})
+		}
 
 		// notify user about loaded messages
 		msg.initialMessages = append(msg.initialMessages, &twitchirc.Notice{

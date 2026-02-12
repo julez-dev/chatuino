@@ -173,7 +173,15 @@ func (s *streamStatus) View() string {
 
 	settingsBuilder := strings.Builder{}
 
+	if s.tab.isUserMod && !s.tab.isModStatusAssumed {
+		settingsBuilder.WriteString("Mod")
+	}
+
 	if s.settings.SlowMode {
+		if settingsBuilder.Len() > 0 {
+			settingsBuilder.WriteString(" | ")
+		}
+
 		dur := humanizeDuration(time.Duration(s.settings.SlowModeWaitTime) * time.Second)
 		settingsBuilder.WriteString("Slow Mode: ")
 		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
