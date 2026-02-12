@@ -19,6 +19,7 @@ type splash struct {
 	keymap            save.KeyMap
 	userConfiguration UserConfiguration
 	spinner           spinner.Model
+	updateInfo        *UpdateInfo
 }
 
 func (s splash) Init() tea.Cmd {
@@ -51,8 +52,14 @@ func (s splash) view(loading bool, err error) string {
 		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
 	}
 
+	var updateLine string
+	if s.updateInfo != nil && s.updateInfo.HasUpdate {
+		highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))
+		updateLine = "\n" + highlightStyle.Render("New update available: "+s.updateInfo.LatestVersion) + " (current: " + s.updateInfo.CurrentVersion + ")"
+	}
+
 	logo := splashArt
-	splash := style.Render(logo + "\n" + "Welcome to " + name.String() + "!\n" + help)
+	splash := style.Render(logo + "\n" + "Welcome to " + name.String() + "!\n" + help + updateLine)
 
 	return splash
 }

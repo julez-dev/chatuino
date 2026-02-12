@@ -129,6 +129,7 @@ type Root struct {
 	tabCursor          int
 	tabs               []tab
 	channelSuggestions []string // cached for broadcast to new tabs
+	updateInfo         *UpdateInfo
 }
 
 func NewUI(
@@ -341,6 +342,7 @@ func (r *Root) Init() tea.Cmd {
 		},
 		r.tickPollStreamInfos(),
 		r.imageCleanUpCommand(),
+		r.checkVersionCommand(),
 	)
 }
 
@@ -356,6 +358,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case imageCleanupTickMessage:
 		io.WriteString(os.Stdout, msg.deletionCommand)
 		return r, r.imageCleanUpCommand()
+	case versionCheckMessage:
+		return r, r.handleVersionCheck(msg)
 	case joinChannelMessage:
 		r.screenType = mainScreen
 
@@ -953,6 +957,7 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) (ta
 		headerHeight := r.getHeaderHeight()
 
 		nTab := newBroadcastTab(id, r.width, r.height-headerHeight, account, channel, r.dependencies)
+		nTab.updateInfo = r.updateInfo
 		return nTab, cmd
 	case mentionTabKind:
 		id, cmd := r.header.AddTab("mentioned", "all")
@@ -1056,6 +1061,38 @@ func (r *Root) prevTab() {
 		r.header.SelectTab(r.tabs[r.tabCursor].ID())
 		r.tabs[r.tabCursor].Focus()
 	}
+}
+
+func (r *Root) checkVersionCommand() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		info, err := checkForUpdate(ctx, r.dependencies.ServerAPI, r.dependencies.Version)
+		return versionCheckMessage{info: info, err: err}
+	}
+}
+
+func (r *Root) handleVersionCheck(msg versionCheckMessage) tea.Cmd {
+	if msg.err != nil {
+		log.Logger.Err(msg.err).Msg("version check failed")
+		return nil
+	}
+
+	if !msg.info.HasUpdate {
+		return nil
+	}
+
+	r.updateInfo = &msg.info
+	r.splash.updateInfo = &msg.info
+
+	for _, t := range r.tabs {
+		if bt, ok := t.(*broadcastTab); ok {
+			bt.updateInfo = r.updateInfo
+		}
+	}
+
+	return nil
 }
 
 func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd {

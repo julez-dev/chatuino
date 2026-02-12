@@ -67,6 +67,12 @@ type EventSubMessage struct {
 	Payload eventsub.Message[eventsub.NotificationPayload]
 }
 
+// versionCheckMessage carries the result of the startup version check.
+type versionCheckMessage struct {
+	info UpdateInfo
+	err  error
+}
+
 // polledStreamInfoMessage comes when current stream info is refreshed
 type polledStreamInfoMessage struct {
 	streamInfos []setStreamInfoMessage

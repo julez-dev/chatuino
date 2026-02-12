@@ -25,6 +25,7 @@ type Config struct {
 	RedirectURL          string
 	Redis                RedisConfig
 	EnableProxyRateLimit bool
+	Version              string
 }
 
 type API struct {

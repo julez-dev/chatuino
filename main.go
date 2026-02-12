@@ -254,6 +254,7 @@ func main() {
 					Settings: settings,
 					Theme:    theme,
 				},
+				Version:              Version,
 				AppStateManager:      appStateManager,
 				Keymap:               keymap,
 				ServerAPI:            serverAPI,
