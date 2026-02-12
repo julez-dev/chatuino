@@ -55,6 +55,7 @@ type ChatuinoServer interface {
 	APIClient
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	CheckLink(ctx context.Context, targetURL string) (server.CheckLinkResponse, error)
+	GetLatestVersion(ctx context.Context) (string, error)
 }
 
 type UserEmoteClient interface {
@@ -94,6 +95,7 @@ type DependencyContainer struct {
 	UserConfig UserConfiguration
 	Keymap     save.KeyMap
 	Accounts   []save.Account
+	Version    string
 
 	ServerAPI      ChatuinoServer
 	APIUserClients map[string]APIClient

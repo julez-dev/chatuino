@@ -76,6 +76,7 @@ var serverCMD = &cli.Command{
 				ClientSecret:         command.String("client-secret"),
 				RedirectURL:          command.String("redirect-url"),
 				EnableProxyRateLimit: command.Bool("enable-ratelimit"),
+				Version:              Version,
 				Redis: server.RedisConfig{
 					Addr:     command.String("redis-addr"),
 					Password: command.String("redis-password"),

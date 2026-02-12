@@ -225,5 +225,13 @@ func (s *streamStatus) View() string {
 		settingsBuilder.WriteString("Unique Only")
 	}
 
+	if s.tab.updateInfo != nil && s.tab.updateInfo.HasUpdate {
+		highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(s.deps.UserConfig.Theme.SplashHighlightColor))
+		if settingsBuilder.Len() > 0 {
+			settingsBuilder.WriteString(" | ")
+		}
+		settingsBuilder.WriteString(highlightStyle.Render("New update available: " + s.tab.updateInfo.LatestVersion))
+	}
+
 	return padded(stateStr + lipgloss.NewStyle().AlignHorizontal(lipgloss.Right).Width(s.width-lipgloss.Width(stateStr)).Render(settingsBuilder.String()))
 }

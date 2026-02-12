@@ -261,6 +261,18 @@ func (a *API) handleGetHealth() http.HandlerFunc {
 
 const installScriptURL = "https://raw.githubusercontent.com/julez-dev/chatuino/main/install/install.sh"
 
+// VersionResponse is the JSON response for the /version endpoint.
+type VersionResponse struct {
+	Version string `json:"version"`
+}
+
+func (a *API) handleGetVersion() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(VersionResponse{Version: a.conf.Version})
+	})
+}
+
 func (a *API) handleInstallScript() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, installScriptURL, http.StatusFound)

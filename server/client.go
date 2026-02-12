@@ -145,6 +145,16 @@ func (c *Client) CheckLink(ctx context.Context, targetURL string) (CheckLinkResp
 	return data, nil
 }
 
+// Version methods
+
+func (c *Client) GetLatestVersion(ctx context.Context) (string, error) {
+	resp, err := do[VersionResponse](ctx, c, c.baseURL+"/version")
+	if err != nil {
+		return "", err
+	}
+	return resp.Version, nil
+}
+
 // Twitch API proxy methods (/ttv/*)
 
 func (c *Client) GetGlobalEmotes(ctx context.Context) (twitchapi.EmoteResponse, error) {

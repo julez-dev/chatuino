@@ -17,6 +17,7 @@ func router(logger zerolog.Logger, api *API) *chi.Mux {
 	)
 
 	c.Get("/install", api.handleInstallScript())
+	c.Get("/version", api.handleGetVersion())
 
 	c.Route("/internal", func(r chi.Router) {
 		r.Get("/health", api.handleGetHealth())

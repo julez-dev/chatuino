@@ -119,8 +119,9 @@ type broadcastTab struct {
 	isUniqueOnlyChat bool
 	lastMessages     *ttlcache.Cache[string, struct{}]
 
-	isUserMod bool
-	focused   bool
+	isUserMod  bool
+	focused    bool
+	updateInfo *UpdateInfo
 
 	channelDataLoaded         bool
 	pendingChannelSuggestions []string

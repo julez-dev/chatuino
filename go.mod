@@ -32,6 +32,7 @@ require (
 	github.com/spf13/afero v1.15.0
 	github.com/zalando/go-keyring v0.2.6
 	golang.org/x/image v0.36.0
+	golang.org/x/mod v0.33.0
 	modernc.org/sqlite v1.45.0
 	resenje.org/singleflight v0.4.3
 )
