@@ -77,8 +77,7 @@ type streamStatus struct {
 	tab           *broadcastTab
 	deps          *DependencyContainer
 
-	userConfig UserConfiguration
-	spinner    spinner.Model
+	spinner spinner.Model
 
 	settings      twitchapi.ChatSettingData
 	err           error
