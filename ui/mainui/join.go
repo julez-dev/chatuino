@@ -125,8 +125,8 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	input.SetWidth(7)
 	input.InputModel.SetWidth(7)
 	// Set Space key to accept autocomplete suggestions
-	// Note: Must use " " (literal space) not "space" for key.Matches to work
-	input.KeyMap.AcceptSuggestion.SetKeys(" ")
+	// bubbletea v2: KeyPressMsg.String() returns "space", not " "
+	input.KeyMap.AcceptSuggestion.SetKeys("space")
 
 	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
