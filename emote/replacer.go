@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"

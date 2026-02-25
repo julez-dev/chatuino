@@ -3,7 +3,7 @@ package save
 import (
 	"testing"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )

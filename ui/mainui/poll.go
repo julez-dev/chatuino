@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 )
 
@@ -63,7 +63,7 @@ func (p *poll) View() string {
 func (p *poll) setWidth(width int) {
 	p.width = width
 	for i := range p.items {
-		p.items[i].bar.Width = clamp(width-4, 0, width) // total width - padding
+		p.items[i].bar.SetWidth(clamp(width-4, 0, width)) // total width - padding
 	}
 }
 

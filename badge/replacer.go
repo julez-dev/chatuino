@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/contributor"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"

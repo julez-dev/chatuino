@@ -21,10 +21,10 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/cli/browser"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/ivr"
@@ -365,7 +365,9 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap())
 		t.messageInput.EmoteReplacer = t.deps.EmoteReplacer // enable emote replacement
-		t.messageInput.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
+		msgInputStyles := t.messageInput.InputModel.Styles()
+		msgInputStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
+		t.messageInput.InputModel.SetStyles(msgInputStyles)
 		t.messageInput.SetMaxVisibleLines(3) // allow input to grow up to 3 lines
 
 		if len(t.pendingChannelSuggestions) > 0 {
@@ -612,7 +614,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 	if t.channelDataLoaded {
 		if t.focused {
 			switch msg := msg.(type) {
-			case tea.KeyMsg:
+			case tea.KeyPressMsg:
 				// Focus message input, when not in insert mode and not in search mode inside chat window, depending on the current active chat window
 				if key.Matches(msg, t.deps.Keymap.InsertMode) &&
 					(t.state == inChatWindow && t.chatWindow.state != searchChatWindowState || t.state == userInspectMode && t.userInspect.chatWindow.state != searchChatWindowState) {
@@ -635,13 +637,13 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 				// Send message
 				if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
+					t.messageInput, _ = t.messageInput.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 					return t, t.handleMessageSent(false)
 				}
 
 				// Send message - quick send
 				if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-					t.messageInput, _ = t.messageInput.Update(tea.KeyMsg{Type: tea.KeyEnter})
+					t.messageInput, _ = t.messageInput.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 					return t, t.handleMessageSent(true)
 				}
 
@@ -711,7 +713,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		// don't update any components when key message but not focused
-		if _, ok := msg.(tea.KeyMsg); ok && !t.focused {
+		if _, ok := msg.(tea.KeyPressMsg); ok && !t.focused {
 			return t, nil
 		}
 
@@ -975,7 +977,7 @@ func (t *broadcastTab) handleEscapePressed() {
 	}
 }
 
-func (t *broadcastTab) handleOpenBrowser(msg tea.KeyMsg) tea.Cmd {
+func (t *broadcastTab) handleOpenBrowser(msg tea.KeyPressMsg) tea.Cmd {
 	return func() tea.Msg {
 		// open popup chat if modifier is pressed
 		if key.Matches(msg, t.deps.Keymap.ChatPopUp) {
@@ -1022,7 +1024,7 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 		t.messageInput.Focus()
 		t.chatWindow.Blur()
 
-		return t.messageInput.InputModel.Cursor.BlinkCmd()
+		return t.messageInput.InputModel.Focus()
 	}
 
 	return nil

@@ -2,17 +2,14 @@ package mainui
 
 import (
 	"context"
-	"io"
-	"os"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/rs/zerolog/log"
@@ -25,8 +22,9 @@ type emoteWithOverwrite struct {
 }
 
 type emoteOverviewSetDataMessage struct {
-	id  string
-	set map[string][]emoteWithOverwrite
+	id             string
+	set            map[string][]emoteWithOverwrite
+	prepareCommand string // Kitty graphics prepare command
 }
 
 type emoteOverview struct {
@@ -49,7 +47,7 @@ type emoteOverview struct {
 var loadingSpinner = spinner.Points
 
 func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer, width, height int) *emoteOverview {
-	vp := viewport.New(width, height)
+	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -121,19 +119,18 @@ func (e *emoteOverview) Init() tea.Cmd {
 			close(ch)
 		}()
 
-		sb := strings.Builder{}
+		var prepare strings.Builder
 		for d := range ch {
 			r[d.emote.emote.Platform.String()] = append(r[d.emote.emote.Platform.String()], d.emote)
-			sb.WriteString(d.prepare)
+			prepare.WriteString(d.prepare)
 		}
 
-		start := time.Now()
-		io.WriteString(os.Stdout, sb.String())
-		log.Logger.Info().Str("duration", time.Since(start).String()).Msg("emote overview loaded")
+		log.Logger.Info().Msg("emote overview loaded")
 
 		return emoteOverviewSetDataMessage{
-			id:  e.id,
-			set: r,
+			id:             e.id,
+			set:            r,
+			prepareCommand: prepare.String(),
 		}
 	}
 
@@ -150,6 +147,10 @@ func (e *emoteOverview) Update(msg tea.Msg) (*emoteOverview, tea.Cmd) {
 		e.isLoaded = true
 		e.emotes = msg.set
 		e.updateContent()
+
+		if msg.prepareCommand != "" {
+			return e, tea.Raw(msg.prepareCommand)
+		}
 		return e, nil
 	}
 
@@ -165,20 +166,20 @@ func (e *emoteOverview) Update(msg tea.Msg) (*emoteOverview, tea.Cmd) {
 
 func (e *emoteOverview) View() string {
 	if !e.isLoaded {
-		return lipgloss.NewStyle().Width(e.vp.Width).Height(e.vp.Height).AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Render(e.spinner.View() + " Loading emote overview")
+		return lipgloss.NewStyle().Width(e.vp.Width()).Height(e.vp.Height()).AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Render(e.spinner.View() + " Loading emote overview")
 	}
 
 	return e.vp.View()
 }
 
 func (e *emoteOverview) resize(width, height int) {
-	e.vp.Width = width
-	e.vp.Height = height
+	e.vp.SetWidth(width)
+	e.vp.SetHeight(height)
 	e.updateContent()
 }
 
 func (e *emoteOverview) updateContent() {
-	maxWidthRow := e.vp.Width
+	maxWidthRow := e.vp.Width()
 
 	var sb strings.Builder
 	for provider, emotes := range e.emotes {

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )

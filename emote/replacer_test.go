@@ -7,20 +7,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/muesli/termenv"
 	"github.com/rs/zerolog/log"
 
 	"github.com/stretchr/testify/require"
 )
-
-func init() {
-	lipgloss.SetColorProfile(termenv.TrueColor)
-}
 
 func TestReplacer_Replace_GraphicsEnabled(t *testing.T) {
 	t.Parallel()
@@ -169,7 +163,7 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 				TwitchTVEmoteColor: "#9147FF",
 			},
 			expected: map[string]string{
-				"Kappa": "\x1b[38;2;145;71;255mKappa\x1b[0m",
+				"Kappa": "\x1b[38;2;145;71;255mKappa\x1b[m",
 			},
 		},
 		{
@@ -180,7 +174,7 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 				SevenTVEmoteColor: "#00A8FC",
 			},
 			expected: map[string]string{
-				"pepeD": "\x1b[38;2;0;168;252mpepeD\x1b[0m",
+				"pepeD": "\x1b[38;2;0;168;252mpepeD\x1b[m",
 			},
 		},
 		{
@@ -191,7 +185,7 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 				BetterTTVEmoteColor: "#D50014",
 			},
 			expected: map[string]string{
-				"monkaS": "\x1b[38;2;213;0;20mmonkaS\x1b[0m",
+				"monkaS": "\x1b[38;2;213;0;20mmonkaS\x1b[m",
 			},
 		},
 	}

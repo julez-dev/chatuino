@@ -33,6 +33,11 @@ type chatEventMessage struct {
 	// if message should only be sent to a specific tab ID
 	// if empty send to all
 	tabID string
+
+	// Kitty graphics terminal command that must be written before this event
+	// is rendered (e.g. image upload/placement). Emitted as tea.Raw by Root
+	// before forwarding to tabs; not consumed by tabs themselves.
+	prepareCommand string
 }
 
 type (

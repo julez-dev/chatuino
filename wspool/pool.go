@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sync"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"

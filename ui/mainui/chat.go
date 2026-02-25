@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/reflow/wordwrap"
@@ -115,9 +115,11 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	input.CharLimit = 25
 	input.Prompt = "  /"
 	input.Placeholder = "search"
-	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
-	input.Cursor.BlinkSpeed = time.Millisecond * 750
-	input.Width = width
+	styles := input.Styles()
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
+	styles.Cursor.BlinkSpeed = time.Millisecond * 750
+	input.SetStyles(styles)
+	input.SetWidth(width)
 
 	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render(">")
 
@@ -174,7 +176,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		return c, c.smoothScrollTickCmd()
 	case chatEventMessage:
 		return c, c.handleMessage(msg)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if c.focused {
 			switch {
 			// start search
@@ -1026,7 +1028,7 @@ func (c *chatWindow) updatePort() {
 }
 
 func (c *chatWindow) recalculateLines() {
-	c.searchInput.Width = c.width
+	c.searchInput.SetWidth(c.width)
 
 	entries := c.activeEntries()
 

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/urfave/cli/v3"

@@ -28,7 +28,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/zalando/go-keyring"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/cli/browser"
 
 	"github.com/julez-dev/chatuino/emote"
@@ -304,8 +304,6 @@ func main() {
 					deps,
 				),
 				tea.WithContext(ctx),
-				tea.WithAltScreen(),
-				tea.WithFPS(120),
 			)
 
 			// Connect the pool to the Bubble Tea program

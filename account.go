@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/accountui"
 	"github.com/spf13/afero"
@@ -50,7 +50,6 @@ var accountCMD = &cli.Command{
 		p := tea.NewProgram(
 			accountui.NewList(command.String("client-id"), command.String("api-host"), save.NewAccountProvider(keyringBackend), keys, theme),
 			tea.WithContext(ctx),
-			tea.WithAltScreen(),
 		)
 
 		if _, err := p.Run(); err != nil {

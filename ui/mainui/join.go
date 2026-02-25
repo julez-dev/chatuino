@@ -9,10 +9,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/ui/component"
@@ -104,7 +104,9 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	input.DisableAutoSpaceSuggestion = true
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "
-	input.InputModel.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
+	joinStyles := input.InputModel.Styles()
+	joinStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
+	input.InputModel.SetStyles(joinStyles)
 	input.InputModel.Placeholder = "Channel"
 	input.InputModel.Validate = func(s string) error {
 		for _, r := range s {
@@ -116,13 +118,15 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	}
 	input.IncludeCommandSuggestions = false
 	input.DisableHistory = true
-	input.InputModel.Cursor.BlinkSpeed = time.Millisecond * 750
+	joinCursorStyles := input.InputModel.Styles()
+	joinCursorStyles.Cursor.BlinkSpeed = time.Millisecond * 750
+	input.InputModel.SetStyles(joinCursorStyles)
 	// Set input width to reasonable size (will be centered in modal)
 	input.SetWidth(7)
-	input.InputModel.Width = 7
+	input.InputModel.SetWidth(7)
 	// Set Space key to accept autocomplete suggestions
-	// Note: Must use " " (literal space) not "space" for key.Matches to work
-	input.KeyMap.AcceptSuggestion.SetKeys(" ")
+	// bubbletea v2: KeyPressMsg.String() returns "space", not " "
+	input.KeyMap.AcceptSuggestion.SetKeys("space")
 
 	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
@@ -220,7 +224,7 @@ func (j *join) Init() tea.Cmd {
 
 			return setJoinSuggestionMessage{suggestions: slices.Collect(maps.Keys(uniqueChannels))}
 		},
-		j.input.InputModel.Cursor.BlinkCmd(),
+		j.input.InputModel.Focus(),
 	)
 }
 
@@ -268,7 +272,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 	if j.focused {
 		switch msg := msg.(type) {
-		case tea.KeyMsg:
+		case tea.KeyPressMsg:
 			if !j.hasLoaded {
 				return j, nil
 			}
@@ -285,7 +289,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 					j.selectedInput = accountSelect
 				case accountSelect:
 					j.selectedInput = channelInput
-					cmd = j.input.InputModel.Cursor.BlinkCmd()
+					cmd = j.input.InputModel.Focus()
 				case channelInput:
 					j.selectedInput = tabSelect
 				}
@@ -303,7 +307,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				switch j.selectedInput {
 				case tabSelect:
 					j.selectedInput = channelInput
-					cmd = j.input.InputModel.Cursor.BlinkCmd()
+					cmd = j.input.InputModel.Focus()
 				case channelInput:
 					j.selectedInput = accountSelect
 				case accountSelect:
@@ -372,7 +376,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 		}
 
 		j.input.SetWidth(iw)
-		j.input.InputModel.Width = iw
+		j.input.InputModel.SetWidth(iw)
 	case tabSelect:
 		j.tabKindList, cmd = j.tabKindList.Update(msg)
 		cmds = append(cmds, cmd)

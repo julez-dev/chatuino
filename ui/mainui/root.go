@@ -13,16 +13,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	overlay "github.com/julez-dev/bubbletea-overlay"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/wspool"
-	overlay "github.com/rmhubbert/bubbletea-overlay"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
@@ -166,7 +166,6 @@ func NewUI(
 
 func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
-		tea.SetWindowTitle("Chatuino"),
 		r.splash.Init(),
 		func() tea.Msg {
 			state, err := r.dependencies.AppStateManager.LoadAppState()
@@ -356,8 +355,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case persistedDataLoadedMessage:
 		return r, r.handlePersistedDataLoaded(msg)
 	case imageCleanupTickMessage:
-		io.WriteString(os.Stdout, msg.deletionCommand)
-		return r, r.imageCleanUpCommand()
+		var cmds []tea.Cmd
+		if msg.deletionCommand != "" {
+			cmds = append(cmds, tea.Raw(msg.deletionCommand))
+		}
+		cmds = append(cmds, r.imageCleanUpCommand())
+		return r, tea.Batch(cmds...)
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
 	case joinChannelMessage:
@@ -416,6 +419,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			// Connection error - display as notice in all tabs for this account
 			errEvt := r.buildChatEventMessage(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
+			if errEvt.prepareCommand != "" {
+				cmds = append(cmds, tea.Raw(errEvt.prepareCommand))
+				errEvt.prepareCommand = ""
+			}
 			for i := range r.tabs {
 				r.tabs[i], cmd = r.tabs[i].Update(errEvt)
 				cmds = append(cmds, cmd)
@@ -430,6 +437,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Build and forward event to tabs
 		evt := r.buildChatEventMessage(msg.AccountID, "", msg.Message, false)
+		if evt.prepareCommand != "" {
+			cmds = append(cmds, tea.Raw(evt.prepareCommand))
+			evt.prepareCommand = ""
+		}
 		for i := range r.tabs {
 			r.tabs[i], cmd = r.tabs[i].Update(evt)
 			cmds = append(cmds, cmd)
@@ -437,6 +448,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Batch(cmds...)
 	case chatEventMessage:
 		// Handle locally-generated chat events (e.g., from recent messages)
+		if msg.prepareCommand != "" {
+			cmds = append(cmds, tea.Raw(msg.prepareCommand))
+			msg.prepareCommand = ""
+		}
 		for i := range r.tabs {
 			if msg.tabID != "" && msg.tabID != r.tabs[i].ID() {
 				continue
@@ -475,7 +490,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.height = msg.Height
 		r.handleResize()
 		return r, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if key.Matches(msg, r.dependencies.Keymap.Quit) {
 			return r, tea.Quit
 		}
@@ -528,7 +543,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = f.Close()
 			}()
 
-			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.View())))
+			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.renderView())))
 
 			return r, nil
 		}
@@ -703,7 +718,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, tea.Batch(cmds...)
 }
 
-func (r *Root) View() string {
+func (r *Root) View() tea.View {
+	v := tea.NewView(r.renderView())
+	v.AltScreen = true
+	v.WindowTitle = "Chatuino"
+	return v
+}
+
+func (r *Root) renderView() string {
 	if !r.hasLoadedSession {
 		return r.splash.ViewLoading()
 	}
@@ -1346,10 +1368,6 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		replaceCommand += p
 	}
 
-	if replaceCommand != "" {
-		_, _ = io.WriteString(os.Stdout, replaceCommand)
-	}
-
 	if r.dependencies.UserConfig.Settings.Security.CheckLinks && len(message) > 0 {
 		if urls := extractValidURLs(message); len(urls) > 0 {
 			for _, u := range urls {
@@ -1383,6 +1401,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		}
 	}
 
+	event.prepareCommand = replaceCommand
 	return event
 }
 
