@@ -17,12 +17,12 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	overlay "github.com/julez-dev/bubbletea-overlay"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/wspool"
-	overlay "github.com/rmhubbert/bubbletea-overlay"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
