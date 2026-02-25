@@ -17,12 +17,19 @@ type verticalTabHeader struct {
 	height int
 	deps   *DependencyContainer
 
+	borderStyle lipgloss.Style // pre-created for View() border rendering
+
 	list     list.Model
 	delegate verticalTabDelegate
 }
 
 type verticalTabDelegate struct {
 	deps *DependencyContainer
+
+	// pre-created styles to avoid allocations in Render() (called per visible item per frame)
+	bulletStyle       lipgloss.Style
+	activeStyle       lipgloss.Style
+	notificationStyle lipgloss.Style
 }
 
 func (d verticalTabDelegate) Height() int {
@@ -43,17 +50,13 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 		return
 	}
 
-	bulletStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.deps.UserConfig.Theme.InputPromptColor))
-	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(d.deps.UserConfig.Theme.InputPromptColor))
-	notificationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(d.deps.UserConfig.Theme.ChatNoticeAlertColor))
-
 	selected := m.Index() == index
 
 	var line strings.Builder
 
 	// Bullet for selected tab
 	if selected {
-		line.WriteString(bulletStyle.Render("▸ "))
+		line.WriteString(d.bulletStyle.Render("▸ "))
 	} else {
 		line.WriteString("  ")
 	}
@@ -61,9 +64,9 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 	// Tab content
 	content := entry.render()
 	if selected {
-		line.WriteString(activeStyle.Render(content))
+		line.WriteString(d.activeStyle.Render(content))
 	} else if entry.hasNotification {
-		line.WriteString(notificationStyle.Render(content))
+		line.WriteString(d.notificationStyle.Render(content))
 	} else {
 		line.WriteString(content)
 	}
@@ -79,7 +82,10 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 
 func newVerticalTabHeader(width, height int, deps *DependencyContainer) *verticalTabHeader {
 	delegate := verticalTabDelegate{
-		deps: deps,
+		deps:              deps,
+		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)),
 	}
 
 	// Adjust dimensions for border: -2 width for left/right │, -2 height for top/bottom borders
@@ -100,11 +106,12 @@ func newVerticalTabHeader(width, height int, deps *DependencyContainer) *vertica
 	l.KeyMap = list.KeyMap{}
 
 	return &verticalTabHeader{
-		width:    width,
-		height:   height,
-		deps:     deps,
-		list:     l,
-		delegate: delegate,
+		width:       width,
+		height:      height,
+		deps:        deps,
+		borderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		list:        l,
+		delegate:    delegate,
 	}
 }
 
@@ -151,9 +158,8 @@ func (v *verticalTabHeader) MinWidth() int {
 	for _, e := range v.list.Items() {
 		e := e.(tabHeaderEntry)
 		e.hasNotification = true
-		r := e.render()
-		if lipgloss.Width(r) > minWidth {
-			minWidth = lipgloss.Width(r)
+		if w := lipgloss.Width(e.render()); w > minWidth {
+			minWidth = w
 		}
 	}
 
@@ -198,8 +204,7 @@ func (v *verticalTabHeader) Update(msg tea.Msg) (header, tea.Cmd) {
 }
 
 func (v *verticalTabHeader) View() string {
-	borderColor := lipgloss.Color(v.deps.UserConfig.Theme.InputPromptColor)
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	borderStyle := v.borderStyle
 
 	innerWidth := v.width - 2   // -2 for left/right │
 	innerHeight := v.height - 2 // -2 for top/bottom borders

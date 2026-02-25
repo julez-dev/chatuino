@@ -2,7 +2,6 @@ package component
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 
@@ -66,6 +65,14 @@ type SuggestionTextInput struct {
 	userCache    map[string]func(...string) string // [username]render func
 	channelCache map[string]struct{}               // channel logins for /join autocomplete
 
+	// Cached word-at-cursor to avoid repeated []rune() conversions per cycle.
+	// Invalidated when input value or cursor position changes.
+	cachedWordValue string // input value when cache was set
+	cachedWordPos   int    // cursor position when cache was set
+	cachedWord      string // the word at cursor
+	cachedWordStart int    // byte start index
+	cachedWordEnd   int    // byte end index
+
 	// Multi-line display support
 	maxVisibleLines int // 1 = single line (default), >1 = wrapped multi-line display
 	width           int // stored width for wrapping calculations
@@ -80,7 +87,7 @@ func defaultTrie() *trie.Trie {
 	t := trie.New()
 	t = t.WithoutFuzzy()
 	t = t.WithoutLevenshtein()
-	// t = t.WithoutNormalisation()
+	t = t.WithoutNormalisation() // emote names and usernames are ASCII; skip Unicode NFD/NFC per search
 	return t
 }
 
@@ -176,7 +183,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 		case key.Matches(msg, s.KeyMap.AcceptSuggestion):
 			// If we can accept a suggestion, do it
 			if s.canAcceptSuggestion() {
-				_, startIndex, endIndex := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
+				_, startIndex, endIndex := s.wordAtCursor()
 				before := s.InputModel.Value()[:startIndex]
 				after := s.InputModel.Value()[endIndex:]
 				suggestion := s.suggestions[s.suggestionIndex]
@@ -381,7 +388,7 @@ func (s *SuggestionTextInput) SetValue(val string) {
 
 func (s *SuggestionTextInput) canAcceptSuggestion() bool {
 	tiVal := s.InputModel.Value()
-	word, _, _ := selectWordAtIndex(tiVal, s.InputModel.Position())
+	word, _, _ := s.wordAtCursor()
 
 	// only show if the current word is longer than 2 characters and the suggestion is different from the current word
 	// or if the current word is a command
@@ -394,15 +401,25 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		return
 	}
 
-	currWord, startIndex, _ := selectWordAtIndex(s.InputModel.Value(), s.InputModel.Position())
+	tiVal := s.InputModel.Value()
+	currWord, startIndex, _ := s.wordAtCursor()
 	if currWord == "" {
 		s.suggestions = nil
 		return
 	}
 
+	// Skip expensive trie search for short words that won't be shown anyway.
+	// canAcceptSuggestion() requires len(word) > 2 or a "/" command prefix.
+	isCommand := strings.HasPrefix(tiVal, "/")
+	if len(currWord) <= 2 && !isCommand && !strings.HasPrefix(currWord, "@") {
+		s.suggestions = nil
+		s.suggestionIndex = 0
+		return
+	}
+
 	matches := s.trie.SearchAll(currWord)
 
-	if !reflect.DeepEqual(matches, s.suggestions) {
+	if !slices.Equal(matches, s.suggestions) {
 		s.suggestionIndex = 0
 	}
 
@@ -509,6 +526,23 @@ func (s *SuggestionTextInput) previousSuggestion() {
 	}
 }
 
+// wordAtCursor returns the cached word at the current cursor position.
+// Avoids repeated []rune() conversions when called multiple times per cycle.
+func (s *SuggestionTextInput) wordAtCursor() (word string, startByte, endByte int) {
+	val := s.InputModel.Value()
+	pos := s.InputModel.Position()
+	if val == s.cachedWordValue && pos == s.cachedWordPos {
+		return s.cachedWord, s.cachedWordStart, s.cachedWordEnd
+	}
+	w, start, end := selectWordAtIndex(val, pos)
+	s.cachedWordValue = val
+	s.cachedWordPos = pos
+	s.cachedWord = w
+	s.cachedWordStart = start
+	s.cachedWordEnd = end
+	return w, start, end
+}
+
 // selectWordAtIndex returns the word at the given rune index, along with byte start/end indices.
 // The index parameter is a rune position (as returned by textinput.Model.Position()).
 // Returns the word, byte start index, and byte end index for use with string slicing.
@@ -587,21 +621,16 @@ func (s *SuggestionTextInput) wrapTextPreservingSpaces(text string, wrapWidth in
 	return lines, breaks
 }
 
-// cursorLineCol maps the cursor position to (line, col) in wrapped text.
-// Note: InputModel.Position() returns rune position, not byte position.
-// Returns the line index and rune column within that line (not display width).
-func (s *SuggestionTextInput) cursorLineCol(text string, runePos int, wrapWidth int) (line, runeCol int) {
-	runes := []rune(text)
-	if runePos > len(runes) {
-		runePos = len(runes)
+// cursorLineColFromBreaks maps the cursor position to (line, col) using pre-computed break positions.
+// breaks is the slice of rune indices where each new line starts (from wrapTextPreservingSpaces).
+func (s *SuggestionTextInput) cursorLineColFromBreaks(runeLen, runePos int, breaks []int) (line, runeCol int) {
+	if runePos > runeLen {
+		runePos = runeLen
 	}
-	if text == "" {
+	if runeLen == 0 {
 		return 0, 0
 	}
 
-	_, breaks := s.wrapTextPreservingSpaces(text, wrapWidth)
-
-	// Find which line the cursor is on
 	lineStart := 0
 	for i, breakPos := range breaks {
 		if runePos < breakPos {
@@ -677,41 +706,40 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 		return styles.Focused.Prompt.Render(prompt) + cursorChar + placeholder
 	}
 
-	// Get initial line count to determine if we need line numbers
-	initialLines := s.getWrappedLines(value, baseWrapWidth)
-	showLineNumbers := len(initialLines) > 1
+	// Wrap once and reuse breaks to avoid redundant passes.
+	lines, breaks := s.wrapTextPreservingSpaces(value, baseWrapWidth)
+	showLineNumbers := len(lines) > 1
 
-	// Recalculate with line number width if needed
 	lineNumWidth := 0
 	wrapWidth := baseWrapWidth
-	var lines []string
 
 	if showLineNumbers {
-		lineNumWidth = s.lineNumberWidth(len(initialLines))
+		lineNumWidth = s.lineNumberWidth(len(lines))
 		wrapWidth = s.width - promptWidth - lineNumWidth - 1
 		if wrapWidth <= 0 {
 			wrapWidth = 1
 		}
-		// Re-wrap with adjusted width
-		lines = s.getWrappedLines(value, wrapWidth)
-		// Recalculate line number width if line count changed
-		newLineNumWidth := s.lineNumberWidth(len(lines))
-		if newLineNumWidth != lineNumWidth {
-			lineNumWidth = newLineNumWidth
-			wrapWidth = s.width - promptWidth - lineNumWidth - 1
-			if wrapWidth <= 0 {
-				wrapWidth = 1
+		// Re-wrap with adjusted width only if the wrap width actually changed
+		if wrapWidth != baseWrapWidth {
+			lines, breaks = s.wrapTextPreservingSpaces(value, wrapWidth)
+			// Check if line-number digit count changed (e.g. 9→10 lines)
+			newLineNumWidth := s.lineNumberWidth(len(lines))
+			if newLineNumWidth != lineNumWidth {
+				lineNumWidth = newLineNumWidth
+				wrapWidth = s.width - promptWidth - lineNumWidth - 1
+				if wrapWidth <= 0 {
+					wrapWidth = 1
+				}
+				lines, breaks = s.wrapTextPreservingSpaces(value, wrapWidth)
 			}
-			lines = s.getWrappedLines(value, wrapWidth)
 		}
-	} else {
-		lines = initialLines
 	}
 
 	totalLines := len(lines)
 
-	// Find cursor position in wrapped text
-	cursorLine, cursorCol := s.cursorLineCol(value, s.InputModel.Position(), wrapWidth)
+	// Find cursor position using pre-computed breaks (no extra wrap pass)
+	runeLen := len([]rune(value))
+	cursorLine, cursorCol := s.cursorLineColFromBreaks(runeLen, s.InputModel.Position(), breaks)
 
 	// Update scroll offset to keep cursor visible
 	s.updateViewOffset(cursorLine, totalLines)

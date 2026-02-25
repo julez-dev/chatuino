@@ -83,6 +83,12 @@ type streamStatus struct {
 	settings      twitchapi.ChatSettingData
 	err           error
 	isDataFetched bool
+
+	// pre-created styles to avoid allocations in View() (called every frame)
+	maxWidthStyle   lipgloss.Style // for padded rendering; Width set at render time
+	statusHighlight lipgloss.Style // bold + status color for slow/follower mode values
+	updateHighlight lipgloss.Style // splash highlight for update notification
+	rightAlignStyle lipgloss.Style // right-aligned layout; Width set at render time
 }
 
 func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID string, deps *DependencyContainer) *streamStatus {
@@ -94,6 +100,11 @@ func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID 
 		height:    height,
 		channelID: channelID,
 		spinner:   spinner.New(spinner.WithSpinner(loadingSpinner)),
+
+		maxWidthStyle:   lipgloss.NewStyle(), // Width set at render time
+		statusHighlight: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.StatusColor)),
+		updateHighlight: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.SplashHighlightColor)),
+		rightAlignStyle: lipgloss.NewStyle().AlignHorizontal(lipgloss.Right), // Width set at render time
 	}
 }
 
@@ -150,7 +161,7 @@ func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
 }
 
 func (s *streamStatus) View() string {
-	padded := lipgloss.NewStyle().MaxWidth(s.width).Render
+	padded := s.maxWidthStyle.MaxWidth(s.width).Render
 
 	if !s.isDataFetched {
 		return padded(s.spinner.View() + " Fetching chat settings")
@@ -184,7 +195,7 @@ func (s *streamStatus) View() string {
 
 		dur := humanizeDuration(time.Duration(s.settings.SlowModeWaitTime) * time.Second)
 		settingsBuilder.WriteString("Slow Mode: ")
-		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
+		settingsBuilder.WriteString(s.statusHighlight.Render(dur))
 	}
 
 	if s.settings.FollowerMode {
@@ -194,7 +205,7 @@ func (s *streamStatus) View() string {
 
 		dur := humanizeDuration(time.Duration(s.settings.FollowerModeDuration) * time.Minute)
 		settingsBuilder.WriteString("Follow Only: ")
-		settingsBuilder.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(s.userConfig.Theme.StatusColor)).Render(dur))
+		settingsBuilder.WriteString(s.statusHighlight.Render(dur))
 	}
 
 	if s.settings.SubscriberMode {
@@ -234,12 +245,11 @@ func (s *streamStatus) View() string {
 	}
 
 	if s.tab.updateInfo != nil && s.tab.updateInfo.HasUpdate {
-		highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(s.deps.UserConfig.Theme.SplashHighlightColor))
 		if settingsBuilder.Len() > 0 {
 			settingsBuilder.WriteString(" | ")
 		}
-		settingsBuilder.WriteString(highlightStyle.Render("New update available: " + s.tab.updateInfo.LatestVersion))
+		settingsBuilder.WriteString(s.updateHighlight.Render("New update available: " + s.tab.updateInfo.LatestVersion))
 	}
 
-	return padded(stateStr + lipgloss.NewStyle().AlignHorizontal(lipgloss.Right).Width(s.width-lipgloss.Width(stateStr)).Render(settingsBuilder.String()))
+	return padded(stateStr + s.rightAlignStyle.Width(s.width-lipgloss.Width(stateStr)).Render(settingsBuilder.String()))
 }

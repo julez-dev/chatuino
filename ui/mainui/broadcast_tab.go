@@ -12,6 +12,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
@@ -140,6 +141,10 @@ type broadcastTab struct {
 	deps       *DependencyContainer
 	modFetcher ModStatusFetcher
 
+	// pre-created styles to avoid allocations in View()/renderMessageInput()
+	centeredStyle    lipgloss.Style // for loading/error states; Width/Height set at render time
+	inputBorderStyle lipgloss.Style // for message input border
+
 	// components
 	streamInfo    *streamInfo
 	poll          *poll
@@ -176,6 +181,9 @@ func newBroadcastTab(
 		deps:         deps,
 		modFetcher:   ivr.NewAPI(http.DefaultClient),
 		spinner:      spinner.New(spinner.WithSpinner(loadingSpinner)),
+
+		centeredStyle:    lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center),
+		inputBorderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
 	}
 }
 
@@ -752,24 +760,14 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 func (t *broadcastTab) View() string {
 	if t.err != nil {
-		return lipgloss.NewStyle().
-			Width(t.width).
-			Height(t.height).
-			MaxWidth(t.width).
-			MaxHeight(t.height).
-			AlignHorizontal(lipgloss.Center).
-			AlignVertical(lipgloss.Center).
+		return t.centeredStyle.
+			Width(t.width).Height(t.height).MaxWidth(t.width).MaxHeight(t.height).
 			Render(t.err.Error())
 	}
 
 	if !t.channelDataLoaded {
-		return lipgloss.NewStyle().
-			Width(t.width).
-			Height(t.height).
-			MaxWidth(t.width).
-			MaxHeight(t.height).
-			AlignHorizontal(lipgloss.Center).
-			AlignVertical(lipgloss.Center).
+		return t.centeredStyle.
+			Width(t.width).Height(t.height).MaxWidth(t.width).MaxHeight(t.height).
 			Render(t.spinner.View() + " Loading channel")
 	}
 
@@ -836,24 +834,14 @@ func (t *broadcastTab) View() string {
 // ViewWithoutStatusBar returns the view without the status bar (for vertical tab mode)
 func (t *broadcastTab) ViewWithoutStatusBar() string {
 	if t.err != nil {
-		return lipgloss.NewStyle().
-			Width(t.width).
-			Height(t.height).
-			MaxWidth(t.width).
-			MaxHeight(t.height).
-			AlignHorizontal(lipgloss.Center).
-			AlignVertical(lipgloss.Center).
+		return t.centeredStyle.
+			Width(t.width).Height(t.height).MaxWidth(t.width).MaxHeight(t.height).
 			Render(t.err.Error())
 	}
 
 	if !t.channelDataLoaded {
-		return lipgloss.NewStyle().
-			Width(t.width).
-			Height(t.height).
-			MaxWidth(t.width).
-			MaxHeight(t.height).
-			AlignHorizontal(lipgloss.Center).
-			AlignVertical(lipgloss.Center).
+		return t.centeredStyle.
+			Width(t.width).Height(t.height).MaxWidth(t.width).MaxHeight(t.height).
 			Render(t.spinner.View() + " Loading channel")
 	}
 
@@ -1690,12 +1678,11 @@ func (t *broadcastTab) renderMessageInput() string {
 	}
 
 	inputView := t.messageInput.View()
-	borderColor := lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor)
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	borderStyle := t.inputBorderStyle
 
 	// Labels
 	topLabel := "[ Chat ]"
-	charCount := fmt.Sprintf("[ %d / %d ]", len([]rune(t.messageInput.Value())), t.messageInput.InputModel.CharLimit)
+	charCount := fmt.Sprintf("[ %d / %d ]", utf8.RuneCountInString(t.messageInput.Value()), t.messageInput.InputModel.CharLimit)
 
 	innerWidth := t.width - 2 // -2 for left/right border chars
 
@@ -1732,6 +1719,7 @@ func (t *broadcastTab) HandleResize() {
 			t.statusInfo.width = t.width
 		}
 		t.streamInfo.width = t.width
+		t.streamInfo.cachedDirty = true
 		t.poll.setWidth(t.width)
 
 		// Set messageInput width BEFORE rendering to ensure correct wrapping
