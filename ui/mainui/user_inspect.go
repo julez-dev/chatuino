@@ -3,9 +3,7 @@ package mainui
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -19,11 +17,12 @@ import (
 )
 
 type setUserInspectData struct {
-	target        string
-	err           error
-	ivrResp       ivr.SubAgeResponse
-	userData      twitchapi.UserData
-	initialEvents []chatEventMessage
+	target         string
+	err            error
+	ivrResp        ivr.SubAgeResponse
+	userData       twitchapi.UserData
+	initialEvents  []chatEventMessage
+	prepareCommand string // Kitty graphics prepare command
 }
 
 type userInspect struct {
@@ -114,6 +113,8 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 			}
 		}
 
+		var prepareCmd strings.Builder
+
 		fakeInitialEvent := make([]chatEventMessage, 0, len(loggedEntries))
 		for loggedEntry := range slices.Values(loggedEntries) {
 			// remove duplicate messages
@@ -132,10 +133,10 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 			}
 
 			prepare, contentOverwrite, _ := u.deps.EmoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
-			io.WriteString(os.Stdout, prepare)
+			prepareCmd.WriteString(prepare)
 
 			prepare, badgeOverwrite, _ := u.deps.BadgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
-			io.WriteString(os.Stdout, prepare)
+			prepareCmd.WriteString(prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
 				isFakeEvent: true,
@@ -175,11 +176,12 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		})
 
 		return setUserInspectData{
-			target:        u.tabID,
-			err:           err,
-			ivrResp:       ivrResp,
-			userData:      ttvResp.Data[0],
-			initialEvents: initialEvents,
+			target:         u.tabID,
+			err:            err,
+			ivrResp:        ivrResp,
+			userData:       ttvResp.Data[0],
+			initialEvents:  initialEvents,
+			prepareCommand: prepareCmd.String(),
 		}
 	})
 	return tea.Batch(cmds...)
@@ -195,6 +197,10 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	case setUserInspectData:
 		if msg.target != u.tabID {
 			return u, nil
+		}
+
+		if msg.prepareCommand != "" {
+			cmds = append(cmds, tea.Raw(msg.prepareCommand))
 		}
 
 		u.err = msg.err

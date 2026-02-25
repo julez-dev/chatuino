@@ -2,8 +2,6 @@ package component
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -130,8 +128,10 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 	switch msg := msg.(type) {
 	case emoteReplacementMessage:
-		_, _ = io.WriteString(os.Stdout, msg.prepare)
 		s.emoteReplacements[msg.word] = msg.replaceCode
+		if msg.prepare != "" {
+			return s, tea.Raw(msg.prepare)
+		}
 	case tea.KeyPressMsg:
 		switch {
 		case msg.String() == "enter" && !s.DisableHistory:

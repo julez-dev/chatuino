@@ -2,12 +2,9 @@ package mainui
 
 import (
 	"context"
-	"io"
-	"os"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/viewport"
@@ -25,8 +22,9 @@ type emoteWithOverwrite struct {
 }
 
 type emoteOverviewSetDataMessage struct {
-	id  string
-	set map[string][]emoteWithOverwrite
+	id             string
+	set            map[string][]emoteWithOverwrite
+	prepareCommand string // Kitty graphics prepare command
 }
 
 type emoteOverview struct {
@@ -121,19 +119,18 @@ func (e *emoteOverview) Init() tea.Cmd {
 			close(ch)
 		}()
 
-		sb := strings.Builder{}
+		var prepare strings.Builder
 		for d := range ch {
 			r[d.emote.emote.Platform.String()] = append(r[d.emote.emote.Platform.String()], d.emote)
-			sb.WriteString(d.prepare)
+			prepare.WriteString(d.prepare)
 		}
 
-		start := time.Now()
-		io.WriteString(os.Stdout, sb.String())
-		log.Logger.Info().Str("duration", time.Since(start).String()).Msg("emote overview loaded")
+		log.Logger.Info().Msg("emote overview loaded")
 
 		return emoteOverviewSetDataMessage{
-			id:  e.id,
-			set: r,
+			id:             e.id,
+			set:            r,
+			prepareCommand: prepare.String(),
 		}
 	}
 
@@ -150,6 +147,10 @@ func (e *emoteOverview) Update(msg tea.Msg) (*emoteOverview, tea.Cmd) {
 		e.isLoaded = true
 		e.emotes = msg.set
 		e.updateContent()
+
+		if msg.prepareCommand != "" {
+			return e, tea.Raw(msg.prepareCommand)
+		}
 		return e, nil
 	}
 
