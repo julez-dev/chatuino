@@ -14,12 +14,24 @@ type horizontalTabHeader struct {
 	width   int
 	entries []tabHeaderEntry
 	deps    *DependencyContainer
+
+	// pre-created styles to avoid allocations in View()/renderTabContent() (called every frame)
+	borderStyle       lipgloss.Style
+	bulletStyle       lipgloss.Style
+	separatorStyle    lipgloss.Style
+	activeStyle       lipgloss.Style
+	notificationStyle lipgloss.Style
 }
 
 func newHorizontalTabHeader(width int, deps *DependencyContainer) *horizontalTabHeader {
 	return &horizontalTabHeader{
-		width: width,
-		deps:  deps,
+		width:             width,
+		deps:              deps,
+		borderStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		separatorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.DimmedTextColor)),
+		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)),
 	}
 }
 
@@ -45,8 +57,7 @@ func (h *horizontalTabHeader) View() string {
 		return ""
 	}
 
-	borderColor := lipgloss.Color(h.deps.UserConfig.Theme.InputPromptColor)
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	borderStyle := h.borderStyle
 
 	// Calculate pages with variable width
 	pages := h.calculatePages()
@@ -168,10 +179,10 @@ func (h *horizontalTabHeader) renderTabContent(pages [][]int, currentPage, total
 		return ""
 	}
 
-	bulletStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.InputPromptColor))
-	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.DimmedTextColor))
-	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(h.deps.UserConfig.Theme.InputPromptColor))
-	notificationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(h.deps.UserConfig.Theme.ChatNoticeAlertColor))
+	bulletStyle := h.bulletStyle
+	separatorStyle := h.separatorStyle
+	activeStyle := h.activeStyle
+	notificationStyle := h.notificationStyle
 
 	var b strings.Builder
 

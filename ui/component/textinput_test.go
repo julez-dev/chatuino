@@ -207,9 +207,11 @@ func TestSuggestionTextInput_cursorLineCol(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotLine, gotCol := s.cursorLineCol(tt.text, tt.runePos, tt.wrapWidth)
+			_, breaks := s.wrapTextPreservingSpaces(tt.text, tt.wrapWidth)
+			runeLen := len([]rune(tt.text))
+			gotLine, gotCol := s.cursorLineColFromBreaks(runeLen, tt.runePos, breaks)
 			if gotLine != tt.wantLine || gotCol != tt.wantCol {
-				t.Errorf("cursorLineCol() = (%d, %d), want (%d, %d)", gotLine, gotCol, tt.wantLine, tt.wantCol)
+				t.Errorf("cursorLineColFromBreaks() = (%d, %d), want (%d, %d)", gotLine, gotCol, tt.wantLine, tt.wantCol)
 			}
 		})
 	}

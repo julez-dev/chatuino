@@ -99,6 +99,18 @@ type chatWindow struct {
 	filteredEntries      []*chatEntry
 	filteredEntriesDirty bool
 
+	// reusable buffer for sorting replacement keys in applyWordReplacements
+	replacementKeysBuf []string
+
+	// reusable buffer for visible lines in View() to avoid allocation per frame
+	visibleBuf []string
+
+	// cached padding width for wrapped continuation lines when DisablePaddingWrappedLines is set;
+	// derived from time format output length, computed once at construction.
+	timePaddingWidth int
+	// time format output length without the "  " prefix + " " separator; used for error prefix alignment.
+	timeFormatWidth int
+
 	// styles
 	indicator      string
 	indicatorWidth int
@@ -108,6 +120,11 @@ type chatWindow struct {
 	clearChatAlertStyle lipgloss.Style
 	errorAlertStyle     lipgloss.Style
 	dimmedStyle         lipgloss.Style
+
+	// pre-created styles for message modifiers (strikethrough, italic, both)
+	strikethroughStyle       lipgloss.Style
+	italicStyle              lipgloss.Style
+	strikethroughItalicStyle lipgloss.Style
 }
 
 func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
@@ -124,16 +141,25 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render(">")
 
 	timeFormat := deps.UserConfig.Settings.Chat.TimeFormat
+	timeFormatFn := func(t time.Time) string {
+		return t.Local().Format(timeFormat)
+	}
+
+	// Pre-compute padding width for continuation lines.
+	// Using zero-time gives the maximum-length output for variable-width formats (e.g. "3:04 PM" → "12:00 AM"),
+	// so padding may be 1 char wider than the actual time for some hours — acceptable cosmetic tradeoff.
+	timeFormatWidth := len(timeFormatFn(time.Time{}))
+	timePadWidth := timeFormatWidth + 3 // +3 matches the "  " prefix + " " separator in messageToText
 
 	c := chatWindow{
-		deps:           deps,
-		width:          width,
-		height:         height,
-		userColorCache: map[string]func(...string) string{},
-		timeFormatFunc: func(t time.Time) string {
-			return t.Local().Format(timeFormat)
-		},
-		searchInput: input,
+		deps:             deps,
+		width:            width,
+		height:           height,
+		userColorCache:   map[string]func(...string) string{},
+		timeFormatFunc:   timeFormatFn,
+		timePaddingWidth: timePadWidth,
+		timeFormatWidth:  timeFormatWidth,
+		searchInput:      input,
 
 		indicator:           indicator,
 		indicatorWidth:      lipgloss.Width(indicator),
@@ -142,6 +168,10 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatClearChatColor)).Bold(true),
 		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatErrorColor)).Bold(true),
 		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.DimmedTextColor)),
+
+		strikethroughStyle:       lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false),
+		italicStyle:              lipgloss.NewStyle().Italic(true),
+		strikethroughItalicStyle: lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Italic(true),
 	}
 
 	return &c
@@ -297,14 +327,20 @@ func (c *chatWindow) View() string {
 
 	src := c.lines[renderStart:renderEnd]
 
-	// Always copy visible lines and apply indicator at render time.
-	// This avoids mutating c.lines and unifies the animation/non-animation paths.
-	visible := make([]string, len(src))
+	// Reuse a buffer to copy visible lines and apply indicator at render time.
+	// This avoids mutating c.lines and eliminates per-frame allocation.
+	if cap(c.visibleBuf) < height {
+		c.visibleBuf = make([]string, height)
+	}
+	visible := c.visibleBuf[:len(src)]
 	copy(visible, src)
 	c.applyIndicatorToVisible(visible, renderStart)
 
-	spaces := make([]string, height-len(visible))
-	lines := append(visible, spaces...)
+	// Pad remaining lines with empty strings for unfilled viewport
+	lines := c.visibleBuf[:height]
+	for i := len(src); i < height; i++ {
+		lines[i] = ""
+	}
 
 	if c.state == searchChatWindowState {
 		return c.searchInput.View() + "\n" + strings.Join(lines, "\n")
@@ -719,18 +755,14 @@ func (c *chatWindow) buildAlertPrefix(timestamp time.Time, label string, style l
 
 // formatMessageText applies word replacements and color processing to message content.
 func (c *chatWindow) formatMessageText(content string, modifier messageContentModifier) string {
-	if modifier.strikethrough || modifier.italic {
-		s := lipgloss.NewStyle()
-
-		if modifier.strikethrough {
-			s = s.Strikethrough(true).StrikethroughSpaces(false)
-		}
-
-		if modifier.italic {
-			s = s.Italic(true)
-		}
-
-		return s.Render(content)
+	if modifier.strikethrough && modifier.italic {
+		return c.strikethroughItalicStyle.Render(content)
+	}
+	if modifier.strikethrough {
+		return c.strikethroughStyle.Render(content)
+	}
+	if modifier.italic {
+		return c.italicStyle.Render(content)
 	}
 
 	content = c.applyWordReplacements(content, modifier.wordReplacements)
@@ -743,24 +775,27 @@ func (c *chatWindow) formatMessageText(content string, modifier messageContentMo
 
 // applyWordReplacements applies word replacements from the display modifier to the given content.
 // It replaces each key in the wordReplacements map with its corresponding value.
+// Keys are sorted longest-first to prevent partial matches.
 func (c *chatWindow) applyWordReplacements(content string, replacements wordReplacement) string {
-	if replacements == nil {
+	if len(replacements) == 0 {
 		return content
 	}
 
-	// Sort keys by length (longest first) to prevent partial matches
-	keys := make([]string, 0, len(replacements))
+	// Reuse a buffer to avoid allocating a new slice per call during recalculateLines.
+	keys := c.replacementKeysBuf[:0]
 	for k := range replacements {
 		keys = append(keys, k)
 	}
 
 	slices.SortFunc(keys, func(a, b string) int {
-		// Sort by length descending, then lexicographically
 		if len(a) != len(b) {
 			return len(b) - len(a)
 		}
 		return strings.Compare(a, b)
 	})
+
+	// Keep buffer for next call (may have grown)
+	c.replacementKeysBuf = keys
 
 	for _, original := range keys {
 		content = strings.ReplaceAll(content, original, replacements[original])
@@ -797,7 +832,7 @@ func (c *chatWindow) setUserColorModifier(content string, modifier *messageConte
 func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	switch msg := event.message.(type) {
 	case error:
-		prefix := "  " + strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))) + " [" + c.errorAlertStyle.Render("Error") + "]: "
+		prefix := "  " + strings.Repeat(" ", c.timeFormatWidth) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	case *twitchirc.PrivateMessage:
@@ -938,14 +973,16 @@ func (c *chatWindow) getSetUserColorFunc(name string, colorHex string) func(strs
 }
 
 func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
-	content = strings.Map(func(r rune) rune {
-		// this rune is commonly used to bypass the twitch spam detection
-		if r == duplicateBypass {
-			return -1
-		}
-
-		return r
-	}, content)
+	// Strip duplicate-bypass rune (U+E0000) used to bypass Twitch spam detection.
+	// Guard with ContainsRune to avoid allocating when the rune isn't present (vast majority of messages).
+	if strings.ContainsRune(content, duplicateBypass) {
+		content = strings.Map(func(r rune) rune {
+			if r == duplicateBypass {
+				return -1
+			}
+			return r
+		}, content)
+	}
 
 	prefixWidth := lipgloss.Width(prefix)
 
@@ -967,7 +1004,7 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 	// if there are more lines, add prefixPadding spaces to the beginning of the line
 	for _, line := range splits[1:] {
 		if c.deps.UserConfig.Settings.Chat.DisablePaddingWrappedLines {
-			lines = append(lines, strings.Repeat(" ", len(c.timeFormatFunc(time.Now()))+3)+line)
+			lines = append(lines, strings.Repeat(" ", c.timePaddingWidth)+line)
 		} else {
 			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
 		}

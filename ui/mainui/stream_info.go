@@ -24,14 +24,19 @@ type streamInfo struct {
 	viewer int
 	title  string
 	game   string
+
+	// cached rendered view; rebuilt only when data or width changes
+	cachedView  string
+	cachedDirty bool
 }
 
 func newStreamInfo(channelID string, ttvAPI APIClient, width int) *streamInfo {
 	return &streamInfo{
-		width:     width,
-		channelID: channelID,
-		ttvAPI:    ttvAPI,
-		printer:   message.NewPrinter(language.English),
+		width:       width,
+		channelID:   channelID,
+		ttvAPI:      ttvAPI,
+		printer:     message.NewPrinter(language.English),
+		cachedDirty: true,
 	}
 }
 
@@ -51,6 +56,7 @@ func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 		s.game = msg.game
 		s.title = msg.title
 		s.viewer = msg.viewer
+		s.cachedDirty = true
 
 		return s, nil
 	}
@@ -60,11 +66,14 @@ func (s *streamInfo) Update(msg tea.Msg) (*streamInfo, tea.Cmd) {
 func (s *streamInfo) View() string {
 	if !s.loaded {
 		return ""
-		//return centerTextGraphemeAware(s.width, "loading stream info\n")
 	}
 
 	if s.game == "" && s.viewer == 0 && s.title == "" {
 		return ""
+	}
+
+	if !s.cachedDirty && s.cachedView != "" {
+		return s.cachedView
 	}
 
 	info := wordwrap.String(s.printer.Sprintf("%s - %s (%d Viewer)\n", s.game, s.title, s.viewer), s.width-10)
@@ -74,7 +83,9 @@ func (s *streamInfo) View() string {
 		infoSplit[i] = centerTextGraphemeAware(s.width, v)
 	}
 
-	return strings.Join(infoSplit, "\n")
+	s.cachedView = strings.Join(infoSplit, "\n")
+	s.cachedDirty = false
+	return s.cachedView
 }
 
 func (s *streamInfo) refreshStreamInfo() tea.Msg {
