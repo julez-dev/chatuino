@@ -3,7 +3,7 @@ package wspool
 import (
 	"sync"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog"
 )
@@ -16,7 +16,12 @@ type ircConn struct {
 	refs int
 }
 
-func newIRCConn(accountID string, accounts AccountProvider, logger zerolog.Logger, sendFn func(tea.Msg)) *ircConn {
+func newIRCConn(
+	accountID string,
+	accounts AccountProvider,
+	logger zerolog.Logger,
+	sendFn func(tea.Msg),
+) *ircConn {
 	conn := &ircConn{}
 
 	// Create the underlying connection with a callback that wraps messages in IRCEvent

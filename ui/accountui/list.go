@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -196,7 +196,7 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		l.err = nil
 
 		if l.state == inConfirmDelete {
@@ -253,16 +253,20 @@ func (l List) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return l, tea.Batch(cmds...)
 }
 
-func (l List) View() string {
-	if l.state == inCreate {
-		return l.create.View()
+func (l List) View() tea.View {
+	var s string
+	switch {
+	case l.state == inCreate:
+		s = l.create.View()
+	case l.state == inConfirmDelete:
+		s = l.renderConfirmDialog()
+	default:
+		s = l.renderAccountList()
 	}
 
-	if l.state == inConfirmDelete {
-		return l.renderConfirmDialog()
-	}
-
-	return l.renderAccountList()
+	v := tea.NewView(s)
+	v.AltScreen = true
+	return v
 }
 
 func (l List) renderAccountList() string {

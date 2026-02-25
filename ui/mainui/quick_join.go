@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/rs/zerolog/log"
 )
@@ -223,7 +223,7 @@ func (q *quickJoin) Update(msg tea.Msg) (*quickJoin, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		// Tab/Shift+Tab: switch between channel picker and account list.
 		if key.Matches(msg, q.deps.Keymap.Next) || key.Matches(msg, q.deps.Keymap.Previous) {
 			q.toggleSection()
@@ -257,7 +257,7 @@ func (q *quickJoin) Update(msg tea.Msg) (*quickJoin, tea.Cmd) {
 	return q, nil
 }
 
-func (q *quickJoin) handleChannelKey(msg tea.KeyMsg) tea.Cmd {
+func (q *quickJoin) handleChannelKey(msg tea.KeyPressMsg) tea.Cmd {
 	// Left/Right toggle between Recent and Followed tabs.
 	switch msg.String() {
 	case "left", "right":

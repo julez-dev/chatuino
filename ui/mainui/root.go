@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -166,7 +166,6 @@ func NewUI(
 
 func (r *Root) Init() tea.Cmd {
 	return tea.Batch(
-		tea.SetWindowTitle("Chatuino"),
 		r.splash.Init(),
 		func() tea.Msg {
 			state, err := r.dependencies.AppStateManager.LoadAppState()
@@ -475,7 +474,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.height = msg.Height
 		r.handleResize()
 		return r, nil
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if key.Matches(msg, r.dependencies.Keymap.Quit) {
 			return r, tea.Quit
 		}
@@ -528,7 +527,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = f.Close()
 			}()
 
-			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.View())))
+			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.renderView())))
 
 			return r, nil
 		}
@@ -703,7 +702,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, tea.Batch(cmds...)
 }
 
-func (r *Root) View() string {
+func (r *Root) View() tea.View {
+	v := tea.NewView(r.renderView())
+	v.AltScreen = true
+	v.WindowTitle = "Chatuino"
+	return v
+}
+
+func (r *Root) renderView() string {
 	if !r.hasLoadedSession {
 		return r.splash.ViewLoading()
 	}

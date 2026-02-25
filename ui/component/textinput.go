@@ -8,11 +8,11 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	trie "github.com/Vivino/go-autocomplete-trie"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/julez-dev/chatuino/command"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/mattn/go-runewidth"
@@ -89,7 +89,7 @@ func defaultTrie() *trie.Trie {
 // NewSuggestionTextInput creates a new model with default settings.
 func NewSuggestionTextInput(userCache map[string]func(...string) string, customSuggestions map[string]string) *SuggestionTextInput {
 	input := textinput.New()
-	input.Width = 20
+	input.SetWidth(20)
 	input.CharLimit = 500
 
 	input.Validate = func(s string) error {
@@ -100,7 +100,9 @@ func NewSuggestionTextInput(userCache map[string]func(...string) string, customS
 		return nil
 	}
 
-	input.PromptStyle = input.PromptStyle.Foreground(lipgloss.Color("135"))
+	styles := input.Styles()
+	styles.Focused.Prompt = styles.Focused.Prompt.Foreground(lipgloss.Color("135"))
+	input.SetStyles(styles)
 	t := defaultTrie()
 
 	return &SuggestionTextInput{
@@ -130,7 +132,7 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 	case emoteReplacementMessage:
 		_, _ = io.WriteString(os.Stdout, msg.prepare)
 		s.emoteReplacements[msg.word] = msg.replaceCode
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch {
 		case msg.String() == "enter" && !s.DisableHistory:
 			s.history = append(s.history, s.InputModel.Value())
@@ -301,7 +303,7 @@ func (s *SuggestionTextInput) Focus() {
 
 func (s *SuggestionTextInput) SetWidth(width int) {
 	s.width = width
-	s.InputModel.Width = width - 3 // -3 for prompt
+	s.InputModel.SetWidth(width - 3) // -3 for prompt
 }
 
 // SetMaxVisibleLines sets the maximum number of visible lines for wrapped display.
@@ -669,12 +671,10 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 
 	// Handle empty input with placeholder
 	if value == "" {
-		placeholder := s.InputModel.PlaceholderStyle.Render(s.InputModel.Placeholder)
-		cursorChar := ""
-		if s.InputModel.Focused() && !s.InputModel.Cursor.Blink {
-			cursorChar = s.cursorStyle().Render(" ")
-		}
-		return s.InputModel.PromptStyle.Render(prompt) + cursorChar + placeholder
+		styles := s.InputModel.Styles()
+		placeholder := styles.Focused.Placeholder.Render(s.InputModel.Placeholder)
+		cursorChar := s.cursorStyle().Render(" ")
+		return styles.Focused.Prompt.Render(prompt) + cursorChar + placeholder
 	}
 
 	// Get initial line count to determine if we need line numbers
@@ -742,7 +742,7 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 
 		// Prompt only on first line (when viewOffset is 0), padding otherwise
 		if actualLineIdx == 0 {
-			result.WriteString(s.InputModel.PromptStyle.Render(prompt))
+			result.WriteString(s.InputModel.Styles().Focused.Prompt.Render(prompt))
 		} else {
 			result.WriteString(promptPadding)
 		}
@@ -762,7 +762,7 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 		if actualLineIdx == cursorLine {
 			result.WriteString(s.renderLineWithCursor(line, cursorCol))
 		} else {
-			result.WriteString(s.InputModel.TextStyle.Render(line))
+			result.WriteString(s.InputModel.Styles().Focused.Text.Render(line))
 		}
 	}
 
@@ -785,13 +785,13 @@ func (s *SuggestionTextInput) renderMultiLineView() string {
 }
 
 // cursorStyle returns the style to use for the cursor character.
-// Falls back to reverse video if cursor style is empty.
+// Uses reverse video for virtual cursor rendering in multi-line mode.
 func (s *SuggestionTextInput) cursorStyle() lipgloss.Style {
-	// If cursor style has no settings, use reverse video as default
-	if s.InputModel.Cursor.Style.Value() == "" {
-		return lipgloss.NewStyle().Reverse(true)
+	cs := s.InputModel.Styles().Cursor
+	if cs.Color != nil {
+		return lipgloss.NewStyle().Background(cs.Color)
 	}
-	return s.InputModel.Cursor.Style
+	return lipgloss.NewStyle().Reverse(true)
 }
 
 // renderLineWithCursor renders a single line with the cursor at the specified column.
@@ -799,11 +799,12 @@ func (s *SuggestionTextInput) renderLineWithCursor(line string, cursorCol int) s
 	runes := []rune(line)
 	lineLen := len(runes)
 	curStyle := s.cursorStyle()
+	textStyle := s.InputModel.Styles().Focused.Text
 
 	// Cursor at end of line
 	if cursorCol >= lineLen {
-		rendered := s.InputModel.TextStyle.Render(line)
-		if s.InputModel.Focused() && !s.InputModel.Cursor.Blink {
+		rendered := textStyle.Render(line)
+		if s.InputModel.Focused() {
 			rendered += curStyle.Render(" ")
 		}
 		return rendered
@@ -815,15 +816,15 @@ func (s *SuggestionTextInput) renderLineWithCursor(line string, cursorCol int) s
 	after := string(runes[cursorCol+1:])
 
 	var result strings.Builder
-	result.WriteString(s.InputModel.TextStyle.Render(before))
+	result.WriteString(textStyle.Render(before))
 
-	if s.InputModel.Focused() && !s.InputModel.Cursor.Blink {
+	if s.InputModel.Focused() {
 		result.WriteString(curStyle.Render(cursorRune))
 	} else {
-		result.WriteString(s.InputModel.TextStyle.Render(cursorRune))
+		result.WriteString(textStyle.Render(cursorRune))
 	}
 
-	result.WriteString(s.InputModel.TextStyle.Render(after))
+	result.WriteString(textStyle.Render(after))
 
 	return result.String()
 }

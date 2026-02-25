@@ -5,9 +5,9 @@ import (
 
 	_ "embed"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 )
 
@@ -47,9 +47,9 @@ func (s splash) view(loading bool, err error) string {
 		help = s.spinner.View() + " Loading initial state"
 	} else if err != nil {
 		help = err.Error() + "\n"
-		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
+		help += "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render(keyDisplay) + " to create a new tab and join a channel"
 	} else {
-		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))).Render(keyDisplay) + " to create a new tab and join a channel"
+		help = "Use " + lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render(keyDisplay) + " to create a new tab and join a channel"
 	}
 
 	var updateLine string

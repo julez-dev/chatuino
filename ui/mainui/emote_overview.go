@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/rs/zerolog/log"
@@ -49,7 +49,7 @@ type emoteOverview struct {
 var loadingSpinner = spinner.Points
 
 func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer, width, height int) *emoteOverview {
-	vp := viewport.New(width, height)
+	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -165,20 +165,20 @@ func (e *emoteOverview) Update(msg tea.Msg) (*emoteOverview, tea.Cmd) {
 
 func (e *emoteOverview) View() string {
 	if !e.isLoaded {
-		return lipgloss.NewStyle().Width(e.vp.Width).Height(e.vp.Height).AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Render(e.spinner.View() + " Loading emote overview")
+		return lipgloss.NewStyle().Width(e.vp.Width()).Height(e.vp.Height()).AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Render(e.spinner.View() + " Loading emote overview")
 	}
 
 	return e.vp.View()
 }
 
 func (e *emoteOverview) resize(width, height int) {
-	e.vp.Width = width
-	e.vp.Height = height
+	e.vp.SetWidth(width)
+	e.vp.SetHeight(height)
 	e.updateContent()
 }
 
 func (e *emoteOverview) updateContent() {
-	maxWidthRow := e.vp.Width
+	maxWidthRow := e.vp.Width()
 
 	var sb strings.Builder
 	for provider, emotes := range e.emotes {

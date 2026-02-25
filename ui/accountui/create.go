@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -49,7 +49,7 @@ func newCreateModel(width, height int, clientID, apiHost string, keymap save.Key
 	ti := textinput.New()
 	ti.Placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	ti.Focus()
-	ti.Width = width - 2
+	ti.SetWidth(width - 2)
 
 	s := spinner.New()
 
@@ -85,7 +85,7 @@ func (c createModel) Update(msg tea.Msg) (createModel, tea.Cmd) {
 
 		c.account = msg.account
 		c.state = finished
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if key.Matches(msg, c.keymap.Quit) {
 			return c, tea.Quit
 		}

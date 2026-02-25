@@ -3,10 +3,10 @@ package mainui
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type helpSection struct {
@@ -72,7 +72,7 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 		},
 	}
 
-	help := &help{port: viewport.New(width, height), keySections: sections}
+	help := &help{port: viewport.New(viewport.WithWidth(width), viewport.WithHeight(height)), keySections: sections}
 	help.port.SetContent(help.render())
 
 	return help
@@ -93,8 +93,8 @@ func (h *help) View() string {
 }
 
 func (h *help) handleResize(width, height int) {
-	h.port.Width = width
-	h.port.Height = height
+	h.port.SetWidth(width)
+	h.port.SetHeight(height)
 	h.port.SetContent(h.render())
 }
 
@@ -102,12 +102,12 @@ func (h *help) render() string {
 	b := &strings.Builder{}
 
 	head := lipgloss.NewStyle().
-		Width(h.port.Width).
+		Width(h.port.Width()).
 		AlignHorizontal(lipgloss.Center).Bold(true).Render("\n\nKeybind Help")
 
-	centered := lipgloss.NewStyle().Width(h.port.Width).AlignHorizontal(lipgloss.Center).Render
-	left := lipgloss.NewStyle().Width(h.port.Width / 2).AlignHorizontal(lipgloss.Right).Render
-	right := lipgloss.NewStyle().Width(h.port.Width / 2).AlignHorizontal(lipgloss.Left).Render
+	centered := lipgloss.NewStyle().Width(h.port.Width()).AlignHorizontal(lipgloss.Center).Render
+	left := lipgloss.NewStyle().Width(h.port.Width() / 2).AlignHorizontal(lipgloss.Right).Render
+	right := lipgloss.NewStyle().Width(h.port.Width() / 2).AlignHorizontal(lipgloss.Left).Render
 
 	_, _ = b.WriteString(head)
 	_, _ = b.WriteRune('\n')

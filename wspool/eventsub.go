@@ -3,7 +3,7 @@ package wspool
 import (
 	"net/http"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
@@ -14,7 +14,12 @@ type eventConn struct {
 	*eventsub.Conn
 }
 
-func newEventConn(accountID string, logger zerolog.Logger, httpClient *http.Client, sendFn func(tea.Msg)) *eventConn {
+func newEventConn(
+	accountID string,
+	logger zerolog.Logger,
+	httpClient *http.Client,
+	sendFn func(tea.Msg),
+) *eventConn {
 	conn := &eventConn{}
 
 	// Create the underlying connection with a callback that wraps messages in EventSubEvent
