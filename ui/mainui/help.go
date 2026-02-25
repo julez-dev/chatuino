@@ -36,6 +36,7 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 			[]key.Binding{
 				deps.Keymap.Quit,
 				deps.Keymap.Create,
+				deps.Keymap.QuickJoin,
 				deps.Keymap.Remove,
 				deps.Keymap.CloseTab,
 				deps.Keymap.DumpScreen,
