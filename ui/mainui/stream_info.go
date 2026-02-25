@@ -32,10 +32,11 @@ type streamInfo struct {
 
 func newStreamInfo(channelID string, ttvAPI APIClient, width int) *streamInfo {
 	return &streamInfo{
-		width:     width,
-		channelID: channelID,
-		ttvAPI:    ttvAPI,
-		printer:   message.NewPrinter(language.English),
+		width:       width,
+		channelID:   channelID,
+		ttvAPI:      ttvAPI,
+		printer:     message.NewPrinter(language.English),
+		cachedDirty: true,
 	}
 }
 

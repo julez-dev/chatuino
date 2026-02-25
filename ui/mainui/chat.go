@@ -108,6 +108,8 @@ type chatWindow struct {
 	// cached padding width for wrapped continuation lines when DisablePaddingWrappedLines is set;
 	// derived from time format output length, computed once at construction.
 	timePaddingWidth int
+	// time format output length without the "  " prefix + " " separator; used for error prefix alignment.
+	timeFormatWidth int
 
 	// styles
 	indicator      string
@@ -143,8 +145,11 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 		return t.Local().Format(timeFormat)
 	}
 
-	// Pre-compute padding width for continuation lines — time format output length is constant.
-	timePadWidth := len(timeFormatFn(time.Time{})) + 3 // +3 matches the "  " prefix + " " separator in messageToText
+	// Pre-compute padding width for continuation lines.
+	// Using zero-time gives the maximum-length output for variable-width formats (e.g. "3:04 PM" → "12:00 AM"),
+	// so padding may be 1 char wider than the actual time for some hours — acceptable cosmetic tradeoff.
+	timeFormatWidth := len(timeFormatFn(time.Time{}))
+	timePadWidth := timeFormatWidth + 3 // +3 matches the "  " prefix + " " separator in messageToText
 
 	c := chatWindow{
 		deps:             deps,
@@ -153,6 +158,7 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 		userColorCache:   map[string]func(...string) string{},
 		timeFormatFunc:   timeFormatFn,
 		timePaddingWidth: timePadWidth,
+		timeFormatWidth:  timeFormatWidth,
 		searchInput:      input,
 
 		indicator:           indicator,
@@ -826,7 +832,7 @@ func (c *chatWindow) setUserColorModifier(content string, modifier *messageConte
 func (c *chatWindow) messageToText(event chatEventMessage) []string {
 	switch msg := event.message.(type) {
 	case error:
-		prefix := "  " + strings.Repeat(" ", c.timePaddingWidth-3) + " [" + c.errorAlertStyle.Render("Error") + "]: "
+		prefix := "  " + strings.Repeat(" ", c.timeFormatWidth) + " [" + c.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
 		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.displayModifier))
 	case *twitchirc.PrivateMessage:

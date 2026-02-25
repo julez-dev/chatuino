@@ -87,7 +87,7 @@ func defaultTrie() *trie.Trie {
 	t := trie.New()
 	t = t.WithoutFuzzy()
 	t = t.WithoutLevenshtein()
-	t = t.WithoutNormalisation() // emote names and usernames are ASCII; skip Unicode NFD/NFC per search
+	t = t.WithoutNormalisation() // skip Unicode NFD/NFC — emote names are ASCII; display names can be Unicode but exact-match is acceptable
 	return t
 }
 
@@ -408,10 +408,10 @@ func (s *SuggestionTextInput) updateSuggestions() {
 		return
 	}
 
-	// Skip expensive trie search for short words that won't be shown anyway.
+	// Skip expensive trie search for short words that won't be accepted anyway.
 	// canAcceptSuggestion() requires len(word) > 2 or a "/" command prefix.
 	isCommand := strings.HasPrefix(tiVal, "/")
-	if len(currWord) <= 2 && !isCommand && !strings.HasPrefix(currWord, "@") {
+	if len(currWord) <= 2 && !isCommand {
 		s.suggestions = nil
 		s.suggestionIndex = 0
 		return
