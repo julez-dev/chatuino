@@ -200,8 +200,9 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 					suggestion = suggestion + " "
 				}
 
-				s.InputModel.SetValue(before + suggestion + after)
-				s.InputModel.SetCursor(len(before) + len(suggestion)) // set cursor to end of suggestion + 1 for space
+				newVal := collapseSpaces(before + suggestion + after)
+				s.InputModel.SetValue(newVal)
+				s.InputModel.SetCursor(len([]rune(collapseSpaces(before + suggestion)))) // set cursor to end of suggestion
 			}
 			// Always return when AcceptSuggestion key is pressed - don't fall through to default
 			// This prevents the key from being inserted as text when there's no suggestion
@@ -221,6 +222,10 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 				return s, s.loadEmoteImageCommand()
 			}
 		default:
+			if msg.Text == " " && wouldCreateConsecutiveSpaces(s.InputModel.Value(), s.InputModel.Position()) {
+				return s, nil
+			}
+
 			s.InputModel, cmd = s.InputModel.Update(msg)
 			s.updateSuggestions()
 			s.browsingHistory = false // exit history mode when typing
@@ -232,6 +237,8 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 			return s, cmd
 		}
+	case tea.PasteMsg:
+		msg.Content = collapseSpaces(msg.Content)
 	}
 
 	s.InputModel, cmd = s.InputModel.Update(msg)
@@ -361,6 +368,14 @@ func (s *SuggestionTextInput) SetSuggestions(suggestions []string) {
 	sugg := make([]string, len(suggestions))
 	copy(sugg, suggestions)
 
+	// Sort shortest-first: the trie library has a bug where Insert silently
+	// drops a word whose path already exists as a prefix of a longer word.
+	// Inserting shorter words first ensures their terminal nodes are created
+	// before longer words extend the same path.
+	slices.SortFunc(sugg, func(a, b string) int {
+		return len(a) - len(b)
+	})
+
 	trie := defaultTrie()
 	trie.Insert(sugg...)
 
@@ -380,10 +395,53 @@ func (s *SuggestionTextInput) SetChannelSuggestions(channels []string) {
 }
 
 func (s *SuggestionTextInput) SetValue(val string) {
-	s.InputModel.SetValue(val)
+	s.InputModel.SetValue(collapseSpaces(val))
 	s.InputModel.CursorEnd()
 	s.suggestionIndex = 0
 	s.updateSuggestions()
+}
+
+// wouldCreateConsecutiveSpaces reports whether inserting a space at pos would
+// create consecutive spaces. Operates on rune positions matching the textinput
+// cursor model.
+func wouldCreateConsecutiveSpaces(val string, pos int) bool {
+	runes := []rune(val)
+	n := len(runes)
+
+	switch {
+	case pos < 0 || pos > n:
+		return false
+	case pos == n:
+		// Cursor at end — only the character before matters.
+		return pos > 0 && runes[pos-1] == ' '
+	default:
+		return runes[pos] == ' ' || (pos > 0 && runes[pos-1] == ' ')
+	}
+}
+
+// collapseSpaces reduces consecutive spaces to a single space.
+func collapseSpaces(s string) string {
+	if !strings.Contains(s, "  ") {
+		return s
+	}
+
+	var b strings.Builder
+	b.Grow(len(s))
+
+	prevSpace := false
+	for _, r := range s {
+		if r == ' ' {
+			if prevSpace {
+				continue
+			}
+			prevSpace = true
+		} else {
+			prevSpace = false
+		}
+		b.WriteRune(r)
+	}
+
+	return b.String()
 }
 
 func (s *SuggestionTextInput) canAcceptSuggestion() bool {

@@ -434,3 +434,127 @@ func TestSuggestionTextInput_lineNumberWidth(t *testing.T) {
 		})
 	}
 }
+
+func Test_collapseSpaces(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no spaces", "hello", "hello"},
+		{"single space", "hello world", "hello world"},
+		{"double space", "hello  world", "hello world"},
+		{"triple space", "hello   world", "hello world"},
+		{"leading double", "  hello", " hello"},
+		{"trailing double", "hello  ", "hello "},
+		{"multiple groups", "a  b   c    d", "a b c d"},
+		{"empty", "", ""},
+		{"only spaces", "    ", " "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := collapseSpaces(tt.input)
+			if got != tt.want {
+				t.Errorf("collapseSpaces(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_wouldCreateConsecutiveSpaces(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		val  string
+		pos  int
+		want bool
+	}{
+		{"space before cursor", "hello ", 6, true},
+		{"space after cursor", " world", 0, true},
+		{"no adjacent space", "helloworld", 5, false},
+		{"middle of word", "hello", 3, false},
+		{"empty string", "", 0, false},
+		{"cursor at start no space", "hello", 0, false},
+		{"cursor at end no space", "hello", 5, false},
+		{"between two words", "a b", 2, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := wouldCreateConsecutiveSpaces(tt.val, tt.pos)
+			if got != tt.want {
+				t.Errorf("wouldCreateConsecutiveSpaces(%q, %d) = %v, want %v", tt.val, tt.pos, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSuggestionTextInput_SetSuggestions_prefixWords(t *testing.T) {
+	t.Parallel()
+
+	// Regression: the trie library drops words whose path already exists as a
+	// prefix of a longer word inserted earlier. Sorting shortest-first works
+	// around this. Verify that short emotes sharing a prefix with longer ones
+	// are still searchable.
+	s := NewSuggestionTextInput(nil, nil)
+
+	// Insert in an order where longer words come first — the bug scenario.
+	s.SetSuggestions([]string{"KappaRoss", "KappaHD", "KappaPride", "Kappa"})
+
+	s.InputModel.SetValue("Kap")
+	s.InputModel.CursorEnd()
+	s.updateSuggestions()
+
+	want := map[string]struct{}{
+		"Kappa":      {},
+		"KappaHD":    {},
+		"KappaPride": {},
+		"KappaRoss":  {},
+	}
+
+	got := make(map[string]struct{}, len(s.suggestions))
+	for _, sg := range s.suggestions {
+		got[sg] = struct{}{}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d suggestions, want %d: %v", len(got), len(want), s.suggestions)
+	}
+	for w := range want {
+		if _, ok := got[w]; !ok {
+			t.Errorf("missing expected suggestion %q in %v", w, s.suggestions)
+		}
+	}
+}
+
+func TestSuggestionTextInput_SetValueCollapsesSpaces(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no consecutive spaces", "hello world", "hello world"},
+		{"double space collapsed", "hello  world", "hello world"},
+		{"triple space collapsed", "a   b   c", "a b c"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			s := NewSuggestionTextInput(nil, nil)
+			s.SetValue(tt.input)
+			got := s.InputModel.Value()
+			if got != tt.want {
+				t.Errorf("SetValue(%q) resulted in %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

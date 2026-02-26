@@ -1682,7 +1682,7 @@ func (t *broadcastTab) renderMessageInput() string {
 
 	// Labels
 	topLabel := "[ Chat ]"
-	charCount := fmt.Sprintf("[ %d / %d ]", utf8.RuneCountInString(t.messageInput.Value()), t.messageInput.InputModel.CharLimit)
+	charCount := fmt.Sprintf("[ %d / %d ]", utf8.RuneCountInString(t.messageInput.InputModel.Value()), t.messageInput.InputModel.CharLimit)
 
 	innerWidth := t.width - 2 // -2 for left/right border chars
 
@@ -1723,7 +1723,8 @@ func (t *broadcastTab) HandleResize() {
 		t.poll.setWidth(t.width)
 
 		// Set messageInput width BEFORE rendering to ensure correct wrapping
-		t.messageInput.SetWidth(t.width)
+		// -2 for left/right │ border chars
+		t.messageInput.SetWidth(t.width - 2)
 
 		messageInput := t.renderMessageInput()
 		heightMessageInput := lipgloss.Height(messageInput)
