@@ -407,6 +407,10 @@ func (s *SuggestionTextInput) SetValue(val string) {
 func wouldCreateConsecutiveSpaces(val string, pos int) bool {
 	runes := []rune(val)
 
+	if pos < 0 || pos > len(runes) {
+		return false
+	}
+
 	if pos > 0 && runes[pos-1] == ' ' {
 		return true
 	}
@@ -424,11 +428,23 @@ func collapseSpaces(s string) string {
 		return s
 	}
 
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
+	var b strings.Builder
+	b.Grow(len(s))
+
+	prevSpace := false
+	for _, r := range s {
+		if r == ' ' {
+			if prevSpace {
+				continue
+			}
+			prevSpace = true
+		} else {
+			prevSpace = false
+		}
+		b.WriteRune(r)
 	}
 
-	return s
+	return b.String()
 }
 
 func (s *SuggestionTextInput) canAcceptSuggestion() bool {

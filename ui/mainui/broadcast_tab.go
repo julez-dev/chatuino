@@ -527,9 +527,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 
 			suggestions := slices.Collect(maps.Keys(unique))
-
-			log.Logger.Debug().Strs("sugg", suggestions).Msg("suggestions")
-
 			t.messageInput.SetSuggestions(suggestions)
 
 			// notify user if not all emotes could be fetched
