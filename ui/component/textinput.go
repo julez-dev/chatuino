@@ -406,20 +406,17 @@ func (s *SuggestionTextInput) SetValue(val string) {
 // cursor model.
 func wouldCreateConsecutiveSpaces(val string, pos int) bool {
 	runes := []rune(val)
+	n := len(runes)
 
-	if pos < 0 || pos > len(runes) {
+	switch {
+	case pos < 0 || pos > n:
 		return false
+	case pos == n:
+		// Cursor at end — only the character before matters.
+		return pos > 0 && runes[pos-1] == ' '
+	default:
+		return runes[pos] == ' ' || (pos > 0 && runes[pos-1] == ' ')
 	}
-
-	if pos > 0 && runes[pos-1] == ' ' {
-		return true
-	}
-
-	if pos < len(runes) && runes[pos] == ' ' {
-		return true
-	}
-
-	return false
 }
 
 // collapseSpaces reduces consecutive spaces to a single space.
