@@ -482,14 +482,9 @@ func (s *Cache) AllEmotesUsableByUser(userID string) []Emote {
 	s.m.RLock()
 	defer s.m.RUnlock()
 
-	copied := make([]Emote, len(s.user[userID])+len(s.global))
+	copied := make([]Emote, len(s.user[userID]), len(s.user[userID])+len(s.global))
 	copy(copied, s.user[userID])
-
-	for _, e := range s.global {
-		if e.Platform != Twitch {
-			copied = append(copied, e)
-		}
-	}
+	copied = append(copied, s.global...)
 	return copied
 }
 
