@@ -177,6 +177,10 @@ func (m *mentionTab) State() broadcastTabState {
 	return m.state
 }
 
+func (m *mentionTab) IsSearching() bool {
+	return m.chatWindow.state == searchChatWindowState
+}
+
 func (m *mentionTab) IsDataLoaded() bool {
 	return m.hasDataLoaded
 }

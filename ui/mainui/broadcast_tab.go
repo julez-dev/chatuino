@@ -920,6 +920,14 @@ func (t *broadcastTab) State() broadcastTabState {
 	return t.state
 }
 
+func (t *broadcastTab) IsSearching() bool {
+	if t.chatWindow.state == searchChatWindowState {
+		return true
+	}
+
+	return t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState
+}
+
 func (t *broadcastTab) IsDataLoaded() bool {
 	return t.channelDataLoaded
 }

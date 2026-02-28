@@ -44,9 +44,9 @@ const features: Feature[] = [
     icon: "live",
   },
   {
-    title: "Message Search",
+    title: "Advanced Search",
     description:
-      "Search through chat history. Find messages and usernames quickly.",
+      "Filter chat with structured queries. Target content, users, badges, or use regex. Combine and negate filters freely.",
     icon: "search",
   },
   {

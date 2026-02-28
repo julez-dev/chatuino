@@ -132,6 +132,10 @@ func (l *liveNotificationTab) State() broadcastTabState {
 	return l.state
 }
 
+func (l *liveNotificationTab) IsSearching() bool {
+	return l.chatWindow.state == searchChatWindowState
+}
+
 func (l *liveNotificationTab) IsDataLoaded() bool {
 	return true
 }

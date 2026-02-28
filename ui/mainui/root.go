@@ -60,6 +60,7 @@ type tab interface {
 	AccountID() string
 	Channel() string
 	State() broadcastTabState
+	IsSearching() bool
 	IsDataLoaded() bool
 	ID() string
 	Focused() bool
@@ -635,7 +636,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.dependencies.Keymap.CloseTab) {
-				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
+				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode || r.tabs[r.tabCursor].IsSearching()) {
 					currentTab := r.tabs[r.tabCursor]
 					r.closeTab()
 

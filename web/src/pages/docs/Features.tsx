@@ -69,7 +69,7 @@ export default function Features() {
           <li>
             Press{" "}
             <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/</code> to
-            start a search for messages or usernames
+            start a search (see syntax below)
           </li>
           <li>
             Press{" "}
@@ -87,6 +87,110 @@ export default function Features() {
             view all key bindings
           </li>
         </ul>
+
+        <h3 class="mb-2 mt-6 text-lg font-medium text-nord4">Search Syntax</h3>
+        <p class="mb-4 text-nord4">
+          Press <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/</code>{" "}
+          to open the search bar. By default, typing a term searches both
+          message content and usernames. Use prefixes to target specific fields
+          or apply advanced filters. Multiple filters are combined with AND.
+        </p>
+        <div class="mb-4 overflow-x-auto rounded-lg border border-nord2">
+          <table class="w-full text-left text-sm">
+            <thead class="border-b border-nord2 bg-nord1">
+              <tr>
+                <th class="px-4 py-2 font-semibold text-nord8">Filter</th>
+                <th class="px-4 py-2 font-semibold text-nord8">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-nord4">
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">hello</code>
+                </td>
+                <td class="px-4 py-2">Message or username contains "hello"</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">content:term</code>
+                </td>
+                <td class="px-4 py-2">Message content contains term</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">user:term</code>
+                </td>
+                <td class="px-4 py-2">Username contains term</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">badge:name</code>
+                </td>
+                <td class="px-4 py-2">
+                  User has badge (e.g.{" "}
+                  <code class="text-nord8">badge:moderator</code>)
+                </td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">is:mod|sub|vip|first</code>
+                </td>
+                <td class="px-4 py-2">Filter by user property</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">/pattern/</code>
+                </td>
+                <td class="px-4 py-2">Regex on content and username</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">user:/pattern/</code>
+                </td>
+                <td class="px-4 py-2">Regex scoped to username only</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">content:/pattern/</code>
+                </td>
+                <td class="px-4 py-2">Regex scoped to content only</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">-filter</code>
+                </td>
+                <td class="px-4 py-2">
+                  Negate any filter (e.g.{" "}
+                  <code class="text-nord8">-user:nightbot</code>)
+                </td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">"quoted value"</code>
+                </td>
+                <td class="px-4 py-2">Match a phrase with spaces</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mb-4 text-sm text-nord4">
+          <strong class="text-nord8">Aliases:</strong>{" "}
+          <code class="rounded bg-nord1 px-1 py-0.5 text-nord8">msg:</code> for{" "}
+          <code class="rounded bg-nord1 px-1 py-0.5 text-nord8">content:</code>,{" "}
+          <code class="rounded bg-nord1 px-1 py-0.5 text-nord8">from:</code> for{" "}
+          <code class="rounded bg-nord1 px-1 py-0.5 text-nord8">user:</code>,{" "}
+          <code class="rounded bg-nord1 px-1 py-0.5 text-nord8">regex:</code>{" "}
+          for{" "}
+          <code class="rounded bg-nord1 px-1 py-0.5 text-nord8">/pattern/</code>
+        </p>
+        <p class="text-sm text-nord4">
+          <strong class="text-nord8">Example:</strong>{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            user:julez content:GG is:sub
+          </code>{" "}
+          matches messages from "julez" containing "GG" that are from a
+          subscriber.
+        </p>
 
         <h3 class="mb-2 mt-6 text-lg font-medium text-nord4">
           Writing Messages

@@ -18,7 +18,29 @@ Chatuino displays various Twitch events including messages, sub-gifts, timeouts,
 
 Use local commands like `/localsubscribers` and `/uniqueonly` to filter chat locally.
 
-Press `/` to start a fuzzy search for messages or usernames. Navigate with arrow keys.
+Press `/` to search chat messages. Navigate results with arrow keys, press Enter to jump to a match, or Escape to cancel.
+
+### Search Syntax
+
+By default, typing a term searches both message content and usernames. Use prefixes to target specific fields or apply advanced filters:
+
+| Filter | Description |
+|---|---|
+| `hello` | message or username contains "hello" |
+| `content:term` | message content contains term |
+| `user:term` | username contains term |
+| `badge:name` | user has badge (e.g. `badge:moderator`) |
+| `is:mod` | mod messages only (also: `sub`, `vip`, `first`) |
+| `/pattern/` | regex on content and username |
+| `regex:pattern` | regex on content and username |
+| `user:/pattern/` | regex scoped to username only |
+| `content:/pattern/` | regex scoped to content only |
+| `-filter` | negate any filter (e.g. `-user:nightbot`) |
+| `"quoted value"` | match a phrase with spaces |
+
+Multiple filters are combined with AND. For example, `user:julez content:GG is:sub` matches messages from "julez" containing "GG" that are from a subscriber.
+
+Aliases: `msg:` for `content:`, `from:` for `user:`.
 
 Enable insert mode (for writing messages/commands) with `i` and exit with Escape. Press Enter to send a message, or Alt+Enter to send while keeping the text in the input.
 A simple duplication bypass is included when your message matches the last message.
