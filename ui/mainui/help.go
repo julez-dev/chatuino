@@ -126,5 +126,33 @@ func (h *help) render() string {
 		_, _ = b.WriteRune('\n')
 	}
 
+	// Search syntax reference
+	_, _ = b.WriteString(centered(lipgloss.NewStyle().Bold(true).Render("Search Syntax")))
+	_, _ = b.WriteRune('\n')
+	_, _ = b.WriteRune('\n')
+
+	searchEntries := []struct{ filter, desc string }{
+		{"hello", "message or username contains \"hello\""},
+		{"content:term", "message content contains term"},
+		{"user:term", "username contains term"},
+		{"badge:name", "user has badge (e.g. badge:moderator)"},
+		{"is:mod|sub|vip|first", "filter by user property"},
+		{"/pattern/", "regex on content and username"},
+		{"regex:pattern", "regex on content and username"},
+		{"user:/pattern/", "regex scoped to username"},
+		{"content:/pattern/", "regex scoped to content"},
+		{"-filter", "negate any filter (e.g. -user:bot)"},
+		{"\"quoted value\"", "match phrase with spaces"},
+		{"filter1 filter2", "combine filters (AND)"},
+	}
+
+	for _, entry := range searchEntries {
+		line := left(entry.filter+"  ") + right("  "+entry.desc)
+		_, _ = b.WriteString(line)
+		_, _ = b.WriteRune('\n')
+	}
+
+	_, _ = b.WriteRune('\n')
+
 	return b.String()
 }

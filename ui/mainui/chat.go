@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/search"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/reflow/wordwrap"
 	"github.com/julez-dev/reflow/wrap"
@@ -60,6 +61,12 @@ type position struct {
 	CursorEnd   int
 }
 
+// searchMatcher tests whether a PrivateMessage satisfies a search criterion.
+// Defined here at the point of use; implemented by the search package.
+type searchMatcher interface {
+	Match(msg *twitchirc.PrivateMessage) bool
+}
+
 type chatWindowState int
 
 const (
@@ -99,6 +106,11 @@ type chatWindow struct {
 	filteredEntries      []*chatEntry
 	filteredEntriesDirty bool
 
+	// parsed search matcher; nil when query is empty or invalid
+	currentMatcher searchMatcher
+	searchError    string
+	matchCount     int
+
 	// reusable buffer for sorting replacement keys in applyWordReplacements
 	replacementKeysBuf []string
 
@@ -129,9 +141,9 @@ type chatWindow struct {
 
 func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	input := textinput.New()
-	input.CharLimit = 25
+	input.CharLimit = 128
 	input.Prompt = "  /"
-	input.Placeholder = "search"
+	input.Placeholder = "search — content: user: /regex/ badge: is:mod|sub|vip|first"
 	styles := input.Styles()
 	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
 	styles.Cursor.BlinkSpeed = time.Millisecond * 750
@@ -209,8 +221,8 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if c.focused {
 			switch {
-			// start search
-			case key.Matches(msg, c.deps.Keymap.SearchMode):
+			// start search (only when not already searching — otherwise '/' is forwarded to the input)
+			case key.Matches(msg, c.deps.Keymap.SearchMode) && c.state != searchChatWindowState:
 				return c, c.handleStartSearchMode()
 			// stop search
 			case key.Matches(msg, c.deps.Keymap.Escape) && c.state == searchChatWindowState:
@@ -279,6 +291,10 @@ func (c *chatWindow) handleStopSearchModeKeepSelected() {
 
 func (c *chatWindow) handleStopSearchMode() {
 	c.state = viewChatWindowState
+	c.currentMatcher = nil
+	c.searchError = ""
+	c.matchCount = 0
+
 	var last *chatEntry
 	for e := range slices.Values(c.entries) {
 		e.IsFiltered = false
@@ -343,7 +359,15 @@ func (c *chatWindow) View() string {
 	}
 
 	if c.state == searchChatWindowState {
-		return c.searchInput.View() + "\n" + strings.Join(lines, "\n")
+		searchLine := c.searchInput.View()
+
+		if c.searchError != "" {
+			searchLine += "  [!] " + c.searchError
+		} else if c.matchCount > 0 {
+			searchLine += fmt.Sprintf("  [%d matches]", c.matchCount)
+		}
+
+		return searchLine + "\n" + strings.Join(lines, "\n")
 	}
 
 	return strings.Join(lines, "\n")
@@ -681,6 +705,7 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) tea.Cmd {
 	// we are currently searching and the new entry does not match the search, then ignore new entry
 	if c.state == searchChatWindowState && !c.entryMatchesSearch(entry) {
 		entry.IsFiltered = true
+		entry.Position = position{} // lines not appended; position invalid until recalculateLines
 		c.entries = append(c.entries, entry)
 	} else {
 		c.entries = append(c.entries, entry)
@@ -1128,17 +1153,14 @@ func (c *chatWindow) invalidateFilteredEntries() {
 	c.filteredEntries = nil
 }
 
-func (c *chatWindow) applySearch() {
+// clearSearchFilter un-hides all entries and resets the viewport.
+// Used when the query is too short or invalid — the user should see all messages.
+func (c *chatWindow) clearSearchFilter() {
 	var last *chatEntry
 	for e := range slices.Values(c.entries) {
+		e.IsFiltered = false
 		e.Selected = false
-		if len(c.searchInput.Value()) > 2 && c.entryMatchesSearch(e) {
-			e.IsFiltered = false
-			last = e
-			continue
-		}
-
-		e.IsFiltered = true
+		last = e
 	}
 
 	if last != nil {
@@ -1150,24 +1172,74 @@ func (c *chatWindow) applySearch() {
 	c.moveToBottom()
 }
 
-func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
-	cast, ok := e.Event.message.(*twitchirc.PrivateMessage)
+func (c *chatWindow) applySearch() {
+	query := c.searchInput.Value()
 
+	// parse query into matcher; show all entries on empty/short/invalid input
+	if len(query) <= 2 {
+		c.currentMatcher = nil
+		c.searchError = ""
+		c.matchCount = 0
+
+		c.clearSearchFilter()
+
+		return
+	}
+
+	matcher, err := search.Parse(query)
+	if err != nil {
+		c.currentMatcher = nil
+		c.searchError = err.Error()
+		c.matchCount = 0
+
+		c.clearSearchFilter()
+
+		return
+	}
+
+	c.currentMatcher = matcher
+	c.searchError = ""
+
+	var (
+		last  *chatEntry
+		count int
+	)
+
+	for e := range slices.Values(c.entries) {
+		e.Selected = false
+		if c.entryMatchesSearch(e) {
+			e.IsFiltered = false
+			last = e
+			count++
+
+			continue
+		}
+
+		e.IsFiltered = true
+	}
+
+	c.matchCount = count
+
+	if last != nil {
+		last.Selected = true
+	}
+
+	c.invalidateFilteredEntries()
+	c.recalculateLines()
+	c.moveToBottom()
+}
+
+func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
+	if c.currentMatcher == nil {
+		return false
+	}
+
+	cast, ok := e.Event.message.(*twitchirc.PrivateMessage)
 	if !ok {
 		return false
 	}
 
-	// search := c.searchInput.Value()
-	// if fuzzy.RankMatchFold(search, cast.DisplayName) > 5 || fuzzy.RankMatchFold(search, cast.Message) > 6 {
-	// 	return true
-	// }
-
-	search := strings.ToLower(c.searchInput.Value())
-	if strings.Contains(strings.ToLower(cast.DisplayName), search) || strings.Contains(strings.ToLower(cast.Message), search) {
-		return true
-	}
-
-	return false
+	return c.currentMatcher.Match(cast)
 }
 
 func formatBadgeReplacement(settings save.Settings, replacements map[string]string) string {
