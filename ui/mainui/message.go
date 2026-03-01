@@ -93,7 +93,7 @@ type imageCleanupTickMessage struct {
 
 // joinChannelMessage comes when user confirms channel which should be joined
 type joinChannelMessage struct {
-	tabKind tabKind
+	tabKind TabKind
 	channel string
 	account save.Account
 }

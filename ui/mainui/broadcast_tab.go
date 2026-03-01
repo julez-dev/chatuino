@@ -936,8 +936,8 @@ func (t *broadcastTab) ID() string {
 	return t.id
 }
 
-func (t *broadcastTab) Kind() tabKind {
-	return broadcastTabKind
+func (t *broadcastTab) Kind() TabKind {
+	return BroadcastTabKind
 }
 
 func (t *broadcastTab) SetSize(width, height int) {
@@ -1056,7 +1056,7 @@ func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
 		}
 
 		return joinChannelMessage{
-			tabKind: broadcastTabKind,
+			tabKind: BroadcastTabKind,
 			channel: channel,
 			account: account,
 		}

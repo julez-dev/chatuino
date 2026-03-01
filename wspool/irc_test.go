@@ -71,6 +71,7 @@ func TestIRCConn_Connect_Auth(t *testing.T) {
 		account: save.Account{
 			ID:          "123",
 			DisplayName: "testuser",
+			LoginName:   "testuser",
 			AccessToken: "test-token",
 		},
 	}
@@ -122,7 +123,7 @@ func TestIRCConn_ReceiveMessage(t *testing.T) {
 	defer server.Close()
 
 	accounts := &mockAccountProvider{
-		account: save.Account{ID: "123", DisplayName: "testuser", AccessToken: "token"},
+		account: save.Account{ID: "123", LoginName: "testuser", DisplayName: "testuser", AccessToken: "token"},
 	}
 
 	var received []tea.Msg
@@ -184,7 +185,7 @@ func TestIRCConn_PingPong(t *testing.T) {
 	defer server.Close()
 
 	accounts := &mockAccountProvider{
-		account: save.Account{ID: "123", DisplayName: "testuser", AccessToken: "token"},
+		account: save.Account{ID: "123", LoginName: "testuser", DisplayName: "testuser", AccessToken: "token"},
 	}
 
 	conn := newIRCConn("123", accounts, zerolog.Nop(), func(tea.Msg) {})
@@ -226,7 +227,7 @@ func TestIRCConn_Reconnect(t *testing.T) {
 	defer server.Close()
 
 	accounts := &mockAccountProvider{
-		account: save.Account{ID: "123", DisplayName: "testuser", AccessToken: "token"},
+		account: save.Account{ID: "123", LoginName: "testuser", DisplayName: "testuser", AccessToken: "token"},
 	}
 
 	var errorCount atomic.Int32
@@ -283,7 +284,7 @@ func TestIRCConn_ChannelRejoin(t *testing.T) {
 	defer server.Close()
 
 	accounts := &mockAccountProvider{
-		account: save.Account{ID: "123", DisplayName: "testuser", AccessToken: "token"},
+		account: save.Account{ID: "123", LoginName: "testuser", DisplayName: "testuser", AccessToken: "token"},
 	}
 
 	conn := newIRCConn("123", accounts, zerolog.Nop(), func(tea.Msg) {})
@@ -352,7 +353,7 @@ func TestIRCConn_SendMessage(t *testing.T) {
 	defer server.Close()
 
 	accounts := &mockAccountProvider{
-		account: save.Account{ID: "123", DisplayName: "testuser", AccessToken: "token"},
+		account: save.Account{ID: "123", LoginName: "testuser", DisplayName: "testuser", AccessToken: "token"},
 	}
 
 	conn := newIRCConn("123", accounts, zerolog.Nop(), func(tea.Msg) {})

@@ -165,6 +165,6 @@ func (l *liveNotificationTab) SetFullWidth(_ int) {
 	// No-op for live notification tab (no status bar)
 }
 
-func (l *liveNotificationTab) Kind() tabKind {
-	return liveNotificationTabKind
+func (l *liveNotificationTab) Kind() TabKind {
+	return LiveNotificationTabKind
 }

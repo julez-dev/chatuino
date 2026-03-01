@@ -189,6 +189,7 @@ func (c createModel) handleSent(input string) tea.Cmd {
 		return setAccountMessage{
 			account: save.Account{
 				ID:           resp.Data[0].ID,
+				LoginName:    resp.Data[0].Login,
 				DisplayName:  resp.Data[0].DisplayName,
 				AccessToken:  tmpAccount.AccessToken,
 				RefreshToken: tmpAccount.RefreshToken,

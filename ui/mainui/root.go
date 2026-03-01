@@ -27,21 +27,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type tabKind int
+type TabKind int
 
 const (
-	broadcastTabKind tabKind = iota
-	mentionTabKind
-	liveNotificationTabKind
+	BroadcastTabKind TabKind = iota
+	MentionTabKind
+	LiveNotificationTabKind
 )
 
-func (t tabKind) String() string {
+func (t TabKind) String() string {
 	switch t {
-	case broadcastTabKind:
+	case BroadcastTabKind:
 		return "Channel (Default)"
-	case mentionTabKind:
+	case MentionTabKind:
 		return "Mention"
-	case liveNotificationTabKind:
+	case LiveNotificationTabKind:
 		return "Live Notifications"
 	}
 
@@ -68,7 +68,7 @@ type tab interface {
 	HandleResize()
 	SetSize(width, height int)
 	SetFullWidth(width int) // for status bar in vertical tab mode
-	Kind() tabKind
+	Kind() TabKind
 }
 
 type header interface {
@@ -111,6 +111,8 @@ type Root struct {
 	width, height int
 
 	hasLoadedSession bool
+	isDetached       bool           // when true, state is not loaded from or saved to disk
+	initialState     *save.AppState // when non-nil, overrides persisted state
 	screenType       activeScreen
 
 	userIDDisplayName *sync.Map
@@ -133,9 +135,13 @@ type Root struct {
 	updateInfo         *UpdateInfo
 }
 
+// NewUI creates the root Bubble Tea model. When initialState is non-nil the
+// session runs in detached mode: the provided state is used instead of loading
+// from disk and no state is persisted, allowing multiple independent instances.
 func NewUI(
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
 	dependencies *DependencyContainer,
+	initialState *save.AppState,
 ) *Root {
 	var header header
 	if dependencies.UserConfig.Settings.VerticalTabList {
@@ -145,6 +151,7 @@ func NewUI(
 	}
 
 	return &Root{
+		initialState:      initialState,
 		dependencies:      dependencies,
 		width:             10,
 		height:            10,
@@ -166,13 +173,24 @@ func NewUI(
 }
 
 func (r *Root) Init() tea.Cmd {
+	r.isDetached = r.initialState != nil
+
 	return tea.Batch(
 		r.splash.Init(),
 		func() tea.Msg {
-			state, err := r.dependencies.AppStateManager.LoadAppState()
-			if err != nil {
-				return persistedDataLoadedMessage{
-					err: fmt.Errorf("failed to load save state: %w", err),
+			var (
+				state save.AppState
+				err   error
+			)
+
+			if r.initialState != nil {
+				state = *r.initialState
+			} else {
+				state, err = r.dependencies.AppStateManager.LoadAppState()
+				if err != nil {
+					return persistedDataLoadedMessage{
+						err: fmt.Errorf("failed to load save state: %w", err),
+					}
 				}
 			}
 
@@ -262,7 +280,7 @@ func (r *Root) Init() tea.Cmd {
 			logins := make([]string, 0, len(state.Tabs))
 
 			for _, tab := range state.Tabs {
-				if tab.Kind != int(broadcastTabKind) {
+				if tab.Kind != int(BroadcastTabKind) {
 					continue
 				}
 				loginsUnique[tab.Channel] = struct{}{}
@@ -384,7 +402,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		initCmds := []tea.Cmd{nTab.Init(), cmd}
 
 		// Record channel in history for broadcast tabs
-		if msg.tabKind == broadcastTabKind && msg.channel != "" {
+		if msg.tabKind == BroadcastTabKind && msg.channel != "" {
 			channel := msg.channel
 
 			// update cached suggestions with new channel
@@ -559,22 +577,22 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.screenType = inputScreen
 				r.joinInput = newJoin(r.width, r.dependencies)
 				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
-					return t.Kind() == mentionTabKind
+					return t.Kind() == MentionTabKind
 				})
 
 				hasNotificationTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
-					return t.Kind() == liveNotificationTabKind
+					return t.Kind() == LiveNotificationTabKind
 				})
 
-				var validTabKinds []tabKind
-				validTabKinds = append(validTabKinds, broadcastTabKind)
+				var validTabKinds []TabKind
+				validTabKinds = append(validTabKinds, BroadcastTabKind)
 
 				if !hasMentionTab {
-					validTabKinds = append(validTabKinds, mentionTabKind)
+					validTabKinds = append(validTabKinds, MentionTabKind)
 				}
 
 				if !hasNotificationTab {
-					validTabKinds = append(validTabKinds, liveNotificationTabKind)
+					validTabKinds = append(validTabKinds, LiveNotificationTabKind)
 				}
 
 				r.joinInput.setTabOptions(validTabKinds...)
@@ -641,7 +659,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					r.closeTab()
 
 					// if tab was connected to IRC, disconnect it
-					if currentTab.IsDataLoaded() && currentTab.Kind() == broadcastTabKind {
+					if currentTab.IsDataLoaded() && currentTab.Kind() == BroadcastTabKind {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
@@ -823,6 +841,12 @@ func (r *Root) HasSessionLoaded() bool {
 	return r.hasLoadedSession
 }
 
+// IsDetached reports whether the session was started with explicit --tab flags
+// and is therefore not loading or persisting state to disk.
+func (r *Root) IsDetached() bool {
+	return r.isDetached
+}
+
 func (r *Root) TakeStateSnapshot() save.AppState {
 	appState := save.AppState{}
 
@@ -834,7 +858,7 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 			Kind:       int(t.Kind()),
 		}
 
-		if t.Kind() == broadcastTabKind {
+		if t.Kind() == BroadcastTabKind {
 			tabState.IsLocalUnique = t.(*broadcastTab).isUniqueOnlyChat
 			tabState.IsLocalSub = t.(*broadcastTab).isLocalSub
 		}
@@ -867,7 +891,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	channelIDNames := map[string]string{}
 
 	for _, tab := range r.tabs {
-		if tab.Kind() != broadcastTabKind {
+		if tab.Kind() != BroadcastTabKind {
 			continue
 		}
 		openBroadcasts[tab.ChannelID()] = struct{}{}
@@ -966,9 +990,9 @@ func (r *Root) handlePolledStreamInfo(polled polledStreamInfoMessage) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) createTab(account save.Account, channel string, kind tabKind) (tab, tea.Cmd) {
+func (r *Root) createTab(account save.Account, channel string, kind TabKind) (tab, tea.Cmd) {
 	switch kind {
-	case broadcastTabKind:
+	case BroadcastTabKind:
 		identity := account.DisplayName
 
 		if account.IsAnonymous {
@@ -982,12 +1006,12 @@ func (r *Root) createTab(account save.Account, channel string, kind tabKind) (ta
 		nTab := newBroadcastTab(id, r.width, r.height-headerHeight, account, channel, r.dependencies)
 		nTab.updateInfo = r.updateInfo
 		return nTab, cmd
-	case mentionTabKind:
+	case MentionTabKind:
 		id, cmd := r.header.AddTab("mentioned", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newMentionTab(id, r.width, r.height-headerHeight, r.dependencies)
 		return nTab, cmd
-	case liveNotificationTabKind:
+	case LiveNotificationTabKind:
 		id, cmd := r.header.AddTab("live notifications", "all")
 		headerHeight := r.getHeaderHeight()
 		nTab := newLiveNotificationTab(id, r.width, r.height-headerHeight, r.dependencies)
@@ -1136,8 +1160,8 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			newTab tab
 			cmd    tea.Cmd
 		)
-		switch tabKind(t.Kind) {
-		case broadcastTabKind:
+		switch TabKind(t.Kind) {
+		case BroadcastTabKind:
 			var account save.Account
 
 			for _, a := range r.dependencies.Accounts {
@@ -1150,10 +1174,10 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab, cmd = r.createTab(account, t.Channel, broadcastTabKind)
+			newTab, cmd = r.createTab(account, t.Channel, BroadcastTabKind)
 			newTab.(*broadcastTab).isUniqueOnlyChat = t.IsLocalUnique
 			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
-		case mentionTabKind:
+		case MentionTabKind:
 			// don't load mention tab, when there are no longer any non-anonymous accounts
 			hasNormalAccount := slices.ContainsFunc(r.dependencies.Accounts, func(e save.Account) bool {
 				return !e.IsAnonymous
@@ -1163,9 +1187,9 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab, cmd = r.createTab(save.Account{}, "", mentionTabKind)
-		case liveNotificationTabKind:
-			newTab, cmd = r.createTab(save.Account{}, "", liveNotificationTabKind)
+			newTab, cmd = r.createTab(save.Account{}, "", MentionTabKind)
+		case LiveNotificationTabKind:
+			newTab, cmd = r.createTab(save.Account{}, "", LiveNotificationTabKind)
 		}
 
 		cmds = append(cmds, cmd)
@@ -1210,8 +1234,10 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		}
 	}
 
-	// initial app state tick
-	cmds = append(cmds, r.tickSaveAppState())
+	// initial app state tick (skip in detached mode)
+	if !r.isDetached {
+		cmds = append(cmds, r.tickSaveAppState())
+	}
 
 	return tea.Batch(cmds...)
 }
@@ -1428,7 +1454,7 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 func (r *Root) closeTab() {
 	if len(r.tabs) > r.tabCursor {
 		tabID := r.tabs[r.tabCursor].ID()
-		if r.tabs[r.tabCursor].Kind() == broadcastTabKind {
+		if r.tabs[r.tabCursor].Kind() == BroadcastTabKind {
 			r.tabs[r.tabCursor].(*broadcastTab).close()
 		}
 		r.header.RemoveTab(tabID)

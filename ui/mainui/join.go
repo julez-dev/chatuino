@@ -46,7 +46,7 @@ func (c currentJoinInput) String() string {
 
 type listItem struct {
 	title string
-	kind  tabKind
+	kind  TabKind
 }
 
 func (i listItem) Title() string       { return i.title }
@@ -132,16 +132,16 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
-			title: broadcastTabKind.String(),
-			kind:  broadcastTabKind,
+			title: BroadcastTabKind.String(),
+			kind:  BroadcastTabKind,
 		},
 		listItem{
-			title: mentionTabKind.String(),
-			kind:  mentionTabKind,
+			title: MentionTabKind.String(),
+			kind:  MentionTabKind,
 		},
 		listItem{
-			title: liveNotificationTabKind.String(),
-			kind:  liveNotificationTabKind,
+			title: LiveNotificationTabKind.String(),
+			kind:  LiveNotificationTabKind,
 		},
 	})
 	tabKindList.Select(0)
@@ -279,7 +279,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 			if key.Matches(msg, j.deps.Keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
 					// For mention/live notification tabs, Tab does nothing (only one field)
 					return j, nil
 				}
@@ -299,7 +299,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 			if key.Matches(msg, j.deps.Keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
 					// For mention/live notification tabs, Shift+Tab does nothing (only one field)
 					return j, nil
 				}
@@ -321,9 +321,9 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
 			// Check if inputs are valid for confirmation
-			isValid := (j.input.Value() != "" && kind == broadcastTabKind) ||
-				kind == mentionTabKind ||
-				kind == liveNotificationTabKind
+			isValid := (j.input.Value() != "" && kind == BroadcastTabKind) ||
+				kind == MentionTabKind ||
+				kind == LiveNotificationTabKind
 
 			if key.Matches(msg, j.deps.Keymap.Confirm) && isValid {
 				channel := j.input.Value()
@@ -331,7 +331,7 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 				return j, func() tea.Msg {
 					// Normalize channel name via Twitch API for broadcast tabs
-					if kind == broadcastTabKind {
+					if kind == BroadcastTabKind {
 						for accountID, client := range j.deps.APIUserClients {
 							if accountID != account.ID {
 								continue
@@ -439,7 +439,7 @@ func (j *join) View() string {
 	_, _ = b.WriteString(styleCenter.Render(headlineStyle.Render("Create new Tab")) + "\n")
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
-	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == mentionTabKind.String() || i.title == liveNotificationTabKind.String()) {
+	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
 		_, _ = labelIdentity, labelChannel
@@ -499,7 +499,7 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 	c.height = 0
 }
 
-func (c *join) setTabOptions(kinds ...tabKind) {
+func (c *join) setTabOptions(kinds ...TabKind) {
 	var items []list.Item
 
 	for _, kind := range kinds {
