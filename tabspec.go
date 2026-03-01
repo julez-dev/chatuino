@@ -162,15 +162,11 @@ func resolveAccount(name string, accounts []save.Account, defaultAccount save.Ac
 		return accounts[i], nil
 	}
 
-	available := make([]string, 0, len(accounts))
+	available := []string{"anonymous"}
 	for _, a := range accounts {
 		if !a.IsAnonymous {
 			available = append(available, a.DisplayName)
 		}
-	}
-
-	if len(available) == 0 {
-		return save.Account{}, fmt.Errorf("account %q not found, no accounts configured", name)
 	}
 
 	return save.Account{}, fmt.Errorf("account %q not found, available: %s", name, strings.Join(available, ", "))

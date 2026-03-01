@@ -190,6 +190,7 @@ func TestBuildInitialState(t *testing.T) {
 		_, err := buildInitialState([]string{"unknown@streamer1"}, allAccounts)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown")
+		require.Contains(t, err.Error(), "anonymous")
 		require.Contains(t, err.Error(), "MainUser")
 	})
 
