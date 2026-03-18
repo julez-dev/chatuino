@@ -357,6 +357,82 @@ export default function Features() {
         </div>
       </section>
 
+      <section class="mb-12">
+        <h2 class="mb-4 text-xl font-semibold text-nord4">CLI Tab Flags</h2>
+        <p class="mb-4 text-nord4">
+          You can open Chatuino with specific tabs using the{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">--tab</code>{" "}
+          flag. Each{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">--tab</code>{" "}
+          specifies a single tab to open. When{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">--tab</code>{" "}
+          is used, Chatuino runs in detached mode: state is not loaded from or
+          saved to disk, allowing multiple independent instances.
+        </p>
+
+        <h3 class="mb-2 mt-6 text-lg font-medium text-nord4">Syntax</h3>
+        <div class="mb-4 overflow-x-auto rounded-lg border border-nord2">
+          <table class="w-full text-left text-sm">
+            <thead class="border-b border-nord2 bg-nord1">
+              <tr>
+                <th class="px-4 py-2 font-semibold text-nord8">Format</th>
+                <th class="px-4 py-2 font-semibold text-nord8">Description</th>
+              </tr>
+            </thead>
+            <tbody class="text-nord4">
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">--tab channel</code>
+                </td>
+                <td class="px-4 py-2">
+                  Open a channel tab with the default account
+                </td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">--tab user@channel</code>
+                </td>
+                <td class="px-4 py-2">
+                  Open a channel tab with a specific account
+                </td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">--tab anonymous@channel</code>
+                </td>
+                <td class="px-4 py-2">
+                  Open a channel tab as anonymous (read-only)
+                </td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">
+                  <code class="text-nord8">--tab notification</code>
+                </td>
+                <td class="px-4 py-2">Open a live notification tab</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2">
+                  <code class="text-nord8">--tab mention</code>
+                </td>
+                <td class="px-4 py-2">Open a mention tab</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="mb-2 mt-6 text-lg font-medium text-nord4">Examples</h3>
+        <pre class="mb-4 overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm text-nord4">
+          <code>{`chatuino --tab streamer1 --tab streamer2
+chatuino --tab myuser@streamer1 --tab notification
+chatuino --tab anonymous@streamer1 --tab streamer2
+chatuino --tab notification --tab mention --tab user1@streamer1`}</code>
+        </pre>
+        <p class="text-sm text-nord4">
+          Notification and mention tabs are singletons; duplicates are ignored.
+          The mention tab requires at least one non-anonymous account.
+        </p>
+      </section>
+
       <section>
         <h2 class="mb-4 text-xl font-semibold text-nord4">Vertical Mode</h2>
         <p class="mb-4 text-nord4">

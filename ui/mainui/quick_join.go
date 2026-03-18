@@ -398,7 +398,7 @@ func (q *quickJoin) confirmSelection() tea.Cmd {
 		}
 
 		return joinChannelMessage{
-			tabKind: broadcastTabKind,
+			tabKind: BroadcastTabKind,
 			channel: channel,
 			account: account,
 		}

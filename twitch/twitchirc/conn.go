@@ -222,7 +222,7 @@ func (c *Conn) authenticate(ws *websocket.Conn) error {
 
 	authMsgs := []string{
 		fmt.Sprintf("PASS %s", oauth),
-		fmt.Sprintf("NICK %s", account.DisplayName),
+		fmt.Sprintf("NICK %s", account.LoginName),
 		"CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands",
 	}
 

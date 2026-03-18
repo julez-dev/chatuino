@@ -73,6 +73,18 @@ go install github.com/julez-dev/chatuino@latest
 
 Run `chatuino --help` to see available commands.
 
+### Opening tabs from the command line
+
+Use `--tab` to open Chatuino with specific tabs:
+
+```
+chatuino --tab streamer1 --tab streamer2
+chatuino --tab myuser@streamer1 --tab notification
+chatuino --tab anonymous@streamer1 --tab streamer2
+```
+
+When `--tab` is used, Chatuino runs in detached mode and does not load or save state to disk. See [Features](doc/FEATURES.md) for the full syntax reference.
+
 ### Adding an account
 
 ```

@@ -74,10 +74,15 @@ func main() {
 	}()
 
 	app := &cli.Command{
-		Name:        "Chatuino",
+		Name:        "chatuino",
 		Description: "Chatuino twitch IRC Client. Before using Chatuino you may want to manage your accounts using the account command.",
 		Usage:       "A client for twitch's IRC service",
-		Version:     Version,
+		UsageText: `chatuino [global options] [command [command options]]
+chatuino --tab streamer1 --tab streamer2
+chatuino --tab myuser@streamer1 --tab notification
+chatuino --tab anonymous@streamer1 --tab streamer2
+chatuino --tab notification --tab mention --tab user1@streamer1`,
+		Version: Version,
 		Authors: []any{
 			&mail.Address{
 				Name:    "julez-dev",
@@ -103,6 +108,10 @@ func main() {
 				Usage:   "Host of the Chatuino API",
 				Value:   "https://chatuino.net",
 				Sources: cli.EnvVars("CHATUINO_API_HOST"),
+			},
+			&cli.StringSliceFlag{
+				Name:  "tab",
+				Usage: "Tab to open on startup. Can be a channel name, user@channel, \"notification\", or \"mention\". Repeatable. When set, state is not loaded from or saved to disk.",
 			},
 			&cli.BoolFlag{
 				Name:  "enable-profiling",
@@ -277,6 +286,17 @@ func main() {
 				return fmt.Errorf("failed to open accounts: %w", err)
 			}
 
+			// Migrate accounts that are missing LoginName (pre-existing installs).
+			if err := migrateAccountLoginNames(ctx, accounts, accountProvider, serverAPI); err != nil {
+				log.Logger.Err(err).Msg("failed to migrate account login names")
+			}
+
+			// Reload accounts after migration so the rest of startup sees updated data.
+			accounts, err = accountProvider.GetAllAccounts()
+			if err != nil {
+				return fmt.Errorf("failed to reload accounts after migration: %w", err)
+			}
+
 			for _, acc := range accounts {
 				if _, ok := clients[acc.ID]; ok {
 					continue
@@ -298,10 +318,20 @@ func main() {
 
 			deps.Accounts = accounts
 
+			var initialState *save.AppState
+			if tabSpecs := command.StringSlice("tab"); len(tabSpecs) > 0 {
+				state, err := buildInitialState(tabSpecs, accounts)
+				if err != nil {
+					return fmt.Errorf("invalid --tab flag: %w", err)
+				}
+				initialState = &state
+			}
+
 			p := tea.NewProgram(
 				mainui.NewUI(
 					messageLoggerChan,
 					deps,
+					initialState,
 				),
 				tea.WithContext(ctx),
 			)
@@ -321,10 +351,10 @@ func main() {
 			}
 
 			if final, ok := final.(*mainui.Root); ok {
-
 				// persist open tabs on disk when session was actually loaded
 				// to prevent saving empty state when Chatuino was closed while loading
-				if final.HasSessionLoaded() {
+				// skip when running in detached mode (--tab flags)
+				if final.HasSessionLoaded() && !final.IsDetached() {
 					state := final.TakeStateSnapshot()
 
 					if err := appStateManager.SaveAppState(state); err != nil {

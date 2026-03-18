@@ -21,6 +21,7 @@ var anonymousAccount = Account{
 	ID:          "anonymous-account",
 	IsMain:      false,
 	IsAnonymous: true,
+	LoginName:   "justinfan123123",
 	DisplayName: "justinfan123123",
 	AccessToken: "oauth:123123123",
 	CreatedAt:   time.Now(),
@@ -30,6 +31,7 @@ type Account struct {
 	ID           string    `json:"id"`
 	IsMain       bool      `json:"is_main"`
 	IsAnonymous  bool      `json:"-"`
+	LoginName    string    `json:"login_name"`
 	DisplayName  string    `json:"display_name"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
@@ -167,6 +169,22 @@ func (a AccountProvider) UpdateTokensFor(id, accessToken, refreshToken string) e
 	}
 
 	return nil
+}
+
+func (a AccountProvider) UpdateLoginNameFor(id, loginName string) error {
+	accounts, err := a.loadAccounts()
+	if err != nil {
+		return err
+	}
+
+	i := slices.IndexFunc(accounts, func(a Account) bool { return a.ID == id })
+	if i == -1 {
+		return ErrAccountNotFound
+	}
+
+	accounts[i].LoginName = loginName
+
+	return a.saveAccounts(accounts)
 }
 
 func (a AccountProvider) MarkAccountAsMain(id string) error {

@@ -85,3 +85,28 @@ Chatuino offers three tab types when creating a new tab with Ctrl+T:
 - **Channel**: The default tab type. Join a specific channel/broadcaster, similar to the normal web chat.
 - **Mention**: Displays all messages from open Channel tabs that mention one of your configured users. A bell icon in the tab name indicates new mentions.
 - **Live Notification**: Notifies you when channels in open tabs go online or offline. A bell icon appears next to the tab when a channel goes offline.
+
+## CLI Tab Flags
+
+You can open Chatuino with specific tabs using the `--tab` flag. Each `--tab` specifies a single tab to open. When `--tab` is used, Chatuino runs in detached mode: state is not loaded from or saved to disk, allowing multiple independent instances.
+
+### Syntax
+
+| Format | Description |
+|---|---|
+| `--tab channel` | Open a channel tab with the default account |
+| `--tab user@channel` | Open a channel tab with a specific account |
+| `--tab anonymous@channel` | Open a channel tab as anonymous (read-only) |
+| `--tab notification` | Open a live notification tab |
+| `--tab mention` | Open a mention tab |
+
+### Examples
+
+```
+chatuino --tab streamer1 --tab streamer2
+chatuino --tab myuser@streamer1 --tab notification
+chatuino --tab anonymous@streamer1 --tab streamer2
+chatuino --tab notification --tab mention --tab user1@streamer1
+```
+
+Notification and mention tabs are singletons; duplicates are ignored. The mention tab requires at least one non-anonymous account.

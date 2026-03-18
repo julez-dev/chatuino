@@ -210,6 +210,6 @@ func (m *mentionTab) SetFullWidth(_ int) {
 	// No-op for mention tab (no status bar)
 }
 
-func (m *mentionTab) Kind() tabKind {
-	return mentionTabKind
+func (m *mentionTab) Kind() TabKind {
+	return MentionTabKind
 }
