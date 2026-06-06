@@ -1396,34 +1396,39 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	}
 
 	if r.dependencies.UserConfig.Settings.Security.CheckLinks && len(message) > 0 {
-		if urls := extractValidURLs(message); len(urls) > 0 {
-			for _, u := range urls {
-				r, err := r.dependencies.ServerAPI.CheckLink(context.Background(), u)
+		// Key link annotations on the whole space-delimited token so they match
+		// exactly in applyWordReplacements (same contract as emotes). The URL is
+		// annotated in place, preserving any surrounding punctuation in the token.
+		for _, token := range strings.Split(message, " ") {
+			annotated := token
+			for _, u := range extractValidURLs(token) {
+				resp, err := r.dependencies.ServerAPI.CheckLink(context.Background(), u)
 				if err != nil {
 					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
 					continue
 				}
 
-				parts := []string{http.StatusText(r.RemoteStatusCode)}
+				parts := []string{http.StatusText(resp.RemoteStatusCode)}
 
-				if r.RemoteContentType != "" {
-					before, _, _ := strings.Cut(r.RemoteContentType, ";")
+				if resp.RemoteContentType != "" {
+					before, _, _ := strings.Cut(resp.RemoteContentType, ";")
 					parts = append(parts, before)
 				}
 
-				if len(r.VisitedURLs) > 0 {
-					for _, u := range r.VisitedURLs {
-						d, err := url.QueryUnescape(u)
-						if err != nil {
-							log.Logger.Info().Err(err).Str("url", u).Msg("failed to unescape url")
-							continue
-						}
-						parts = append(parts, d)
+				for _, visited := range resp.VisitedURLs {
+					d, err := url.QueryUnescape(visited)
+					if err != nil {
+						log.Logger.Info().Err(err).Str("url", visited).Msg("failed to unescape url")
+						continue
 					}
+					parts = append(parts, d)
 				}
 
-				v := fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", "))
-				event.displayModifier.wordReplacements[u] = v
+				annotated = strings.Replace(annotated, u, fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", ")), 1)
+			}
+
+			if annotated != token {
+				event.displayModifier.wordReplacements[token] = annotated
 			}
 		}
 	}
