@@ -111,9 +111,6 @@ type chatWindow struct {
 	searchError    string
 	matchCount     int
 
-	// reusable buffer for sorting replacement keys in applyWordReplacements
-	replacementKeysBuf []string
-
 	// reusable buffer for visible lines in View() to avoid allocation per frame
 	visibleBuf []string
 
@@ -799,33 +796,21 @@ func (c *chatWindow) formatMessageText(content string, modifier messageContentMo
 }
 
 // applyWordReplacements applies word replacements from the display modifier to the given content.
-// It replaces each key in the wordReplacements map with its corresponding value.
-// Keys are sorted longest-first to prevent partial matches.
+// Replacements are matched per space-delimited token, mirroring how Replace builds the map.
+// This prevents a single-character emote token from being substituted inside unrelated words
+// (e.g. an "o" emote bleeding into "moon"/"pool").
 func (c *chatWindow) applyWordReplacements(content string, replacements wordReplacement) string {
 	if len(replacements) == 0 {
 		return content
 	}
 
-	// Reuse a buffer to avoid allocating a new slice per call during recalculateLines.
-	keys := c.replacementKeysBuf[:0]
-	for k := range replacements {
-		keys = append(keys, k)
-	}
-
-	slices.SortFunc(keys, func(a, b string) int {
-		if len(a) != len(b) {
-			return len(b) - len(a)
+	words := strings.Split(content, " ")
+	for i, word := range words {
+		if replacement, ok := replacements[word]; ok {
+			words[i] = replacement
 		}
-		return strings.Compare(a, b)
-	})
-
-	// Keep buffer for next call (may have grown)
-	c.replacementKeysBuf = keys
-
-	for _, original := range keys {
-		content = strings.ReplaceAll(content, original, replacements[original])
 	}
-	return content
+	return strings.Join(words, " ")
 }
 
 func (c *chatWindow) setUserColorModifier(content string, modifier *messageContentModifier) {
@@ -969,10 +954,10 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
 
 		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
-		text := fmt.Sprintf("%s: %s",
-			msg.DisplayName,
-			c.applyWordReplacements(msg.Message, event.displayModifier.wordReplacements),
-		)
+		// Unlike other messages the announcer name is part of the wrapped body
+		// (not the prefix). Build the raw text and let formatMessageText apply
+		// emote/color replacements exactly once, matching the regular message path.
+		text := fmt.Sprintf("%s: %s", msg.DisplayName, msg.Message)
 
 		c.setUserColorModifier(text, &event.displayModifier)
 
