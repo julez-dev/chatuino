@@ -234,12 +234,16 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		return emoteSet, nil
 	})
 
+	if err != nil {
+		return err
+	}
+
 	s.m.Lock()
 	defer s.m.Unlock()
 	s.channelsFetched[channelID] = struct{}{}
 	s.channel[channelID] = set.(EmoteSet)
 
-	return err
+	return nil
 }
 
 func (s *Cache) RefreshGlobal(ctx context.Context) error {
