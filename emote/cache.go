@@ -234,7 +234,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		return emoteSet, nil
 	})
 
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrPartialFetch) {
 		return err
 	}
 
@@ -243,7 +243,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 	s.channelsFetched[channelID] = struct{}{}
 	s.channel[channelID] = set.(EmoteSet)
 
-	return nil
+	return err
 }
 
 func (s *Cache) RefreshGlobal(ctx context.Context) error {
@@ -520,12 +520,12 @@ func (s *Cache) LoadSetForeignEmote(emoteID, emoteText string) Emote {
 
 	// fake new emote entry, since we can't ask the API for a single emote, but also can't infer
 	// the channelID or the channel name of a sub emote.
-	// Use animated format — Twitch CDN gracefully falls back to static if no animated version exists.
+	// Use default format — animated URL returns 404 for static emotes.
 	e := Emote{
 		ID:       emoteID,
 		Text:     emoteText,
 		Platform: Twitch, // only supported by twitch
-		URL:      twitchEmoteURL(emoteID, true),
+		URL:      twitchEmoteURL(emoteID, false),
 	}
 
 	s.m.Lock()
