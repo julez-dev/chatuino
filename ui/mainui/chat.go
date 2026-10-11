@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/search"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -1020,7 +1021,33 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 		}
 	}
 
-	return lines
+	return expandGraphicRows(lines, graphicRows(c.deps.UserConfig.Settings))
+}
+
+// graphicRows returns the number of terminal rows graphic emotes/badges span, 1 if graphics are disabled.
+func graphicRows(settings save.Settings) int {
+	if !settings.Chat.GraphicEmotes && !settings.Chat.GraphicBadges {
+		return 1
+	}
+
+	return max(settings.Chat.GraphicScale, 1)
+}
+
+// expandGraphicRows makes lines containing images rows high by inserting rows-1 lines above them.
+// Images are bottom aligned with the text, their upper rows are rendered in the inserted lines.
+// Lines without images are unaffected.
+func expandGraphicRows(lines []string, rows int) []string {
+	if rows <= 1 {
+		return lines
+	}
+
+	expanded := make([]string, 0, len(lines)+rows-1)
+	for _, line := range lines {
+		expanded = append(expanded, kittyimg.PlaceholderRowsAbove(line, rows)...)
+		expanded = append(expanded, line)
+	}
+
+	return expanded
 }
 
 func (c *chatWindow) updatePort() {

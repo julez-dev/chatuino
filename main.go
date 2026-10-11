@@ -243,7 +243,9 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 					return fmt.Errorf("failed to get terminal size: %w", err)
 				}
 
-				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight)
+				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight, kittyimg.DisplayOptions{
+					Rows: settings.Chat.GraphicScale,
+				})
 
 				if settings.Chat.GraphicEmotes {
 					emoteReplacer = emote.NewReplacer(http.DefaultClient, emoteCache, true, theme, displayManager)
