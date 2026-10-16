@@ -372,7 +372,10 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		t.chatWindow = newChatWindow(t.width, t.height, t.deps)
 
 		t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap())
-		t.messageInput.EmoteReplacer = t.deps.EmoteReplacer // enable emote replacement
+		// enable inline emote replacement; the single line input can only display single row images
+		if graphicRows(t.deps.UserConfig.Settings) <= 1 {
+			t.messageInput.EmoteReplacer = t.deps.EmoteReplacer
+		}
 		msgInputStyles := t.messageInput.InputModel.Styles()
 		msgInputStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
 		t.messageInput.InputModel.SetStyles(msgInputStyles)
@@ -2000,7 +2003,7 @@ func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
 		return nil
 	}
 
-	t.emoteOverview = NewEmoteOverview(t.channelID, t.deps.EmoteCache, t.deps.EmoteReplacer, t.width, t.height)
+	t.emoteOverview = NewEmoteOverview(t.channelID, t.deps.EmoteCache, t.deps.EmoteReplacer, graphicRows(t.deps.UserConfig.Settings), t.width, t.height)
 	t.HandleResize()
 	return t.emoteOverview.Init()
 }
