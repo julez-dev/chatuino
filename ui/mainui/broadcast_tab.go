@@ -130,6 +130,7 @@ type broadcastTab struct {
 	pendingChannelSuggestions []string
 	lastMessageSent           string
 	lastMessageSentAt         time.Time
+	replyToMessageID          string
 
 	channel      string
 	channelID    string
@@ -226,7 +227,6 @@ func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 		group.Go(func() error {
 			// fetch recent messages
 			msgs, err := t.deps.RecentMessageService.GetRecentMessagesFor(ctx, userData.Login)
-
 			// call sometimes timeouts, but recent message are not really that important to crash the tab, so ignore the error
 			if err != nil {
 				return nil
@@ -679,6 +679,12 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 					return t, nil
 				}
 
+				// Reply to selected message
+				if key.Matches(msg, t.deps.Keymap.ReplyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
+					t.handleReplyMessage()
+					return t, nil
+				}
+
 				// Close overlay windows
 				if key.Matches(msg, t.deps.Keymap.Escape) {
 					// first end search in user inspect sub window
@@ -963,6 +969,7 @@ func (t *broadcastTab) handleEscapePressed() {
 		t.state = userInspectMode
 		t.userInspect.chatWindow.Focus()
 		t.messageInput.Blur()
+		t.replyToMessageID = ""
 		return
 	}
 
@@ -970,6 +977,7 @@ func (t *broadcastTab) handleEscapePressed() {
 		t.state = inChatWindow
 		t.chatWindow.Focus()
 		t.messageInput.Blur()
+		t.replyToMessageID = ""
 	}
 }
 
@@ -1429,6 +1437,9 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
+	replyTo := t.replyToMessageID
+	t.replyToMessageID = ""
+
 	cmd := func() tea.Msg {
 		const delay = time.Second
 		diff := time.Since(lastSent)
@@ -1453,9 +1464,10 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 		defer cancel()
 
 		r, err := client.SendChatMessage(ctx, twitchapi.SendChatMessageRequest{
-			BroadcasterID: broadcasterID,
-			SenderID:      userID,
-			Message:       input,
+			BroadcasterID:  broadcasterID,
+			SenderID:       userID,
+			Message:        input,
+			ReplyMessageID: replyTo,
 		})
 		if err != nil {
 			notice.Message = fmt.Sprintf("Could not send message: %s", err.Error())
@@ -1475,6 +1487,13 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 
 	return cmd
 }
+
+// Get message and IDs from PrivateMessage
+//
+// func (t *broadcastTab) handleResponseToMessage() tea.Cmd {
+// 	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
+
+// }
 
 func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 	return func() tea.Msg {
@@ -1569,10 +1588,62 @@ func (t *broadcastTab) handleCopyMessage() {
 	} else {
 		t.state = insertMode
 	}
+	log.Info().Str("messageID", msg.ID).Str("messageText", msg.Message).Msg("Message info")
 
 	t.messageInput.Focus()
 	t.messageInput.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
 	t.HandleResize() // Recalculate layout after copying message
+	t.replyToMessageID = ""
+}
+
+// handleReplyMessage extracts messageID from PrivateMessage, stores it, starts insert mode
+func (t *broadcastTab) handleReplyMessage() {
+	if t.account.IsAnonymous {
+		return
+	}
+
+	var entry *chatEntry
+
+	if t.state == inChatWindow {
+		_, entry = t.chatWindow.entryForCurrentCursor()
+
+		if entry == nil {
+			return
+		}
+
+		if t.chatWindow.state == searchChatWindowState {
+			t.chatWindow.handleStopSearchMode()
+		}
+		t.chatWindow.Blur()
+	} else {
+		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
+
+		if entry == nil {
+			return
+		}
+
+		if t.userInspect.chatWindow.state == searchChatWindowState {
+			t.userInspect.chatWindow.handleStopSearchMode()
+		}
+		t.userInspect.chatWindow.Blur()
+	}
+
+	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
+
+	if !ok {
+		return
+	}
+
+	if t.state == userInspectMode {
+		t.state = userInspectInsertMode
+	} else {
+		t.state = insertMode
+	}
+
+	t.replyToMessageID = msg.ID
+	t.messageInput.Focus()
+	// t.messageInput.SetValue("@" + msg.DisplayName + " ")
+	t.HandleResize()
 }
 
 func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {

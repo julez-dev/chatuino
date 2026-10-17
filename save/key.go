@@ -51,6 +51,7 @@ type KeyMap struct {
 	DumpChat     key.Binding `yaml:"dump_chat"`
 	QuickTimeout key.Binding `yaml:"quick_timeout"`
 	CopyMessage  key.Binding `yaml:"copy_message"`
+	ReplyMessage key.Binding `yaml:"reply_message"`
 	SearchMode   key.Binding `yaml:"search_mode"`
 	QuickSent    key.Binding `yaml:"quick_sent"`
 
@@ -200,6 +201,10 @@ func BuildDefaultKeyMap() KeyMap {
 		CopyMessage: key.NewBinding(
 			key.WithKeys("alt+c"),
 			key.WithHelp("alt+c", "copy selected message"),
+		),
+		ReplyMessage: key.NewBinding(
+			key.WithKeys("alt+r"),
+			key.WithHelp("alt+r", "reply to selected message"),
 		),
 		SearchMode: key.NewBinding(
 			key.WithKeys("/"),

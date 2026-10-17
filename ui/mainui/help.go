@@ -63,6 +63,7 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 				deps.Keymap.CopyMessage,
 				deps.Keymap.SearchMode,
 				deps.Keymap.QuickSent,
+				deps.Keymap.ReplyMessage,
 			},
 		},
 		{
