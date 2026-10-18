@@ -180,6 +180,21 @@ func newBroadcastTab(
 	}
 }
 
+// localNoticeCmd returns a command that shows an informational notice only in this
+// tab, without sending anything to Twitch.
+func (t *broadcastTab) localNoticeCmd(message string) tea.Cmd {
+	return func() tea.Msg {
+		return requestLocalMessageHandleMessage{
+			tabID:     t.id,
+			accountID: t.AccountID(),
+			message: &twitchirc.Notice{
+				FakeTimestamp: time.Now(),
+				Message:       message,
+			},
+		}
+	}
+}
+
 func (t *broadcastTab) Init() tea.Cmd {
 	cmd := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)

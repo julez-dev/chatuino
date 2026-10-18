@@ -11,6 +11,97 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// handleKeyPress dispatches a key press while the tab is focused and the channel
+// data is loaded. It reports whether the key was handled; unhandled keys fall
+// through to the message input and child components.
+func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
+	// Focus message input, when not in insert mode and not in search mode inside chat window, depending on the current active chat window
+	if key.Matches(msg, t.deps.Keymap.InsertMode) &&
+		(t.state == inChatWindow && t.chatWindow.state != searchChatWindowState || t.state == userInspectMode && t.userInspect.chatWindow.state != searchChatWindowState) {
+		return true, t.handleStartInsertMode()
+	}
+
+	// Open user inspect mode, where only messages from a specific user are shown
+	if key.Matches(msg, t.deps.Keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
+		return true, t.handleOpenUserInspectFromMessage()
+	}
+
+	// Open chat in browser
+	if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
+		return true, t.handleOpenBrowser(msg)
+	}
+
+	// Send message
+	if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+		t.messageInput, _ = t.messageInput.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		return true, t.handleMessageSent(false)
+	}
+
+	// Send message - quick send
+	if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+		t.messageInput, _ = t.messageInput.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		return true, t.handleMessageSent(true)
+	}
+
+	// Message Accept Suggestion Template Replace
+	// always allow accept suggestion key so even new texts can be templated
+	if key.Matches(msg, t.messageInput.KeyMap.AcceptSuggestion) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+		lineCountBefore := t.messageInput.LineCount()
+		t.messageInput, _ = t.messageInput.Update(msg)
+		cmd := t.replaceInputTemplate()
+		if t.messageInput.LineCount() != lineCountBefore {
+			t.HandleResize()
+		}
+		return true, cmd
+	}
+
+	// Set quick time out message to message input
+	if key.Matches(msg, t.deps.Keymap.QuickTimeout) && (t.state == inChatWindow || t.state == userInspectMode) {
+		t.handleTimeoutShortcut()
+		return true, nil
+	}
+
+	// Copy selected message to message input
+	if key.Matches(msg, t.deps.Keymap.CopyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
+		t.handleCopyMessage()
+		return true, nil
+	}
+
+	// Reply to selected message
+	if key.Matches(msg, t.deps.Keymap.ReplyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
+		t.handleReplyMessage()
+		return true, nil
+	}
+
+	// Close overlay windows
+	if key.Matches(msg, t.deps.Keymap.Escape) {
+		var cmd tea.Cmd
+
+		// first end search in user inspect sub window
+		if t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState {
+			t.userInspect.chatWindow, cmd = t.userInspect.chatWindow.Update(msg)
+			return true, cmd
+		}
+
+		// second case, end inspect mode or end insert mode in inspect window
+		if t.state == userInspectMode || t.state == userInspectInsertMode {
+			t.handleEscapePressed()
+			return true, nil
+		}
+
+		// third case, end search in 'main' chat window
+		if t.chatWindow.state == searchChatWindowState {
+			t.chatWindow, cmd = t.chatWindow.Update(msg)
+			return true, cmd
+		}
+
+		t.handleEscapePressed()
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func (t *broadcastTab) handleEscapePressed() {
 	if t.state == userInspectMode || t.state == emoteOverviewMode {
 		t.state = inChatWindow
