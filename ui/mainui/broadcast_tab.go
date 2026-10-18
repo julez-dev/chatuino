@@ -17,7 +17,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/julez-dev/chatuino/ui/component"
 )
 
 const (
@@ -114,7 +113,6 @@ type broadcastTab struct {
 	pendingChannelSuggestions []string
 	lastMessageSent           string
 	lastMessageSentAt         time.Time
-	reply                     replyState
 
 	channel      string
 	channelID    string
@@ -126,16 +124,15 @@ type broadcastTab struct {
 	deps       *DependencyContainer
 	modFetcher ModStatusFetcher
 
-	// pre-created styles to avoid allocations in View()/renderMessageInput()
-	centeredStyle    lipgloss.Style // for loading/error states; Width/Height set at render time
-	inputBorderStyle lipgloss.Style // for message input border
+	// pre-created style to avoid allocations in View()
+	centeredStyle lipgloss.Style // for loading/error states; Width/Height set at render time
 
 	// components
 	streamInfo    *streamInfo
 	poll          *poll
 	chatWindow    *chatWindow
 	userInspect   *userInspect
-	messageInput  *component.SuggestionTextInput
+	input         *chatInput
 	statusInfo    *streamStatus
 	emoteOverview *emoteOverview
 	spinner       spinner.Model
@@ -167,8 +164,7 @@ func newBroadcastTab(
 		modFetcher:   ivr.NewAPI(http.DefaultClient),
 		spinner:      spinner.New(spinner.WithSpinner(loadingSpinner)),
 
-		centeredStyle:    lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center),
-		inputBorderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		centeredStyle: lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center),
 	}
 }
 
@@ -377,7 +373,7 @@ func (t *broadcastTab) Focus() {
 		case userInspectMode:
 			t.userInspect.chatWindow.Focus()
 		case userInspectInsertMode, insertMode:
-			t.messageInput.Focus()
+			t.input.Focus()
 		}
 	}
 }
@@ -389,7 +385,7 @@ func (t *broadcastTab) Blur() {
 
 	if t.channelDataLoaded {
 		t.chatWindow.Blur()
-		t.messageInput.Blur()
+		t.input.Blur()
 
 		if t.userInspect != nil {
 			t.userInspect.chatWindow.Blur()

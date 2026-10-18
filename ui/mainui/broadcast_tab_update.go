@@ -13,7 +13,6 @@ import (
 	"github.com/julez-dev/chatuino/emote"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/component"
@@ -57,8 +56,8 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		return t, t.handleEmoteSetRefreshed(msg)
 	case channelSuggestionsLoadedMessage:
 		if msg.targetID == t.id {
-			if t.messageInput != nil {
-				t.messageInput.SetChannelSuggestions(msg.channels)
+			if t.input != nil {
+				t.input.SetChannelSuggestions(msg.channels)
 			} else {
 				t.pendingChannelSuggestions = msg.channels
 			}
@@ -91,15 +90,11 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 		}
 
 		if t.state == insertMode || t.state == userInspectInsertMode {
-			// Track line count before update to detect changes
-			lineCountBefore := t.messageInput.LineCount()
-
-			var cmd tea.Cmd
-			t.messageInput, cmd = t.messageInput.Update(msg)
+			cmd, heightChanged := t.input.Update(msg)
 			cmds = append(cmds, cmd)
 
-			// Recalculate layout if input line count changed (text wrapped/unwrapped)
-			if t.messageInput.LineCount() != lineCountBefore {
+			// Recalculate layout if input height changed (text wrapped/unwrapped)
+			if heightChanged {
 				t.HandleResize()
 			}
 		}
@@ -129,18 +124,15 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 	t.poll = newPoll(t.width)
 	t.chatWindow = newChatWindow(t.width, t.height, t.deps)
 
-	t.messageInput = component.NewSuggestionTextInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap())
 	// enable inline emote replacement; the single line input can only display single row images
+	var emoteReplacer component.Replacer
 	if graphicRows(t.deps.UserConfig.Settings) <= 1 {
-		t.messageInput.EmoteReplacer = t.deps.EmoteReplacer
+		emoteReplacer = t.deps.EmoteReplacer
 	}
-	msgInputStyles := t.messageInput.InputModel.Styles()
-	msgInputStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
-	t.messageInput.InputModel.SetStyles(msgInputStyles)
-	t.messageInput.SetMaxVisibleLines(3) // allow input to grow up to 3 lines
+	t.input = newChatInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap(), t.deps.UserConfig.Theme, emoteReplacer)
 
 	if len(t.pendingChannelSuggestions) > 0 {
-		t.messageInput.SetChannelSuggestions(t.pendingChannelSuggestions)
+		t.input.SetChannelSuggestions(t.pendingChannelSuggestions)
 		t.pendingChannelSuggestions = nil
 	}
 
@@ -159,7 +151,7 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 
 		// user is mod or broadcaster, include mod commands
 		if t.isUserMod {
-			t.messageInput.IncludeModeratorCommands = true
+			t.input.SetIncludeModeratorCommands(true)
 		}
 	}
 
@@ -288,7 +280,7 @@ func (t *broadcastTab) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea
 
 	channelEmoteSet := t.deps.EmoteCache.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
-	t.messageInput.SetSuggestions(emoteSuggestions(userEmoteSet, channelEmoteSet))
+	t.input.SetSuggestions(emoteSuggestions(userEmoteSet, channelEmoteSet))
 
 	// notify user if not all emotes could be fetched
 	if errors.Is(msg.err, emote.ErrPartialFetch) {

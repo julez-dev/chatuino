@@ -101,7 +101,7 @@ func isNearDuplicate(message string, recent []string) bool {
 // press: slash commands are dispatched to their handlers, everything else is sent
 // to the channel as a chat message.
 func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
-	input := t.messageInput.Value()
+	input := t.input.Value()
 
 	// Consume the armed reply before the command dispatch below: commands, quick-sends
 	// and unsupported entries must never send a stale reply target.
@@ -138,8 +138,8 @@ func (t *broadcastTab) resetAfterSend() {
 		t.chatWindow.Focus()
 	}
 
-	t.messageInput.Blur()
-	t.messageInput.SetValue("")
+	t.input.Blur()
+	t.input.Clear()
 	t.HandleResize() // Recalculate layout after clearing input
 }
 
@@ -278,7 +278,7 @@ func (t *broadcastTab) sendChatMessageCmd(input, replyTo string) tea.Cmd {
 }
 
 func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
-	input := t.messageInput.InputModel.Value()
+	input := t.input.RawValue()
 
 	notice := &twitchirc.Notice{
 		FakeTimestamp: time.Now(),
@@ -369,7 +369,7 @@ func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 		}
 	}
 
-	t.messageInput.SetValue(inputText)
+	t.input.SetValue(inputText)
 	t.HandleResize() // Recalculate layout after template replacement
 	return nil
 }

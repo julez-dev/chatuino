@@ -32,24 +32,23 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 
 	// Send message
-	if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-		t.messageInput, _ = t.messageInput.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.input.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+		t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit history entry
 		return true, t.handleMessageSent(false)
 	}
 
 	// Send message - quick send
-	if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-		t.messageInput, _ = t.messageInput.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.input.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+		t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit history entry
 		return true, t.handleMessageSent(true)
 	}
 
 	// Message Accept Suggestion Template Replace
 	// always allow accept suggestion key so even new texts can be templated
-	if key.Matches(msg, t.messageInput.KeyMap.AcceptSuggestion) && len(t.messageInput.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
-		lineCountBefore := t.messageInput.LineCount()
-		t.messageInput, _ = t.messageInput.Update(msg)
+	if t.input.IsAcceptSuggestionKey(msg) && len(t.input.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+		_, heightChanged := t.input.Update(msg)
 		cmd := t.replaceInputTemplate()
-		if t.messageInput.LineCount() != lineCountBefore {
+		if heightChanged {
 			t.HandleResize()
 		}
 		return true, cmd
@@ -115,7 +114,7 @@ func (t *broadcastTab) handleEscapePressed() {
 	if t.state == userInspectInsertMode {
 		t.state = userInspectMode
 		t.userInspect.chatWindow.Focus()
-		t.messageInput.Blur()
+		t.input.Blur()
 		t.clearReplyTarget()
 		return
 	}
@@ -123,7 +122,7 @@ func (t *broadcastTab) handleEscapePressed() {
 	if !t.account.IsAnonymous {
 		t.state = inChatWindow
 		t.chatWindow.Focus()
-		t.messageInput.Blur()
+		t.input.Blur()
 		t.clearReplyTarget()
 	}
 }
@@ -172,10 +171,9 @@ func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
 			t.userInspect.chatWindow.Blur()
 		}
 
-		t.messageInput.Focus()
 		t.chatWindow.Blur()
 
-		return t.messageInput.InputModel.Focus()
+		return t.input.Focus()
 	}
 
 	return nil
@@ -225,8 +223,8 @@ func (t *broadcastTab) handleCopyMessage() {
 	}
 	t.clearReplyTarget() // copying replaces the armed reply with different content
 
-	t.messageInput.Focus()
-	t.messageInput.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
+	t.input.Focus()
+	t.input.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
 	t.HandleResize() // Recalculate layout after copying message
 }
 
@@ -276,9 +274,9 @@ func (t *broadcastTab) handleReplyMessage() {
 		t.state = insertMode
 	}
 
-	t.reply.Arm(msg.ID, msg.DisplayName, msg.Message)
+	t.input.ArmReply(msg.ID, msg.DisplayName, msg.Message)
 
-	t.messageInput.Focus()
+	t.input.Focus()
 	t.HandleResize()
 }
 
@@ -346,8 +344,8 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 		t.chatWindow.Blur()
 	}
 
-	t.messageInput.Focus()
-	t.messageInput.SetValue("/timeout " + msg.DisplayName + " 600")
+	t.input.Focus()
+	t.input.SetValue("/timeout " + msg.DisplayName + " 600")
 	t.HandleResize() // Recalculate layout after setting timeout command
 }
 

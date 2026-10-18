@@ -1,9 +1,7 @@
 package mainui
 
 import (
-	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	"github.com/rs/zerolog/log"
@@ -151,57 +149,14 @@ func (t *broadcastTab) StatusBarView() string {
 	return t.statusInfo.View()
 }
 
+// renderMessageInput renders the message composer. Anonymous accounts cannot
+// send messages, so nothing is rendered for them.
 func (t *broadcastTab) renderMessageInput() string {
 	if t.account.IsAnonymous {
 		return ""
 	}
 
-	inputView := t.messageInput.View()
-	borderStyle := t.inputBorderStyle
-
-	// Labels
-	topLabel := "[ Chat ]"
-	charCount := fmt.Sprintf("[ %d / %d ]", utf8.RuneCountInString(t.messageInput.InputModel.Value()), t.messageInput.InputModel.CharLimit)
-
-	innerWidth := t.width - 2 // -2 for left/right border chars
-
-	// Top border: ┌─[ Chat ]─────...─┐
-	topFill := innerWidth - len(topLabel) - 2
-	topBorder := "┌─" + topLabel + strings.Repeat("─", topFill) + "─┐"
-
-	// Bottom border: └─────...─[ 7 / 500 ]─┘ (counter on RIGHT)
-	bottomFill := innerWidth - len(charCount) - 2
-	bottomBorder := "└─" + strings.Repeat("─", bottomFill) + charCount + "─┘"
-
-	// Wrap input lines with │ borders
-	inputLines := strings.Split(inputView, "\n")
-	var borderedLines []string
-	for _, line := range inputLines {
-		padNeeded := max(0, innerWidth-lipgloss.Width(line))
-		borderedLines = append(borderedLines, "│"+line+strings.Repeat(" ", padNeeded)+"│")
-	}
-
-	// Combine
-	result := ""
-
-	if indicator := t.renderReplyIndicator(); indicator != "" {
-		result += indicator + "\n"
-	}
-
-	result += borderStyle.Render(topBorder) + "\n"
-	result += borderStyle.Render(strings.Join(borderedLines, "\n")) + "\n"
-	result += borderStyle.Render(bottomBorder)
-
-	return result
-}
-
-// renderReplyIndicator renders the bar above the message input that shows which
-// message the next send will reply to.
-func (t *broadcastTab) renderReplyIndicator() string {
-	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
-	dimmed := lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.DimmedTextColor))
-
-	return t.reply.View(t.width, accent, dimmed)
+	return t.input.View()
 }
 
 func (t *broadcastTab) HandleResize() {
@@ -216,15 +171,12 @@ func (t *broadcastTab) HandleResize() {
 		t.streamInfo.cachedDirty = true
 		t.poll.setWidth(t.width)
 
-		// Set messageInput width BEFORE rendering to ensure correct wrapping
-		// -2 for left/right │ border chars
-		t.messageInput.SetWidth(t.width - 2)
+		// Set input width BEFORE measuring to ensure correct wrapping
+		t.input.SetWidth(t.width)
 
-		messageInput := t.renderMessageInput()
-		heightMessageInput := lipgloss.Height(messageInput)
-
-		if messageInput == "" {
-			heightMessageInput = 0
+		var heightMessageInput int
+		if !t.account.IsAnonymous {
+			heightMessageInput = t.input.Height()
 		}
 
 		// In vertical mode (fullWidth > 0), status bar is rendered at root level, so don't count its height

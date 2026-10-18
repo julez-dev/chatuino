@@ -79,7 +79,7 @@ func (r *replyState) View(width int, accent, dimmed lipgloss.Style) string {
 // takeReplyTarget returns the armed reply's message ID and disarms the reply. The
 // layout is recalculated because the indicator row is given back to the chat window.
 func (t *broadcastTab) takeReplyTarget() string {
-	id := t.reply.Take()
+	id := t.input.TakeReply()
 	if id != "" {
 		t.HandleResize()
 	}
@@ -92,7 +92,7 @@ func (t *broadcastTab) takeReplyTarget() string {
 // keeps the height it had while the indicator was visible and the view ends up a row
 // short, floating the status bar above the bottom of the terminal.
 func (t *broadcastTab) clearReplyTarget() {
-	if t.reply.Clear() {
+	if t.input.ClearReply() {
 		t.HandleResize()
 	}
 }

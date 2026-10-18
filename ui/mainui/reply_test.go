@@ -7,7 +7,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
-	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,7 +68,8 @@ func newReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
 	}
 
 	tab.chatWindow = newChatWindow(tab.width, tab.height, deps)
-	tab.messageInput = component.NewSuggestionTextInput(tab.chatWindow.userColorCache, deps.UserConfig.Settings.BuildCustomSuggestionMap())
+	tab.input = newChatInput(tab.chatWindow.userColorCache, deps.UserConfig.Settings.BuildCustomSuggestionMap(), deps.UserConfig.Theme, nil)
+	tab.input.SetWidth(tab.width)
 
 	return tab, client
 }
@@ -158,73 +158,22 @@ func Test_broadcastTab_takeReplyTarget(t *testing.T) {
 
 	require.Empty(t, tab.takeReplyTarget(), "no armed reply yields no message ID")
 
-	tab.reply.Arm("msg-1", "other", "hi")
+	tab.input.ArmReply("msg-1", "other", "hi")
 	require.Equal(t, "msg-1", tab.takeReplyTarget())
-	require.False(t, tab.reply.Armed(), "taking disarms the reply")
+	require.False(t, tab.input.ReplyArmed(), "taking disarms the reply")
 	require.Empty(t, tab.takeReplyTarget(), "a reply target is only used once")
-}
-
-func Test_broadcastTab_renderReplyIndicator(t *testing.T) {
-	t.Parallel()
-
-	t.Run("no armed reply renders nothing", func(t *testing.T) {
-		t.Parallel()
-
-		tab, _ := newReplyTab(t)
-		require.Empty(t, tab.renderReplyIndicator())
-	})
-
-	t.Run("shows author snippet and cancel hint padded to width", func(t *testing.T) {
-		t.Parallel()
-
-		tab, _ := newReplyTab(t)
-		tab.reply.Arm("msg-1", "otheruser", "nice play")
-
-		got := tab.renderReplyIndicator()
-
-		require.Contains(t, got, "@otheruser")
-		require.Contains(t, got, "nice play")
-		require.Contains(t, got, "(esc to cancel)")
-		require.Equal(t, tab.width, lipgloss.Width(got))
-	})
-
-	t.Run("long snippet truncated and still fits the width", func(t *testing.T) {
-		t.Parallel()
-
-		tab, _ := newReplyTab(t)
-		tab.reply.Arm("msg-1", "otheruser", "this message is far too long to ever fit into the indicator line")
-
-		got := tab.renderReplyIndicator()
-
-		require.Contains(t, got, "…")
-		require.NotContains(t, got, "indicator line")
-		require.Equal(t, tab.width, lipgloss.Width(got))
-	})
-
-	t.Run("narrow terminal does not join label and hint", func(t *testing.T) {
-		t.Parallel()
-
-		tab, _ := newReplyTab(t)
-		tab.width = 10
-		tab.reply.Arm("msg-1", "otheruser", "nice play")
-
-		got := tab.renderReplyIndicator()
-
-		require.Contains(t, got, "@otheruser")
-		require.Contains(t, got, "(esc to cancel)")
-	})
 }
 
 func Test_broadcastTab_handleMessageSent_sendsArmedReply(t *testing.T) {
 	t.Parallel()
 
 	tab, client := newReplyTab(t)
-	tab.reply.Arm("msg-1", "otheruser", "nice play")
-	tab.messageInput.SetValue("thanks")
+	tab.input.ArmReply("msg-1", "otheruser", "nice play")
+	tab.input.SetValue("thanks")
 
 	cmd := tab.handleMessageSent(false)
 
-	require.False(t, tab.reply.Armed(), "sending consumes the armed reply")
+	require.False(t, tab.input.ReplyArmed(), "sending consumes the armed reply")
 	require.NotNil(t, cmd)
 	require.Nil(t, cmd(), "a successful send produces no notice")
 
@@ -237,14 +186,14 @@ func Test_broadcastTab_handleMessageSent_commandDoesNotReuseReply(t *testing.T) 
 	t.Parallel()
 
 	tab, client := newReplyTab(t)
-	tab.reply.Arm("msg-1", "otheruser", "nice play")
-	tab.messageInput.SetValue("/emotes")
+	tab.input.ArmReply("msg-1", "otheruser", "nice play")
+	tab.input.SetValue("/emotes")
 
 	require.NotNil(t, tab.handleMessageSent(false), "the emote overview command is dispatched")
 
-	require.False(t, tab.reply.Armed(), "using a command disarms the reply")
+	require.False(t, tab.input.ReplyArmed(), "using a command disarms the reply")
 
-	tab.messageInput.SetValue("not a reply anymore")
+	tab.input.SetValue("not a reply anymore")
 
 	secondSend := tab.handleMessageSent(false)
 
@@ -259,15 +208,15 @@ func Test_broadcastTab_handleMessageSent_quickSendConsumesReply(t *testing.T) {
 	t.Parallel()
 
 	tab, client := newReplyTab(t)
-	tab.reply.Arm("msg-1", "otheruser", "nice play")
-	tab.messageInput.SetValue("first")
+	tab.input.ArmReply("msg-1", "otheruser", "nice play")
+	tab.input.SetValue("first")
 
 	firstSend := tab.handleMessageSent(true)
 
 	require.NotNil(t, firstSend)
 	require.Nil(t, firstSend(), "a successful send produces no notice")
 
-	tab.messageInput.SetValue("second")
+	tab.input.SetValue("second")
 
 	secondSend := tab.handleMessageSent(true)
 
@@ -283,11 +232,11 @@ func Test_broadcastTab_clearReplyTarget(t *testing.T) {
 	t.Parallel()
 
 	tab, _ := newReplyTab(t)
-	tab.reply.Arm("msg-1", "other", "hi")
+	tab.input.ArmReply("msg-1", "other", "hi")
 
 	tab.clearReplyTarget()
 
-	require.False(t, tab.reply.Armed())
+	require.False(t, tab.input.ReplyArmed())
 }
 
 // Regression: cancelling an armed reply used to leave the chat window at the height
@@ -300,7 +249,7 @@ func Test_broadcastTab_cancellingReplyRestoresLayout(t *testing.T) {
 	rowsWithoutReply := layoutRows(tab)
 	chatHeightWithoutReply := tab.chatWindow.height
 
-	tab.reply.Arm("msg-1", "otheruser", "nice play")
+	tab.input.ArmReply("msg-1", "otheruser", "nice play")
 	tab.HandleResize()
 
 	require.Less(t, tab.chatWindow.height, chatHeightWithoutReply, "the indicator takes a row from the chat window")
@@ -309,7 +258,7 @@ func Test_broadcastTab_cancellingReplyRestoresLayout(t *testing.T) {
 	tab.state = insertMode
 	tab.handleEscapePressed()
 
-	require.False(t, tab.reply.Armed(), "escape disarms the reply")
+	require.False(t, tab.input.ReplyArmed(), "escape disarms the reply")
 	require.Equal(t, chatHeightWithoutReply, tab.chatWindow.height, "cancelling gives the row back to the chat window")
 	require.Equal(t, rowsWithoutReply, layoutRows(tab))
 }
@@ -323,14 +272,14 @@ func Test_broadcastTab_quickSendRestoresLayout(t *testing.T) {
 	rowsWithoutReply := layoutRows(tab)
 	chatHeightWithoutReply := tab.chatWindow.height
 
-	tab.reply.Arm("msg-1", "otheruser", "nice play")
+	tab.input.ArmReply("msg-1", "otheruser", "nice play")
 	tab.HandleResize()
 
-	tab.messageInput.SetValue("thanks")
+	tab.input.SetValue("thanks")
 
 	cmd := tab.handleMessageSent(true)
 
-	require.False(t, tab.reply.Armed(), "quick send consumes the armed reply")
+	require.False(t, tab.input.ReplyArmed(), "quick send consumes the armed reply")
 	require.Equal(t, chatHeightWithoutReply, tab.chatWindow.height, "quick send gives the row back to the chat window")
 	require.Equal(t, rowsWithoutReply, layoutRows(tab))
 	require.NotNil(t, cmd)
