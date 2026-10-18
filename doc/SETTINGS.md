@@ -26,6 +26,7 @@ chat:
   # NOTE: Read the README for more information about emote rendering before enabling this feature
   graphic_emotes: true # Display emotes as images instead of text; Default: false
   graphic_badges: true # Display badges as images instead of text; Default: false
+  graphic_scale: 2 # Height of graphic emotes/badges in terminal rows (1-4). Lines containing images take up this many rows; Default: 1
   disable_badges: false # Hide badges entirely; Default: false
   smooth_scroll: true # Animate chat scrolling when new messages arrive; Default: false
   time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
@@ -145,6 +146,10 @@ When `graphic_emotes` is disabled, Chatuino displays emotes as colored text. The
 Chatuino can display images and animated images as Twitch emotes using the Kitty Graphics Protocol. This protocol is implemented by Kitty and some other terminals. However, it uses the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders), which is currently only fully implemented by Kitty. It also works with Ghostty, but animated emotes display as static images.
 
 Currently, this feature is **only** available in Kitty and Ghostty terminals on Unix platforms. This may change in the future.
+
+#### Image Size
+
+By default, graphic emotes and badges are one terminal row high. Set `graphic_scale` (1-4) to render them multiple rows high. Lines containing images then take up `graphic_scale` rows, with text and images aligned to the bottom row. Other lines are unaffected. Has no effect when both `graphic_emotes` and `graphic_badges` are disabled. With a scale above 1, the inline emote preview in the message input is disabled, since the input can only display a single row.
 
 #### Format Support and Caching
 

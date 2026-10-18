@@ -49,6 +49,10 @@ type DecodedImage struct {
 	Cols   int                 `json:"cols"`
 	Images []DecodedImageFrame `json:"images"`
 
+	// Rows is the number of terminal rows the image spans. Not persisted, since it
+	// depends on the current settings and is applied when the image is loaded.
+	Rows int `json:"-"`
+
 	lastUsed time.Time `json:"-"`
 }
 
@@ -64,7 +68,7 @@ func (i DecodedImage) PrepareCommand() string {
 	// not animated
 	if len(i.Images) == 1 {
 		transmitCMD := fmt.Sprintf("\x1b_Gf=32,i=%d,t=f,q=2,s=%d,v=%d,o=z;%s\x1b\\", i.ID, i.Images[0].Width, i.Images[0].Height, i.Images[0].EncodedPath)
-		placementCMD := fmt.Sprintf("\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", i.ID, i.ID, i.Cols)
+		placementCMD := fmt.Sprintf("\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=%d,c=%d\x1b\\", i.ID, i.ID, i.rows(), i.Cols)
 		return transmitCMD + placementCMD
 	}
 
@@ -87,14 +91,29 @@ func (i DecodedImage) PrepareCommand() string {
 	fmt.Fprintf(&b, "\033_Ga=a,i=%d,s=3,v=1,q=2;\033\\", i.ID)
 
 	// create virtual placement
-	fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=1,c=%d\x1b\\", i.ID, i.ID, i.Cols)
+	fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,p=%d,q=2,U=1,r=%d,c=%d\x1b\\", i.ID, i.ID, i.rows(), i.Cols)
 
 	return b.String()
 }
 
+// DisplayUnicodePlaceholder returns the placeholder text for the last (bottom) row of the image,
+// so the image is bottom aligned with the surrounding text. For multi-row images the rows above
+// are derived via PlaceholderRowsAbove.
 func (i DecodedImage) DisplayUnicodePlaceholder() string {
 	r, g, b := intToRGB(i.ID)
-	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[39m", r, g, b, strings.Repeat("\U0010EEEE", i.Cols))
+
+	if i.rows() == 1 || i.Cols < 1 {
+		return fmt.Sprintf("\033[38;2;%d;%d;%dm%s\033[39m", r, g, b, strings.Repeat(string(placeholderRune), i.Cols))
+	}
+
+	// First cell carries explicit row/column 0 diacritics, so adjacent images (e.g. badges)
+	// never inherit each others position. Following cells inherit row and column+1 from their left neighbor.
+	first := string([]rune{placeholderRune, rowColumnDiacritics[i.rows()-1], rowColumnDiacritics[0]})
+	return fmt.Sprintf("\033[38;2;%d;%d;%dm%s%s\033[39m", r, g, b, first, strings.Repeat(string(placeholderRune), i.Cols-1))
+}
+
+func (i DecodedImage) rows() int {
+	return max(i.Rows, 1)
 }
 
 func intToRGB(i int32) (byte, byte, byte) {
@@ -117,14 +136,40 @@ type KittyDisplayUnit struct {
 type DisplayManager struct {
 	fs                    afero.Fs
 	cellWidth, cellHeight float32
+	rows                  int
 }
 
-func NewDisplayManager(fs afero.Fs, cellWidth, cellHeight float32) *DisplayManager {
+// DisplayOptions configures how images are displayed.
+type DisplayOptions struct {
+	Rows int // terminal rows an image spans, clamped to [1, MaxRows]
+}
+
+// NewDisplayManager creates a display manager for a terminal with the given cell size in pixels.
+func NewDisplayManager(fs afero.Fs, cellWidth, cellHeight float32, opts DisplayOptions) *DisplayManager {
 	return &DisplayManager{
 		fs:         fs,
 		cellWidth:  cellWidth,
 		cellHeight: cellHeight,
+		rows:       min(max(opts.Rows, 1), MaxRows),
 	}
+}
+
+// applyLayout sets rows and recomputes the column count from the first frame's pixel size,
+// so cached images adapt to changed cell sizes or row settings.
+func (d *DisplayManager) applyLayout(decoded *DecodedImage) {
+	decoded.Rows = d.rows
+
+	if len(decoded.Images) == 0 || decoded.Images[0].Height == 0 {
+		return
+	}
+
+	decoded.Cols = d.colsFor(decoded.Images[0].Width, decoded.Images[0].Height)
+}
+
+func (d *DisplayManager) colsFor(width, height int) int {
+	ratio := d.cellHeight * float32(d.rows) / float32(height)
+	scaledWidth := int(math.Round(float64(float32(width) * ratio)))
+	return int(math.Ceil(float64(float32(scaledWidth) / d.cellWidth)))
 }
 
 func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
@@ -156,6 +201,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	if found {
 		cachedDecoded.ID = incrementID
 		cachedDecoded.lastUsed = time.Now()
+		d.applyLayout(&cachedDecoded)
 
 		//log.Logger.Info().Str("id", unit.ID).Int32("placement-id", cachedDecoded.ID).Msg("load image from storage cache")
 
@@ -184,6 +230,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 
 	decoded.ID = incrementID                                   // set id
 	decoded.lastUsed = time.Now()                              // last used for clean up
+	d.applyLayout(&decoded)                                    // set rows/cols for current layout
 	globalPlacedImages.Store(unit.ID, decoded)                 // store placement
 	if err := d.cacheDecodedImage(decoded, unit); err != nil { // cache decoded image
 		log.Logger.Warn().Err(err).Str("id", unit.ID).Msg("failed to cache decoded image")
@@ -388,9 +435,7 @@ func (d *DisplayManager) convertImageFrame(img image.Image, unit DisplayUnit, of
 		width = bounds.Dx()
 	}
 
-	ratio := d.cellHeight / float32(height)
-	width = int(math.Round(float64(float32(width) * ratio)))
-	cols := int(math.Ceil(float64(float32(width) / d.cellWidth)))
+	cols := d.colsFor(width, height)
 
 	encodedBytes := imageToKittyBytes(img)
 	p, err := d.saveKittyFormattedImage(encodedBytes, unit, offset)

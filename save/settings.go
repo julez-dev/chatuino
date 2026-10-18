@@ -13,6 +13,7 @@ import (
 
 const (
 	settingsFileName = "settings.yaml"
+	maxGraphicScale  = 4 // must not exceed kittyimg.MaxRows
 )
 
 type Settings struct {
@@ -33,6 +34,7 @@ type ModerationSettings struct {
 type ChatSettings struct {
 	GraphicBadges              bool   `yaml:"graphic_badges"`
 	GraphicEmotes              bool   `yaml:"graphic_emotes"`
+	GraphicScale               int    `yaml:"graphic_scale"` // Height of graphic emotes/badges in terminal rows (1-4), default: 1
 	DisableBadges              bool   `yaml:"disable_badges"`
 	DisablePaddingWrappedLines bool   `yaml:"disable_padding_wrapped_lines"`
 	SmoothScroll               bool   `yaml:"smooth_scroll"`
@@ -85,6 +87,10 @@ func (s Settings) validate() error {
 		if slices.Contains(predefinedCommands, c.Trigger) {
 			return fmt.Errorf("custom command trigger %q is already a default command", c.Trigger)
 		}
+	}
+
+	if s.Chat.GraphicScale < 0 || s.Chat.GraphicScale > maxGraphicScale {
+		return fmt.Errorf("chat.graphic_scale must be between 1 and %d, got %d", maxGraphicScale, s.Chat.GraphicScale)
 	}
 
 	if slices.Contains(s.BlockSettings.Users, "") {

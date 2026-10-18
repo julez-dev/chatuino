@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/semaphore"
 )
@@ -41,12 +42,13 @@ type emoteOverview struct {
 	emoteReplacer EmoteReplacer
 	emotes        map[string][]emoteWithOverwrite
 	isLoaded      bool
+	graphicRows   int // terminal rows a graphic emote spans
 }
 
 // loadingSpinner is the unified spinner used across all loading states.
 var loadingSpinner = spinner.Points
 
-func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer, width, height int) *emoteOverview {
+func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer, graphicRows, width, height int) *emoteOverview {
 	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -56,6 +58,7 @@ func NewEmoteOverview(channelID string, cache EmoteCache, replacer EmoteReplacer
 		store:         cache,
 		channelID:     channelID,
 		emoteReplacer: replacer,
+		graphicRows:   graphicRows,
 		vp:            vp,
 		spinner:       spinner.New(spinner.WithSpinner(loadingSpinner)),
 		ctx:           ctx,
@@ -227,11 +230,19 @@ func (e *emoteOverview) updateContent() {
 
 		for _, row := range emoteRows {
 			// write overwritten emote, then start new line and align the text for the emote
+			var emoteLine strings.Builder
 			for _, emote := range row {
 				key := emote.emote.Platform.String() + emote.emote.ID
-				_, _ = sb.WriteString(lipgloss.NewStyle().Width(emoteWidths[key]).MarginRight(2).AlignHorizontal(lipgloss.Center).Render(emote.overwrite))
+				_, _ = emoteLine.WriteString(lipgloss.NewStyle().Width(emoteWidths[key]).MarginRight(2).AlignHorizontal(lipgloss.Center).Render(emote.overwrite))
 			}
 
+			// multi-row graphic emotes need their upper rows above
+			for _, above := range kittyimg.PlaceholderRowsAbove(emoteLine.String(), e.graphicRows) {
+				_, _ = sb.WriteString(above)
+				_, _ = sb.WriteString("\n")
+			}
+
+			_, _ = sb.WriteString(emoteLine.String())
 			_, _ = sb.WriteString("\n")
 
 			for _, emote := range row {

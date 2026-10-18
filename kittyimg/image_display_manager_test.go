@@ -15,7 +15,7 @@ func TestDisplayManager_Convert_Cached(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10)
+	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1})
 
 	// Pre-cache a decoded image
 	cachedImage := DecodedImage{
@@ -58,7 +58,7 @@ func TestDisplayManager_Convert_SessionCache(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10)
+	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1})
 
 	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
 	require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 400, 400)
+	dm := NewDisplayManager(fs, 400, 400, DisplayOptions{Rows: 1})
 
 	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 400, 400)
+	dm := NewDisplayManager(fs, 400, 400, DisplayOptions{Rows: 1})
 
 	unit := DisplayUnit{
 		ID:         "animated-webp",
