@@ -69,8 +69,6 @@ github.com/jellydator/ttlcache/v3 v3.4.1 h1:bOdXmXiycyK6E6Qjyuj5vl+/vU3SCOoDs8a8
 github.com/jellydator/ttlcache/v3 v3.4.1/go.mod h1:j7LO12PNghFg5+0v9budMAT4rDK4JY969jb9vOdOBBk=
 github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
 github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
-github.com/julez-dev/bubbletea-overlay v0.6.6-0.20260225171731-a72380a13f27 h1:Ut58OFPggXpClK7Nd2Zu9H53fB3onP1RVmMUEoQUhm4=
-github.com/julez-dev/bubbletea-overlay v0.6.6-0.20260225171731-a72380a13f27/go.mod h1:xUdSlv51QXmhpv8rPuPGYKM4puxkb1WE492pxrEe5Bs=
 github.com/julez-dev/reflow v0.0.0-20260207204657-9861c8899d24 h1:4kt3GdGS37A6kwIzJZVaxGRBGqhpMKXf99yaGwMLwIU=
 github.com/julez-dev/reflow v0.0.0-20260207204657-9861c8899d24/go.mod h1:xWaEyL4w/zz/DYopJ5qsfOYsrbSLhw/jmp0rUh5XEaE=
 github.com/kisielk/sqlstruct v0.0.0-20201105191214-5f3e10d3ab46/go.mod h1:yyMNCyc/Ib3bDTKd379tNMpB/7/H5TjM2Y9QJ5THLbE=

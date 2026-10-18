@@ -17,7 +17,6 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	overlay "github.com/julez-dev/bubbletea-overlay"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -751,90 +750,43 @@ func (r *Root) renderView() string {
 
 	switch r.screenType {
 	case mainScreen:
-		if len(r.tabs) == 0 {
-			return r.splash.View()
-		}
-
-		if r.dependencies.UserConfig.Settings.VerticalTabList {
-			// In vertical mode, render status bar separately at full width
-			mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
-			statusBar := r.tabs[r.tabCursor].StatusBarView()
-			if statusBar != "" {
-				return mainContent + "\n" + statusBar
-			}
-			return mainContent
-		}
-
-		return r.header.View() + "\n" + r.tabs[r.tabCursor].View()
+		return r.screenContent()
 	case inputScreen:
 		// Composite join modal over the current active tab
-		var background string
-		if len(r.tabs) > 0 && r.tabCursor < len(r.tabs) {
-			if r.dependencies.UserConfig.Settings.VerticalTabList {
-				mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
-				statusBar := r.tabs[r.tabCursor].StatusBarView()
-				if statusBar != "" {
-					background = mainContent + "\n" + statusBar
-				} else {
-					background = mainContent
-				}
-			} else {
-				background = r.header.View() + "\n" + r.tabs[r.tabCursor].View()
-			}
-		} else {
-			background = r.splash.View()
-		}
-
-		// Dim the background for modal effect
-		dimmedBackground := lipgloss.NewStyle().
-			Faint(true).
-			Render(background)
-
-		foreground := r.joinInput.View()
-
-		return overlay.Composite(
-			foreground,
-			dimmedBackground,
-			overlay.Center,
-			overlay.Center,
-			0,
-			0,
-		)
+		return centerOverlay(r.joinInput.View(), r.dimmedScreenBackground())
 	case quickJoinScreen:
-		var background string
-		if len(r.tabs) > 0 && r.tabCursor < len(r.tabs) {
-			if r.dependencies.UserConfig.Settings.VerticalTabList {
-				mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), r.tabs[r.tabCursor].ViewWithoutStatusBar())
-				statusBar := r.tabs[r.tabCursor].StatusBarView()
-				if statusBar != "" {
-					background = mainContent + "\n" + statusBar
-				} else {
-					background = mainContent
-				}
-			} else {
-				background = r.header.View() + "\n" + r.tabs[r.tabCursor].View()
-			}
-		} else {
-			background = r.splash.View()
-		}
-
-		dimmedBackground := lipgloss.NewStyle().
-			Faint(true).
-			Render(background)
-
-		return overlay.Composite(
-			r.quickJoinInput.View(),
-			dimmedBackground,
-			overlay.Center,
-			overlay.Center,
-			0,
-			0,
-		)
+		return centerOverlay(r.quickJoinInput.View(), r.dimmedScreenBackground())
 	case helpScreen:
 		return r.help.View()
 	}
 
 	return ""
+}
+
+// screenContent renders the current screen behind any modal: the header plus the
+// active tab, or the splash when no tab is open.
+func (r *Root) screenContent() string {
+	if len(r.tabs) == 0 || r.tabCursor >= len(r.tabs) {
+		return r.splash.View()
+	}
+
+	tab := r.tabs[r.tabCursor]
+
+	if r.dependencies.UserConfig.Settings.VerticalTabList {
+		// In vertical mode, render status bar separately at full width
+		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), tab.ViewWithoutStatusBar())
+		if statusBar := tab.StatusBarView(); statusBar != "" {
+			return mainContent + "\n" + statusBar
+		}
+		return mainContent
+	}
+
+	return r.header.View() + "\n" + tab.View()
+}
+
+// dimmedScreenBackground renders screenContent faint, for use behind a modal.
+func (r *Root) dimmedScreenBackground() string {
+	return lipgloss.NewStyle().Faint(true).Render(r.screenContent())
 }
 
 func (r *Root) HasSessionLoaded() bool {

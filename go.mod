@@ -17,7 +17,6 @@ require (
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/uuid v1.6.0
 	github.com/jellydator/ttlcache/v3 v3.4.1
-	github.com/julez-dev/bubbletea-overlay v0.6.6-0.20260225171731-a72380a13f27
 	github.com/julez-dev/reflow v0.0.0-20260207204657-9861c8899d24
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mailru/easyjson v0.9.2
