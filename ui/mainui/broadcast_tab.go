@@ -112,6 +112,14 @@ type ModStatusFetcher interface {
 	GetModVIPList(ctx context.Context, channel string) (ivr.ModVIPResponse, error)
 }
 
+// replyTarget is the message the user armed a reply to. It is rendered above the
+// message input and consumed by the next send attempt.
+type replyTarget struct {
+	MessageID   string
+	DisplayName string
+	Snippet     string
+}
+
 type broadcastTab struct {
 	id      string
 	account save.Account
@@ -130,7 +138,7 @@ type broadcastTab struct {
 	pendingChannelSuggestions []string
 	lastMessageSent           string
 	lastMessageSentAt         time.Time
-	replyToMessageID          string
+	replyTo                   *replyTarget
 
 	channel      string
 	channelID    string
@@ -972,7 +980,7 @@ func (t *broadcastTab) handleEscapePressed() {
 		t.state = userInspectMode
 		t.userInspect.chatWindow.Focus()
 		t.messageInput.Blur()
-		t.replyToMessageID = ""
+		t.clearReplyTarget()
 		return
 	}
 
@@ -980,7 +988,7 @@ func (t *broadcastTab) handleEscapePressed() {
 		t.state = inChatWindow
 		t.chatWindow.Focus()
 		t.messageInput.Blur()
-		t.replyToMessageID = ""
+		t.clearReplyTarget()
 	}
 }
 
@@ -1347,6 +1355,10 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitchirc.IRCer) bool {
 func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	input := t.messageInput.Value()
 
+	// Consume the armed reply before the command dispatch below: commands, quick-sends
+	// and unsupported entries must never send a stale reply target.
+	replyTo := t.takeReplyTarget()
+
 	if !quickSend {
 		// reset state
 		if t.state == userInspectInsertMode {
@@ -1440,9 +1452,6 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
-	replyTo := t.replyToMessageID
-	t.replyToMessageID = ""
-
 	cmd := func() tea.Msg {
 		const delay = time.Second
 		diff := time.Since(lastSent)
@@ -1490,13 +1499,6 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 
 	return cmd
 }
-
-// Get message and IDs from PrivateMessage
-//
-// func (t *broadcastTab) handleResponseToMessage() tea.Cmd {
-// 	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
-
-// }
 
 func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 	return func() tea.Msg {
@@ -1591,15 +1593,14 @@ func (t *broadcastTab) handleCopyMessage() {
 	} else {
 		t.state = insertMode
 	}
-	log.Info().Str("messageID", msg.ID).Str("messageText", msg.Message).Msg("Message info")
+	t.clearReplyTarget() // copying replaces the armed reply with different content
 
 	t.messageInput.Focus()
 	t.messageInput.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
 	t.HandleResize() // Recalculate layout after copying message
-	t.replyToMessageID = ""
 }
 
-// handleReplyMessage extracts messageID from PrivateMessage, stores it, starts insert mode
+// handleReplyMessage arms a reply to the message under the cursor and starts insert mode.
 func (t *broadcastTab) handleReplyMessage() {
 	if t.account.IsAnonymous {
 		return
@@ -1633,7 +1634,9 @@ func (t *broadcastTab) handleReplyMessage() {
 
 	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
 
-	if !ok {
+	// Without an original message ID there is nothing to thread onto, so ignore the
+	// keypress instead of arming a reply Twitch would reject.
+	if !ok || msg.ID == "" {
 		return
 	}
 
@@ -1643,10 +1646,38 @@ func (t *broadcastTab) handleReplyMessage() {
 		t.state = insertMode
 	}
 
-	t.replyToMessageID = msg.ID
+	t.replyTo = &replyTarget{
+		MessageID:   msg.ID,
+		DisplayName: msg.DisplayName,
+		Snippet:     replySnippet(msg.Message),
+	}
+
 	t.messageInput.Focus()
-	// t.messageInput.SetValue("@" + msg.DisplayName + " ")
 	t.HandleResize()
+}
+
+// takeReplyTarget returns the armed reply's message ID and disarms the reply, so it
+// can only ever be used by a single send attempt.
+func (t *broadcastTab) takeReplyTarget() string {
+	if t.replyTo == nil {
+		return ""
+	}
+
+	id := t.replyTo.MessageID
+	t.replyTo = nil
+
+	return id
+}
+
+func (t *broadcastTab) clearReplyTarget() {
+	t.replyTo = nil
+}
+
+// replySnippet normalizes a chat message into a single line for the reply indicator.
+func replySnippet(message string) string {
+	message = strings.ReplaceAll(message, string(duplicateBypass), "")
+
+	return strings.Join(strings.Fields(message), " ")
 }
 
 func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
@@ -1785,11 +1816,64 @@ func (t *broadcastTab) renderMessageInput() string {
 	}
 
 	// Combine
-	result := borderStyle.Render(topBorder) + "\n"
+	result := ""
+
+	if indicator := t.renderReplyIndicator(); indicator != "" {
+		result += indicator + "\n"
+	}
+
+	result += borderStyle.Render(topBorder) + "\n"
 	result += borderStyle.Render(strings.Join(borderedLines, "\n")) + "\n"
 	result += borderStyle.Render(bottomBorder)
 
 	return result
+}
+
+// renderReplyIndicator renders the bar above the message input that shows which
+// message the next send will reply to.
+func (t *broadcastTab) renderReplyIndicator() string {
+	if t.replyTo == nil {
+		return ""
+	}
+
+	const hint = "(esc to cancel)"
+
+	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
+	dimmed := lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.DimmedTextColor))
+
+	label := " ↩ Replying to @" + t.replyTo.DisplayName + ": "
+	snippet := truncateToWidth(t.replyTo.Snippet, t.width-lipgloss.Width(label)-lipgloss.Width(hint)-1)
+	gap := max(1, t.width-lipgloss.Width(label)-lipgloss.Width(snippet)-lipgloss.Width(hint))
+
+	return accent.Render(label) + dimmed.Render(snippet) + strings.Repeat(" ", gap) + dimmed.Render(hint)
+}
+
+// truncateToWidth shortens s so that it renders in at most width cells, appending
+// an ellipsis when it had to cut.
+func truncateToWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+
+	var b strings.Builder
+	used := 0
+
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+
+		if used+rw > width-1 {
+			break
+		}
+
+		b.WriteRune(r)
+		used += rw
+	}
+
+	return b.String() + "…"
 }
 
 func (t *broadcastTab) HandleResize() {
@@ -2106,6 +2190,8 @@ func (t *broadcastTab) Focus() {
 
 func (t *broadcastTab) Blur() {
 	t.focused = false
+	// Leaving the tab disarms the reply, so it cannot be sent from another tab.
+	t.clearReplyTarget()
 
 	if t.channelDataLoaded {
 		t.chatWindow.Blur()
