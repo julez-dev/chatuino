@@ -41,56 +41,65 @@ func (t *broadcastTab) shouldIgnoreMessage(msg twitchirc.IRCer) bool {
 		return true
 	}
 
-	if t.isUniqueOnlyChat {
-		messagesInStore := t.lastMessages.Keys()
-		wordsSrc := strings.Fields(cast.Message)
-		lenWords := len(wordsSrc)
-
-		// ignore if message is only one word and the message is in the last messages
-		if lenWords == 1 && slices.ContainsFunc(messagesInStore, func(e string) bool { return strings.EqualFold(e, cast.Message) }) {
-			return true
-		} else if lenWords == 1 {
-			return false
-		}
-
-		uniqueWordsSrc := map[string]struct{}{}
-		for word := range slices.Values(wordsSrc) {
-			uniqueWordsSrc[word] = struct{}{}
-		}
-
-		// uniqueWordsTarget := map[string]struct{}{}
-		for stored := range slices.Values(messagesInStore) {
-			distance := fuzzy.LevenshteinDistance(cast.Message, stored)
-			if distance < 3 {
-				return true
-			}
-
-			// for word := range slices.Values(strings.Fields(stored)) {
-			// 	uniqueWordsTarget[strings.ToLower(word)] = struct{}{}
-			// }
-
-			// wordListSrc := slices.Collect(maps.Keys(uniqueWordsSrc))
-			// var matches int
-			// for word := range slices.Values(wordListSrc) {
-			// 	word = strings.ToLower(word)
-			// 	if _, ok := uniqueWordsTarget[word]; ok {
-			// 		matches++
-			// 	}
-			// }
-
-			// // if more than 70% of the words are the same, ignore the message
-			// if float64(matches)/float64(lenWords) > 0.7 {
-			// 	return true
-			// }
-
-			// clear(uniqueWordsTarget)
-		}
-
+	if t.isUniqueOnlyChat && isNearDuplicate(cast.Message, t.lastMessages.Keys()) {
+		return true
 	}
 
 	return false
 }
 
+// isNearDuplicate reports whether message is (nearly) identical to one of the
+// recently seen messages. A single-word message only matches a case-insensitively
+// equal entry; longer messages match when the Levenshtein distance to any recent
+// message is small.
+func isNearDuplicate(message string, recent []string) bool {
+	wordsSrc := strings.Fields(message)
+	lenWords := len(wordsSrc)
+
+	// a one-word message is a duplicate when it was recently seen verbatim
+	if lenWords == 1 {
+		return slices.ContainsFunc(recent, func(e string) bool { return strings.EqualFold(e, message) })
+	}
+
+	uniqueWordsSrc := map[string]struct{}{}
+	for word := range slices.Values(wordsSrc) {
+		uniqueWordsSrc[word] = struct{}{}
+	}
+
+	// uniqueWordsTarget := map[string]struct{}{}
+	for stored := range slices.Values(recent) {
+		distance := fuzzy.LevenshteinDistance(message, stored)
+		if distance < 3 {
+			return true
+		}
+
+		// for word := range slices.Values(strings.Fields(stored)) {
+		// 	uniqueWordsTarget[strings.ToLower(word)] = struct{}{}
+		// }
+
+		// wordListSrc := slices.Collect(maps.Keys(uniqueWordsSrc))
+		// var matches int
+		// for word := range slices.Values(wordListSrc) {
+		// 	word = strings.ToLower(word)
+		// 	if _, ok := uniqueWordsTarget[word]; ok {
+		// 		matches++
+		// 	}
+		// }
+
+		// // if more than 70% of the words are the same, ignore the message
+		// if float64(matches)/float64(lenWords) > 0.7 {
+		// 	return true
+		// }
+
+		// clear(uniqueWordsTarget)
+	}
+
+	return false
+}
+
+// handleMessageSent processes the content of the message input after a send key
+// press: slash commands are dispatched to their handlers, everything else is sent
+// to the channel as a chat message.
 func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	input := t.messageInput.Value()
 
@@ -99,99 +108,133 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	replyTo := t.takeReplyTarget()
 
 	if !quickSend {
-		// reset state
-		if t.state == userInspectInsertMode {
-			t.state = userInspectMode
-			t.userInspect.chatWindow.Focus()
-		} else {
-			t.state = inChatWindow
-			t.chatWindow.Focus()
-		}
-
-		t.messageInput.Blur()
-		t.messageInput.SetValue("")
-		t.HandleResize() // Recalculate layout after clearing input
+		t.resetAfterSend()
 	}
 
 	t.chatWindow.moveToBottom()
 
-	// Check if input is a command
-	if strings.HasPrefix(input, "/") {
-		// Get command name
-		end := strings.Index(input, " ")
-		if end == -1 {
-			end = len(input)
-		}
+	if name, args, ok := parseSlashCommand(input); ok {
+		return t.dispatchSlashCommand(name, args)
+	}
 
-		commandName := input[1:end]
+	input = applyDuplicateBypass(input, t.lastMessageSent)
 
-		argStr := strings.TrimSpace(input[end:])
-		args := strings.Split(argStr, " ")
-		channelID := t.channelID
-		channel := t.channelLogin
-		accountID := t.account.ID
+	cmd := t.sendChatMessageCmd(input, replyTo)
 
-		switch commandName {
-		case "inspect":
-			return t.handleOpenUserInspect(args)
-		case "popupchat":
-			return t.handleOpenBrowserChatPopUp()
-		case "channel":
-			return t.handleOpenBrowserChannel()
-		case "pyramid":
-			return t.handlePyramidMessagesCommand(args)
-		case "localsubscribers":
-			return t.handleLocalSubCommand(true)
-		case "localsubscribersoff":
-			return t.handleLocalSubCommand(false)
-		case "uniqueonly":
-			return t.handleUniqueOnlyChatCommand(true)
-		case "uniqueonlyoff":
-			return t.handleUniqueOnlyChatCommand(false)
-		case "createclip":
-			return t.handleCreateClipMessage()
-		case "emotes":
-			return t.handleOpenEmoteOverview()
-		case "refreshemotes":
-			return t.handleManualRefreshEmotes()
-		case "join":
-			return t.handleJoinCommand(args)
-		}
+	t.lastMessageSent = input
+	t.lastMessageSentAt = time.Now()
 
-		if !t.isUserMod {
-			return func() tea.Msg {
-				respMsg := chatEventMessage{
-					isFakeEvent: true,
-					accountID:   t.account.ID,
-					tabID:       t.id,
-					message: &twitchirc.Notice{
-						FakeTimestamp: time.Now(),
-						Message:       "Moderator commands are not available since you are not a moderator",
-					},
-				}
-				return respMsg
+	return cmd
+}
+
+// resetAfterSend leaves insert mode and clears the message input after a regular
+// (non quick) send.
+func (t *broadcastTab) resetAfterSend() {
+	if t.state == userInspectInsertMode {
+		t.state = userInspectMode
+		t.userInspect.chatWindow.Focus()
+	} else {
+		t.state = inChatWindow
+		t.chatWindow.Focus()
+	}
+
+	t.messageInput.Blur()
+	t.messageInput.SetValue("")
+	t.HandleResize() // Recalculate layout after clearing input
+}
+
+// parseSlashCommand splits a chat input of the form "/name arg1 arg2" into its
+// command name and arguments. ok is false when the input is not a slash command.
+// A command without arguments yields args == [""]; the command handlers rely on
+// this historical shape when validating their arguments.
+func parseSlashCommand(input string) (name string, args []string, ok bool) {
+	if !strings.HasPrefix(input, "/") {
+		return "", nil, false
+	}
+
+	end := strings.Index(input, " ")
+	if end == -1 {
+		end = len(input)
+	}
+
+	name = input[1:end]
+	argStr := strings.TrimSpace(input[end:])
+
+	return name, strings.Split(argStr, " "), true
+}
+
+// dispatchSlashCommand routes a parsed slash command to its handler. Commands
+// without a local handler fall through to the moderation command handling, which
+// is only available to moderators.
+func (t *broadcastTab) dispatchSlashCommand(name string, args []string) tea.Cmd {
+	switch name {
+	case "inspect":
+		return t.handleOpenUserInspect(args)
+	case "popupchat":
+		return t.handleOpenBrowserChatPopUp()
+	case "channel":
+		return t.handleOpenBrowserChannel()
+	case "pyramid":
+		return t.handlePyramidMessagesCommand(args)
+	case "localsubscribers":
+		return t.handleLocalSubCommand(true)
+	case "localsubscribersoff":
+		return t.handleLocalSubCommand(false)
+	case "uniqueonly":
+		return t.handleUniqueOnlyChatCommand(true)
+	case "uniqueonlyoff":
+		return t.handleUniqueOnlyChatCommand(false)
+	case "createclip":
+		return t.handleCreateClipMessage()
+	case "emotes":
+		return t.handleOpenEmoteOverview()
+	case "refreshemotes":
+		return t.handleManualRefreshEmotes()
+	case "join":
+		return t.handleJoinCommand(args)
+	}
+
+	if !t.isUserMod {
+		return func() tea.Msg {
+			respMsg := chatEventMessage{
+				isFakeEvent: true,
+				accountID:   t.account.ID,
+				tabID:       t.id,
+				message: &twitchirc.Notice{
+					FakeTimestamp: time.Now(),
+					Message:       "Moderator commands are not available since you are not a moderator",
+				},
 			}
+			return respMsg
 		}
-
-		// Message input is only allowed for authenticated users
-		// so ttvAPI is guaranteed to be a moderationAPIClient
-		client := t.deps.APIUserClients[t.account.ID].(moderationAPIClient)
-
-		return handleCommand(commandName, args, channelID, channel, accountID, client)
 	}
 
-	// Check if message is the same as the last message sent
-	// If so, append special character to bypass twitch duplicate message filter
-	if strings.EqualFold(input, t.lastMessageSent) {
-		input = input + " " + string(duplicateBypass)
+	// Message input is only allowed for authenticated users
+	// so ttvAPI is guaranteed to be a moderationAPIClient
+	client := t.deps.APIUserClients[t.account.ID].(moderationAPIClient)
+
+	return handleCommand(name, args, t.channelID, t.channelLogin, t.account.ID, client)
+}
+
+// applyDuplicateBypass appends an invisible character when input repeats the
+// previously sent message, bypassing Twitch's duplicate message filter.
+func applyDuplicateBypass(input, lastSent string) string {
+	if strings.EqualFold(input, lastSent) {
+		return input + " " + string(duplicateBypass)
 	}
 
+	return input
+}
+
+// sendChatMessageCmd returns the command that sends input as a chat message via
+// the API, delayed so that consecutive sends are at least a second apart.
+func (t *broadcastTab) sendChatMessageCmd(input, replyTo string) tea.Cmd {
 	lastSent := t.lastMessageSentAt
 	client := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
-	cmd := func() tea.Msg {
+	return func() tea.Msg {
 		const delay = time.Second
 		diff := time.Since(lastSent)
 		if diff < delay {
@@ -232,11 +275,6 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 
 		return nil
 	}
-
-	t.lastMessageSent = input
-	t.lastMessageSentAt = time.Now()
-
-	return cmd
 }
 
 func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
