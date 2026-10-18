@@ -114,6 +114,50 @@ func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
 	require.Contains(t, result.ReplacementText, "\x1b[38;2;0;0;1m\U0010eeee\x1b[39m")
 }
 
+// TestDisplayManager_Convert_Codecs exercises the decoder paths backed by the
+// third-party AVIF and animated-WebP modules (avif.DecodeAll, webp.DecodeAll).
+// Those dependencies sit on 0.x versions, where a minor bump may change behavior
+// without breaking the build, so a compile-only check is not enough: real image
+// data has to go through the decoders.
+func TestDisplayManager_Convert_Codecs(t *testing.T) {
+	tests := []struct {
+		name        string
+		testdata    string
+		contentType string
+	}{
+		{name: "avif", testdata: "../emote/testdata/test.avif", contentType: "image/avif"},
+		{name: "animated webp", testdata: "../emote/testdata/animated.webp", contentType: "image/webp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset global state for this test
+			globalImagePlacementIDCounter.Store(0)
+			globalPlacedImages = &syncmap.Map{}
+
+			dm := NewDisplayManager(afero.NewMemMapFs(), 400, 400, DisplayOptions{Rows: 1})
+
+			data, err := os.ReadFile(tt.testdata)
+			require.NoError(t, err)
+			require.NotEmpty(t, data)
+
+			unit := DisplayUnit{
+				ID:         tt.name,
+				Directory:  "emote",
+				IsAnimated: true,
+				Load: func() (io.ReadCloser, string, error) {
+					return io.NopCloser(bytes.NewReader(data)), tt.contentType, nil
+				},
+			}
+
+			result, err := dm.Convert(unit)
+			require.NoError(t, err)
+			require.NotEmpty(t, result.PrepareCommand)
+			require.NotEmpty(t, result.ReplacementText)
+		})
+	}
+}
+
 func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
 	// Reset global state for this test
 	globalImagePlacementIDCounter.Store(0)
