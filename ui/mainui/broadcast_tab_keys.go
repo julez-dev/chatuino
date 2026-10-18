@@ -276,11 +276,7 @@ func (t *broadcastTab) handleReplyMessage() {
 		t.state = insertMode
 	}
 
-	t.replyTo = &replyTarget{
-		MessageID:   msg.ID,
-		DisplayName: msg.DisplayName,
-		Snippet:     replySnippet(msg.Message),
-	}
+	t.reply.Arm(msg.ID, msg.DisplayName, msg.Message)
 
 	t.messageInput.Focus()
 	t.HandleResize()

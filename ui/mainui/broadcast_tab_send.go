@@ -239,39 +239,6 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 	return cmd
 }
 
-// takeReplyTarget returns the armed reply's message ID and disarms the reply, so it
-// can only ever be used by a single send attempt.
-func (t *broadcastTab) takeReplyTarget() string {
-	if t.replyTo == nil {
-		return ""
-	}
-
-	id := t.replyTo.MessageID
-	t.clearReplyTarget()
-
-	return id
-}
-
-// clearReplyTarget disarms the armed reply. The reply indicator occupies a row above
-// the message input, so the layout is recalculated here: otherwise the chat window
-// keeps the height it had while the indicator was visible and the view ends up a row
-// short, floating the status bar above the bottom of the terminal.
-func (t *broadcastTab) clearReplyTarget() {
-	if t.replyTo == nil {
-		return
-	}
-
-	t.replyTo = nil
-	t.HandleResize()
-}
-
-// replySnippet normalizes a chat message into a single line for the reply indicator.
-func replySnippet(message string) string {
-	message = strings.ReplaceAll(message, string(duplicateBypass), "")
-
-	return strings.Join(strings.Fields(message), " ")
-}
-
 func (t *broadcastTab) replaceInputTemplate() tea.Cmd {
 	input := t.messageInput.InputModel.Value()
 

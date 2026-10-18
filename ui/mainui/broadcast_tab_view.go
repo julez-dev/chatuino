@@ -198,48 +198,10 @@ func (t *broadcastTab) renderMessageInput() string {
 // renderReplyIndicator renders the bar above the message input that shows which
 // message the next send will reply to.
 func (t *broadcastTab) renderReplyIndicator() string {
-	if t.replyTo == nil {
-		return ""
-	}
-
-	const hint = "(esc to cancel)"
-
 	accent := lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.InputPromptColor))
 	dimmed := lipgloss.NewStyle().Foreground(lipgloss.Color(t.deps.UserConfig.Theme.DimmedTextColor))
 
-	label := " ↩ Replying to @" + t.replyTo.DisplayName + ": "
-	snippet := truncateToWidth(t.replyTo.Snippet, t.width-lipgloss.Width(label)-lipgloss.Width(hint)-1)
-	gap := max(1, t.width-lipgloss.Width(label)-lipgloss.Width(snippet)-lipgloss.Width(hint))
-
-	return accent.Render(label) + dimmed.Render(snippet) + strings.Repeat(" ", gap) + dimmed.Render(hint)
-}
-
-// truncateToWidth shortens s so that it renders in at most width cells, appending
-// an ellipsis when it had to cut.
-func truncateToWidth(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-
-	if lipgloss.Width(s) <= width {
-		return s
-	}
-
-	var b strings.Builder
-	used := 0
-
-	for _, r := range s {
-		rw := lipgloss.Width(string(r))
-
-		if used+rw > width-1 {
-			break
-		}
-
-		b.WriteRune(r)
-		used += rw
-	}
-
-	return b.String() + "…"
+	return t.reply.View(t.width, accent, dimmed)
 }
 
 func (t *broadcastTab) HandleResize() {

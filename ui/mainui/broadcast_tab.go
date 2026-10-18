@@ -96,14 +96,6 @@ type ModStatusFetcher interface {
 	GetModVIPList(ctx context.Context, channel string) (ivr.ModVIPResponse, error)
 }
 
-// replyTarget is the message the user armed a reply to. It is rendered above the
-// message input and consumed by the next send attempt.
-type replyTarget struct {
-	MessageID   string
-	DisplayName string
-	Snippet     string
-}
-
 type broadcastTab struct {
 	id      string
 	account save.Account
@@ -122,7 +114,7 @@ type broadcastTab struct {
 	pendingChannelSuggestions []string
 	lastMessageSent           string
 	lastMessageSentAt         time.Time
-	replyTo                   *replyTarget
+	reply                     replyState
 
 	channel      string
 	channelID    string
