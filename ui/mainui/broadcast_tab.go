@@ -1664,13 +1664,22 @@ func (t *broadcastTab) takeReplyTarget() string {
 	}
 
 	id := t.replyTo.MessageID
-	t.replyTo = nil
+	t.clearReplyTarget()
 
 	return id
 }
 
+// clearReplyTarget disarms the armed reply. The reply indicator occupies a row above
+// the message input, so the layout is recalculated here: otherwise the chat window
+// keeps the height it had while the indicator was visible and the view ends up a row
+// short, floating the status bar above the bottom of the terminal.
 func (t *broadcastTab) clearReplyTarget() {
+	if t.replyTo == nil {
+		return
+	}
+
 	t.replyTo = nil
+	t.HandleResize()
 }
 
 // replySnippet normalizes a chat message into a single line for the reply indicator.

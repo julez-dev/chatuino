@@ -74,6 +74,31 @@ func newReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
 	return tab, client
 }
 
+// newLoadedReplyTab additionally marks the tab as having channel data, so that
+// HandleResize performs the real layout calculation instead of bailing out.
+func newLoadedReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
+	t.Helper()
+
+	tab, client := newReplyTab(t)
+	tab.channel = "channel"
+	tab.channelID = "channel-id"
+	tab.channelLogin = "channel"
+	tab.channelDataLoaded = true
+	tab.statusInfo = newStreamStatus(tab.width, tab.height, tab, tab.account.ID, tab.channelID, tab.deps)
+	tab.streamInfo = newStreamInfo(tab.channelID, client, tab.width)
+	tab.poll = newPoll(tab.width)
+	tab.HandleResize()
+
+	return tab, client
+}
+
+// layoutRows is the number of terminal rows the message input and the chat window
+// take together. It has to stay constant while the reply indicator appears and
+// disappears, otherwise the status bar is pushed away from the bottom edge.
+func layoutRows(tab *broadcastTab) int {
+	return tab.chatWindow.height + lipgloss.Height(tab.renderMessageInput())
+}
+
 func Test_replySnippet(t *testing.T) {
 	t.Parallel()
 
@@ -263,4 +288,50 @@ func Test_broadcastTab_clearReplyTarget(t *testing.T) {
 	tab.clearReplyTarget()
 
 	require.Nil(t, tab.replyTo)
+}
+
+// Regression: cancelling an armed reply used to leave the chat window at the height
+// it had while the indicator was visible. The view then ended up a row short and the
+// status bar was no longer rendered at the bottom of the terminal.
+func Test_broadcastTab_cancellingReplyRestoresLayout(t *testing.T) {
+	t.Parallel()
+
+	tab, _ := newLoadedReplyTab(t)
+	rowsWithoutReply := layoutRows(tab)
+	chatHeightWithoutReply := tab.chatWindow.height
+
+	tab.replyTo = &replyTarget{MessageID: "msg-1", DisplayName: "otheruser", Snippet: "nice play"}
+	tab.HandleResize()
+
+	require.Less(t, tab.chatWindow.height, chatHeightWithoutReply, "the indicator takes a row from the chat window")
+	require.Equal(t, rowsWithoutReply, layoutRows(tab), "the indicator only moves rows around")
+
+	tab.state = insertMode
+	tab.handleEscapePressed()
+
+	require.Nil(t, tab.replyTo, "escape disarms the reply")
+	require.Equal(t, chatHeightWithoutReply, tab.chatWindow.height, "cancelling gives the row back to the chat window")
+	require.Equal(t, rowsWithoutReply, layoutRows(tab))
+}
+
+// Regression: alt+enter keeps insert mode, so it skipped the layout recalculation that
+// the plain send path performs in its state reset.
+func Test_broadcastTab_quickSendRestoresLayout(t *testing.T) {
+	t.Parallel()
+
+	tab, _ := newLoadedReplyTab(t)
+	rowsWithoutReply := layoutRows(tab)
+	chatHeightWithoutReply := tab.chatWindow.height
+
+	tab.replyTo = &replyTarget{MessageID: "msg-1", DisplayName: "otheruser", Snippet: "nice play"}
+	tab.HandleResize()
+
+	tab.messageInput.SetValue("thanks")
+
+	cmd := tab.handleMessageSent(true)
+
+	require.Nil(t, tab.replyTo, "quick send consumes the armed reply")
+	require.Equal(t, chatHeightWithoutReply, tab.chatWindow.height, "quick send gives the row back to the chat window")
+	require.Equal(t, rowsWithoutReply, layoutRows(tab))
+	require.NotNil(t, cmd)
 }
