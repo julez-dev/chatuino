@@ -81,6 +81,10 @@ jobs:
         uses: dominikh/staticcheck-action@v1
         with:
           version: latest
+          # Use the Go version from go.mod (set up above) instead of letting the
+          # action install the latest stable Go. Newer Go releases can be ahead of
+          # what staticcheck supports (e.g. Go 1.27 export data breaks staticcheck v0.8.1).
+          install-go: false
 
       - name: Test
         run: |
