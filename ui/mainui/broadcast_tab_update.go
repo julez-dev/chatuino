@@ -288,26 +288,7 @@ func (t *broadcastTab) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea
 
 	channelEmoteSet := t.deps.EmoteCache.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
-	unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
-
-	for _, emote := range userEmoteSet {
-		unique[emote.Text] = struct{}{}
-	}
-
-	for _, e := range channelEmoteSet {
-		// We want to set all emotes available to the user. This means we shouldn't set twitch sub emotes and others like follower and bits that
-		// the user doesn't have access to.
-		// All twitch emotes for the current channel to which the users has access to should be in the userEmoteSet, since they are returned from the API.
-		// So we only include all 3rd pary emotes here
-		if e.Platform == emote.Twitch {
-			continue
-		}
-
-		unique[e.Text] = struct{}{}
-	}
-
-	suggestions := slices.Collect(maps.Keys(unique))
-	t.messageInput.SetSuggestions(suggestions)
+	t.messageInput.SetSuggestions(emoteSuggestions(userEmoteSet, channelEmoteSet))
 
 	// notify user if not all emotes could be fetched
 	if errors.Is(msg.err, emote.ErrPartialFetch) {
@@ -319,6 +300,32 @@ func (t *broadcastTab) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea
 	}
 
 	return nil
+}
+
+// emoteSuggestions computes the input suggestion list from the emotes the user can
+// use and the channel's third party emotes.
+//
+// We want to suggest all emotes available to the user. This means we shouldn't
+// include twitch sub emotes and others like follower and bits that the user
+// doesn't have access to. All twitch emotes for the current channel to which the
+// user has access to should be in userEmoteSet, since they are returned from the
+// API. So only third party emotes are taken from the channel set.
+func emoteSuggestions(userEmoteSet []emote.Emote, channelEmoteSet emote.EmoteSet) []string {
+	unique := make(map[string]struct{}, len(userEmoteSet)+len(channelEmoteSet))
+
+	for _, e := range userEmoteSet {
+		unique[e.Text] = struct{}{}
+	}
+
+	for _, e := range channelEmoteSet {
+		if e.Platform == emote.Twitch {
+			continue
+		}
+
+		unique[e.Text] = struct{}{}
+	}
+
+	return slices.Collect(maps.Keys(unique))
 }
 
 // handleChatEvent forwards a chat event to the chat window and dependent
