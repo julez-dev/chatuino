@@ -15,10 +15,19 @@ func NewMockDisplayManager(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockDisplayManager {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockDisplayManager{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -69,7 +78,7 @@ type MockDisplayManager_Convert_Call struct {
 
 // Convert is a helper method to define mock.On call
 //   - unit kittyimg.DisplayUnit
-func (_e *MockDisplayManager_Expecter) Convert(unit interface{}) *MockDisplayManager_Convert_Call {
+func (_e *MockDisplayManager_Expecter) Convert(unit any) *MockDisplayManager_Convert_Call {
 	return &MockDisplayManager_Convert_Call{Call: _e.mock.On("Convert", unit)}
 }
 

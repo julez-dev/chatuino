@@ -15,10 +15,19 @@ func NewMockEmoteStore(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockEmoteStore {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockEmoteStore{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -70,7 +79,7 @@ type MockEmoteStore_GetByText_Call struct {
 // GetByText is a helper method to define mock.On call
 //   - channelID string
 //   - text string
-func (_e *MockEmoteStore_Expecter) GetByText(channelID interface{}, text interface{}) *MockEmoteStore_GetByText_Call {
+func (_e *MockEmoteStore_Expecter) GetByText(channelID any, text any) *MockEmoteStore_GetByText_Call {
 	return &MockEmoteStore_GetByText_Call{Call: _e.mock.On("GetByText", channelID, text)}
 }
 
@@ -135,7 +144,7 @@ type MockEmoteStore_GetByTextAllChannels_Call struct {
 
 // GetByTextAllChannels is a helper method to define mock.On call
 //   - text string
-func (_e *MockEmoteStore_Expecter) GetByTextAllChannels(text interface{}) *MockEmoteStore_GetByTextAllChannels_Call {
+func (_e *MockEmoteStore_Expecter) GetByTextAllChannels(text any) *MockEmoteStore_GetByTextAllChannels_Call {
 	return &MockEmoteStore_GetByTextAllChannels_Call{Call: _e.mock.On("GetByTextAllChannels", text)}
 }
 
@@ -187,7 +196,7 @@ type MockEmoteStore_LoadSetForeignEmote_Call struct {
 // LoadSetForeignEmote is a helper method to define mock.On call
 //   - emoteID string
 //   - emoteText string
-func (_e *MockEmoteStore_Expecter) LoadSetForeignEmote(emoteID interface{}, emoteText interface{}) *MockEmoteStore_LoadSetForeignEmote_Call {
+func (_e *MockEmoteStore_Expecter) LoadSetForeignEmote(emoteID any, emoteText any) *MockEmoteStore_LoadSetForeignEmote_Call {
 	return &MockEmoteStore_LoadSetForeignEmote_Call{Call: _e.mock.On("LoadSetForeignEmote", emoteID, emoteText)}
 }
 

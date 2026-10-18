@@ -16,10 +16,19 @@ func NewDBVariadic(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *DBVariadic {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &DBVariadic{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -39,7 +48,7 @@ func (_m *DBVariadic) EXPECT() *DBVariadic_Expecter {
 
 // Exec provides a mock function for the type DBVariadic
 func (_mock *DBVariadic) Exec(query string, args ...any) (sql.Result, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -76,9 +85,9 @@ type DBVariadic_Exec_Call struct {
 // Exec is a helper method to define mock.On call
 //   - query string
 //   - args ...any
-func (_e *DBVariadic_Expecter) Exec(query interface{}, args ...interface{}) *DBVariadic_Exec_Call {
+func (_e *DBVariadic_Expecter) Exec(query any, args ...any) *DBVariadic_Exec_Call {
 	return &DBVariadic_Exec_Call{Call: _e.mock.On("Exec",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *DBVariadic_Exec_Call) Run(run func(query string, args ...any)) *DBVariadic_Exec_Call {
@@ -115,7 +124,7 @@ func (_c *DBVariadic_Exec_Call) RunAndReturn(run func(query string, args ...any)
 
 // Query provides a mock function for the type DBVariadic
 func (_mock *DBVariadic) Query(query string, args ...any) (*sql.Rows, error) {
-	var _ca []interface{}
+	var _ca []any
 	_ca = append(_ca, query)
 	_ca = append(_ca, args...)
 	ret := _mock.Called(_ca...)
@@ -152,9 +161,9 @@ type DBVariadic_Query_Call struct {
 // Query is a helper method to define mock.On call
 //   - query string
 //   - args ...any
-func (_e *DBVariadic_Expecter) Query(query interface{}, args ...interface{}) *DBVariadic_Query_Call {
+func (_e *DBVariadic_Expecter) Query(query any, args ...any) *DBVariadic_Query_Call {
 	return &DBVariadic_Query_Call{Call: _e.mock.On("Query",
-		append([]interface{}{query}, args...)...)}
+		append([]any{query}, args...)...)}
 }
 
 func (_c *DBVariadic_Query_Call) Run(run func(query string, args ...any)) *DBVariadic_Query_Call {
