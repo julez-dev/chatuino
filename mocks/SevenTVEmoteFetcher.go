@@ -17,10 +17,19 @@ func NewMockSevenTVEmoteFetcher(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockSevenTVEmoteFetcher {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockSevenTVEmoteFetcher{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type MockSevenTVEmoteFetcher_GetChannelEmotes_Call struct {
 // GetChannelEmotes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - broadcaster string
-func (_e *MockSevenTVEmoteFetcher_Expecter) GetChannelEmotes(ctx interface{}, broadcaster interface{}) *MockSevenTVEmoteFetcher_GetChannelEmotes_Call {
+func (_e *MockSevenTVEmoteFetcher_Expecter) GetChannelEmotes(ctx any, broadcaster any) *MockSevenTVEmoteFetcher_GetChannelEmotes_Call {
 	return &MockSevenTVEmoteFetcher_GetChannelEmotes_Call{Call: _e.mock.On("GetChannelEmotes", ctx, broadcaster)}
 }
 
@@ -137,7 +146,7 @@ type MockSevenTVEmoteFetcher_GetGlobalEmotes_Call struct {
 
 // GetGlobalEmotes is a helper method to define mock.On call
 //   - context1 context.Context
-func (_e *MockSevenTVEmoteFetcher_Expecter) GetGlobalEmotes(context1 interface{}) *MockSevenTVEmoteFetcher_GetGlobalEmotes_Call {
+func (_e *MockSevenTVEmoteFetcher_Expecter) GetGlobalEmotes(context1 any) *MockSevenTVEmoteFetcher_GetGlobalEmotes_Call {
 	return &MockSevenTVEmoteFetcher_GetGlobalEmotes_Call{Call: _e.mock.On("GetGlobalEmotes", context1)}
 }
 

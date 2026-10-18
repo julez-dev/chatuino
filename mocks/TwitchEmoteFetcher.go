@@ -17,10 +17,19 @@ func NewMockTwitchEmoteFetcher(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockTwitchEmoteFetcher {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockTwitchEmoteFetcher{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -72,7 +81,7 @@ type MockTwitchEmoteFetcher_GetChannelEmotes_Call struct {
 // GetChannelEmotes is a helper method to define mock.On call
 //   - ctx context.Context
 //   - broadcaster string
-func (_e *MockTwitchEmoteFetcher_Expecter) GetChannelEmotes(ctx interface{}, broadcaster interface{}) *MockTwitchEmoteFetcher_GetChannelEmotes_Call {
+func (_e *MockTwitchEmoteFetcher_Expecter) GetChannelEmotes(ctx any, broadcaster any) *MockTwitchEmoteFetcher_GetChannelEmotes_Call {
 	return &MockTwitchEmoteFetcher_GetChannelEmotes_Call{Call: _e.mock.On("GetChannelEmotes", ctx, broadcaster)}
 }
 
@@ -137,7 +146,7 @@ type MockTwitchEmoteFetcher_GetGlobalEmotes_Call struct {
 
 // GetGlobalEmotes is a helper method to define mock.On call
 //   - context1 context.Context
-func (_e *MockTwitchEmoteFetcher_Expecter) GetGlobalEmotes(context1 interface{}) *MockTwitchEmoteFetcher_GetGlobalEmotes_Call {
+func (_e *MockTwitchEmoteFetcher_Expecter) GetGlobalEmotes(context1 any) *MockTwitchEmoteFetcher_GetGlobalEmotes_Call {
 	return &MockTwitchEmoteFetcher_GetGlobalEmotes_Call{Call: _e.mock.On("GetGlobalEmotes", context1)}
 }
 

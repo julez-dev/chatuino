@@ -16,10 +16,19 @@ func NewMockBadgeCache(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockBadgeCache {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockBadgeCache{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -64,7 +73,7 @@ type MockBadgeCache_MatchBadgeSet_Call struct {
 // MatchBadgeSet is a helper method to define mock.On call
 //   - broadcasterID string
 //   - ircBadge []twitchirc.Badge
-func (_e *MockBadgeCache_Expecter) MatchBadgeSet(broadcasterID interface{}, ircBadge interface{}) *MockBadgeCache_MatchBadgeSet_Call {
+func (_e *MockBadgeCache_Expecter) MatchBadgeSet(broadcasterID any, ircBadge any) *MockBadgeCache_MatchBadgeSet_Call {
 	return &MockBadgeCache_MatchBadgeSet_Call{Call: _e.mock.On("MatchBadgeSet", broadcasterID, ircBadge)}
 }
 

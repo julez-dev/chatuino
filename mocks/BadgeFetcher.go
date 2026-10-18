@@ -17,10 +17,19 @@ func NewMockBadgeFetcher(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockBadgeFetcher {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockBadgeFetcher{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -74,7 +83,7 @@ type MockBadgeFetcher_GetChannelChatBadges_Call struct {
 // GetChannelChatBadges is a helper method to define mock.On call
 //   - ctx context.Context
 //   - broadcasterID string
-func (_e *MockBadgeFetcher_Expecter) GetChannelChatBadges(ctx interface{}, broadcasterID interface{}) *MockBadgeFetcher_GetChannelChatBadges_Call {
+func (_e *MockBadgeFetcher_Expecter) GetChannelChatBadges(ctx any, broadcasterID any) *MockBadgeFetcher_GetChannelChatBadges_Call {
 	return &MockBadgeFetcher_GetChannelChatBadges_Call{Call: _e.mock.On("GetChannelChatBadges", ctx, broadcasterID)}
 }
 
@@ -141,7 +150,7 @@ type MockBadgeFetcher_GetGlobalChatBadges_Call struct {
 
 // GetGlobalChatBadges is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockBadgeFetcher_Expecter) GetGlobalChatBadges(ctx interface{}) *MockBadgeFetcher_GetGlobalChatBadges_Call {
+func (_e *MockBadgeFetcher_Expecter) GetGlobalChatBadges(ctx any) *MockBadgeFetcher_GetGlobalChatBadges_Call {
 	return &MockBadgeFetcher_GetGlobalChatBadges_Call{Call: _e.mock.On("GetGlobalChatBadges", ctx)}
 }
 
