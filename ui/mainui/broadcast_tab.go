@@ -17,6 +17,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/nav"
 )
 
 const (
@@ -31,12 +32,10 @@ var modCommandAlternativeMapping = map[string]string{
 }
 
 type setErrorMessage struct {
-	targetID string
-	err      error
+	err error
 }
 
 type setChannelDataMessage struct {
-	targetID        string
 	channelLogin    string
 	channel         string
 	channelID       string
@@ -46,7 +45,6 @@ type setChannelDataMessage struct {
 }
 
 type emoteSetRefreshedMessage struct {
-	targetID string
 	err      error
 	manually bool
 }
@@ -194,17 +192,15 @@ func (t *broadcastTab) Init() tea.Cmd {
 
 		userData, err := t.deps.APIUserClients[t.account.ID].GetUsers(ctx, []string{t.channel}, nil)
 		if err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not fetch ttv user %s: %w", t.channel, err),
-			}
+			return nav.Address(t.id, setErrorMessage{
+				err: fmt.Errorf("could not fetch ttv user %s: %w", t.channel, err),
+			})
 		}
 
 		if len(userData.Data) < 1 {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not find channel: %s", t.channel),
-			}
+			return nav.Address(t.id, setErrorMessage{
+				err: fmt.Errorf("could not find channel: %s", t.channel),
+			})
 		}
 
 		msg := t.InitWithUserData(userData.Data[0])()
@@ -259,21 +255,19 @@ func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 		})
 
 		if err := group.Wait(); err != nil {
-			return setErrorMessage{
-				targetID: t.id,
-				err:      fmt.Errorf("could not do initial fetching for %s: %w", userData.Login, err),
-			}
+			return nav.Address(t.id, setErrorMessage{
+				err: fmt.Errorf("could not do initial fetching for %s: %w", userData.Login, err),
+			})
 		}
 
-		return setChannelDataMessage{
-			targetID:        t.id,
+		return nav.Address(t.id, setChannelDataMessage{
 			channelID:       userData.ID,
 			channel:         userData.DisplayName,
 			channelLogin:    userData.Login,
 			initialMessages: recentMessages,
 			isUserMod:       isUserMod,
 			modFetchErr:     modFetchErr,
-		}
+		})
 	}
 
 	return cmd
@@ -304,17 +298,15 @@ func (t *broadcastTab) refreshEmotes(login, channelID string, manually bool) tea
 
 		err := group.Wait()
 		if err != nil {
-			return emoteSetRefreshedMessage{
-				targetID: t.id,
+			return nav.Address(t.id, emoteSetRefreshedMessage{
 				err:      err,
 				manually: manually,
-			}
+			})
 		}
 
-		return emoteSetRefreshedMessage{
-			targetID: t.id,
+		return nav.Address(t.id, emoteSetRefreshedMessage{
 			manually: manually,
-		}
+		})
 	}
 }
 

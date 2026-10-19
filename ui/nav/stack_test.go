@@ -10,17 +10,17 @@ import (
 )
 
 type fakeScreen struct {
-	name string
+	name  string
 	route string
 	// overlay screens keep the view below them visible
 	overlay bool
 
-	appeared   int
+	appeared    int
 	disappeared int
-	inits      int
-	updates    []tea.Msg
-	view       string
-	next       nav.Screen // when set, Update swaps this screen in
+	inits       int
+	updates     []tea.Msg
+	view        string
+	next        nav.Screen // when set, Update swaps this screen in
 }
 
 func (f *fakeScreen) Init() tea.Cmd {

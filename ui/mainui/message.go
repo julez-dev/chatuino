@@ -110,7 +110,6 @@ type setStreamInfoMessage struct {
 
 // channelSuggestionsLoadedMessage delivers channel names for /join autocomplete
 type channelSuggestionsLoadedMessage struct {
-	targetID string
 	channels []string
 }
 

@@ -29,10 +29,6 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 
 		return t, t.localNoticeCmd(msg.Error())
 	case setErrorMessage:
-		if msg.targetID != t.id {
-			return t, nil
-		}
-
 		t.err = errors.Join(t.err, msg.err)
 		return t, nil
 	case setStreamInfoMessage:
@@ -47,20 +43,14 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			return t, cmd
 		}
 	case setChannelDataMessage:
-		if msg.targetID != t.id {
-			return t, nil
-		}
-
 		return t, t.handleChannelDataLoaded(msg)
 	case emoteSetRefreshedMessage:
 		return t, t.handleEmoteSetRefreshed(msg)
 	case channelSuggestionsLoadedMessage:
-		if msg.targetID == t.id {
-			if t.input != nil {
-				t.input.SetChannelSuggestions(msg.channels)
-			} else {
-				t.pendingChannelSuggestions = msg.channels
-			}
+		if t.input != nil {
+			t.input.SetChannelSuggestions(msg.channels)
+		} else {
+			t.pendingChannelSuggestions = msg.channels
 		}
 		return t, nil
 	case wspool.EventSubEvent:
@@ -266,7 +256,7 @@ func (t *broadcastTab) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 // handleEmoteSetRefreshed reacts to a finished emote refresh by recomputing the
 // input suggestions from the user's and the channel's emote sets.
 func (t *broadcastTab) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea.Cmd {
-	if t.account.IsAnonymous || msg.targetID != t.id {
+	if t.account.IsAnonymous {
 		return nil
 	}
 

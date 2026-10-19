@@ -318,3 +318,35 @@ func TestRegistry_Any(t *testing.T) {
 	assert.True(t, reg.Any(func(f *fakeItem) bool { return f.id == "b" }))
 	assert.False(t, reg.Any(func(f *fakeItem) bool { return f.id == "c" }))
 }
+
+func TestRegistry_Dispatch(t *testing.T) {
+	reg, items := newRegistry(&fakeItem{id: "a"}, &fakeItem{id: "b"})
+	a, b := items[0], items[1]
+
+	set := func(f *fakeItem, msg tea.Msg) (*fakeItem, tea.Cmd) {
+		f.value = msg.(string)
+		return f, nil
+	}
+
+	cmd, ok := reg.Dispatch(nav.Address("b", "for-b"), set)
+	require.True(t, ok)
+	assert.Nil(t, cmd)
+	assert.Equal(t, "for-b", b.value)
+	assert.Empty(t, a.value, "an addressed message must not reach other items")
+
+	_, ok = reg.Dispatch(nav.Address("missing", "dropped"), set)
+	assert.False(t, ok, "an unknown target is reported so the caller can keep handling it")
+
+	_, ok = reg.Dispatch("unaddressed", set)
+	assert.False(t, ok)
+	assert.Empty(t, a.value)
+}
+
+func TestAddress_ProducesEnvelope(t *testing.T) {
+	msg := nav.To("tab-1", "payload")()
+
+	envelope, ok := msg.(nav.Envelope)
+	require.True(t, ok)
+	assert.Equal(t, "tab-1", envelope.To)
+	assert.Equal(t, "payload", envelope.Msg)
+}

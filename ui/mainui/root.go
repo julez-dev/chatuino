@@ -379,6 +379,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
+	// Addressed messages belong to exactly one tab; the registry decides which,
+	// so no child has to re-check a target id.
+	if tabCmd, ok := r.tabs.Dispatch(msg, updateTab); ok {
+		return r, tabCmd
+	}
+
 	switch msg := msg.(type) {
 	case persistedDataLoadedMessage:
 		return r, r.handlePersistedDataLoaded(msg)
@@ -426,14 +432,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// send cached suggestions to new tab
 		if len(r.channelSuggestions) > 0 {
-			tabID := nTab.ID()
-			suggestions := r.channelSuggestions
-			initCmds = append(initCmds, func() tea.Msg {
-				return channelSuggestionsLoadedMessage{
-					targetID: tabID,
-					channels: suggestions,
-				}
-			})
+			initCmds = append(initCmds, nav.To(nTab.ID(), channelSuggestionsLoadedMessage{
+				channels: r.channelSuggestions,
+			}))
 		}
 
 		return r, tea.Batch(initCmds...)
@@ -1074,14 +1075,9 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	r.channelSuggestions = msg.channelSuggestions
 	if len(r.channelSuggestions) > 0 {
 		for _, t := range r.tabs.All() {
-			suggestions := r.channelSuggestions
-			tabID := t.ID()
-			cmds = append(cmds, func() tea.Msg {
-				return channelSuggestionsLoadedMessage{
-					targetID: tabID,
-					channels: suggestions,
-				}
-			})
+			cmds = append(cmds, nav.To(t.ID(), channelSuggestionsLoadedMessage{
+				channels: r.channelSuggestions,
+			}))
 		}
 	}
 
