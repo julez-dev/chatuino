@@ -131,6 +131,11 @@ func (c *chatInput) Blur() {
 	c.input.Blur()
 }
 
+// Focused reports whether the composer currently owns the keyboard.
+func (c *chatInput) Focused() bool {
+	return c.input.InputModel.Focused()
+}
+
 // Value returns the trimmed input text.
 func (c *chatInput) Value() string {
 	return c.input.Value()

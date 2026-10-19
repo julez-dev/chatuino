@@ -309,8 +309,11 @@ func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
 
 	username := args[0]
 
-	t.state = userInspectMode
 	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID, t.deps)
+	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
+
+	// The table blurs the chat window and focuses the new inspect window.
+	_, _ = t.transit(eventInspect)
 
 	initialEvents := make([]chatEventMessage, 0, 15)
 	for e := range slices.Values(t.chatWindow.entries) {
@@ -327,11 +330,7 @@ func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
 	}
 
 	cmds = append(cmds, t.userInspect.init(initialEvents))
-
 	t.HandleResize()
-	t.chatWindow.Blur()
-	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
-	t.userInspect.chatWindow.Focus()
 
 	return tea.Batch(cmds...)
 }

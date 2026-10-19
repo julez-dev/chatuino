@@ -451,6 +451,11 @@ func (c *chatWindow) Blur() {
 	c.focused = false
 }
 
+// Focused reports whether this window currently owns the selection.
+func (c *chatWindow) Focused() bool {
+	return c.focused
+}
+
 // startAnimating begins the smooth scroll animation loop if not already running.
 func (c *chatWindow) startAnimating() tea.Cmd {
 	if c.animating {

@@ -118,42 +118,28 @@ func (t *broadcastTab) isChatSearching() bool {
 // leaveUserInspect exits user inspect mode (including its insert mode) and
 // returns focus to the main chat window.
 func (t *broadcastTab) leaveUserInspect() {
-	if t.state != userInspectMode && t.state != userInspectInsertMode {
+	changed, _ := t.transit(eventLeaveInspect)
+	if !changed {
 		return
 	}
 
-	t.state = inChatWindow
-	t.userInspect = nil
-	t.input.Blur()
-	t.clearReplyTarget()
-	t.chatWindow.Focus()
 	t.HandleResize()
 	t.chatWindow.updatePort()
 }
 
 func (t *broadcastTab) handleEscapePressed() {
-	if t.state == userInspectMode || t.state == emoteOverviewMode {
-		t.state = inChatWindow
-		t.userInspect = nil
-		t.chatWindow.Focus()
+	// Leaving a mode that replaced the chat window with a full-sized one changes
+	// the layout; leaving the composer does not.
+	fullWindow := t.state.isInspecting() || t.state == emoteOverviewMode
+
+	changed, _ := t.transit(eventCancel)
+	if !changed {
+		return
+	}
+
+	if fullWindow && t.state == inChatWindow {
 		t.HandleResize()
 		t.chatWindow.updatePort()
-		return
-	}
-
-	if t.state == userInspectInsertMode {
-		t.state = userInspectMode
-		t.userInspect.chatWindow.Focus()
-		t.input.Blur()
-		t.clearReplyTarget()
-		return
-	}
-
-	if !t.account.IsAnonymous {
-		t.state = inChatWindow
-		t.chatWindow.Focus()
-		t.input.Blur()
-		t.clearReplyTarget()
 	}
 }
 
@@ -193,67 +179,27 @@ func (t *broadcastTab) handleOpenBrowserChannel() tea.Cmd {
 }
 
 func (t *broadcastTab) handleStartInsertMode() tea.Cmd {
-	if !t.account.IsAnonymous && (t.state == inChatWindow || t.state == userInspectMode) {
-		if t.state == inChatWindow {
-			t.state = insertMode
-		} else {
-			t.state = userInspectInsertMode
-			t.userInspect.chatWindow.Blur()
-		}
-
-		t.chatWindow.Blur()
-
-		return t.input.Focus()
-	}
-
-	return nil
+	_, cmd := t.transit(eventCompose)
+	return cmd
 }
 
 func (t *broadcastTab) handleCopyMessage() {
-	if t.account.IsAnonymous {
-		return
-	}
-
-	var entry *chatEntry
-
-	if t.state == inChatWindow {
-		_, entry = t.chatWindow.entryForCurrentCursor()
-
-		if entry == nil {
-			return
-		}
-
-		if t.chatWindow.state == searchChatWindowState {
-			t.chatWindow.handleStopSearchMode()
-		}
-		t.chatWindow.Blur()
-	} else {
-		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
-
-		if entry == nil {
-			return
-		}
-
-		if t.userInspect.chatWindow.state == searchChatWindowState {
-			t.userInspect.chatWindow.handleStopSearchMode()
-		}
-		t.userInspect.chatWindow.Blur()
-	}
-
-	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
-
+	entry, ok := t.cursorEntry()
 	if !ok {
 		return
 	}
 
-	if t.state == userInspectMode {
-		t.state = userInspectInsertMode
-	} else {
-		t.state = insertMode
+	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
+	if !ok {
+		return
 	}
-	t.clearReplyTarget() // copying replaces the armed reply with different content
 
-	t.input.Focus()
+	// The table rejects this for anonymous accounts, which cannot compose.
+	if accepted, _ := t.transit(eventCompose); !accepted {
+		return
+	}
+
+	t.clearReplyTarget() // copying replaces the armed reply with different content
 	t.input.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
 	t.HandleResize() // Recalculate layout after copying message
 }
@@ -264,30 +210,9 @@ func (t *broadcastTab) handleReplyMessage() {
 		return
 	}
 
-	var entry *chatEntry
-
-	if t.state == inChatWindow {
-		_, entry = t.chatWindow.entryForCurrentCursor()
-
-		if entry == nil {
-			return
-		}
-
-		if t.chatWindow.state == searchChatWindowState {
-			t.chatWindow.handleStopSearchMode()
-		}
-		t.chatWindow.Blur()
-	} else {
-		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
-
-		if entry == nil {
-			return
-		}
-
-		if t.userInspect.chatWindow.state == searchChatWindowState {
-			t.userInspect.chatWindow.handleStopSearchMode()
-		}
-		t.userInspect.chatWindow.Blur()
+	entry, ok := t.cursorEntry()
+	if !ok {
+		return
 	}
 
 	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
@@ -298,15 +223,11 @@ func (t *broadcastTab) handleReplyMessage() {
 		return
 	}
 
-	if t.state == userInspectMode {
-		t.state = userInspectInsertMode
-	} else {
-		t.state = insertMode
+	if accepted, _ := t.transit(eventCompose); !accepted {
+		return
 	}
 
 	t.input.ArmReply(msg.ID, msg.DisplayName, msg.Message)
-
-	t.input.Focus()
 	t.HandleResize()
 }
 
@@ -345,46 +266,68 @@ func (t *broadcastTab) handleTimeoutShortcut() {
 		return
 	}
 
-	var entry *chatEntry
-
-	switch t.state {
-	case inChatWindow:
-		_, entry = t.chatWindow.entryForCurrentCursor()
-	case userInspectMode:
-		_, entry = t.userInspect.chatWindow.entryForCurrentCursor()
-	}
-
-	if entry == nil {
-		return
-	}
-
-	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
-
+	entry, ok := t.cursorEntry()
 	if !ok {
 		return
 	}
 
-	if t.state == userInspectMode {
-		t.state = userInspectInsertMode
-		t.userInspect.chatWindow.handleStopSearchMode()
-		t.userInspect.chatWindow.Blur()
-	} else {
-		t.state = insertMode
-		t.chatWindow.handleStopSearchMode()
-		t.chatWindow.Blur()
+	msg, ok := entry.Event.message.(*twitchirc.PrivateMessage)
+	if !ok {
+		return
 	}
 
-	t.input.Focus()
+	if accepted, _ := t.transit(eventCompose); !accepted {
+		return
+	}
+
 	t.input.SetValue("/timeout " + msg.DisplayName + " 600")
 	t.HandleResize() // Recalculate layout after setting timeout command
 }
 
-func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
-	if t.account.IsAnonymous {
-		return nil
+// activeChatWindow returns the chat window that owns the selection, or nil when
+// the tab shows none.
+func (t *broadcastTab) activeChatWindow() *chatWindow {
+	if t.state.isInspecting() {
+		if t.userInspect == nil {
+			return nil
+		}
+
+		return t.userInspect.chatWindow
 	}
 
-	t.state = emoteOverviewMode
+	return t.chatWindow
+}
+
+// cursorEntry returns the entry under the cursor of the active chat window. An
+// active search is stopped first so the cursor resolves against the full list.
+func (t *broadcastTab) cursorEntry() (*chatEntry, bool) {
+	window := t.activeChatWindow()
+	if window == nil {
+		return nil, false
+	}
+
+	if window.state == searchChatWindowState {
+		window.handleStopSearchMode()
+	}
+
+	_, entry := window.entryForCurrentCursor()
+	if entry == nil {
+		return nil, false
+	}
+
+	t.chatWindow.Blur()
+
+	if t.userInspect != nil {
+		t.userInspect.chatWindow.Blur()
+	}
+
+	return entry, true
+}
+
+func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
+	if accepted, _ := t.transit(eventEmoteOverview); !accepted {
+		return nil
+	}
 
 	if t.emoteOverview != nil {
 		t.HandleResize()

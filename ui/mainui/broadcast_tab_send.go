@@ -130,16 +130,7 @@ func (t *broadcastTab) handleMessageSent(quickSend bool) tea.Cmd {
 // resetAfterSend leaves insert mode and clears the message input after a regular
 // (non quick) send.
 func (t *broadcastTab) resetAfterSend() {
-	if t.state == userInspectInsertMode {
-		t.state = userInspectMode
-		t.userInspect.chatWindow.Focus()
-	} else {
-		t.state = inChatWindow
-		t.chatWindow.Focus()
-	}
-
-	t.input.Blur()
-	t.input.Clear()
+	_, _ = t.transit(eventSend)
 	t.HandleResize() // Recalculate layout after clearing input
 }
 

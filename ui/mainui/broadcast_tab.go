@@ -376,15 +376,20 @@ func (t *broadcastTab) SetFullWidth(width int) {
 func (t *broadcastTab) Focus() {
 	t.focused = true
 
-	if t.channelDataLoaded {
-		switch t.state {
-		case inChatWindow:
-			t.chatWindow.Focus()
-		case userInspectMode:
+	if !t.channelDataLoaded {
+		return
+	}
+
+	// The mode decides which child owns the keyboard.
+	switch {
+	case t.state.isComposing():
+		t.input.Focus()
+	case t.state.isInspecting():
+		if t.userInspect != nil {
 			t.userInspect.chatWindow.Focus()
-		case userInspectInsertMode, insertMode:
-			t.input.Focus()
 		}
+	default:
+		t.chatWindow.Focus()
 	}
 }
 
