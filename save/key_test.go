@@ -22,6 +22,53 @@ func TestKeyMap_MarshalYAML(t *testing.T) {
 
 }
 
+func TestBuildDefaultKeyMap_IncludesVimAndModernAliases(t *testing.T) {
+	t.Parallel()
+
+	keyMap := BuildDefaultKeyMap()
+
+	require.Contains(t, keyMap.Quit.Keys(), "ctrl+c")
+	require.Contains(t, keyMap.Quit.Keys(), "q")
+	require.Contains(t, keyMap.GoToTop.Keys(), "t")
+	require.Contains(t, keyMap.GoToTop.Keys(), "g")
+	require.Contains(t, keyMap.GoToTop.Keys(), "home")
+	require.Contains(t, keyMap.GoToBottom.Keys(), "b")
+	require.Contains(t, keyMap.GoToBottom.Keys(), "G")
+	require.Contains(t, keyMap.GoToBottom.Keys(), "end")
+	require.Contains(t, keyMap.PageUp.Keys(), "pgup")
+	require.Contains(t, keyMap.PageUp.Keys(), "ctrl+u")
+	require.Contains(t, keyMap.PageDown.Keys(), "pgdown")
+	require.Contains(t, keyMap.PageDown.Keys(), "ctrl+d")
+	require.Contains(t, keyMap.InsertMode.Keys(), "enter")
+	require.Contains(t, keyMap.CopyMessage.Keys(), "y")
+	require.Contains(t, keyMap.CopyToClipboard.Keys(), "Y")
+	require.Contains(t, keyMap.ReplyMessage.Keys(), "r")
+	require.Contains(t, keyMap.InspectMode.Keys(), "u")
+	require.Contains(t, keyMap.SearchMode.Keys(), "ctrl+f")
+	require.Contains(t, keyMap.Next.Keys(), "]")
+	require.Contains(t, keyMap.Previous.Keys(), "[")
+	require.Contains(t, keyMap.AcceptSuggestion.Keys(), "tab")
+	require.Contains(t, keyMap.AcceptSuggestion.Keys(), "ctrl+space")
+	require.Contains(t, keyMap.AcceptSuggestion.Keys(), "right")
+	require.Contains(t, keyMap.NextSuggestion.Keys(), "ctrl+n")
+	require.Contains(t, keyMap.PrevSuggestion.Keys(), "ctrl+p")
+}
+
+// Existing keymap.yaml files are intentionally never rewritten. Fields present
+// in the file keep their keys; fields added later fall back to their defaults.
+func TestKeyMap_UnmarshalLegacyConfigKeepsNewFields(t *testing.T) {
+	t.Parallel()
+
+	legacy := []byte("go_to_top:\n    - t\nquit:\n    - ctrl+c\n")
+
+	keyMap := BuildDefaultKeyMap()
+	require.NoError(t, yaml.Unmarshal(legacy, &keyMap))
+
+	require.Equal(t, []string{"t"}, keyMap.GoToTop.Keys(), "existing field is preserved")
+	require.Equal(t, []string{"ctrl+c"}, keyMap.Quit.Keys(), "existing field is preserved")
+	require.Equal(t, []string{"pgup", "ctrl+u"}, keyMap.PageUp.Keys(), "new field uses the default")
+}
+
 func TestKeyMap_UnmarshalYAML(t *testing.T) {
 	t.Parallel()
 

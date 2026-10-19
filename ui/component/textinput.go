@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
@@ -36,7 +37,7 @@ type KeyMap struct {
 // DefaultKeyMap is the default set of key bindings for navigating and acting
 // upon the textinput.
 var DefaultKeyMap = KeyMap{
-	AcceptSuggestion: key.NewBinding(key.WithKeys("tab")),
+	AcceptSuggestion: key.NewBinding(key.WithKeys("tab", "ctrl+space", "right")),
 	NextSuggestion:   key.NewBinding(key.WithKeys("down", "ctrl+n")),
 	PrevSuggestion:   key.NewBinding(key.WithKeys("up", "ctrl+p")),
 }
@@ -181,8 +182,16 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 
 			return s, nil
 		case key.Matches(msg, s.KeyMap.AcceptSuggestion):
-			// If we can accept a suggestion, do it
-			if s.canAcceptSuggestion() {
+			accept := s.canAcceptSuggestion()
+
+			// Right arrow doubles as a cursor-movement key. Only let it accept
+			// when the cursor is at the end of the input; otherwise it must move
+			// the cursor as usual.
+			if accept && msg.String() == "right" && s.InputModel.Position() < utf8.RuneCountInString(s.InputModel.Value()) {
+				accept = false
+			}
+
+			if accept {
 				_, startIndex, endIndex := s.wordAtCursor()
 				before := s.InputModel.Value()[:startIndex]
 				after := s.InputModel.Value()[endIndex:]
@@ -203,9 +212,17 @@ func (s *SuggestionTextInput) Update(msg tea.Msg) (*SuggestionTextInput, tea.Cmd
 				newVal := collapseSpaces(before + suggestion + after)
 				s.InputModel.SetValue(newVal)
 				s.InputModel.SetCursor(len([]rune(collapseSpaces(before + suggestion)))) // set cursor to end of suggestion
+				return s, nil
 			}
-			// Always return when AcceptSuggestion key is pressed - don't fall through to default
-			// This prevents the key from being inserted as text when there's no suggestion
+
+			// Movement keys fall through so they still move the cursor when
+			// there is nothing to accept. Other accept keys are swallowed so
+			// they cannot be inserted as literal text.
+			if msg.String() == "right" {
+				s.InputModel, cmd = s.InputModel.Update(msg)
+				return s, cmd
+			}
+
 			return s, nil
 		case key.Matches(msg, s.KeyMap.NextSuggestion):
 			s.nextSuggestion()

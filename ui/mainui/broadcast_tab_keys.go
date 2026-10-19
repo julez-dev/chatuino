@@ -21,13 +21,16 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, t.handleStartInsertMode()
 	}
 
+	// Plain-letter shortcuts must not fire while a chat search input is focused.
+	searching := t.isChatSearching()
+
 	// Open user inspect mode, where only messages from a specific user are shown
-	if key.Matches(msg, t.deps.Keymap.InspectMode) && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.InspectMode) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
 		return true, t.handleOpenUserInspectFromMessage()
 	}
 
 	// Open chat in browser
-	if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
 		return true, t.handleOpenBrowser(msg)
 	}
 
@@ -55,19 +58,19 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 
 	// Set quick time out message to message input
-	if key.Matches(msg, t.deps.Keymap.QuickTimeout) && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.QuickTimeout) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
 		t.handleTimeoutShortcut()
 		return true, nil
 	}
 
 	// Copy selected message to message input
-	if key.Matches(msg, t.deps.Keymap.CopyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.CopyMessage) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
 		t.handleCopyMessage()
 		return true, nil
 	}
 
 	// Reply to selected message
-	if key.Matches(msg, t.deps.Keymap.ReplyMessage) && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.ReplyMessage) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
 		t.handleReplyMessage()
 		return true, nil
 	}
@@ -99,6 +102,33 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 
 	return false, nil
+}
+
+// isChatSearching reports whether the active chat window is capturing text for
+// search. Plain-letter shortcuts are suppressed while this is true so they can
+// be typed into the search input instead.
+func (t *broadcastTab) isChatSearching() bool {
+	if t.state == userInspectMode || t.state == userInspectInsertMode {
+		return t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState
+	}
+
+	return t.chatWindow != nil && t.chatWindow.state == searchChatWindowState
+}
+
+// leaveUserInspect exits user inspect mode (including its insert mode) and
+// returns focus to the main chat window.
+func (t *broadcastTab) leaveUserInspect() {
+	if t.state != userInspectMode && t.state != userInspectInsertMode {
+		return
+	}
+
+	t.state = inChatWindow
+	t.userInspect = nil
+	t.input.Blur()
+	t.clearReplyTarget()
+	t.chatWindow.Focus()
+	t.HandleResize()
+	t.chatWindow.updatePort()
 }
 
 func (t *broadcastTab) handleEscapePressed() {

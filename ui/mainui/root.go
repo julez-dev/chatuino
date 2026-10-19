@@ -79,6 +79,8 @@ type header interface {
 	SelectTab(id string)
 	Resize(width, height int)
 	MinWidth() int
+	// TabAt returns the id of the tab rendered at the given cell, if any.
+	TabAt(x, y int) (string, bool)
 }
 
 type activeScreen int
@@ -508,8 +510,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.height = msg.Height
 		r.handleResize()
 		return r, nil
+	case tea.MouseClickMsg:
+		return r, r.handleMouseClick(msg)
+	case tea.MouseWheelMsg:
+		return r, r.handleMouseWheel(msg)
 	case tea.KeyPressMsg:
-		if key.Matches(msg, r.dependencies.Keymap.Quit) {
+		// q-to-quit must not steal printable keys while an input is focused.
+		// Modifier-driven quit keys (ctrl+c) still work everywhere.
+		if key.Matches(msg, r.dependencies.Keymap.Quit) && !(r.isTyping() && msg.Text != "") {
 			return r, tea.Quit
 		}
 
@@ -517,24 +525,15 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, tea.Batch(cmds...)
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.Help) {
-			var isInsertMode bool
+		// Help must not steal '?' while any text input (including chat search)
+		// is capturing printable characters.
+		if key.Matches(msg, r.dependencies.Keymap.Help) && !r.isTyping() {
+			r.screenType = helpScreen
+			r.joinInput.blur()
 			if len(r.tabs) > r.tabCursor {
-				isInsertMode = (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode)
+				r.tabs[r.tabCursor].Blur()
 			}
-
-			if !isInsertMode && r.screenType == inputScreen && r.joinInput.input.InputModel.Focused() {
-				isInsertMode = true
-			}
-
-			if !isInsertMode {
-				r.screenType = helpScreen
-				r.joinInput.blur()
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Blur()
-				}
-				return r, nil
-			}
+			return r, nil
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.Escape) {
@@ -740,6 +739,11 @@ func (r *Root) View() tea.View {
 	v := tea.NewView(r.renderView())
 	v.AltScreen = true
 	v.WindowTitle = "Chatuino"
+
+	if r.dependencies.UserConfig.Settings.Mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+
 	return v
 }
 

@@ -156,6 +156,16 @@ func (c *chatInput) IsAcceptSuggestionKey(msg tea.KeyPressMsg) bool {
 	return key.Matches(msg, c.input.KeyMap.AcceptSuggestion)
 }
 
+// SetSuggestionKeyMap applies the user-configured suggestion bindings to the
+// composer.
+func (c *chatInput) SetSuggestionKeyMap(keymap save.KeyMap) {
+	c.input.KeyMap = component.KeyMap{
+		AcceptSuggestion: keymap.AcceptSuggestion,
+		NextSuggestion:   keymap.NextSuggestion,
+		PrevSuggestion:   keymap.PrevSuggestion,
+	}
+}
+
 func (c *chatInput) SetSuggestions(suggestions []string) {
 	c.input.SetSuggestions(suggestions)
 }

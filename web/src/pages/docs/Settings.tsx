@@ -36,6 +36,7 @@ export default function Settings() {
         </h2>
         <pre class="overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
           <code class="text-nord4">{`vertical_tab_list: false # Display tabs vertically instead of horizontally
+mouse: true # Capture mouse clicks and wheel events; set false for native text selection; Default: true
 moderation:
   store_chat_logs: true # Store chat logs in a SQLite database; Default: false
 
@@ -196,6 +197,61 @@ custom_commands:
         <pre class="overflow-x-auto rounded-lg border border-nord2 bg-nord1 p-4 text-sm">
           <code class="text-nord4">NO_COLOR=1 chatuino</code>
         </pre>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="mb-4 text-xl font-semibold text-nord4">Mouse</h2>
+        <p class="mb-4 text-nord4">
+          Mouse support is enabled by default. Set{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            mouse: false
+          </code>{" "}
+          to disable mouse capture and keep the terminal's native text
+          selection.
+        </p>
+        <div class="mb-4 overflow-x-auto rounded-lg border border-nord2">
+          <table class="w-full text-left text-sm">
+            <thead class="border-b border-nord2 bg-nord1">
+              <tr>
+                <th class="px-4 py-2 font-semibold text-nord8">Interaction</th>
+                <th class="px-4 py-2 font-semibold text-nord8">Action</th>
+              </tr>
+            </thead>
+            <tbody class="text-nord4">
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">Left-click a tab</td>
+                <td class="px-4 py-2">Switch to that tab</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">Left-click a chat message</td>
+                <td class="px-4 py-2">
+                  Select it for copy, reply, or timeout shortcuts
+                </td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">Double-click a chat message</td>
+                <td class="px-4 py-2">Inspect the message author</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">Left-click the message input</td>
+                <td class="px-4 py-2">Start typing</td>
+              </tr>
+              <tr class="border-b border-nord2">
+                <td class="px-4 py-2">Wheel over chat</td>
+                <td class="px-4 py-2">Scroll the chat</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2">Wheel over the vertical tab list</td>
+                <td class="px-4 py-2">Switch to the previous/next tab</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-sm text-nord4">
+          Mouse capture takes over click and drag in the terminal. Hold{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">Shift</code>{" "}
+          while dragging to use the terminal's native text selection.
+        </p>
       </section>
 
       <section class="mb-12">

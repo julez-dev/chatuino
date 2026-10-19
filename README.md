@@ -40,6 +40,7 @@ The project draws inspiration from [Chatterino](https://github.com/Chatterino/ch
 - Moderator tools with quick timeout shortcuts
 - Custom commands with templating support
 - Theming and configurable keybinds
+- Mouse support for tabs, chat scrolling, and message selection
 - Self-hostable server component
 
 For the full list, see [Features](doc/FEATURES.md).

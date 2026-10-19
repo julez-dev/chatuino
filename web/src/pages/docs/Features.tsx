@@ -7,7 +7,7 @@ export default function Features() {
       <Title>Features - Chatuino</Title>
       <Meta
         name="description"
-        content="Explore Chatuino features: account management, graphical emotes, 7TV/BTTV/FFZ support, user inspection, message logging, and more."
+        content="Explore Chatuino features: account management, graphical emotes, 7TV/BTTV/FFZ support, user inspection, message logging, mouse support, and more."
       />
       <Link rel="canonical" href="https://chatuino.net/docs/features" />
       <h1 class="mb-8 text-3xl font-bold text-nord4">
@@ -433,7 +433,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`}</code>
         </p>
       </section>
 
-      <section>
+      <section class="mb-12">
         <h2 class="mb-4 text-xl font-semibold text-nord4">Vertical Mode</h2>
         <p class="mb-4 text-nord4">
           Chatuino supports a vertical tab layout for users who prefer this
@@ -447,6 +447,39 @@ chatuino --tab notification --tab mention --tab user1@streamer1`}</code>
             loading="lazy"
           />
         </div>
+      </section>
+
+      <section>
+        <h2 class="mb-4 text-xl font-semibold text-nord4">Mouse</h2>
+        <p class="mb-4 text-nord4">
+          Mouse support is enabled by default and can be disabled with{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            mouse: false
+          </code>{" "}
+          in{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            settings.yaml
+          </code>
+          .
+        </p>
+        <ul class="list-inside list-disc space-y-2 text-nord4">
+          <li>Click a tab to switch to it.</li>
+          <li>
+            Click a chat message to select it, then use copy, reply, or timeout
+            shortcuts.
+          </li>
+          <li>Double-click a chat message to inspect its author.</li>
+          <li>Click the message input to start typing.</li>
+          <li>Use the wheel to scroll chat.</li>
+          <li>
+            In vertical tab mode, the wheel switches to the previous/next tab.
+          </li>
+        </ul>
+        <p class="mt-4 text-sm text-nord4">
+          Mouse capture takes over click and drag in the terminal. Hold{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">Shift</code>{" "}
+          while dragging to use the terminal's native text selection.
+        </p>
       </section>
     </div>
   );

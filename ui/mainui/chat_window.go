@@ -243,6 +243,14 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.messageUp(1)
 				c.snapScroll()
 				return c, nil
+			case key.Matches(msg, c.deps.Keymap.PageUp):
+				c.pageUp()
+				c.snapScroll()
+				return c, nil
+			case key.Matches(msg, c.deps.Keymap.PageDown):
+				c.pageDown()
+				c.snapScroll()
+				return c, nil
 			case key.Matches(msg, c.deps.Keymap.GoToBottom):
 				c.moveToBottom()
 				c.snapScroll()
@@ -250,6 +258,17 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 			case key.Matches(msg, c.deps.Keymap.GoToTop):
 				c.moveToTop()
 				c.snapScroll()
+				return c, nil
+			case key.Matches(msg, c.deps.Keymap.CopyToClipboard):
+				_, entry := c.entryForCurrentCursor()
+				if entry == nil {
+					return c, nil
+				}
+
+				if text := c.clipboardText(entry); text != "" {
+					return c, tea.SetClipboard(text)
+				}
+
 				return c, nil
 			case key.Matches(msg, c.deps.Keymap.DumpChat):
 				c.debugDumpChat()
@@ -513,6 +532,121 @@ func (c *chatWindow) entryForCurrentCursor() (int, *chatEntry) {
 	}
 
 	return -1, nil
+}
+
+// entryAtLine returns the entry containing the given absolute rendered line.
+// When the line falls outside every entry, the closest entry is returned.
+func (c *chatWindow) entryAtLine(line int) (int, *chatEntry) {
+	active := c.activeEntries()
+	if len(active) == 0 {
+		return -1, nil
+	}
+
+	if line <= active[0].Position.CursorStart {
+		return 0, active[0]
+	}
+
+	last := active[len(active)-1]
+	if line >= last.Position.CursorEnd {
+		return len(active) - 1, last
+	}
+
+	lo, hi := 0, len(active)-1
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+		if active[mid].Position.CursorEnd < line {
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+
+	if lo >= len(active) {
+		lo = len(active) - 1
+	}
+
+	return lo, active[lo]
+}
+
+// selectEntry makes entry the selected message and moves the cursor to its
+// first line, keeping the viewport in sync.
+func (c *chatWindow) selectEntry(entry *chatEntry) {
+	if entry == nil {
+		return
+	}
+
+	for _, e := range c.entries {
+		e.Selected = false
+	}
+
+	entry.Selected = true
+	c.cursor = entry.Position.CursorStart
+	c.updatePort()
+}
+
+// moveSelectionByLines moves the selected message by n rendered lines, clamped
+// to the first/last message.
+func (c *chatWindow) moveSelectionByLines(n int) {
+	if len(c.activeEntries()) == 0 {
+		return
+	}
+
+	_, entry := c.entryAtLine(c.cursor + n)
+	c.selectEntry(entry)
+}
+
+func (c *chatWindow) pageUp() {
+	c.moveSelectionByLines(-max(1, c.height-1))
+}
+
+func (c *chatWindow) pageDown() {
+	c.moveSelectionByLines(max(1, c.height-1))
+}
+
+// scrollByLines scrolls the chat by n lines. Positive values move towards newer
+// messages, negative values towards older ones.
+func (c *chatWindow) scrollByLines(n int) {
+	c.moveSelectionByLines(n)
+}
+
+// viewportRenderStart returns the absolute line index of the first visible row.
+func (c *chatWindow) viewportRenderStart() int {
+	if !c.animating {
+		return c.lineStart
+	}
+
+	start := int(math.Round(c.smoothLineStart))
+	if start < 0 {
+		start = 0
+	}
+
+	if start+c.height > len(c.lines) {
+		start = max(0, len(c.lines)-c.height)
+	}
+
+	return start
+}
+
+// selectLine selects the entry containing the given absolute rendered line.
+func (c *chatWindow) selectLine(line int) {
+	_, entry := c.entryAtLine(line)
+	c.selectEntry(entry)
+	c.snapScroll()
+}
+
+// selectAtViewportRow selects the message rendered at the given row (zero-based
+// relative to the chat view).
+func (c *chatWindow) selectAtViewportRow(row int) {
+	if c.state == searchChatWindowState {
+		row-- // first row is the search input
+		if row < 0 || row >= c.height-1 {
+			return
+		}
+	} else if row < 0 || row >= c.height {
+		return
+	}
+
+	c.selectLine(c.viewportRenderStart() + row)
 }
 
 func (c *chatWindow) goToEntry(entry *chatEntry) {
@@ -838,6 +972,56 @@ func (c *chatWindow) setUserColorModifier(content string, modifier *messageConte
 		modifier.wordReplacements[stripped] = renderFn(stripped)
 		modifier.wordReplacements[word] = renderFn(word)
 	}
+}
+
+// clipboardText returns a plain-text representation of the entry suitable for
+// the system clipboard. Chat messages use their raw text so emote tokens and
+// links survive; alert events get a readable summary.
+func (c *chatWindow) clipboardText(entry *chatEntry) string {
+	if entry == nil {
+		return ""
+	}
+
+	switch msg := entry.Event.message.(type) {
+	case *twitchirc.PrivateMessage:
+		return strings.ReplaceAll(msg.Message, string(duplicateBypass), "")
+	case *twitchirc.AnnouncementMessage:
+		return fmt.Sprintf("%s: %s", msg.DisplayName, msg.Message)
+	case *twitchirc.SubMessage:
+		text := fmt.Sprintf("%s just subscribed with a %s subscription. (%d Months, %d Month Streak)",
+			msg.DisplayName, msg.SubPlan.String(), msg.CumulativeMonths, msg.StreakMonths)
+
+		if msg.Message != "" {
+			text += ": " + msg.Message
+		}
+
+		return text
+	case *twitchirc.SubGiftMessage:
+		return fmt.Sprintf("%s gifted a %s sub to %s. (%d Months)",
+			msg.DisplayName, msg.SubPlan.String(), msg.ReceiptDisplayName, msg.Months)
+	case *twitchirc.Notice:
+		return msg.Message
+	case *twitchirc.ClearMessage:
+		return "A message from " + msg.Login + " was removed."
+	case *twitchirc.ClearChat:
+		if msg.UserName == nil {
+			return "Clear chat prevented by Chatuino. Chat restored."
+		}
+
+		text := *msg.UserName
+
+		if msg.BanDuration != nil && *msg.BanDuration > 0 {
+			text += " was timed out for " + humanizeDuration(time.Duration(*msg.BanDuration)*time.Second)
+		} else {
+			text += " was permanently banned."
+		}
+
+		return text
+	case error:
+		return msg.Error()
+	}
+
+	return ""
 }
 
 func (c *chatWindow) messageToText(event chatEventMessage) []string {

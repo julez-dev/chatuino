@@ -114,6 +114,10 @@ type broadcastTab struct {
 	lastMessageSent           string
 	lastMessageSentAt         time.Time
 
+	// double-click tracking for chat messages
+	lastClickEntry *chatEntry
+	lastClickAt    time.Time
+
 	channel      string
 	channelID    string
 	channelLogin string
@@ -380,6 +384,8 @@ func (t *broadcastTab) Focus() {
 
 func (t *broadcastTab) Blur() {
 	t.focused = false
+	t.lastClickEntry = nil
+	t.lastClickAt = time.Time{}
 	// Leaving the tab disarms the reply, so it cannot be sent from another tab.
 	t.clearReplyTarget()
 
