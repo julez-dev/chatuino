@@ -330,6 +330,20 @@ func (t *broadcastTab) Channel() string {
 	return t.channelLogin
 }
 
+// Title is the header label: the channel as the user entered it.
+func (t *broadcastTab) Title() string {
+	return t.channel
+}
+
+// Identity is the account label shown next to the title.
+func (t *broadcastTab) Identity() string {
+	if t.account.IsAnonymous {
+		return "Anonymous"
+	}
+
+	return t.account.DisplayName
+}
+
 func (t *broadcastTab) ChannelID() string {
 	return t.channelID
 }

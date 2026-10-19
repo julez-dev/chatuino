@@ -189,6 +189,14 @@ func (m *mentionTab) ID() string {
 	return m.id
 }
 
+func (m *mentionTab) Title() string {
+	return "mentioned"
+}
+
+func (m *mentionTab) Identity() string {
+	return "all"
+}
+
 func (m *mentionTab) Focused() bool {
 	return m.focused
 }

@@ -27,18 +27,15 @@ func wheelDelta(msg tea.MouseWheelMsg) int {
 
 // activeTab returns the currently focused tab, or nil when none exists.
 func (r *Root) activeTab() tab {
-	if r.tabCursor < 0 || r.tabCursor >= len(r.tabs) {
-		return nil
-	}
-
-	return r.tabs[r.tabCursor]
+	tab, _ := r.tabs.Active()
+	return tab
 }
 
 // tabLocalCoords translates screen coordinates into coordinates relative to the
 // active tab's view. inTab is false when the cell belongs to the tab header.
 func (r *Root) tabLocalCoords(x, y int) (localX, localY int, inTab bool) {
 	if r.dependencies.UserConfig.Settings.VerticalTabList {
-		headerWidth := lipgloss.Width(r.header.View())
+		headerWidth := lipgloss.Width(r.header.View(r.tabs.Rows()))
 		if x < headerWidth {
 			return 0, 0, false
 		}
@@ -56,25 +53,9 @@ func (r *Root) tabLocalCoords(x, y int) (localX, localY int, inTab bool) {
 
 // switchToTab focuses the tab with the given id.
 func (r *Root) switchToTab(id string) tea.Cmd {
-	for i, t := range r.tabs {
-		if t.ID() != id {
-			continue
-		}
-
-		if i == r.tabCursor {
-			return nil
-		}
-
-		if r.tabCursor >= 0 && r.tabCursor < len(r.tabs) {
-			r.tabs[r.tabCursor].Blur()
-		}
-
-		r.tabCursor = i
-		r.header.SelectTab(id)
-		r.tabs[i].Focus()
-
-		return nil
-	}
+	// SetActive blurs the previous tab, focuses the new one and drops its
+	// notification flag; unknown ids are ignored.
+	r.tabs.SetActive(id)
 
 	return nil
 }
@@ -108,7 +89,7 @@ func (r *Root) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
 
 	localX, localY, inTab := r.tabLocalCoords(msg.X, msg.Y)
 	if !inTab {
-		if id, ok := r.header.TabAt(msg.X, msg.Y); ok {
+		if id, ok := r.header.TabAt(r.tabs.Rows(), msg.X, msg.Y); ok {
 			return r.switchToTab(id)
 		}
 

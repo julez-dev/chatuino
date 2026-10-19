@@ -144,6 +144,14 @@ func (l *liveNotificationTab) ID() string {
 	return l.id
 }
 
+func (l *liveNotificationTab) Title() string {
+	return "live notifications"
+}
+
+func (l *liveNotificationTab) Identity() string {
+	return "all"
+}
+
 func (l *liveNotificationTab) Focused() bool {
 	return l.focused
 }

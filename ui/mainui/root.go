@@ -17,10 +17,12 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
@@ -68,19 +70,22 @@ type tab interface {
 	SetSize(width, height int)
 	SetFullWidth(width int) // for status bar in vertical tab mode
 	Kind() TabKind
+	Title() string    // header label, e.g. the channel name
+	Identity() string // account label shown next to the title
 }
 
-type header interface {
-	Init() tea.Cmd
-	Update(tea.Msg) (header, tea.Cmd)
-	View() string
-	AddTab(channel, identity string) (string, tea.Cmd)
-	RemoveTab(id string)
-	SelectTab(id string)
-	Resize(width, height int)
-	MinWidth() int
-	// TabAt returns the id of the tab rendered at the given cell, if any.
-	TabAt(x, y int) (string, bool)
+// tabRow projects a tab into the registry's rendering row, so headers never look
+// at tabs themselves.
+func tabRow(t tab) nav.Row {
+	return nav.Row{
+		Title:    t.Title(),
+		Identity: t.Identity(),
+	}
+}
+
+// updateTab adapts the self-typed tab.Update to the registry's updater shape.
+func updateTab(t tab, msg tea.Msg) (tab, tea.Cmd) {
+	return t.Update(msg)
 }
 
 type activeScreen int
@@ -130,8 +135,7 @@ type Root struct {
 	quickJoinInput *quickJoin
 	help           *help
 
-	tabCursor          int
-	tabs               []tab
+	tabs               *nav.Registry[tab]
 	channelSuggestions []string // cached for broadcast to new tabs
 	updateInfo         *UpdateInfo
 }
@@ -157,6 +161,7 @@ func NewUI(
 		width:             10,
 		height:            10,
 		userIDDisplayName: &sync.Map{},
+		tabs:              nav.NewRegistry(tabRow),
 
 		// components
 		splash: splash{
@@ -387,12 +392,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.screenType = mainScreen
 
 		nTab, cmd := r.createTab(msg.account, msg.channel, msg.tabKind)
-		nTab.Focus()
 
-		r.tabs = append(r.tabs, nTab)
-
-		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-		r.header.SelectTab(nTab.ID())
+		r.tabs.Add(nTab)
+		r.tabs.SetActive(nTab.ID())
 
 		r.joinInput.blur()
 		r.joinInput.input.SetSuggestions(nil) // free up some memory
@@ -443,10 +445,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, tea.Raw(errEvt.prepareCommand))
 				errEvt.prepareCommand = ""
 			}
-			for i := range r.tabs {
-				r.tabs[i], cmd = r.tabs[i].Update(errEvt)
-				cmds = append(cmds, cmd)
-			}
+			cmds = append(cmds, r.tabs.UpdateAll(errEvt, updateTab))
 			return r, tea.Batch(cmds...)
 		}
 
@@ -461,10 +460,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, tea.Raw(evt.prepareCommand))
 			evt.prepareCommand = ""
 		}
-		for i := range r.tabs {
-			r.tabs[i], cmd = r.tabs[i].Update(evt)
-			cmds = append(cmds, cmd)
-		}
+		cmds = append(cmds, r.tabs.UpdateAll(evt, updateTab))
 		return r, tea.Batch(cmds...)
 	case chatEventMessage:
 		// Handle locally-generated chat events (e.g., from recent messages)
@@ -472,14 +468,15 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, tea.Raw(msg.prepareCommand))
 			msg.prepareCommand = ""
 		}
-		for i := range r.tabs {
-			if msg.tabID != "" && msg.tabID != r.tabs[i].ID() {
-				continue
+		if msg.tabID != "" {
+			if cmd, ok := r.tabs.UpdateOne(msg.tabID, msg, updateTab); ok {
+				cmds = append(cmds, cmd)
 			}
 
-			r.tabs[i], cmd = r.tabs[i].Update(msg)
-			cmds = append(cmds, cmd)
+			return r, tea.Batch(cmds...)
 		}
+
+		cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
 		return r, tea.Batch(cmds...)
 	case requestLocalMessageHandleMessage:
 		return r, func() tea.Msg {
@@ -530,17 +527,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.dependencies.Keymap.Help) && !r.isTyping() {
 			r.screenType = helpScreen
 			r.joinInput.blur()
-			if len(r.tabs) > r.tabCursor {
-				r.tabs[r.tabCursor].Blur()
-			}
+			r.tabs.BlurActive()
 			return r, nil
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.Escape) {
 			if r.screenType == inputScreen || r.screenType == helpScreen || r.screenType == quickJoinScreen {
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Focus()
-				}
+				r.tabs.FocusActive()
 
 				r.joinInput.blur()
 				r.quickJoinInput.blur()
@@ -568,17 +561,15 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.dependencies.Keymap.Create) {
 			switch r.screenType {
 			case mainScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Blur()
-				}
+				r.tabs.BlurActive()
 
 				r.screenType = inputScreen
 				r.joinInput = newJoin(r.width, r.dependencies)
-				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
+				hasMentionTab := r.tabs.Any(func(t tab) bool {
 					return t.Kind() == MentionTabKind
 				})
 
-				hasNotificationTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
+				hasNotificationTab := r.tabs.Any(func(t tab) bool {
 					return t.Kind() == LiveNotificationTabKind
 				})
 
@@ -597,9 +588,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.joinInput.focus()
 				return r, r.joinInput.Init()
 			case inputScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Focus()
-				}
+				r.tabs.FocusActive()
 
 				r.joinInput.blur()
 				r.screenType = mainScreen
@@ -611,18 +600,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.dependencies.Keymap.QuickJoin) {
 			switch r.screenType {
 			case mainScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Blur()
-				}
+				r.tabs.BlurActive()
 
 				r.screenType = quickJoinScreen
 				r.quickJoinInput = newQuickJoin(r.width, r.dependencies)
 				r.quickJoinInput.focus()
 				return r, r.quickJoinInput.Init()
 			case quickJoinScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Focus()
-				}
+				r.tabs.FocusActive()
 
 				r.quickJoinInput.blur()
 				r.screenType = mainScreen
@@ -634,8 +619,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if r.screenType == mainScreen {
 
 			if key.Matches(msg, r.dependencies.Keymap.Next) {
-				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
-					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
+				if active, ok := r.tabs.Active(); ok && (active.State() == insertMode || active.State() == userInspectInsertMode) {
+					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
 
@@ -643,8 +628,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.dependencies.Keymap.Previous) {
-				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
-					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
+				if active, ok := r.tabs.Active(); ok && (active.State() == insertMode || active.State() == userInspectInsertMode) {
+					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
 
@@ -652,8 +637,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.dependencies.Keymap.CloseTab) {
-				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode || r.tabs[r.tabCursor].IsSearching()) {
-					currentTab := r.tabs[r.tabCursor]
+				if active, ok := r.tabs.Active(); ok && !(active.State() == insertMode || active.State() == userInspectInsertMode || active.IsSearching()) {
+					currentTab := active
 					r.closeTab()
 
 					// if tab was connected to IRC, disconnect it
@@ -661,13 +646,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
-						hasTabsSameAccountAndChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
+						hasTabsSameAccountAndChannel := r.tabs.Any(func(t tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.AccountID() == currentTab.AccountID() &&
 								t.ChannelID() == currentTab.ChannelID()
 						})
 
-						hasTabsSameChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
+						hasTabsSameChannel := r.tabs.Any(func(t tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.ChannelID() == currentTab.ChannelID()
 						})
@@ -709,13 +694,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	r.header, cmd = r.header.Update(msg)
-	cmds = append(cmds, cmd)
-
-	for i, tab := range r.tabs {
-		r.tabs[i], cmd = tab.Update(msg)
-		cmds = append(cmds, cmd)
+	if req, ok := msg.(requestNotificationIconMessage); ok {
+		r.tabs.Notify(req.tabID)
 	}
+
+	cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
 
 	if r.screenType == inputScreen {
 		r.joinInput, cmd = r.joinInput.Update(msg)
@@ -770,22 +753,21 @@ func (r *Root) renderView() string {
 // screenContent renders the current screen behind any modal: the header plus the
 // active tab, or the splash when no tab is open.
 func (r *Root) screenContent() string {
-	if len(r.tabs) == 0 || r.tabCursor >= len(r.tabs) {
+	tab, ok := r.tabs.Active()
+	if !ok {
 		return r.splash.View()
 	}
 
-	tab := r.tabs[r.tabCursor]
-
 	if r.dependencies.UserConfig.Settings.VerticalTabList {
 		// In vertical mode, render status bar separately at full width
-		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), tab.ViewWithoutStatusBar())
+		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(r.tabs.Rows()), tab.ViewWithoutStatusBar())
 		if statusBar := tab.StatusBarView(); statusBar != "" {
 			return mainContent + "\n" + statusBar
 		}
 		return mainContent
 	}
 
-	return r.header.View() + "\n" + tab.View()
+	return r.header.View(r.tabs.Rows()) + "\n" + tab.View()
 }
 
 // dimmedScreenBackground renders screenContent faint, for use behind a modal.
@@ -806,7 +788,7 @@ func (r *Root) IsDetached() bool {
 func (r *Root) TakeStateSnapshot() save.AppState {
 	appState := save.AppState{}
 
-	for _, t := range r.tabs {
+	for _, t := range r.tabs.All() {
 		tabState := save.TabState{
 			IsFocused:  t.Focused(),
 			Channel:    t.Channel(),
@@ -846,7 +828,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	openBroadcasts := map[string]struct{}{}
 	channelIDNames := map[string]string{}
 
-	for _, tab := range r.tabs {
+	for _, tab := range r.tabs.All() {
 		if tab.Kind() != BroadcastTabKind {
 			continue
 		}
@@ -928,60 +910,46 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 }
 
 func (r *Root) handlePolledStreamInfo(polled polledStreamInfoMessage) tea.Cmd {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
+	var cmds []tea.Cmd
 
 	for _, info := range polled.streamInfos {
-		for it, tab := range r.tabs {
-			if tab.IsDataLoaded() {
-				r.tabs[it], cmd = tab.Update(info)
-				cmds = append(cmds, cmd)
+		cmds = append(cmds, r.tabs.UpdateAll(info, func(t tab, msg tea.Msg) (tab, tea.Cmd) {
+			if !t.IsDataLoaded() {
+				return t, nil
 			}
-		}
+
+			return t.Update(msg)
+		}))
 	}
 
 	cmds = append(cmds, r.tickPollStreamInfos())
 	return tea.Batch(cmds...)
 }
 
+// createTab builds a tab for the given kind. It does not add the tab to the
+// registry: the caller owns that, so tab creation and tab activation stay
+// separate decisions.
 func (r *Root) createTab(account save.Account, channel string, kind TabKind) (tab, tea.Cmd) {
+	headerHeight := r.getHeaderHeight()
+
 	switch kind {
 	case BroadcastTabKind:
-		identity := account.DisplayName
-
-		if account.IsAnonymous {
-			identity = "Anonymous"
-		}
-
-		id, cmd := r.header.AddTab(channel, identity)
-
-		headerHeight := r.getHeaderHeight()
-
-		nTab := newBroadcastTab(id, r.width, r.height-headerHeight, account, channel, r.dependencies)
+		nTab := newBroadcastTab(uuid.NewString(), r.width, r.height-headerHeight, account, channel, r.dependencies)
 		nTab.updateInfo = r.updateInfo
-		return nTab, cmd
+		return nTab, nil
 	case MentionTabKind:
-		id, cmd := r.header.AddTab("mentioned", "all")
-		headerHeight := r.getHeaderHeight()
-		nTab := newMentionTab(id, r.width, r.height-headerHeight, r.dependencies)
-		return nTab, cmd
+		nTab := newMentionTab(uuid.NewString(), r.width, r.height-headerHeight, r.dependencies)
+		return nTab, nil
 	case LiveNotificationTabKind:
-		id, cmd := r.header.AddTab("live notifications", "all")
-		headerHeight := r.getHeaderHeight()
-		nTab := newLiveNotificationTab(id, r.width, r.height-headerHeight, r.dependencies)
-		return nTab, cmd
+		nTab := newLiveNotificationTab(uuid.NewString(), r.width, r.height-headerHeight, r.dependencies)
+		return nTab, nil
 	}
-
-	r.handleResize()
 
 	return nil, nil
 }
 
 func (r *Root) getHeaderHeight() int {
-	headerView := r.header.View()
-	return lipgloss.Height(headerView)
+	return lipgloss.Height(r.header.View(r.tabs.Rows()))
 }
 
 func (r *Root) handleResize() {
@@ -997,73 +965,41 @@ func (r *Root) handleResize() {
 	r.help.handleResize(r.width, r.height)
 
 	if r.dependencies.UserConfig.Settings.VerticalTabList {
-		minWidth := r.header.MinWidth()
+		rows := r.tabs.Rows()
+		minWidth := r.header.MinWidth(rows)
 		r.header.Resize(minWidth, r.height)
 
-		headerWidth := lipgloss.Width(r.header.View())
-		headerHeight := lipgloss.Height(r.header.View())
+		headerView := r.header.View(rows)
+		headerWidth := lipgloss.Width(headerView)
+		headerHeight := lipgloss.Height(headerView)
 
-		for i := range r.tabs {
+		for _, t := range r.tabs.All() {
 			// Tab height matches header height (status bar is rendered separately below both)
-			r.tabs[i].SetSize(r.width-headerWidth, headerHeight)
-			r.tabs[i].SetFullWidth(r.width) // for status bar to span full width
-			r.tabs[i].HandleResize()
+			t.SetSize(r.width-headerWidth, headerHeight)
+			t.SetFullWidth(r.width) // for status bar to span full width
+			t.HandleResize()
 		}
 
 		return
-	} else {
-		r.header.Resize(r.width-3, 0) // one placeholder space foreach side
 	}
+
+	r.header.Resize(r.width-3, 0) // one placeholder space foreach side
 
 	// tab
 	headerHeight := r.getHeaderHeight()
 
-	for i := range r.tabs {
-		r.tabs[i].SetSize(r.width, r.height-headerHeight)
-		r.tabs[i].HandleResize()
+	for _, t := range r.tabs.All() {
+		t.SetSize(r.width, r.height-headerHeight)
+		t.HandleResize()
 	}
 }
 
 func (r *Root) nextTab() {
-	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
-		r.tabs[r.tabCursor].Blur()
-	}
-
-	newIndex := r.tabCursor + 1
-
-	if newIndex >= len(r.tabs) {
-		newIndex = 0
-	}
-
-	r.tabCursor = newIndex
-
-	if len(r.tabs) > r.tabCursor {
-		r.header.SelectTab(r.tabs[r.tabCursor].ID())
-		r.tabs[r.tabCursor].Focus()
-	}
+	r.tabs.Next()
 }
 
 func (r *Root) prevTab() {
-	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
-		r.tabs[r.tabCursor].Blur()
-	}
-
-	newIndex := r.tabCursor - 1
-
-	if newIndex < 0 {
-		newIndex = len(r.tabs) - 1
-
-		if newIndex < 0 {
-			newIndex = 0
-		}
-	}
-
-	r.tabCursor = newIndex
-
-	if len(r.tabs) > r.tabCursor {
-		r.header.SelectTab(r.tabs[r.tabCursor].ID())
-		r.tabs[r.tabCursor].Focus()
-	}
+	r.tabs.Prev()
 }
 
 func (r *Root) checkVersionCommand() tea.Cmd {
@@ -1089,7 +1025,7 @@ func (r *Root) handleVersionCheck(msg versionCheckMessage) tea.Cmd {
 	r.updateInfo = &msg.info
 	r.splash.updateInfo = &msg.info
 
-	for _, t := range r.tabs {
+	for _, t := range r.tabs.All() {
 		if bt, ok := t.(*broadcastTab); ok {
 			bt.updateInfo = r.updateInfo
 		}
@@ -1148,29 +1084,25 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			newTab, cmd = r.createTab(save.Account{}, "", LiveNotificationTabKind)
 		}
 
-		cmds = append(cmds, cmd)
-
-		if t.IsFocused {
-			newTab.Focus()
+		if newTab == nil {
+			continue
 		}
 
-		r.tabs = append(r.tabs, newTab)
+		cmds = append(cmds, cmd)
+		r.tabs.Add(newTab)
 
 		if t.IsFocused {
 			hasActiveTab = true
-			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-			r.header.SelectTab(newTab.ID())
+			r.tabs.SetActive(newTab.ID())
 		}
 		log.Logger.Info().Any("data", msg.ttvUsers).Msg("Initialized tab with user data")
 		cmds = append(cmds, newTab.InitWithUserData(msg.ttvUsers[t.Channel]))
 	}
 
-	// if for some reason there were tabs persisted but non tab has the focus flag set
+	// if for some reason there were tabs persisted but none has the focus flag set
 	// focus the first tab
-	if len(r.tabs) > 0 && !hasActiveTab {
-		r.header.SelectTab(r.tabs[0].ID())
-		r.tabCursor = 0
-		r.tabs[0].Focus()
+	if tabs := r.tabs.All(); len(tabs) > 0 && !hasActiveTab {
+		r.tabs.SetActive(tabs[0].ID())
 	}
 
 	r.handleResize()
@@ -1178,7 +1110,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	// cache and broadcast channel suggestions to all tabs
 	r.channelSuggestions = msg.channelSuggestions
 	if len(r.channelSuggestions) > 0 {
-		for _, t := range r.tabs {
+		for _, t := range r.tabs.All() {
 			suggestions := r.channelSuggestions
 			tabID := t.ID()
 			cmds = append(cmds, func() tea.Msg {
@@ -1413,18 +1345,16 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 }
 
 func (r *Root) closeTab() {
-	if len(r.tabs) > r.tabCursor {
-		tabID := r.tabs[r.tabCursor].ID()
-		if r.tabs[r.tabCursor].Kind() == BroadcastTabKind {
-			r.tabs[r.tabCursor].(*broadcastTab).close()
-		}
-		r.header.RemoveTab(tabID)
-		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
-			return t.ID() == tabID
-		})
-
-		r.tabCursor--
-		r.nextTab()
-		r.handleResize()
+	active, ok := r.tabs.Active()
+	if !ok {
+		return
 	}
+
+	if active.Kind() == BroadcastTabKind {
+		active.(*broadcastTab).close()
+	}
+
+	// Remove activates the neighbour, so no cursor bookkeeping is needed here.
+	r.tabs.Remove(active.ID())
+	r.handleResize()
 }

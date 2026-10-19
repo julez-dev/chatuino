@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,17 +47,25 @@ func selectedLine(t *testing.T, c *chatWindow) int {
 	return entry.Position.CursorStart
 }
 
+// headerRows builds the registry projection the headers render. active is the
+// index of the active row, or -1 for none.
+func headerRows(active int, names ...string) []nav.Row {
+	rows := make([]nav.Row, len(names))
+
+	for i, name := range names {
+		rows[i] = nav.Row{ID: name, Title: name, Identity: "me", Active: i == active}
+	}
+
+	return rows
+}
+
 func TestHorizontalTabHeader_TabAt(t *testing.T) {
 	t.Parallel()
 
 	h := newHorizontalTabHeader(80, newTestDeps())
+	rows := headerRows(1, "alpha", "beta", "gamma")
 
-	alpha, _ := h.AddTab("alpha", "me")
-	beta, _ := h.AddTab("beta", "me")
-	gamma, _ := h.AddTab("gamma", "me")
-	h.SelectTab(beta)
-
-	h.View() // builds the hit spans
+	h.View(rows) // render once so the layout is exercised before hit-testing
 
 	tests := []struct {
 		name string
@@ -64,9 +73,9 @@ func TestHorizontalTabHeader_TabAt(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{"first tab", 4, 1, alpha, true},
-		{"second tab", 19, 0, beta, true},
-		{"third tab", 33, 2, gamma, true},
+		{"first tab", 4, 1, "alpha", true},
+		{"second tab", 19, 0, "beta", true},
+		{"third tab", 33, 2, "gamma", true},
 		{"left border", 0, 1, "", false},
 		{"outside rows", 4, 3, "", false},
 		{"beyond tabs", 70, 1, "", false},
@@ -76,38 +85,34 @@ func TestHorizontalTabHeader_TabAt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := h.TabAt(tt.x, tt.y)
+			got, ok := h.TabAt(rows, tt.x, tt.y)
 			require.Equal(t, tt.ok, ok)
 			require.Equal(t, tt.want, got)
 		})
 	}
 }
 
-func TestHorizontalTabHeader_TabAtRebuildsAfterAdd(t *testing.T) {
+// TabAt is a pure function of the rows it is given: the header keeps no cached
+// layout, so a changed projection is picked up immediately.
+func TestHorizontalTabHeader_TabAtReflectsRows(t *testing.T) {
 	t.Parallel()
 
 	h := newHorizontalTabHeader(80, newTestDeps())
-	h.AddTab("alpha", "me")
-	h.View()
+	h.View(headerRows(0, "alpha"))
 
-	// Adding a tab invalidates the cached spans; TabAt must recompute them.
-	beta, _ := h.AddTab("beta", "me")
+	rows := headerRows(1, "alpha", "beta")
 
-	got, ok := h.TabAt(19, 1)
+	got, ok := h.TabAt(rows, 19, 1)
 	require.True(t, ok)
-	require.Equal(t, beta, got)
+	require.Equal(t, "beta", got)
 }
 
 func TestVerticalTabHeader_TabAt(t *testing.T) {
 	t.Parallel()
 
 	v := newVerticalTabHeader(30, 10, newTestDeps())
-
-	alpha, _ := v.AddTab("alpha", "me")
-	beta, _ := v.AddTab("beta", "me")
-	gamma, _ := v.AddTab("gamma", "me")
-	v.SelectTab(beta)
-	v.View()
+	rows := headerRows(1, "alpha", "beta", "gamma")
+	v.View(rows)
 
 	tests := []struct {
 		name string
@@ -115,9 +120,9 @@ func TestVerticalTabHeader_TabAt(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{"first tab", 2, 1, alpha, true},
-		{"second tab", 2, 2, beta, true},
-		{"third tab", 2, 3, gamma, true},
+		{"first tab", 2, 1, "alpha", true},
+		{"second tab", 2, 2, "beta", true},
+		{"third tab", 2, 3, "gamma", true},
 		{"top border", 2, 0, "", false},
 		{"bottom border", 2, 4, "", false},
 		{"outside width", 99, 1, "", false},
@@ -127,7 +132,7 @@ func TestVerticalTabHeader_TabAt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := v.TabAt(tt.x, tt.y)
+			got, ok := v.TabAt(rows, tt.x, tt.y)
 			require.Equal(t, tt.ok, ok)
 			require.Equal(t, tt.want, got)
 		})
@@ -139,22 +144,21 @@ func TestVerticalTabHeader_TabAtPaged(t *testing.T) {
 
 	v := newVerticalTabHeader(30, 6, newTestDeps())
 
-	ids := make([]string, 0, 10)
+	names := make([]string, 0, 10)
 	for i := 0; i < 10; i++ {
-		id, _ := v.AddTab(fmt.Sprintf("c%d", i), "me")
-		ids = append(ids, id)
+		names = append(names, fmt.Sprintf("c%d", i))
 	}
 
-	v.SelectTab(ids[7])
-	v.View()
+	rows := headerRows(7, names...)
+	v.View(rows)
 
 	// Selecting item 7 scrolls to the page starting at index 6.
 	require.Equal(t, 6, v.list.Paginator.Page*v.list.Paginator.PerPage)
 
 	for row := 1; row <= v.list.Paginator.PerPage; row++ {
-		got, ok := v.TabAt(2, row)
+		got, ok := v.TabAt(rows, 2, row)
 		require.True(t, ok)
-		require.Equal(t, ids[5+row], got)
+		require.Equal(t, names[5+row], got)
 	}
 }
 
