@@ -63,12 +63,11 @@ func (r *Root) switchToTab(id string) tea.Cmd {
 // isTyping reports whether a text input (composer, modal, or chat search) is
 // currently capturing printable characters.
 func (r *Root) isTyping() bool {
-	if r.screenType == inputScreen && r.joinInput.input.InputModel.Focused() {
-		return true
-	}
-
-	if r.screenType == quickJoinScreen {
-		return true
+	// A modal owns the keyboard while it is open, so it is the only thing that
+	// can be capturing text.
+	if top, ok := r.stack.Top(); ok {
+		capturer, ok := top.(textCapturer)
+		return ok && capturer.CapturesText()
 	}
 
 	if t := r.activeTab(); t != nil {
@@ -83,7 +82,8 @@ func (r *Root) isTyping() bool {
 
 // handleMouseClick routes a left click to the tab header or the active tab.
 func (r *Root) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
-	if msg.Button != tea.MouseLeft || !r.hasLoadedSession || r.screenType != mainScreen {
+	// Modals do not take mouse clicks; they are keyboard driven.
+	if msg.Button != tea.MouseLeft || !r.hasLoadedSession || r.stack.Len() > 0 {
 		return nil
 	}
 
@@ -111,14 +111,14 @@ func (r *Root) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 		return nil
 	}
 
-	switch r.screenType {
-	case helpScreen:
-		var cmd tea.Cmd
-		r.help, cmd = r.help.Update(msg)
-		return cmd
-	case mainScreen:
-		// handled below
-	default:
+	if r.stack.Len() > 0 {
+		// Only screens that declare wheel scrolling consume the event; the rest
+		// swallow it so nothing scrolls behind the modal.
+		top, _ := r.stack.Top()
+		if _, scrolls := top.(wheelScroller); scrolls {
+			return r.stack.Update(msg)
+		}
+
 		return nil
 	}
 

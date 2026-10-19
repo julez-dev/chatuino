@@ -16,6 +16,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/rs/zerolog/log"
 )
 
@@ -234,7 +235,7 @@ func (j *join) Init() tea.Cmd {
 	)
 }
 
-func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
+func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -504,6 +505,26 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 	c.width = calcModalWidth(parentWidth)
 	c.height = 0
 }
+
+// Screen implementation. The join modal overlays the tab view and owns the
+// keyboard while it is on the stack; the stack drives focus through Appeared and
+// Disappeared instead of every caller remembering to focus and blur it.
+
+func (c *join) OverlaysBackground() bool { return true }
+
+func (c *join) Route() string { return joinRoute }
+
+func (c *join) Appeared() tea.Cmd {
+	c.focus()
+	return c.Init()
+}
+
+func (c *join) Disappeared() { c.blur() }
+
+func (c *join) Resize(width, height int) { c.handleResize(width, height) }
+
+// CapturesText reports whether printable keys belong to this screen's input.
+func (c *join) CapturesText() bool { return c.input.InputModel.Focused() }
 
 func (c *join) setTabOptions(kinds ...TabKind) {
 	var items []list.Item

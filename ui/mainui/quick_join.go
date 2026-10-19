@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/rs/zerolog/log"
 )
 
@@ -182,7 +183,7 @@ func (q *quickJoin) Init() tea.Cmd {
 	)
 }
 
-func (q *quickJoin) Update(msg tea.Msg) (*quickJoin, tea.Cmd) {
+func (q *quickJoin) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case setQuickJoinAccountsMessage:
 		q.accounts = msg.accounts
@@ -593,6 +594,22 @@ func (q *quickJoin) focus() {
 func (q *quickJoin) blur() {
 	q.focused = false
 }
+
+func (q *quickJoin) OverlaysBackground() bool { return true }
+
+func (q *quickJoin) Route() string { return quickJoinRoute }
+
+func (q *quickJoin) Appeared() tea.Cmd {
+	q.focus()
+	return q.Init()
+}
+
+func (q *quickJoin) Disappeared() { q.blur() }
+
+func (q *quickJoin) Resize(width, height int) { q.handleResize(width, height) }
+
+// CapturesText reports whether printable keys belong to this screen's filter input.
+func (q *quickJoin) CapturesText() bool { return true }
 
 func (q *quickJoin) handleResize(parentWidth, parentHeight int) {
 	q.width = calcModalWidth(parentWidth)

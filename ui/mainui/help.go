@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/ui/nav"
 )
 
 type helpSection struct {
@@ -95,7 +96,7 @@ func (h *help) Init() tea.Cmd {
 	return nil
 }
 
-func (h *help) Update(msg tea.Msg) (*help, tea.Cmd) {
+func (h *help) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	var cmd tea.Cmd
 	h.port, cmd = h.port.Update(msg)
 	return h, cmd
@@ -104,6 +105,18 @@ func (h *help) Update(msg tea.Msg) (*help, tea.Cmd) {
 func (h *help) View() string {
 	return h.port.View()
 }
+
+// Screen implementation. Help replaces the view instead of overlaying it and
+// never captures text, so '?' keeps toggling it from the chat view.
+
+func (h *help) OverlaysBackground() bool { return false }
+
+func (h *help) Route() string { return helpRoute }
+
+func (h *help) Resize(width, height int) { h.handleResize(width, height) }
+
+// scrollsOnWheel marks this screen as consuming mouse wheel messages.
+func (h *help) scrollsOnWheel() {}
 
 func (h *help) handleResize(width, height int) {
 	h.port.SetWidth(width)

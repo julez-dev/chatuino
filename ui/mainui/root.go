@@ -88,13 +88,12 @@ func updateTab(t tab, msg tea.Msg) (tab, tea.Cmd) {
 	return t.Update(msg)
 }
 
-type activeScreen int
-
+// Modal routes. Root compares against these to toggle a modal instead of
+// type-asserting on concrete screen types.
 const (
-	mainScreen activeScreen = iota
-	inputScreen
-	quickJoinScreen
-	helpScreen
+	joinRoute      = "join"
+	quickJoinRoute = "quick-join"
+	helpRoute      = "help"
 )
 
 type ircConnectionError struct {
@@ -119,7 +118,6 @@ type Root struct {
 	hasLoadedSession bool
 	isDetached       bool           // when true, state is not loaded from or saved to disk
 	initialState     *save.AppState // when non-nil, overrides persisted state
-	screenType       activeScreen
 
 	userIDDisplayName *sync.Map
 
@@ -129,11 +127,11 @@ type Root struct {
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
 	// components
-	splash         splash
-	header         header
-	joinInput      *join
-	quickJoinInput *quickJoin
-	help           *help
+	splash splash
+	header header
+	// stack owns the modal screens layered over the tab view; the tab view
+	// itself is the base and is rendered by screenContent.
+	stack *nav.Stack
 
 	tabs               *nav.Registry[tab]
 	channelSuggestions []string // cached for broadcast to new tabs
@@ -155,7 +153,7 @@ func NewUI(
 		header = newHorizontalTabHeader(10, dependencies)
 	}
 
-	return &Root{
+	r := &Root{
 		initialState:      initialState,
 		dependencies:      dependencies,
 		width:             10,
@@ -169,13 +167,18 @@ func NewUI(
 			userConfiguration: dependencies.UserConfig,
 			spinner:           spinner.New(spinner.WithSpinner(loadingSpinner)),
 		},
-		header:         header,
-		help:           newHelp(10, 10, dependencies),
-		joinInput:      newJoin(10, dependencies),
-		quickJoinInput: newQuickJoin(10, dependencies),
+		header: header,
 
 		messageLoggerChan: messageLoggerChan,
 	}
+
+	// Modals composite over the tab view, which stays visible but dimmed behind
+	// them. The base view is a function so it always renders current state.
+	r.stack = nav.NewStack(r.screenContent, func(fg, bg string) string {
+		return centerOverlay(fg, lipgloss.NewStyle().Faint(true).Render(bg))
+	})
+
+	return r
 }
 
 func (r *Root) Init() tea.Cmd {
@@ -389,16 +392,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
 	case joinChannelMessage:
-		r.screenType = mainScreen
+		// Close whichever modal asked for the join. Pop() blurs it through its
+		// Disappeared hook and drops the screen, so its state is collected.
+		r.stack.Pop()
 
 		nTab, cmd := r.createTab(msg.account, msg.channel, msg.tabKind)
 
 		r.tabs.Add(nTab)
 		r.tabs.SetActive(nTab.ID())
-
-		r.joinInput.blur()
-		r.joinInput.input.SetSuggestions(nil) // free up some memory
-		r.quickJoinInput.blur()
 
 		r.handleResize()
 
@@ -494,10 +495,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.Sequence(batched...))
 		return r, tea.Batch(cmds...)
 	case polledStreamInfoMessage:
-		if r.screenType == quickJoinScreen {
-			r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
-			cmds = append(cmds, cmd)
-		}
+		// The quick join modal shows live status for its channels. Screens that do
+		// not care ignore the message.
+		cmds = append(cmds, r.stack.Update(msg))
 		cmds = append(cmds, r.handlePolledStreamInfo(msg))
 		return r, tea.Batch(cmds...)
 	case appStateSaveMessage:
@@ -524,22 +524,16 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Help must not steal '?' while any text input (including chat search)
 		// is capturing printable characters.
-		if key.Matches(msg, r.dependencies.Keymap.Help) && !r.isTyping() {
-			r.screenType = helpScreen
-			r.joinInput.blur()
+		if key.Matches(msg, r.dependencies.Keymap.Help) && !r.isTyping() && r.stack.Len() == 0 {
 			r.tabs.BlurActive()
-			return r, nil
+			return r, r.stack.Push(newHelp(r.height, r.width, r.dependencies))
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.Escape) {
-			if r.screenType == inputScreen || r.screenType == helpScreen || r.screenType == quickJoinScreen {
+			if r.stack.Len() > 0 {
 				r.tabs.FocusActive()
 
-				r.joinInput.blur()
-				r.quickJoinInput.blur()
-				r.screenType = mainScreen
-
-				return r, nil
+				return r, r.stack.Pop()
 			}
 		}
 
@@ -559,64 +553,45 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.Create) {
-			switch r.screenType {
-			case mainScreen:
-				r.tabs.BlurActive()
-
-				r.screenType = inputScreen
-				r.joinInput = newJoin(r.width, r.dependencies)
-				hasMentionTab := r.tabs.Any(func(t tab) bool {
-					return t.Kind() == MentionTabKind
-				})
-
-				hasNotificationTab := r.tabs.Any(func(t tab) bool {
-					return t.Kind() == LiveNotificationTabKind
-				})
-
-				var validTabKinds []TabKind
-				validTabKinds = append(validTabKinds, BroadcastTabKind)
-
-				if !hasMentionTab {
-					validTabKinds = append(validTabKinds, MentionTabKind)
-				}
-
-				if !hasNotificationTab {
-					validTabKinds = append(validTabKinds, LiveNotificationTabKind)
-				}
-
-				r.joinInput.setTabOptions(validTabKinds...)
-				r.joinInput.focus()
-				return r, r.joinInput.Init()
-			case inputScreen:
+			// The key toggles the join modal.
+			if r.stack.Route() == joinRoute {
 				r.tabs.FocusActive()
-
-				r.joinInput.blur()
-				r.screenType = mainScreen
+				return r, r.stack.Pop()
 			}
 
-			return r, nil
+			if r.stack.Len() > 0 {
+				return r, nil
+			}
+
+			r.tabs.BlurActive()
+
+			joinInput := newJoin(r.width, r.dependencies)
+			joinInput.Resize(r.width, r.height)
+			joinInput.setTabOptions(r.availableTabKinds()...)
+
+			return r, r.stack.Push(joinInput)
 		}
 
 		if key.Matches(msg, r.dependencies.Keymap.QuickJoin) {
-			switch r.screenType {
-			case mainScreen:
-				r.tabs.BlurActive()
-
-				r.screenType = quickJoinScreen
-				r.quickJoinInput = newQuickJoin(r.width, r.dependencies)
-				r.quickJoinInput.focus()
-				return r, r.quickJoinInput.Init()
-			case quickJoinScreen:
+			// The key toggles the quick join modal.
+			if r.stack.Route() == quickJoinRoute {
 				r.tabs.FocusActive()
-
-				r.quickJoinInput.blur()
-				r.screenType = mainScreen
+				return r, r.stack.Pop()
 			}
 
-			return r, nil
+			if r.stack.Len() > 0 {
+				return r, nil
+			}
+
+			r.tabs.BlurActive()
+
+			quickJoinInput := newQuickJoin(r.width, r.dependencies)
+			quickJoinInput.Resize(r.width, r.height)
+
+			return r, r.stack.Push(quickJoinInput)
 		}
 
-		if r.screenType == mainScreen {
+		if r.stack.Len() == 0 {
 
 			if key.Matches(msg, r.dependencies.Keymap.Next) {
 				if active, ok := r.tabs.Active(); ok && (active.State() == insertMode || active.State() == userInspectInsertMode) {
@@ -700,20 +675,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
 
-	if r.screenType == inputScreen {
-		r.joinInput, cmd = r.joinInput.Update(msg)
-		cmds = append(cmds, cmd)
-	}
-
-	if r.screenType == quickJoinScreen {
-		r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
-		cmds = append(cmds, cmd)
-	}
-
-	if r.screenType == helpScreen {
-		r.help, cmd = r.help.Update(msg)
-		cmds = append(cmds, cmd)
-	}
+	// Only the topmost modal sees input; the stack guarantees that.
+	cmds = append(cmds, r.stack.Update(msg))
 
 	return r, tea.Batch(cmds...)
 }
@@ -735,19 +698,7 @@ func (r *Root) renderView() string {
 		return r.splash.ViewLoading()
 	}
 
-	switch r.screenType {
-	case mainScreen:
-		return r.screenContent()
-	case inputScreen:
-		// Composite join modal over the current active tab
-		return centerOverlay(r.joinInput.View(), r.dimmedScreenBackground())
-	case quickJoinScreen:
-		return centerOverlay(r.quickJoinInput.View(), r.dimmedScreenBackground())
-	case helpScreen:
-		return r.help.View()
-	}
-
-	return ""
+	return r.stack.View()
 }
 
 // screenContent renders the current screen behind any modal: the header plus the
@@ -948,6 +899,24 @@ func (r *Root) createTab(account save.Account, channel string, kind TabKind) (ta
 	return nil, nil
 }
 
+// availableTabKinds returns the tab kinds that are not open yet, in menu order.
+func (r *Root) availableTabKinds() []TabKind {
+	hasMention := r.tabs.Any(func(t tab) bool { return t.Kind() == MentionTabKind })
+	hasNotification := r.tabs.Any(func(t tab) bool { return t.Kind() == LiveNotificationTabKind })
+
+	kinds := []TabKind{BroadcastTabKind}
+
+	if !hasMention {
+		kinds = append(kinds, MentionTabKind)
+	}
+
+	if !hasNotification {
+		kinds = append(kinds, LiveNotificationTabKind)
+	}
+
+	return kinds
+}
+
 func (r *Root) getHeaderHeight() int {
 	return lipgloss.Height(r.header.View(r.tabs.Rows()))
 }
@@ -957,12 +926,8 @@ func (r *Root) handleResize() {
 	r.splash.width = r.width
 	r.splash.height = r.height
 
-	// channel join input
-	r.joinInput.handleResize(r.width, r.height)
-	r.quickJoinInput.handleResize(r.width, r.height)
-
-	// help
-	r.help.handleResize(r.width, r.height)
+	// open modals follow the terminal size
+	r.stack.Resize(r.width, r.height)
 
 	if r.dependencies.UserConfig.Settings.VerticalTabList {
 		rows := r.tabs.Rows()
@@ -1046,8 +1011,6 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	// restore tabs
 	var hasActiveTab bool
 	for _, t := range msg.state.Tabs {
-		r.screenType = mainScreen
-
 		var (
 			newTab tab
 			cmd    tea.Cmd

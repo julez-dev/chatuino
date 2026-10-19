@@ -24,6 +24,17 @@ func rowLabel(row nav.Row) string {
 	return base
 }
 
+// textCapturer marks a screen that swallows printable keys because one of its
+// text inputs has focus.
+type textCapturer interface {
+	CapturesText() bool
+}
+
+// wheelScroller marks a screen that consumes mouse wheel messages.
+type wheelScroller interface {
+	scrollsOnWheel()
+}
+
 // header renders the tab list. Headers are pure renderers over the registry
 // projection: they store no tab set, no selection and no notification flags, and
 // they have no Update of their own.
