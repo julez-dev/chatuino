@@ -345,7 +345,9 @@ func (t *broadcastTab) State() broadcastTabState {
 }
 
 func (t *broadcastTab) IsSearching() bool {
-	if t.chatWindow.state == searchChatWindowState {
+	// Root asks this while deciding what a key press means, which also happens for a
+	// tab that is still loading its channel data and therefore has no chat window.
+	if t.chatWindow != nil && t.chatWindow.state == searchChatWindowState {
 		return true
 	}
 
@@ -397,10 +399,14 @@ func (t *broadcastTab) Blur() {
 	t.focused = false
 	t.lastClickEntry = nil
 	t.lastClickAt = time.Time{}
-	// Leaving the tab disarms the reply, so it cannot be sent from another tab.
-	t.clearReplyTarget()
 
+	// Everything below talks to children, which only exist once the channel data
+	// loaded. A tab that is still loading (for example a restored tab whose data is
+	// fetched after it became active) has none of them yet.
 	if t.channelDataLoaded {
+		// Leaving the tab disarms the reply, so it cannot be sent from another tab.
+		t.clearReplyTarget()
+
 		t.chatWindow.Blur()
 		t.input.Blur()
 

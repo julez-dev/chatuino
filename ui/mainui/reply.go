@@ -92,6 +92,13 @@ func (t *broadcastTab) takeReplyTarget() string {
 // keeps the height it had while the indicator was visible and the view ends up a row
 // short, floating the status bar above the bottom of the terminal.
 func (t *broadcastTab) clearReplyTarget() {
+	// A tab has no composer before its channel data loaded, and therefore no reply
+	// to disarm. Guarding here keeps every caller safe rather than only the ones
+	// that remember to check.
+	if t.input == nil {
+		return
+	}
+
 	if t.input.ClearReply() {
 		t.HandleResize()
 	}
