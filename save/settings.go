@@ -18,6 +18,7 @@ const (
 
 type Settings struct {
 	VerticalTabList bool               `yaml:"vertical_tab_list"`
+	Mouse           bool               `yaml:"mouse"` // capture mouse clicks/wheel; default: true
 	Moderation      ModerationSettings `yaml:"moderation"`
 	Chat            ChatSettings       `yaml:"chat"`
 	CustomCommands  []CustomCommand    `yaml:"custom_commands"`
@@ -58,6 +59,7 @@ type CustomCommand struct {
 
 func BuildDefaultSettings() Settings {
 	return Settings{
+		Mouse: true,
 		Moderation: ModerationSettings{
 			StoreChatLogs: true,
 		},

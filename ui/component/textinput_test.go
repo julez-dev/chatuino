@@ -3,6 +3,9 @@ package component
 import (
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSuggestionTextInput_wrapTextPreservingSpaces(t *testing.T) {
@@ -531,6 +534,73 @@ func TestSuggestionTextInput_SetSuggestions_prefixWords(t *testing.T) {
 			t.Errorf("missing expected suggestion %q in %v", w, s.suggestions)
 		}
 	}
+}
+
+func newSuggestionInput(t *testing.T, value string, suggestions []string, cursor int) *SuggestionTextInput {
+	t.Helper()
+
+	s := NewSuggestionTextInput(nil, nil)
+	s.InputModel.Focus()
+	s.SetSuggestions(suggestions)
+	s.InputModel.SetValue(value)
+	s.InputModel.SetCursor(cursor)
+	s.updateSuggestions()
+
+	return s
+}
+
+func TestSuggestionTextInput_AcceptWithCtrlSpace(t *testing.T) {
+	t.Parallel()
+
+	s := newSuggestionInput(t, "Kap", []string{"Kappa"}, 3)
+	require.True(t, s.canAcceptSuggestion())
+
+	s, _ = s.Update(tea.KeyPressMsg{Code: tea.KeySpace, Mod: tea.ModCtrl})
+	require.Equal(t, "Kappa ", s.InputModel.Value())
+}
+
+func TestSuggestionTextInput_AcceptWithRightArrowAtEnd(t *testing.T) {
+	t.Parallel()
+
+	s := newSuggestionInput(t, "Kap", []string{"Kappa"}, 3)
+	require.True(t, s.canAcceptSuggestion())
+
+	s, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	require.Equal(t, "Kappa ", s.InputModel.Value())
+}
+
+func TestSuggestionTextInput_RightArrowMovesCursorWhenSuggestionVisible(t *testing.T) {
+	t.Parallel()
+
+	s := newSuggestionInput(t, "Kap", []string{"Kappa"}, 1)
+	require.True(t, s.canAcceptSuggestion())
+
+	s, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	require.Equal(t, "Kap", s.InputModel.Value(), "mid-text right arrow must not accept")
+	require.Equal(t, 2, s.InputModel.Position())
+}
+
+func TestSuggestionTextInput_RightArrowMovesCursorWithoutSuggestion(t *testing.T) {
+	t.Parallel()
+
+	s := NewSuggestionTextInput(nil, nil)
+	s.InputModel.Focus()
+	s.InputModel.SetValue("hello")
+	s.InputModel.SetCursor(0)
+	s.updateSuggestions()
+	require.False(t, s.canAcceptSuggestion())
+
+	s, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	require.Equal(t, 1, s.InputModel.Position())
+}
+
+func TestSuggestionTextInput_AcceptWithTabStillWorks(t *testing.T) {
+	t.Parallel()
+
+	s := newSuggestionInput(t, "Kap", []string{"Kappa"}, 3)
+
+	s, _ = s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	require.Equal(t, "Kappa ", s.InputModel.Value())
 }
 
 func TestSuggestionTextInput_SetValueCollapsesSpaces(t *testing.T) {

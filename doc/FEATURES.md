@@ -42,11 +42,13 @@ Multiple filters are combined with AND. For example, `user:julez content:GG is:s
 
 Aliases: `msg:` for `content:`, `from:` for `user:`.
 
-Enable insert mode (for writing messages/commands) with `i` and exit with Escape. Press Enter to send a message, or Alt+Enter to send while keeping the text in the input.
+Enable insert mode (for writing messages/commands) with `i` or Enter, and exit with Escape. Press Enter to send a message, or Alt+Enter to send while keeping the text in the input.
 A simple duplication bypass is included when your message matches the last message.
-Copy a message to your input by pressing Alt+C on the message.
+Copy a message to your input by pressing `y` or Alt+C on the message. Copy the selected message to the system clipboard with `Y` or Alt+Y (uses OSC 52, which also works over SSH if the terminal allows it). Reply with `r` or Alt+R.
 
-Press `t` to jump to the top of the buffer and `b` to jump to the bottom.
+Press `g`, `t`, or Home to jump to the top of the buffer and `G`, `b`, or End to jump to the bottom. Scroll a page with PgUp/Ctrl+U or PgDn/Ctrl+D.
+
+Switch tabs with Tab/`]`/Ctrl+N and Shift+Tab/`[`.
 
 Press `?` to view all key bindings.
 
@@ -54,11 +56,26 @@ Press `?` to view all key bindings.
 
 ![Search](screenshot/message-search.png)
 
+## Mouse
+
+Mouse support is enabled by default and can be disabled with `mouse: false` in `settings.yaml`.
+
+- Click a tab to switch to it.
+- Click a chat message to select it, then use copy, reply, or timeout shortcuts.
+- Double-click a chat message to inspect its author.
+- Click the message input to start typing.
+- Use the wheel to scroll chat.
+- In vertical tab mode, the wheel switches to the previous/next tab.
+
+Hold `shift` while dragging to use the terminal's native text selection.
+
 ## Auto-Completion
 
 Chatuino provides auto-completion for channel names when joining new chats, usernames in chat, and emotes.
 
 Commands like `/ban`, `/unban`, and `/timeout` are also suggested.
+
+Accept the highlighted suggestion with Tab, Ctrl+Space, or the right arrow. In the join modal, Tab moves between fields, so the channel input also accepts Space (channel names cannot contain spaces).
 
 ![Auto-complete](screenshot/auto-completions.png)
 

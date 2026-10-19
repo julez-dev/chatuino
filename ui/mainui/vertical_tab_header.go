@@ -152,6 +152,41 @@ func (v *verticalTabHeader) RemoveTab(id string) {
 	}
 }
 
+// TabAt returns the tab at the given cell. The list renders one entry per row;
+// the first header row is the top border.
+func (v *verticalTabHeader) TabAt(x, y int) (string, bool) {
+	if x < 0 || x >= v.width || y < 1 {
+		return "", false
+	}
+
+	items := v.list.Items()
+	if len(items) == 0 {
+		return "", false
+	}
+
+	// The list renders at most PerPage item rows below the top border.
+	perPage := v.list.Paginator.PerPage
+	if perPage <= 0 {
+		perPage = max(1, v.height-2)
+	}
+
+	if y > perPage {
+		return "", false
+	}
+
+	idx := v.list.Paginator.Page*perPage + (y - 1)
+	if idx < 0 || idx >= len(items) {
+		return "", false
+	}
+
+	entry, ok := items[idx].(tabHeaderEntry)
+	if !ok {
+		return "", false
+	}
+
+	return entry.id, true
+}
+
 func (v *verticalTabHeader) MinWidth() int {
 	minWidth := 10
 

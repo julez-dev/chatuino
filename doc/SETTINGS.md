@@ -6,6 +6,7 @@ Your settings file is read from `~/.config/chatuino/settings.yaml` (the config d
 
 ```yaml
 vertical_tab_list: false # Display tabs vertically instead of horizontally
+mouse: true # Capture mouse clicks and wheel events; set false to restore native text selection; Default: true
 moderation:
   store_chat_logs: true # Store chat logs in a SQLite database; Default: false
 
@@ -77,6 +78,60 @@ Key bindings are configurable in the `~/.config/chatuino/keymap.yaml` file (the 
 
 Press `?` inside Chatuino to view an overview of available key bindings.
 
+### Defaults
+
+Bindings are additive: every action accepts all keys listed for it.
+
+| Action | Default keys |
+| ------ | ------------ |
+| Up / Down | `up`/`k`, `down`/`j` |
+| Escape / Confirm | `esc`, `enter` |
+| Help | `?`, `f1` |
+| Quit | `ctrl+c`, `q` (normal mode only) |
+| New tab | `ctrl+t` |
+| Close tab | `ctrl+q`, `ctrl+w`, `alt+w` |
+| Next tab | `tab`, `]`, `ctrl+n`, `alt+l` |
+| Previous tab | `shift+tab`, `[`, `alt+h` |
+| Quick join | `ctrl+j` |
+| Insert mode | `i`, `I`, `enter` |
+| User inspect | `ctrl+l`, `u` |
+| Chat popup | `ctrl+p`, `alt+p` |
+| Channel popup | `ctrl+b`, `alt+b` |
+| Go to top | `t`, `g`, `home` |
+| Go to bottom | `b`, `G`, `end` |
+| Page up / down | `pgup`/`ctrl+u`, `pgdown`/`ctrl+d` |
+| Search | `/`, `ctrl+f` |
+| Accept suggestion | `tab`, `ctrl+space`, `→` (join modal also `space`) |
+| Next / previous suggestion | `down`/`ctrl+n`, `up`/`ctrl+p` |
+| Copy message to input | `alt+c`, `y` |
+| Copy message to clipboard | `Y`, `alt+y` |
+| Reply | `alt+r`, `r` |
+| Quick timeout | `alt+t` |
+| Send and keep typing | `alt+enter`, `ctrl+enter` |
+| Dump screen / chat | `ctrl+alt+d`, `ctrl+alt+c` |
+
+Plain-letter bindings (`q`, `g`, `G`, `r`, `u`, `y`, `Y`) only apply outside text input, chat search, and insert mode.
+
+Clipboard copies use the terminal's OSC 52 sequence, so they also work over SSH. Some terminals or multiplexers (for example tmux) must allow OSC 52 before the clipboard is actually updated.
+
+> **Upgrading:** Chatuino never rewrites an existing `keymap.yaml`. A file created by an older version keeps exactly the keys it contains, so new aliases only appear on fresh installs. Delete or rename `keymap.yaml` to regenerate it with the defaults above.
+
+## Mouse
+
+Mouse support is enabled by default. It can be disabled with `mouse: false` in `settings.yaml`.
+
+| Interaction | Action |
+| ----------- | ------ |
+| Left-click a tab | Switch to that tab |
+| Left-click a chat message | Select it (for copy, reply, timeout) |
+| Double-click a chat message | Inspect the message author |
+| Left-click the message input | Start typing |
+| Wheel over chat | Scroll the chat |
+| Wheel over the tab list (vertical mode) | Switch to the previous/next tab |
+| Wheel over the help screen | Scroll the help |
+
+Mouse capture takes over click and drag in the terminal. Hold `shift` while dragging to use the terminal's native text selection.
+
 ## Custom Commands
 
 The settings allow you to configure custom commands which will be suggested to you during text input.
@@ -122,7 +177,7 @@ Available template data:
 | RawMessage | Any | The complete internal message struct |
 | MessageType | Any | Type of message (PrivateMessage, SubMessage, SubGiftMessage) |
 
-The data is inserted when you accept the suggestion (default: Tab), allowing you to review the text before sending.
+The data is inserted when you accept the suggestion (default: Tab / Ctrl+Space / →), allowing you to review the text before sending.
 
 You can use templating at any time when composing a message. The data is inserted when you accept the suggestion.
 

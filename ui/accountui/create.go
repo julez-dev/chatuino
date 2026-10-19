@@ -86,7 +86,9 @@ func (c createModel) Update(msg tea.Msg) (createModel, tea.Cmd) {
 		c.account = msg.account
 		c.state = finished
 	case tea.KeyPressMsg:
-		if key.Matches(msg, c.keymap.Quit) {
+		// A printable quit key (e.g. 'q') must not fire while the token input
+		// is capturing text. Modifier-driven quit keys still work.
+		if key.Matches(msg, c.keymap.Quit) && !(c.state == input && msg.Text != "") {
 			return c, tea.Quit
 		}
 		if key.Matches(msg, c.keymap.Escape) {

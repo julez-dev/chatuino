@@ -124,9 +124,15 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	// Set input width to reasonable size (will be centered in modal)
 	input.SetWidth(7)
 	input.InputModel.SetWidth(7)
-	// Set Space key to accept autocomplete suggestions
-	// bubbletea v2: KeyPressMsg.String() returns "space", not " "
-	input.KeyMap.AcceptSuggestion.SetKeys("space")
+
+	// Use the configured suggestion keys. Tab still moves between fields, so
+	// Space remains a join-only alias (channel names cannot contain it).
+	input.KeyMap = component.KeyMap{
+		AcceptSuggestion: deps.Keymap.AcceptSuggestion,
+		NextSuggestion:   deps.Keymap.NextSuggestion,
+		PrevSuggestion:   deps.Keymap.PrevSuggestion,
+	}
+	input.KeyMap.AcceptSuggestion.SetKeys(append(slices.Clone(input.KeyMap.AcceptSuggestion.Keys()), "space")...)
 
 	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
@@ -363,8 +369,8 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 
 	switch j.selectedInput {
 	case channelInput:
-		// For channel input, always pass to input component for handling
-		// This includes Space key for autocomplete
+		// For channel input, always pass to input component for handling.
+		// This includes the autocomplete keys.
 		j.input, cmd = j.input.Update(msg)
 		cmds = append(cmds, cmd)
 
@@ -468,7 +474,7 @@ func (j *join) View() string {
 
 	switch j.selectedInput {
 	case channelInput:
-		hints = hintStyle.Render("Space: autocomplete | Enter: confirm | Tab: next field")
+		hints = hintStyle.Render("Ctrl+Space/→: autocomplete | Enter: confirm | Tab: next field")
 	case tabSelect, accountSelect:
 		hints = hintStyle.Render("↑/↓: select | Enter: confirm | Tab: next field")
 	default:

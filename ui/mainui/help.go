@@ -50,6 +50,14 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 			},
 		},
 		{
+			"Suggestion Binds",
+			[]key.Binding{
+				deps.Keymap.AcceptSuggestion,
+				deps.Keymap.NextSuggestion,
+				deps.Keymap.PrevSuggestion,
+			},
+		},
+		{
 			"Chat Binds",
 			[]key.Binding{
 				deps.Keymap.InsertMode,
@@ -58,9 +66,12 @@ func newHelp(height, width int, deps *DependencyContainer) *help {
 				deps.Keymap.ChannelPopUp,
 				deps.Keymap.GoToTop,
 				deps.Keymap.GoToBottom,
+				deps.Keymap.PageUp,
+				deps.Keymap.PageDown,
 				deps.Keymap.DumpChat,
 				deps.Keymap.QuickTimeout,
 				deps.Keymap.CopyMessage,
+				deps.Keymap.CopyToClipboard,
 				deps.Keymap.SearchMode,
 				deps.Keymap.QuickSent,
 				deps.Keymap.ReplyMessage,
