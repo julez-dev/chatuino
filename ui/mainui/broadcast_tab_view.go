@@ -59,7 +59,7 @@ func (t *broadcastTab) View() string {
 	cw := t.chatWindow.View()
 	builder.WriteString(cw)
 
-	if t.state == userInspectMode || t.state == userInspectInsertMode {
+	if t.state.isInspecting() {
 		uiView := t.userInspect.View()
 		builder.WriteString("\n")
 		builder.WriteString(uiView)
@@ -126,7 +126,7 @@ func (t *broadcastTab) ViewWithoutStatusBar() string {
 	cw := t.chatWindow.View()
 	builder.WriteString(cw)
 
-	if t.state == userInspectMode || t.state == userInspectInsertMode {
+	if t.state.isInspecting() {
 		uiView := t.userInspect.View()
 		builder.WriteString("\n")
 		builder.WriteString(uiView)
@@ -201,7 +201,7 @@ func (t *broadcastTab) HandleResize() {
 			pollHeight = 0
 		}
 
-		if t.state == userInspectMode || t.state == userInspectInsertMode {
+		if t.state.isInspecting() {
 			chatHeight := (t.height - heightStreamInfo - pollHeight - heightStatusInfo) / 2
 
 			t.userInspect.height = t.height - heightStreamInfo - pollHeight - chatHeight - heightStatusInfo - heightMessageInput

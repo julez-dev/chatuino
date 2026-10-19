@@ -79,7 +79,7 @@ func (t *broadcastTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 			}
 		}
 
-		if t.state == insertMode || t.state == userInspectInsertMode {
+		if t.state.isComposing() {
 			cmd, heightChanged := t.input.Update(msg)
 			cmds = append(cmds, cmd)
 

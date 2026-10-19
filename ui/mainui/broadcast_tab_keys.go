@@ -25,30 +25,30 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	searching := t.isChatSearching()
 
 	// Open user inspect mode, where only messages from a specific user are shown
-	if key.Matches(msg, t.deps.Keymap.InspectMode) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.InspectMode) && !searching && t.state.isViewing() {
 		return true, t.handleOpenUserInspectFromMessage()
 	}
 
 	// Open chat in browser
-	if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && !searching && t.state.isViewing() {
 		return true, t.handleOpenBrowser(msg)
 	}
 
 	// Send message
-	if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.input.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+	if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.input.Value()) > 0 && t.state.isComposing() {
 		t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit history entry
 		return true, t.handleMessageSent(false)
 	}
 
 	// Send message - quick send
-	if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.input.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+	if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.input.Value()) > 0 && t.state.isComposing() {
 		t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit history entry
 		return true, t.handleMessageSent(true)
 	}
 
 	// Message Accept Suggestion Template Replace
 	// always allow accept suggestion key so even new texts can be templated
-	if t.input.IsAcceptSuggestionKey(msg) && len(t.input.Value()) > 0 && (t.state == insertMode || t.state == userInspectInsertMode) {
+	if t.input.IsAcceptSuggestionKey(msg) && len(t.input.Value()) > 0 && t.state.isComposing() {
 		_, heightChanged := t.input.Update(msg)
 		cmd := t.replaceInputTemplate()
 		if heightChanged {
@@ -58,19 +58,19 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 
 	// Set quick time out message to message input
-	if key.Matches(msg, t.deps.Keymap.QuickTimeout) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.QuickTimeout) && !searching && t.state.isViewing() {
 		t.handleTimeoutShortcut()
 		return true, nil
 	}
 
 	// Copy selected message to message input
-	if key.Matches(msg, t.deps.Keymap.CopyMessage) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.CopyMessage) && !searching && t.state.isViewing() {
 		t.handleCopyMessage()
 		return true, nil
 	}
 
 	// Reply to selected message
-	if key.Matches(msg, t.deps.Keymap.ReplyMessage) && !searching && (t.state == inChatWindow || t.state == userInspectMode) {
+	if key.Matches(msg, t.deps.Keymap.ReplyMessage) && !searching && t.state.isViewing() {
 		t.handleReplyMessage()
 		return true, nil
 	}
@@ -86,7 +86,7 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 
 		// second case, end inspect mode or end insert mode in inspect window
-		if t.state == userInspectMode || t.state == userInspectInsertMode {
+		if t.state.isInspecting() {
 			t.handleEscapePressed()
 			return true, nil
 		}
@@ -108,7 +108,7 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 // search. Plain-letter shortcuts are suppressed while this is true so they can
 // be typed into the search input instead.
 func (t *broadcastTab) isChatSearching() bool {
-	if t.state == userInspectMode || t.state == userInspectInsertMode {
+	if t.state.isInspecting() {
 		return t.userInspect != nil && t.userInspect.chatWindow.state == searchChatWindowState
 	}
 

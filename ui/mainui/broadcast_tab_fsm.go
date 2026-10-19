@@ -202,3 +202,9 @@ func (s broadcastTabState) isComposing() bool {
 func (s broadcastTabState) isInspecting() bool {
 	return s == userInspectMode || s == userInspectInsertMode
 }
+
+// isViewing reports whether a chat window owns the selection: no composer, no
+// overlay. Selection and navigation shortcuts are only live in this state.
+func (s broadcastTabState) isViewing() bool {
+	return s == inChatWindow || s == userInspectMode
+}

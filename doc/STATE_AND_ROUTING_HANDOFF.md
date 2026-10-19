@@ -1,8 +1,11 @@
 # Handoff: UI state management & routing
 
-**Status:** analysis complete, no production code changed.
-**Purpose:** basis for task breakdown at a later date.
-**Baseline:** commit `ebbb44c` ("feature: ergonomic keybinds and mouse support"), bubbletea `v2.1.0`, lipgloss `v2.0.6`.
+**Status:** phases 1-4 implemented, phase 5 partially, phase 6 deferred. See
+[Implementation status](#implementation-status) for what landed and what did not.
+**Purpose:** design record plus task breakdown for the remaining work.
+**Baseline of the analysis:** commit `ebbb44c` ("feature: ergonomic keybinds and
+mouse support"), bubbletea `v2.1.0`, lipgloss `v2.0.6`. That tree is identical to
+`main` @ `ef38231`, where the implementation branched from.
 **Audience:** whoever picks this up next (human or agent). Read §1–§3 to understand the problem and the design, then §4 for the work breakdown.
 
 Line references are against the baseline commit and will rot. Every number in §1.7 can be
@@ -12,7 +15,8 @@ re-derived with the commands in §7 — re-run them before quoting them in a tas
 
 ## TL;DR
 
-Three different problems are currently tangled into "state management":
+Three different problems were tangled into "state management" (§1 describes the
+baseline; all three are now addressed — see [Implementation status](#implementation-status)):
 
 1. **Routing is inline in `Root.Update`** — screen transitions are hand-written `switch r.screenType` blocks that each re-implement *blur old → construct → focus new → resize*.
 2. **`broadcastTab` has an implicit state machine** — 5 modes, 16 `t.state =` assignments across 3 files, 66 mode comparisons package-wide, no declared transition table, no invariants, no transition tests.
@@ -20,7 +24,89 @@ Three different problems are currently tangled into "state management":
 
 A fourth, smaller problem: **"which tab is active" is stored four times** (`tabs` index cursor, header entry `selected` flag, per-tab `focused` bool, and header `entries` slice).
 
-**Recommendation:** do **not** adopt a third-party router or state-management library (see §2 — the ecosystem is 0–11★ experiments, one v2-compatible candidate has no license). Build a small in-repo `ui/nav` package (stack + registry + typed addresses, ~300 LOC) plus a per-tab transition table with entry/exit actions (~150 LOC), in the phased order of §4. The `ui/nav` package becomes a candidate for extraction only after `accountui` consumes it too.
+**Recommendation (adopted):** do **not** adopt a third-party router or state-management library (see §2 — the ecosystem is 0–11★ experiments, one v2-compatible candidate has no license). Build a small in-repo `ui/nav` package (stack + registry + typed addresses, ~300 LOC) plus a per-tab transition table with entry/exit actions (~150 LOC), in the phased order of §4. The `ui/nav` package becomes a candidate for extraction only after `accountui` consumes it too.
+
+---
+
+## Implementation status
+
+Implemented on branch `refactor/ui-state-and-routing`, branched from `main` @
+`ef38231`:
+
+| Commit | Phase | What changed |
+| --- | --- | --- |
+| `17d04ec` | 1 | `ui/nav.Registry` owns the tab set, order, active id and notification flags; headers became pure renderers with no `tea.Model` of their own. |
+| `5836a7c` | 2 | `ui/nav.Stack` owns the modals; join/quick-join/help are `Screen`s with `Appeared`/`Disappeared`, `Overlay`, `Routed` and `Resize`. `screenType` is gone. |
+| `53f81b0` | 3 | Tab-scoped results are produced with `nav.Address`/`nav.To` and delivered by `Registry.Dispatch`; the `targetID` fields and child-side filters are gone. |
+| `55f469b` | 4 | `tabTransitions` declares every (mode, event) pair; `transit` is the only assignment to `t.state`; a modes x events matrix test asserts the invariants. |
+| (this commit) | 5 (partial) | Mode-pair checks are expressed through `isComposing` / `isInspecting` / `isViewing` predicates. The full mode-keyed key table is deferred (§4, phase 5). |
+
+### Measured before / after
+
+| Metric | Before | After |
+| --- | --- | --- |
+| mode comparisons (`state ==` / `!=`) | 66 | 37 |
+| of which in `broadcast_tab_keys.go` | 30 | 9 (4 are the nested chat-window search state) |
+| direct `t.state =` assignments | 16 | 1 (inside `transit`) |
+| `screenType` reads / writes | ~20 / 8 | 0 |
+| `tabCursor` references | 49 | 0 |
+| header `entries` references | 22 | 0 |
+| manual `Focus()`/`Blur()` calls in `root.go` + `mouse.go` | 13 | 0 |
+| `msg.targetID != ...` child-side filters | 7 | 0 |
+| `msg.target != ...` data-identity filters | 4 | 4 (intentional, see below) |
+| state-transition tests | 0 | matrix over 5 modes x 6 events + invariant assertions |
+| non-test LOC in `ui/` | 11,971 | 12,502 (incl. 521 new `ui/nav`) |
+
+The four remaining `msg.target != ...` guards are **not** tab addressing: they key
+data by channel id or window id inside a sub-component
+(`broadcast_tab_update.go:36`, `stream_info.go:52`, `status.go:141`,
+`user_inspect.go:198`). Routing those through the registry would conflate "which
+component" with "which channel", so they stay.
+
+### Deviations from the design in §3
+
+1. **`Stack.Push`/`Pop` are imperative**, called inside `Root.Update`, and return
+   the lifecycle command. The design sketched a `Push(...) tea.Cmd` that the stack
+   applies when the command's message comes back. Root already mutates state in
+   `Update` (it always did: `screenType`, `tabs`, focus), and a round-trip message
+   would split one key press across two frames for no gain in testability.
+2. **`'?'` no longer replaces an open modal with help.** Modals do not stack; the
+   key is ignored while one is open. Opening a modal always blurs the tab, closing
+   it always re-focuses the same tab through the registry.
+3. **`eventInspect` has a `hasInspectWindow` guard.** The window needs a username
+   to be built, so the caller constructs it first; the guard makes a caller that
+   forgets fail loudly instead of entering a mode that renders a nil window.
+4. **Two latent bugs fixed**, found by the matrix test rather than reported: the
+   emote overview left the chat window focused behind it, and opening it from the
+   inspect composer left a stale inspect window in place.
+
+### Deferred, and why
+
+- **Phase 5, the full mode-keyed key table.** The remaining `handleKeyPress`
+   chain is linear and its guards now read as predicates. A table would not remove
+   much: key dispatch is order-sensitive (first match wins), and
+   `IsAcceptSuggestionKey` plus the synthetic `input.Update(KeyEnter)` on send are
+   input-specific behaviours, not keymap bindings. Worth revisiting if a sixth mode
+   appears or if `help.go` should render from the same table.
+- **Phase 6, the typestate split.** `transit` plus the invariants already give the
+   guarantee that motivated it; the remaining value (compiler-checked field
+   locality) is not worth rewriting 2,400 lines of `broadcast_tab*.go` today.
+- **A key table for `chatWindowState`.** 11 comparisons remain in `chat_window.go`
+  for the nested view/search machine. It is a two-state machine, so a table would
+  be ceremony; it becomes interesting only if filter modes are added.
+- **Extracting `ui/nav` as a library.** It is now 521 non-test LOC with one
+  consumer. `ui/accountui` is the candidate second consumer; publish only after
+  that, per §3.7.
+
+### Open questions from §6 that are now settled
+
+| Question | Decision |
+| --- | --- |
+| `emoteOverviewMode`: mode or overlay? | Kept as a mode, but its transitions now blur the chat window, so it behaves like an overlay with respect to focus. |
+| Where do `tea.View` flags live? | Outer model only: `Root.View` still sets `AltScreen`, `WindowTitle` and `MouseMode`; `nav.Stack` returns a plain string. |
+| Self-typed `Update` or `tea.Model`? | Self-typed kept; `Registry[T Item]` handles it with generics and no casts. |
+| `Intent()` vs `State()` | Both, narrowly: `textCapturer` on screens for "is text captured?", `State().isComposing()`/`isInspecting()` on tabs. `Root` no longer compares modes to pairs of constants. |
+| Second consumer for `ui/nav`? | Still open; `accountui` is the candidate. |
 
 ---
 
@@ -564,7 +650,7 @@ outright. Cost: touches all ~2,400 lines of `broadcast_tab*.go`. Do it last, or 
 Ordered by risk-adjusted payoff. Each phase is independently shippable and behaviour-preserving
 except where noted.
 
-### Phase 1 — `Registry` + header-as-view
+### Phase 1 — `Registry` + header-as-view  ✅ done (`17d04ec`)
 
 **Goal:** single source of truth for the tab set and the active tab.
 **Touches:** `ui/mainui/root.go` (`tabs`, `tabCursor`, `nextTab`, `prevTab`, `switchToTab`,
@@ -581,7 +667,7 @@ neighbour of the removed tab" explicitly.
 **Do not:** change visual layout/order semantics. `horizontalTabHeader.calculatePages` paging must
 keep working from `[]TabInfo`.
 
-### Phase 2 — `nav.Stack` for join / quick join / help
+### Phase 2 — `nav.Stack` for join / quick join / help  ✅ done (`5836a7c`)
 
 **Goal:** declarative screen routing with enter/exit lifecycle.
 **Touches:** new `ui/nav/stack.go`; `ui/mainui/root.go` (`screenType`, `renderView`,
@@ -597,7 +683,7 @@ still set, and Escape from each modal restores focus to the previously active ta
 receives `polledStreamInfoMessage` while open (`root.go:500`) — make sure addressed/stacked routing
 still delivers it.
 
-### Phase 3 — typed addressing (`To` / `Broadcast`)
+### Phase 3 — typed addressing (`To` / `Broadcast`)  ✅ done (`53f81b0`)
 
 **Goal:** one authoritative answer to "who is this message for".
 **Touches:** new `ui/nav/address.go`; `ui/mainui/root.go` (8 fan-out loops),
@@ -611,7 +697,7 @@ is covered by a test.
 Recommend doing it after Phase 1 so the registry can own dispatch, and adding one test per message
 family (channel data / suggestions / stream info / emotes / notifications).
 
-### Phase 4 — mode FSM table + matrix test
+### Phase 4 — mode FSM table + matrix test  ✅ done (`55f469b`)
 
 **Goal:** legal transitions are declared once; invariants are asserted.
 **Touches:** `ui/mainui/broadcast_tab.go` (mode type + transition table + `transit`),
@@ -626,7 +712,7 @@ to stay green. That converts the refactor into a safe rewrite and documents toda
 **Prerequisite:** decide whether `emoteOverviewMode` should stay a mode or become an overlay
 (it renders full-tab and blurs the chat window — see §6).
 
-### Phase 5 — mode-scoped key tables
+### Phase 5 — mode-scoped key tables  ◐ partially: pair checks replaced by predicates
 
 **Goal:** kill the 30 guard comparisons in `broadcast_tab_keys.go`.
 **Touches:** `ui/mainui/broadcast_tab_keys.go`, `ui/mainui/broadcast_tab.go` (build the table per
@@ -637,7 +723,7 @@ exact set of live bindings; `suggestion_keys_test.go` / `reply_test.go` stay gre
 `t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter})` are input-specific, not keymap-driven — keep
 those as explicit entries rather than pretending they are bindings.
 
-### Phase 6 — (optional) typestate split
+### Phase 6 — (optional) typestate split  ▢ deferred
 
 See §3.6. Only if Phases 4–5 leave `broadcastTab.Update` unreadable. Do not start this before
 Phase 4 has landed and the invariants are locked down by tests.

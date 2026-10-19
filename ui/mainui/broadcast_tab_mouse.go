@@ -61,7 +61,7 @@ func (t *broadcastTab) inputLayout() (top, height int) {
 	chatTop, chatHeight := t.chatLayout()
 	top = chatTop + chatHeight + 1
 
-	if t.state == userInspectMode || t.state == userInspectInsertMode {
+	if t.state.isInspecting() {
 		top += lipgloss.Height(t.userInspect.View()) + 1
 	}
 
@@ -104,7 +104,7 @@ func (t *broadcastTab) handleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd
 	}
 
 	// User inspect window: select the clicked message.
-	if t.state == userInspectMode || t.state == userInspectInsertMode {
+	if t.state.isInspecting() {
 		uiTop, uiHeight := t.userInspectLayout()
 		if y >= uiTop && y < uiTop+uiHeight {
 			if t.state == userInspectInsertMode {
@@ -164,7 +164,7 @@ func (t *broadcastTab) handleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd
 		return nil
 	}
 
-	if t.state == userInspectMode || t.state == userInspectInsertMode {
+	if t.state.isInspecting() {
 		uiTop, uiHeight := t.userInspectLayout()
 		if y >= uiTop && y < uiTop+uiHeight {
 			t.userInspect.chatWindow.scrollByLines(delta)

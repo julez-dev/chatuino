@@ -595,7 +595,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if r.stack.Len() == 0 {
 
 			if key.Matches(msg, r.dependencies.Keymap.Next) {
-				if active, ok := r.tabs.Active(); ok && (active.State() == insertMode || active.State() == userInspectInsertMode) {
+				if active, ok := r.tabs.Active(); ok && active.State().isComposing() {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
@@ -604,7 +604,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.dependencies.Keymap.Previous) {
-				if active, ok := r.tabs.Active(); ok && (active.State() == insertMode || active.State() == userInspectInsertMode) {
+				if active, ok := r.tabs.Active(); ok && active.State().isComposing() {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
@@ -613,7 +613,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.dependencies.Keymap.CloseTab) {
-				if active, ok := r.tabs.Active(); ok && !(active.State() == insertMode || active.State() == userInspectInsertMode || active.IsSearching()) {
+				if active, ok := r.tabs.Active(); ok && !(active.State().isComposing() || active.IsSearching()) {
 					currentTab := active
 					r.closeTab()
 
