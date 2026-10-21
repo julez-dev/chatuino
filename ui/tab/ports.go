@@ -33,12 +33,12 @@ type EmoteCache interface {
 }
 
 type EmoteReplacer interface {
-	Replace(channelID, content string, emoteList []twitchirc.Emote) (string, map[string]string, error)
+	Replace(ctx context.Context, channelID, content string, emoteList []twitchirc.Emote) (string, map[string]string, error)
 }
 
 type BadgeReplacer interface {
-	Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, map[string]string, error)
-	InjectContributorBadge(loginName string, badges map[string]string) (string, error)
+	Replace(ctx context.Context, broadcasterID string, badgeList []twitchirc.Badge) (string, map[string]string, error)
+	InjectContributorBadge(ctx context.Context, loginName string, badges map[string]string) (string, error)
 }
 
 type APIClient interface {

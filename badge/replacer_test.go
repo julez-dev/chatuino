@@ -56,7 +56,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		prepare, formatted, err := replacer.Replace("broadcaster123", []twitchirc.Badge{})
+		prepare, formatted, err := replacer.Replace(t.Context(), "broadcaster123", []twitchirc.Badge{})
 
 		require.NoError(t, err)
 		require.Empty(t, prepare)
@@ -95,7 +95,7 @@ func TestReplacer_Replace(t *testing.T) {
 			{Name: "subscriber", Version: "1"},
 		}
 
-		prepare, formatted, err := replacer.Replace("broadcaster123", badgeList)
+		prepare, formatted, err := replacer.Replace(t.Context(), "broadcaster123", badgeList)
 
 		require.NoError(t, err)
 		require.Equal(t, "prepare_command_1", prepare)
@@ -149,7 +149,7 @@ func TestReplacer_Replace(t *testing.T) {
 			{Name: "vip", Version: "1"},
 		}
 
-		prepare, formatted, err := replacer.Replace("broadcaster123", badgeList)
+		prepare, formatted, err := replacer.Replace(t.Context(), "broadcaster123", badgeList)
 
 		require.NoError(t, err)
 		require.Equal(t, 3, callCount, "Convert should be called 3 times")
@@ -187,7 +187,7 @@ func TestReplacer_Replace(t *testing.T) {
 			{Name: "subscriber", Version: "1"},
 		}
 
-		prepare, formatted, err := replacer.Replace("broadcaster123", badgeList)
+		prepare, formatted, err := replacer.Replace(t.Context(), "broadcaster123", badgeList)
 
 		require.Error(t, err)
 		require.ErrorContains(t, err, "failed to convert")
@@ -233,7 +233,7 @@ func TestReplacer_Replace(t *testing.T) {
 			{Name: "subscriber", Version: "1"},
 		}
 
-		_, _, err := replacer.Replace(broadcasterID, badgeList)
+		_, _, err := replacer.Replace(t.Context(), broadcasterID, badgeList)
 
 		require.NoError(t, err)
 
@@ -276,7 +276,7 @@ func TestReplacer_Replace(t *testing.T) {
 			{Name: "badge3", Version: "3"},
 		}
 
-		_, formatted, err := replacer.Replace("broadcaster123", badgeList)
+		_, formatted, err := replacer.Replace(t.Context(), "broadcaster123", badgeList)
 
 		require.NoError(t, err)
 		require.Len(t, formatted, 3)
@@ -308,7 +308,7 @@ func TestReplacer_Replace(t *testing.T) {
 			enableGraphics: true,
 		}
 
-		prepare, formatted, err := replacer.Replace("broadcaster123", nil)
+		prepare, formatted, err := replacer.Replace(t.Context(), "broadcaster123", nil)
 
 		require.NoError(t, err)
 		require.Empty(t, prepare)
@@ -364,7 +364,7 @@ func TestReplacer_Replace(t *testing.T) {
 			{Name: "subscriber", Version: "1"},
 		}
 
-		_, _, err := replacer.Replace("broadcaster123", badgeList)
+		_, _, err := replacer.Replace(t.Context(), "broadcaster123", badgeList)
 
 		require.NoError(t, err)
 	})

@@ -61,7 +61,12 @@ func NewReplacer(httpClient *http.Client, cache BadgeCache, enableGraphics bool,
 	}
 }
 
-func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (string, map[string]string, error) {
+// Replace uses ctx for badge image downloads and stops on cancellation.
+func (r *Replacer) Replace(ctx context.Context, broadcasterID string, badgeList []twitchirc.Badge) (string, map[string]string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", nil, err
+	}
+
 	badgeMap := r.cache.MatchBadgeSet(broadcasterID, badgeList)
 	badgesSortedKeys := slices.Sorted(maps.Keys(badgeMap))
 
@@ -85,6 +90,9 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (s
 	prepare := strings.Builder{}
 
 	for _, k := range badgesSortedKeys {
+		if err := ctx.Err(); err != nil {
+			return prepare.String(), formattedBadges, err
+		}
 		b := badgeMap[k]
 
 		u, err := r.displayManager.Convert(kittyimg.DisplayUnit{
@@ -96,10 +104,13 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (s
 
 				log.Logger.Info().Str("id", b.ID).Str("set", k).Str("url", url).Msg("fetching badge")
 
-				return r.fetch(context.Background(), b.Image_URL_1x)
+				return r.fetch(ctx, b.Image_URL_1x)
 			},
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				return prepare.String(), formattedBadges, ctx.Err()
+			}
 			return "", nil, fmt.Errorf("failed to convert (%s) badge: %w", broadcasterID+k+b.ID, err)
 		}
 
@@ -108,7 +119,7 @@ func (r *Replacer) Replace(broadcasterID string, badgeList []twitchirc.Badge) (s
 		formattedBadges[k] = u.ReplacementText
 	}
 
-	return prepare.String(), formattedBadges, nil
+	return prepare.String(), formattedBadges, ctx.Err()
 }
 
 func (r *Replacer) fetch(ctx context.Context, reqURL string) (io.ReadCloser, string, error) {
@@ -123,6 +134,7 @@ func (r *Replacer) fetch(ctx context.Context, reqURL string) (io.ReadCloser, str
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, "", fmt.Errorf("unexpected status code, got: %d", resp.StatusCode)
 	}
 
@@ -134,7 +146,10 @@ var contributorBadgeText = lipgloss.NewStyle().Foreground(lipgloss.Color("#88c0d
 
 // InjectContributorBadge adds a Chatuino contributor badge to the badge map if the user is a contributor.
 // The badge key "!chatuino" sorts before all other badges (ASCII '!' < letters).
-func (r *Replacer) InjectContributorBadge(loginName string, badges map[string]string) (string, error) {
+func (r *Replacer) InjectContributorBadge(ctx context.Context, loginName string, badges map[string]string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if !contributor.IsContributor(loginName) {
 		return "", nil
 	}

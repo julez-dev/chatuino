@@ -145,3 +145,34 @@ func Test_BroadcastTab_UnloadedTabToleratesInterfaceCalls(t *testing.T) {
 		tab.Close()
 	})
 }
+
+// Restored tabs whose account or channel is no longer available are skipped
+// instead of creating a tab that cannot load.
+func Test_Root_handlePersistedDataLoaded_SkipsUnavailableTabs(t *testing.T) {
+	root := newRestoreTestRoot(t)
+
+	root.handlePersistedDataLoaded(persistedDataLoadedMessage{
+		state: save.AppState{Tabs: []save.TabState{
+			{Channel: "alpha", IdentityID: "unknown-account", Kind: int(tab.BroadcastKind)},
+			{Channel: "", IdentityID: "acc", Kind: int(tab.BroadcastKind)},
+			{Channel: "beta", IdentityID: "acc", Kind: int(tab.BroadcastKind)},
+			{Kind: int(tab.MentionKind)},
+		}},
+		ttvUsers: map[string]twitchapi.UserData{},
+	})
+
+	t.Cleanup(func() {
+		for _, t := range root.tabs.All() {
+			t.Close()
+		}
+	})
+
+	require.Equal(t, 2, root.tabs.Len(), "only the restorable broadcast tab and the mention tab are created")
+
+	titles := make([]string, 0, 2)
+	for _, tb := range root.tabs.All() {
+		titles = append(titles, tb.Title())
+	}
+
+	require.Contains(t, titles, "beta")
+}

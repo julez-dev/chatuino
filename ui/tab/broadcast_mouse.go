@@ -4,7 +4,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 // doubleClickWindow is how long two clicks on the same message may be apart to
@@ -31,41 +30,13 @@ func (t *Broadcast) registerClick(entry *chatEntry, line int) bool {
 	return double
 }
 
-// chatLayout returns the row offset of the main chat window and its height
-// within the tab view. It mirrors the render order in Broadcast.View.
-func (t *Broadcast) chatLayout() (top, height int) {
-	top = 1 // stream info always occupies at least one row
+// inspectChatSpan is the clickable history area inside the user inspect window,
+// in tab-local rows. The window's own span also covers the info banner.
+func (t *Broadcast) inspectChatSpan() layoutSpan {
+	chat := t.userInspect.chatSpan()
+	chat.top += t.layout.userInspect.top
 
-	if si := t.streamInfo.View(); si != "" {
-		top = lipgloss.Height(si) + 1
-	}
-
-	if poll := t.poll.View(); poll != "" {
-		top += lipgloss.Height(poll) + 1
-	}
-
-	return top, t.chatWindow.height
-}
-
-// userInspectLayout returns the row offset and height of the user inspect
-// window within the tab view. It is only valid in user inspect modes.
-func (t *Broadcast) userInspectLayout() (top, height int) {
-	chatTop, chatHeight := t.chatLayout()
-	top = chatTop + chatHeight + 1 // newline before the inspect window
-
-	return top, lipgloss.Height(t.userInspect.View())
-}
-
-// inputLayout returns the row offset and height of the message composer.
-func (t *Broadcast) inputLayout() (top, height int) {
-	chatTop, chatHeight := t.chatLayout()
-	top = chatTop + chatHeight + 1
-
-	if t.state.isInspecting() {
-		top += lipgloss.Height(t.userInspect.View()) + 1
-	}
-
-	return top, t.input.Height()
+	return chat
 }
 
 func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
@@ -77,13 +48,11 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 		return nil
 	}
 
-	chatTop, chatHeight := t.chatLayout()
-
 	// Main chat window: select the clicked message.
-	if y >= chatTop && y < chatTop+chatHeight {
+	if t.layout.chat.contains(y) {
 		// Resolve the absolute line before any layout change, then leave
 		// insert/inspect mode so subsequent shortcuts act on the main chat.
-		line := t.chatWindow.viewportRenderStart() + (y - chatTop)
+		line := t.chatWindow.viewportRenderStart() + (y - t.layout.chat.top)
 		_, entry := t.chatWindow.entryAtLine(line)
 		double := t.registerClick(entry, line)
 
@@ -103,15 +72,15 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 		return nil
 	}
 
-	// User inspect window: select the clicked message.
-	if t.state.isInspecting() {
-		uiTop, uiHeight := t.userInspectLayout()
-		if y >= uiTop && y < uiTop+uiHeight {
+	// User inspect window: select the clicked message. Only the history below
+	// the info banner is interactive.
+	if t.state.isInspecting() && t.layout.userInspect.visible() {
+		if chat := t.inspectChatSpan(); chat.contains(y) {
 			if t.state == userInspectInsertMode {
 				t.handleEscapePressed()
 			}
 
-			row := y - uiTop
+			row := y - chat.top
 			line := t.userInspect.chatWindow.viewportRenderStart() + row
 			_, entry := t.userInspect.chatWindow.entryAtLine(line)
 			double := t.registerClick(entry, line)
@@ -127,11 +96,8 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	}
 
 	// Message composer: click to start typing.
-	if !t.account.IsAnonymous {
-		inputTop, inputHeight := t.inputLayout()
-		if y >= inputTop && y < inputTop+inputHeight {
-			return t.handleStartInsertMode()
-		}
+	if !t.account.IsAnonymous && t.layout.composer.contains(y) {
+		return t.handleStartInsertMode()
 	}
 
 	return nil
@@ -157,19 +123,15 @@ func (t *Broadcast) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 		return cmd
 	}
 
-	chatTop, chatHeight := t.chatLayout()
-	if y >= chatTop && y < chatTop+chatHeight {
+	if t.layout.chat.contains(y) {
 		t.chatWindow.scrollByLines(delta)
 		t.chatWindow.snapScroll()
 		return nil
 	}
 
-	if t.state.isInspecting() {
-		uiTop, uiHeight := t.userInspectLayout()
-		if y >= uiTop && y < uiTop+uiHeight {
-			t.userInspect.chatWindow.scrollByLines(delta)
-			t.userInspect.chatWindow.snapScroll()
-		}
+	if t.state.isInspecting() && t.layout.userInspect.visible() && t.inspectChatSpan().contains(y) {
+		t.userInspect.chatWindow.scrollByLines(delta)
+		t.userInspect.chatWindow.snapScroll()
 	}
 
 	return nil

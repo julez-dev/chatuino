@@ -67,7 +67,7 @@ func newReplyTab(t *testing.T) (*Broadcast, *fakeUserClient) {
 	}
 
 	tab.chatWindow = newChatWindow(tab.width, tab.height, settings, theme, keymap)
-	tab.input = newChatInput(tab.chatWindow.userColorCache, settings.BuildCustomSuggestionMap(), theme, nil)
+	tab.input = newChatInput(tab.chatWindow.palette, settings.BuildCustomSuggestionMap(), theme, nil)
 	tab.input.SetWidth(tab.width)
 
 	return tab, client

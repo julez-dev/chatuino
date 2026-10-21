@@ -37,7 +37,7 @@ type chatInput struct {
 // newChatInput builds the composer. emoteReplacer may be nil to disable inline
 // emote image replacement.
 func newChatInput(
-	userColors map[string]func(...string) string,
+	userColors component.UserColors,
 	customSuggestions map[string]string,
 	theme save.Theme,
 	emoteReplacer component.Replacer,

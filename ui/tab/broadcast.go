@@ -109,6 +109,10 @@ type Broadcast struct {
 	width, height int
 	fullWidth     int // full terminal width (for status bar in vertical mode)
 
+	// layout is the row allocation recorded by HandleResize. The view and the
+	// mouse handlers read it instead of recomputing the arrangement.
+	layout broadcastLayout
+
 	settings       save.Settings
 	theme          save.Theme
 	keymap         save.KeyMap

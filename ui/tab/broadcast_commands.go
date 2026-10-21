@@ -316,7 +316,7 @@ func (t *Broadcast) handleOpenUserInspect(args []string) tea.Cmd {
 
 	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID,
 		t.settings, t.theme, t.keymap, t.client.API, t.messageLogger, t.emoteReplacer, t.badgeReplacer)
-	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
+	t.userInspect.chatWindow.UsePalette(t.chatWindow.palette)
 
 	// The table blurs the chat window and focuses the new inspect window.
 	_, _ = t.transit(eventInspect)

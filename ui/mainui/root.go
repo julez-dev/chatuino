@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net/http"
-	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -19,16 +17,13 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/badge"
-	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 )
 
 // updateNotifier is implemented by tabs that advertise a newer version.
@@ -137,12 +132,18 @@ type Root struct {
 	tabs               *nav.Registry[tab.Tab]
 	channelSuggestions []string // cached for broadcast to new tabs
 	updateInfo         *UpdateInfo
+
+	// Chat events are enriched off the update loop, one at a time, in arrival
+	// order. The preparer owns the enrichment rules; the queue owns ordering.
+	preparer *chatEventPreparer
+	events   eventQueue
 }
 
 // NewUI creates the root Bubble Tea model. When initialState is non-nil the
 // session runs in detached mode: the provided state is used instead of loading
 // from disk and no state is persisted, allowing multiple independent instances.
 func NewUI(
+	ctx context.Context,
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
 	settings save.Settings,
 	theme save.Theme,
@@ -205,7 +206,10 @@ func NewUI(
 		header: header,
 
 		messageLoggerChan: messageLoggerChan,
+		events:            newEventQueue(512),
 	}
+
+	r.preparer = newChatEventPreparer(ctx, r)
 
 	// Modals composite over the tab view, which stays visible but dimmed behind
 	// them. The base view is a function so it always renders current state.
@@ -216,192 +220,20 @@ func NewUI(
 	return r
 }
 
+// Close cancels and drains chat-event preparation. Call it after Program.Run,
+// including error/cancellation exits. Quit keys also close preparation promptly.
+func (r *Root) Close() {
+	r.preparer.close()
+}
+
 func (r *Root) Init() tea.Cmd {
+	// Detached sessions use the state passed on the command line instead of
+	// loading it from disk and never persist it back.
 	r.isDetached = r.initialState != nil
 
 	return tea.Batch(
 		r.splash.Init(),
-		func() tea.Msg {
-			var (
-				state save.AppState
-				err   error
-			)
-
-			if r.initialState != nil {
-				state = *r.initialState
-			} else {
-				state, err = r.appStateManager.LoadAppState()
-				if err != nil {
-					return persistedDataLoadedMessage{
-						err: fmt.Errorf("failed to load save state: %w", err),
-					}
-				}
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-			defer cancel()
-			wg, ctx := errgroup.WithContext(ctx)
-
-			wg.Go(func() error {
-				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-				defer cancel()
-
-				if err := r.badgeCache.RefreshGlobal(ctx); err != nil {
-					log.Logger.Error().Err(err).Msg("could not fetch global badges")
-				}
-
-				return nil
-			})
-
-			wg.Go(func() error {
-				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-				defer cancel()
-
-				if err := r.emoteCache.RefreshGlobal(ctx); err != nil {
-					log.Logger.Error().Err(err).Msg("could not fetch global emotes")
-				}
-
-				return nil
-			})
-
-			// fetch usable emotes for all users
-			for _, acc := range r.accounts {
-				if acc.IsAnonymous {
-					continue
-				}
-
-				client, has := r.clients[acc.ID]
-				if !has {
-					continue
-				}
-
-				fetcher := client.Emotes
-				if fetcher == nil {
-					log.Logger.Error().Msg("failed to parse user emote client")
-					continue
-				}
-
-				wg.Go(func() error {
-					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
-					if err != nil {
-						log.Logger.Error().Str("user_id", acc.ID).Err(err).Msg("could not fetch user emotes")
-						return nil
-					}
-
-					emotes := make(emote.EmoteSet, 0, len(set))
-					for _, e := range set {
-						animated := slices.Contains(e.Format, "animated")
-
-						format := "static"
-						if animated {
-							format = "animated"
-						}
-
-						url := strings.ReplaceAll(template, "{{id}}", e.ID)
-						url = strings.ReplaceAll(url, "{{format}}", format)
-						url = strings.ReplaceAll(url, "{{theme_mode}}", "light")
-						url = strings.ReplaceAll(url, "{{scale}}", "1.0")
-
-						emotes = append(emotes, emote.Emote{
-							ID:         e.ID,
-							Text:       e.Name,
-							Platform:   emote.Twitch,
-							IsAnimated: animated,
-							URL:        url,
-						})
-					}
-
-					r.emoteCache.AddUserEmotes(acc.ID, emotes)
-					return nil
-				})
-			}
-
-			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
-			ttvUsers := make(map[string]twitchapi.UserData, len(state.Tabs))
-			usersLock := &sync.Mutex{}
-
-			loginsUnique := make(map[string]struct{}, len(state.Tabs))
-			logins := make([]string, 0, len(state.Tabs))
-
-			for _, spec := range state.Tabs {
-				if spec.Kind != int(tab.BroadcastKind) {
-					continue
-				}
-				loginsUnique[spec.Channel] = struct{}{}
-			}
-
-			logins = slices.AppendSeq(logins, maps.Keys(loginsUnique))
-
-			if len(logins) > 0 {
-				wg.Go(func() error {
-					resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
-					if err != nil {
-						log.Logger.Error().Err(err).Msg("could not fetch users for tabs")
-						return fmt.Errorf("could not fetch users for tabs: %w", err)
-					}
-
-					for _, data := range resp.Data {
-						usersLock.Lock()
-						ttvUsers[data.Login] = data
-						usersLock.Unlock()
-					}
-
-					return nil
-				})
-			}
-
-			// pre-fetch channel suggestions (history + followed) once for all tabs
-			var channelSuggestions []string
-			wg.Go(func() error {
-				seen := make(map[string]struct{})
-
-				if r.channelHistory != nil {
-					entries, err := r.channelHistory.LoadHistory()
-					if err != nil {
-						log.Logger.Err(err).Msg("could not load channel history for suggestions")
-					} else {
-						for _, e := range entries {
-							if _, ok := seen[e.ChannelLogin]; !ok {
-								seen[e.ChannelLogin] = struct{}{}
-								channelSuggestions = append(channelSuggestions, e.ChannelLogin)
-							}
-						}
-					}
-				}
-
-				for accountID, client := range r.clients {
-					fc := client.Follows
-					if fc == nil {
-						continue
-					}
-
-					followed, err := fc.FetchUserFollowedChannels(ctx, accountID, "")
-					if err != nil {
-						log.Logger.Err(err).Str("account-id", accountID).Msg("could not fetch followed channels for suggestions")
-						continue
-					}
-
-					for _, f := range followed {
-						login := strings.ToLower(f.BroadcasterLogin)
-						if _, ok := seen[login]; !ok {
-							seen[login] = struct{}{}
-							channelSuggestions = append(channelSuggestions, login)
-						}
-					}
-				}
-
-				return nil
-			})
-
-			err = wg.Wait()
-
-			return persistedDataLoadedMessage{
-				state:              state,
-				ttvUsers:           ttvUsers,
-				channelSuggestions: channelSuggestions,
-				err:                err,
-			}
-		},
+		newStartupLoader(r).loadCmd(),
 		r.tickPollStreamInfos(),
 		r.imageCleanUpCommand(),
 		r.checkVersionCommand(),
@@ -474,62 +306,35 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return r, tea.Batch(initCmds...)
 	case wspool.IRCEvent:
-		// Handle IRC events from the connection pool
+		// Handle IRC events from the connection pool. Enrichment (guest-channel
+		// lookup, emote/badge replacement, link checks) happens off the update
+		// loop; the event is routed once its turn in the queue comes up.
 		if msg.Error != nil {
 			// Connection error - display as notice in all tabs for this account
-			errEvt := r.buildChatEventMessage(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
-			if errEvt.PrepareCommand != "" {
-				cmds = append(cmds, tea.Raw(errEvt.PrepareCommand))
-				errEvt.PrepareCommand = ""
-			}
-			cmds = append(cmds, r.tabs.UpdateAll(errEvt, updateTab))
-			return r, tea.Batch(cmds...)
+			return r, r.enqueueChatEvent(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
 		}
 
-		// Log private messages
+		// Log private messages before enrichment so logging never depends on it.
 		if privateMsg, ok := msg.Message.(*twitchirc.PrivateMessage); ok {
 			r.messageLoggerChan <- privateMsg.Clone()
 		}
 
-		// Build and forward event to tabs
-		evt := r.buildChatEventMessage(msg.AccountID, "", msg.Message, false)
-		if evt.PrepareCommand != "" {
-			cmds = append(cmds, tea.Raw(evt.PrepareCommand))
-			evt.PrepareCommand = ""
-		}
-		cmds = append(cmds, r.tabs.UpdateAll(evt, updateTab))
-		return r, tea.Batch(cmds...)
+		return r, r.enqueueChatEvent(msg.AccountID, "", msg.Message, false)
 	case tab.ChatEventMessage:
-		// Handle locally-generated chat events (e.g., from recent messages)
-		if msg.PrepareCommand != "" {
-			cmds = append(cmds, tea.Raw(msg.PrepareCommand))
-			msg.PrepareCommand = ""
-		}
-		if msg.TabID != "" {
-			if cmd, ok := r.tabs.UpdateOne(msg.TabID, msg, updateTab); ok {
-				cmds = append(cmds, cmd)
-			}
-
-			return r, tea.Batch(cmds...)
-		}
-
-		cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
-		return r, tea.Batch(cmds...)
+		// Already prepared (for example by a tab emitting a local notice).
+		return r, r.dispatchPreparedEvent(msg)
 	case tab.RequestLocalMessageHandleMessage:
-		return r, func() tea.Msg {
-			return r.buildChatEventMessage(msg.AccountID, msg.TabID, msg.Message, true)
-		}
+		return r, r.enqueueChatEvent(msg.AccountID, msg.TabID, msg.Message, true)
 	case tab.RequestLocalMessageHandleBatchMessage:
-		batched := make([]tea.Cmd, 0, len(msg.Messages))
-
 		for ircer := range slices.Values(msg.Messages) {
-			batched = append(batched, func() tea.Msg {
-				return r.buildChatEventMessage(msg.AccountID, msg.TabID, ircer, true)
-			})
+			r.addChatEvent(msg.AccountID, msg.TabID, ircer, true)
 		}
 
-		cmds = append(cmds, tea.Sequence(batched...))
-		return r, tea.Batch(cmds...)
+		return r, r.pumpChatEventPreparation()
+	case preparedChatEvent:
+		return r, r.releasePreparedEvent(msg)
+	case routedPreparedEvent:
+		return r, r.finishAndRoute(msg.seq, msg.event)
 	case polledStreamInfoMessage:
 		// The quick join modal shows live status for its channels. Screens that do
 		// not care ignore the message.
@@ -551,6 +356,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// q-to-quit must not steal printable keys while an input is focused.
 		// Modifier-driven quit keys (ctrl+c) still work everywhere.
 		if key.Matches(msg, r.keymap.Quit) && !(r.isTyping() && msg.Text != "") {
+			r.Close()
 			return r, tea.Quit
 		}
 
@@ -1136,199 +942,122 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitchirc.IRCer, isFakeEvent bool) tab.ChatEventMessage {
-	var (
-		channel                 string
-		message                 string
-		badges                  []twitchirc.Badge
-		emotes                  []twitchirc.Emote
-		emoteSourceRoom         string
-		channelID               string
-		channelGuestID          string
-		channelGuestDisplayName string
-		loginName               string
-	)
+// addChatEvent appends an event to the ordered preparation queue. It reports the
+// request so callers can test the ordering rules.
+func (r *Root) addChatEvent(accountID, tabID string, ircer twitchirc.IRCer, isFake bool) (prepareRequest, bool) {
+	if r.preparer.ctx.Err() != nil {
+		return prepareRequest{}, false
+	}
+	req, ok := r.events.add(accountID, tabID, ircer, isFake)
+	if !ok {
+		log.Logger.Warn().
+			Int("pending", r.events.len()).
+			Str("account_id", accountID).
+			Msg("chat event dropped: preparation queue is full")
 
-	// Check when currently in shared session.
-	// If so then load emotes and badges for guest so the message content can be replaced
-	if msg, ok := ircer.(*twitchirc.PrivateMessage); ok {
-		channelID = msg.RoomID
-		channelGuestID = msg.SourceRoomID
-
-		// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
-		if channelID != "" && channelGuestID != "" {
-			if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
-				channelGuestDisplayName = v.(string)
-			} else {
-				// try refresh emotes for guest
-				_ = r.emoteCache.RefreshLocal(context.Background(), channelGuestID)
-				_ = r.badgeCache.RefreshChannel(context.Background(), channelGuestID)
-
-				resp, err := r.serverAPI.GetUsers(context.Background(), nil, []string{channelGuestID})
-				if err == nil && len(resp.Data) > 0 {
-					channelGuestDisplayName = resp.Data[0].DisplayName
-					r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
-				}
-			}
-		}
+		return prepareRequest{}, false
 	}
 
-	switch ircMessage := ircer.(type) {
-	case *twitchirc.PrivateMessage:
-		channelID = ircMessage.RoomID
-		channelGuestID = ircMessage.SourceRoomID
-		channel = ircMessage.ChannelUserName
-		message = ircMessage.Message
-		loginName = ircMessage.LoginName
+	return req, true
+}
 
-		// if is shared display emotes from guest channel, when message is from guest
-		emoteSourceRoom = channelID
-		badges = ircMessage.Badges
-		emotes = ircMessage.Emotes
-
-		if channelGuestID != "" && channelID != channelGuestID {
-			emoteSourceRoom = channelGuestID
-			badges = ircMessage.SourceBadges
-		}
-
-	case *twitchirc.RoomState:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *twitchirc.UserNotice:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.UserState:
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.ClearChat:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *twitchirc.ClearMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *twitchirc.SubMessage:
-		channelID = ircMessage.RoomID
-		emoteSourceRoom = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		message = ircMessage.Message
-		emotes = ircMessage.Emotes
-		badges = ircMessage.Badges
-	case *twitchirc.RaidMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.SubGiftMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.RitualMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		emoteSourceRoom = ircMessage.RoomID
-		message = ircMessage.Message
-		emotes = ircMessage.Emotes
-		badges = ircMessage.Badges
-	case *twitchirc.AnnouncementMessage:
-		channelID = ircMessage.RoomID
-		emoteSourceRoom = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		message = ircMessage.Message
-		emotes = ircMessage.Emotes
-		badges = ircMessage.Badges
-	case *twitchirc.Notice:
-		channel = ircMessage.ChannelUserName
+// enqueueChatEvent appends an event and starts the next preparation when the
+// queue is idle.
+func (r *Root) enqueueChatEvent(accountID, tabID string, ircer twitchirc.IRCer, isFake bool) tea.Cmd {
+	if _, ok := r.addChatEvent(accountID, tabID, ircer, isFake); !ok {
+		return nil
 	}
 
-	event := tab.ChatEventMessage{
-		IsFakeEvent:             isFakeEvent,
-		AccountID:               accountID,
-		Channel:                 channel,
-		ChannelID:               channelID,
-		ChannelGuestID:          channelGuestID,
-		ChannelGuestDisplayName: channelGuestDisplayName,
-		TabID:                   tabID,
+	return r.pumpChatEventPreparation()
+}
 
-		Message: ircer,
-		DisplayModifier: tab.MessageContentModifier{
-			WordReplacements: make(tab.WordReplacement),
-			BadgeReplacement: make(tab.WordReplacement),
+// pumpChatEventPreparation starts exactly one preparation command, capturing the
+// preparer's collaborators instead of the Root model. Results re-enter the update
+// loop and pump the next event, so enrichment runs one event at a time in arrival
+// order without one goroutine per incoming message.
+func (r *Root) pumpChatEventPreparation() tea.Cmd {
+	if r.preparer.ctx.Err() != nil {
+		return nil
+	}
+	req, ok := r.events.start()
+	if !ok {
+		return nil
+	}
+
+	preparer := r.preparer
+
+	return func() tea.Msg {
+		return preparedChatEvent{seq: req.seq, event: preparer.prepare(req)}
+	}
+}
+
+// releasePreparedEvent hands a finished preparation to the terminal or directly
+// to the tabs.
+//
+// When the event carries a kitty graphics command, the raw write is run first and
+// routing happens only after its message has been handled, so the image exists
+// before the row that references it is rendered. The queue stays in flight across
+// that hand-off, which keeps routing in arrival order.
+func (r *Root) releasePreparedEvent(msg preparedChatEvent) tea.Cmd {
+	if r.preparer.ctx.Err() != nil || !r.events.release(msg.seq) {
+		return nil
+	}
+	if msg.event.PrepareCommand == "" {
+		return r.finishAndRoute(msg.seq, msg.event)
+	}
+
+	prepareCommand := msg.event.PrepareCommand
+	msg.event.PrepareCommand = ""
+
+	return tea.Sequence(
+		tea.Raw(prepareCommand),
+		func() tea.Msg {
+			return routedPreparedEvent(msg)
 		},
+	)
+}
+
+// finishAndRoute releases the queue slot, routes the event and starts the next
+// preparation. A superseded result is dropped.
+func (r *Root) finishAndRoute(seq uint64, event tab.ChatEventMessage) tea.Cmd {
+	if r.preparer.ctx.Err() != nil {
+		return nil
+	}
+	var cmds []tea.Cmd
+
+	if r.events.finish(seq) {
+		cmds = append(cmds, r.dispatchPreparedEvent(event))
+	} else {
+		log.Logger.Warn().Uint64("seq", seq).Msg("dropped a superseded chat event result")
 	}
 
-	var replaceCommand string
+	cmds = append(cmds, r.pumpChatEventPreparation())
 
-	if len(message) > 0 {
-		p, replacement, err := r.emoteReplacer.Replace(emoteSourceRoom, message, emotes)
-		if err != nil {
-			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace emotes")
-		}
+	return tea.Batch(cmds...)
+}
 
-		for k, v := range replacement {
-			event.DisplayModifier.WordReplacements[k] = v
-		}
+// dispatchPreparedEvent routes an event to its tab, or to every tab when it is
+// not tab-addressed. A tab-addressed event whose tab has closed in the meantime is
+// dropped by the registry instead of reaching a different tab.
+func (r *Root) dispatchPreparedEvent(event tab.ChatEventMessage) tea.Cmd {
+	var cmds []tea.Cmd
 
-		replaceCommand += p
+	if event.PrepareCommand != "" {
+		cmds = append(cmds, tea.Raw(event.PrepareCommand))
+		event.PrepareCommand = ""
 	}
 
-	if len(badges) > 0 {
-		p, replace, err := r.badgeReplacer.Replace(emoteSourceRoom, badges)
-		if err != nil {
-			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace badges")
+	if event.TabID != "" {
+		if cmd, ok := r.tabs.UpdateOne(event.TabID, event, updateTab); ok {
+			cmds = append(cmds, cmd)
 		}
 
-		event.DisplayModifier.BadgeReplacement = replace
-		replaceCommand += p
+		return tea.Batch(cmds...)
 	}
 
-	if loginName != "" {
-		p, err := r.badgeReplacer.InjectContributorBadge(loginName, event.DisplayModifier.BadgeReplacement)
-		if err != nil {
-			log.Logger.Info().Err(err).Str("login", loginName).Msg("failed to inject contributor badge")
-		}
-		replaceCommand += p
-	}
+	cmds = append(cmds, r.tabs.UpdateAll(event, updateTab))
 
-	if r.settings.Security.CheckLinks && len(message) > 0 {
-		// Key link annotations on the whole space-delimited token so they match
-		// exactly in applyWordReplacements (same contract as emotes). The URL is
-		// annotated in place, preserving any surrounding punctuation in the token.
-		for _, token := range strings.Split(message, " ") {
-			annotated := token
-			for _, u := range tab.ExtractValidURLs(token) {
-				resp, err := r.serverAPI.CheckLink(context.Background(), u)
-				if err != nil {
-					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
-					continue
-				}
-
-				parts := []string{http.StatusText(resp.RemoteStatusCode)}
-
-				if resp.RemoteContentType != "" {
-					before, _, _ := strings.Cut(resp.RemoteContentType, ";")
-					parts = append(parts, before)
-				}
-
-				for _, visited := range resp.VisitedURLs {
-					d, err := url.QueryUnescape(visited)
-					if err != nil {
-						log.Logger.Info().Err(err).Str("url", visited).Msg("failed to unescape url")
-						continue
-					}
-					parts = append(parts, d)
-				}
-
-				annotated = strings.Replace(annotated, u, fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", ")), 1)
-			}
-
-			if annotated != token {
-				event.DisplayModifier.WordReplacements[token] = annotated
-			}
-		}
-	}
-
-	event.PrepareCommand = replaceCommand
-	return event
+	return tea.Batch(cmds...)
 }
 
 // imageCleanUpCommand returns a command that ticks after 1 minute and

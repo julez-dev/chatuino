@@ -119,7 +119,7 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 	if graphicRows(t.settings) <= 1 {
 		emoteReplacer = t.emoteReplacer
 	}
-	t.input = newChatInput(t.chatWindow.userColorCache, t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
+	t.input = newChatInput(t.chatWindow.palette, t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
 	t.input.SetSuggestionKeyMap(t.keymap)
 
 	if len(t.pendingChannelSuggestions) > 0 {

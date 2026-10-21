@@ -307,29 +307,33 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				initialState = &state
 			}
 
+			root := mainui.NewUI(
+				ctx,
+				messageLoggerChan,
+				settings,
+				theme,
+				keymap,
+				accounts,
+				Version,
+				serverAPI,
+				clients,
+				accountProvider,
+				emoteCache,
+				badgeCache,
+				emoteReplacer,
+				badgeReplacer,
+				displayManager,
+				recentMessageService,
+				messageLogger,
+				pool,
+				appStateManager,
+				channelHistoryManager,
+				initialState,
+			)
+			defer root.Close()
+
 			p := tea.NewProgram(
-				mainui.NewUI(
-					messageLoggerChan,
-					settings,
-					theme,
-					keymap,
-					accounts,
-					Version,
-					serverAPI,
-					clients,
-					accountProvider,
-					emoteCache,
-					badgeCache,
-					emoteReplacer,
-					badgeReplacer,
-					displayManager,
-					recentMessageService,
-					messageLogger,
-					pool,
-					appStateManager,
-					channelHistoryManager,
-					initialState,
-				),
+				root,
 				tea.WithContext(ctx),
 			)
 
@@ -337,6 +341,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 			pool.SetSend(p.Send)
 
 			final, err := p.Run()
+			root.Close()
 
 			// Close pool after UI exits (before checking error)
 			if closeErr := pool.Close(); closeErr != nil {

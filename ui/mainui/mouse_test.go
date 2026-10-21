@@ -17,6 +17,7 @@ func newTestRoot(t *testing.T, accounts []save.Account, clients map[string]tab.C
 	t.Helper()
 
 	root := NewUI(
+		t.Context(),
 		nil,                         // message logger channel
 		save.BuildDefaultSettings(), // settings
 		save.BuildDefaultTheme(),    // theme
@@ -38,6 +39,7 @@ func newTestRoot(t *testing.T, accounts []save.Account, clients map[string]tab.C
 		nil,                         // channel history
 		initialState,                // initial app state
 	)
+	t.Cleanup(root.Close)
 	root.width, root.height = 80, 24
 
 	return root

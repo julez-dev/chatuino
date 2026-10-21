@@ -33,6 +33,7 @@ type userInspect struct {
 	isDataFetched bool
 
 	width, height   int
+	infoHeight      int    // rows the info banner above the history occupies
 	tabID           string // used to identify the tab, can be used here too since a tab only ever has one user inspect at once
 	user            string // the chatter
 	channel         string // the streamer
@@ -66,10 +67,7 @@ func newUserInspect(
 	badgeReplacer BadgeReplacer,
 ) *userInspect {
 	c := newChatWindow(width, height, settings, theme, keymap)
-	timeFormat := settings.Chat.UserInspectTimeFormat
-	c.timeFormatFunc = func(t time.Time) string {
-		return t.Local().Format(timeFormat)
-	}
+	c.SetTimeFormat(settings.Chat.UserInspectTimeFormat)
 
 	return &userInspect{
 		tabID:         tabID,
@@ -155,10 +153,10 @@ func (u *userInspect) init(initialEvents []ChatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
+			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ctx, ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			prepareCmd.WriteString(prepare)
 
-			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
+			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ctx, ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
 			prepareCmd.WriteString(prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, ChatEventMessage{
@@ -300,24 +298,46 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 }
 
 func (u *userInspect) View() string {
-	uiView := u.renderUserInfo()
-
-	if uiView != "" {
-		return uiView + "\n" + u.chatWindow.View()
+	if u.height <= 0 {
+		return ""
 	}
 
-	return u.chatWindow.View()
+	uiView := u.renderUserInfo()
+	if lipgloss.Height(uiView) > u.height {
+		return lipgloss.NewStyle().MaxHeight(u.height).Render(uiView)
+	}
+
+	chatView := u.chatWindow.View()
+	if uiView == "" {
+		return chatView
+	}
+	if u.chatWindow.height == 0 {
+		return uiView
+	}
+
+	// An empty one-row viewport renders as "", but still owns its row.
+	return uiView + "\n" + chatView
 }
 
+// handleResize gives the info banner its rows and the chat window the rest. The
+// newline joining the two blocks terminates a row instead of adding one, so no
+// extra row is reserved for it.
 func (u *userInspect) handleResize() {
-	uiView := u.renderUserInfo()
-	var uiViewHeight int
+	chatHeight := u.height
+	u.infoHeight = 0
 
-	if uiView != "" {
-		uiViewHeight = lipgloss.Height(uiView)
+	if uiView := u.renderUserInfo(); uiView != "" {
+		u.infoHeight = lipgloss.Height(uiView)
+		chatHeight = u.height - u.infoHeight
 	}
 
-	u.chatWindow.Resize(u.width, u.height-uiViewHeight)
+	u.chatWindow.Resize(u.width, max(0, chatHeight))
+}
+
+// chatSpan is the part of the inspect window that shows history, relative to the
+// window itself. The info banner above it is not clickable.
+func (u *userInspect) chatSpan() layoutSpan {
+	return layoutSpan{top: u.infoHeight, height: u.chatWindow.height}
 }
 
 func (u *userInspect) renderUserInfo() string {

@@ -55,7 +55,13 @@ func NewReplacer(httpClient *http.Client, store EmoteStore, enableGraphics bool,
 	}
 }
 
-func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emote) (string, map[string]string, error) {
+// Replace enriches emote tokens, using ctx for every image download. Cancellation
+// returns any replacements already prepared along with the context error.
+func (i *Replacer) Replace(ctx context.Context, channelID, content string, emoteList []twitchirc.Emote) (string, map[string]string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", nil, err
+	}
+
 	// twitch sends us a list of emotes used in the message, even emotes from other channels (sub emotes)
 	// parse the emote text with the index and replace it from the global store, since its guaranteed
 	// the user has access to the emote
@@ -73,6 +79,10 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 
 	var cmd strings.Builder
 	for _, word := range words {
+		if err := ctx.Err(); err != nil {
+			return cmd.String(), replacements, err
+		}
+
 		var (
 			emote   Emote
 			isEmote bool
@@ -108,7 +118,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 			ID:         strings.ToLower(fmt.Sprintf("%s.%s", emote.Platform.String(), emote.ID)),
 			IsAnimated: emote.IsAnimated,
 			Load: func() (io.ReadCloser, string, error) {
-				return i.fetchEmote(context.Background(), emote.URL)
+				return i.fetchEmote(ctx, emote.URL)
 			},
 		})
 
@@ -120,7 +130,7 @@ func (i *Replacer) Replace(channelID, content string, emoteList []twitchirc.Emot
 		replacements[word] = unit.ReplacementText
 	}
 
-	return cmd.String(), replacements, nil
+	return cmd.String(), replacements, ctx.Err()
 }
 
 func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser, string, error) {
@@ -135,6 +145,7 @@ func (i *Replacer) fetchEmote(ctx context.Context, reqURL string) (io.ReadCloser
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, "", fmt.Errorf("unexpected status code, got: %d", resp.StatusCode)
 	}
 

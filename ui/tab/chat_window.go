@@ -3,7 +3,6 @@ package tab
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"math"
 	"os"
 	"slices"
@@ -14,12 +13,9 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/search"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/julez-dev/reflow/wordwrap"
-	"github.com/julez-dev/reflow/wrap"
 	"github.com/rs/zerolog/log"
 )
 
@@ -81,8 +77,6 @@ type chatWindow struct {
 
 	width, height int
 
-	timeFormatFunc func(time.Time) string
-
 	focused bool
 	state   chatWindowState
 
@@ -100,10 +94,13 @@ type chatWindow struct {
 	// Every single row, multiple rows may be part of a single message
 	lines []string
 
-	// optimize color rendering by caching render functions
-	// so we don't need to recreate a new lipgloss.Style for every message
-	userColorCache map[string]func(...string) string
-	searchInput    textinput.Model
+	// formatter owns message formatting and the caches derived from it
+	renderer *messageRenderer
+	// palette is shared with the composer and the user inspect window, so a user
+	// keeps the same color everywhere
+	palette *userPalette
+
+	searchInput textinput.Model
 
 	// cached filtered entries for search mode; invalidated when entries/filters change
 	filteredEntries      []*chatEntry
@@ -117,26 +114,8 @@ type chatWindow struct {
 	// reusable buffer for visible lines in View() to avoid allocation per frame
 	visibleBuf []string
 
-	// cached padding width for wrapped continuation lines when DisablePaddingWrappedLines is set;
-	// derived from time format output length, computed once at construction.
-	timePaddingWidth int
-	// time format output length without the "  " prefix + " " separator; used for error prefix alignment.
-	timeFormatWidth int
-
-	// styles
-	indicator      string
-	indicatorWidth int
-
-	subAlertStyle       lipgloss.Style
-	noticeAlertStyle    lipgloss.Style
-	clearChatAlertStyle lipgloss.Style
-	errorAlertStyle     lipgloss.Style
-	dimmedStyle         lipgloss.Style
-
-	// pre-created styles for message modifiers (strikethrough, italic, both)
-	strikethroughStyle       lipgloss.Style
-	italicStyle              lipgloss.Style
-	strikethroughItalicStyle lipgloss.Style
+	// indicator marks the selected message in the viewport
+	indicator string
 }
 
 func newChatWindow(width, height int, settings save.Settings, theme save.Theme, keymap save.KeyMap) *chatWindow {
@@ -152,42 +131,30 @@ func newChatWindow(width, height int, settings save.Settings, theme save.Theme, 
 
 	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatIndicatorColor)).Background(lipgloss.Color(theme.ChatIndicatorColor)).Render(">")
 
-	timeFormat := settings.Chat.TimeFormat
-	timeFormatFn := func(t time.Time) string {
-		return t.Local().Format(timeFormat)
+	palette := newUserPalette()
+
+	return &chatWindow{
+		settings:    settings,
+		keymap:      keymap,
+		width:       width,
+		height:      height,
+		searchInput: input,
+		renderer:    newMessageRenderer(width, lipgloss.Width(indicator), settings, theme, palette),
+		palette:     palette,
+		indicator:   indicator,
 	}
+}
 
-	// Pre-compute padding width for continuation lines.
-	// Using zero-time gives the maximum-length output for variable-width formats (e.g. "3:04 PM" → "12:00 AM"),
-	// so padding may be 1 char wider than the actual time for some hours — acceptable cosmetic tradeoff.
-	timeFormatWidth := len(timeFormatFn(time.Time{}))
-	timePadWidth := timeFormatWidth + 3 // +3 matches the "  " prefix + " " separator in messageToText
+// UsePalette makes this window share another window's user colors. Rendering and
+// the composer then resolve the same user to the same color.
+func (c *chatWindow) UsePalette(palette *userPalette) {
+	c.palette = palette
+	c.renderer.palette = palette
+}
 
-	c := chatWindow{
-		settings:         settings,
-		keymap:           keymap,
-		width:            width,
-		height:           height,
-		userColorCache:   map[string]func(...string) string{},
-		timeFormatFunc:   timeFormatFn,
-		timePaddingWidth: timePadWidth,
-		timeFormatWidth:  timeFormatWidth,
-		searchInput:      input,
-
-		indicator:           indicator,
-		indicatorWidth:      lipgloss.Width(indicator),
-		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatSubAlertColor)).Bold(true),
-		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)).Bold(true),
-		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatClearChatColor)).Bold(true),
-		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatErrorColor)).Bold(true),
-		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
-
-		strikethroughStyle:       lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false),
-		italicStyle:              lipgloss.NewStyle().Italic(true),
-		strikethroughItalicStyle: lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Italic(true),
-	}
-
-	return &c
+// SetTimeFormat changes the timestamp format of rendered messages.
+func (c *chatWindow) SetTimeFormat(format string) {
+	c.renderer.SetTimeFormat(format)
 }
 
 func (c *chatWindow) Init() tea.Cmd {
@@ -437,6 +404,7 @@ func (c *chatWindow) Resize(width, height int) {
 	widthChanged := width != c.width
 	c.width = width
 	c.height = height
+	c.renderer.SetWidth(width)
 
 	if widthChanged {
 		c.recalculateLines()
@@ -494,11 +462,7 @@ func (c *chatWindow) debugDumpChat() {
 		Entries: c.entries,
 	}
 
-	dump.UserCache = make([]string, 0, len(c.userColorCache))
-
-	for k := range c.userColorCache {
-		dump.UserCache = append(dump.UserCache, k)
-	}
+	dump.UserCache = c.palette.Names()
 
 	f, err := os.Create("chat_dump.json")
 	if err != nil {
@@ -782,13 +746,7 @@ func (c *chatWindow) cleanup() {
 	}
 
 	// remove no longer needed user color cache entries
-	for user := range c.userColorCache {
-		// user no longer exists in chat
-		if _, ok := usersLeft[user]; !ok {
-			log.Logger.Info().Str("user", user).Msg("delete user from cache")
-			delete(c.userColorCache, user)
-		}
-	}
+	c.palette.Prune(usersLeft)
 
 	// for i, e := range c.entries {
 	// 	if e.IsIgnored {
@@ -819,7 +777,7 @@ func (c *chatWindow) handleMessage(msg ChatEventMessage) tea.Cmd {
 	c.handleTimeoutMessage(msg)
 	c.handleMessageDeletion(msg)
 
-	lines := c.messageToText(msg)
+	lines := c.renderer.Render(msg)
 
 	// create new message - append to entries list
 	var (
@@ -912,76 +870,6 @@ func (c *chatWindow) handleMessageDeletion(msg ChatEventMessage) {
 	}
 }
 
-// buildAlertPrefix creates a standardized prefix with timestamp and styled alert label.
-// Example output: "  15:04:05 [Notice]: "
-func (c *chatWindow) buildAlertPrefix(timestamp time.Time, label string, style lipgloss.Style) string {
-	return "  " + c.dimmedStyle.Render(c.timeFormatFunc(timestamp)) + " [" + style.Render(label) + "]: "
-}
-
-// formatMessageText applies word replacements and color processing to message content.
-func (c *chatWindow) formatMessageText(content string, modifier MessageContentModifier) string {
-	if modifier.Strikethrough && modifier.Italic {
-		return c.strikethroughItalicStyle.Render(content)
-	}
-	if modifier.Strikethrough {
-		return c.strikethroughStyle.Render(content)
-	}
-	if modifier.Italic {
-		return c.italicStyle.Render(content)
-	}
-
-	content = c.applyWordReplacements(content, modifier.WordReplacements)
-
-	if modifier.MessageSuffix != "" {
-		content += modifier.MessageSuffix
-	}
-	return content
-}
-
-// applyWordReplacements applies word replacements from the display modifier to the given content.
-// Replacements are matched per space-delimited token, mirroring how Replace builds the map.
-// This prevents a single-character emote token from being substituted inside unrelated words
-// (e.g. an "o" emote bleeding into "moon"/"pool").
-func (c *chatWindow) applyWordReplacements(content string, replacements WordReplacement) string {
-	if len(replacements) == 0 {
-		return content
-	}
-
-	words := strings.Split(content, " ")
-	for i, word := range words {
-		if replacement, ok := replacements[word]; ok {
-			words[i] = replacement
-		}
-	}
-	return strings.Join(words, " ")
-}
-
-func (c *chatWindow) setUserColorModifier(content string, modifier *MessageContentModifier) {
-	words := strings.Split(content, " ")
-
-	if modifier.WordReplacements == nil {
-		modifier.WordReplacements = make(WordReplacement)
-	}
-
-	for _, word := range words {
-		cleaned := strings.ToLower(stripDisplayNameEdges(word))
-		renderFn, ok := c.userColorCache[cleaned]
-
-		if !ok {
-			// fallback try if empty
-			if f, ok := c.userColorCache[word]; ok {
-				renderFn = f
-			} else {
-				continue
-			}
-		}
-
-		stripped := stripDisplayNameEdges(word)
-		modifier.WordReplacements[stripped] = renderFn(stripped)
-		modifier.WordReplacements[word] = renderFn(word)
-	}
-}
-
 // clipboardText returns a plain-text representation of the entry suitable for
 // the system clipboard. Chat messages use their raw text so emote tokens and
 // links survive; alert events get a readable summary.
@@ -1030,216 +918,6 @@ func (c *chatWindow) clipboardText(entry *chatEntry) string {
 	}
 
 	return ""
-}
-
-func (c *chatWindow) messageToText(event ChatEventMessage) []string {
-	switch msg := event.Message.(type) {
-	case error:
-		prefix := "  " + strings.Repeat(" ", c.timeFormatWidth) + " [" + c.errorAlertStyle.Render("Error") + "]: "
-		text := strings.ReplaceAll(msg.Error(), "\n", "")
-		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.DisplayModifier))
-	case *twitchirc.PrivateMessage:
-		userRenderFunc := c.getSetUserColorFunc(msg.LoginName, msg.Color)
-
-		// Build prefix components: time, [guest channel], [badges], username
-		parts := []string{"  " + c.dimmedStyle.Render(c.timeFormatFunc(msg.TMISentTS))}
-
-		if event.ChannelGuestDisplayName != "" {
-			parts = append(parts, "|"+event.ChannelGuestDisplayName+"|")
-		}
-
-		if len(event.DisplayModifier.BadgeReplacement) > 0 && !c.settings.Chat.DisableBadges {
-			badges := formatBadgeReplacement(c.settings, event.DisplayModifier.BadgeReplacement)
-			if c.settings.Chat.GraphicBadges {
-				// Hair space (U+200A) - narrower gap since badges have pixel padding
-				parts = append(parts, badges+" "+userRenderFunc(msg.DisplayName)+": ")
-			} else {
-				parts = append(parts, badges)
-				parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
-			}
-		} else {
-			parts = append(parts, userRenderFunc(msg.DisplayName)+": ")
-		}
-		prefix := strings.Join(parts, " ")
-
-		c.setUserColorModifier(msg.Message, &event.DisplayModifier)
-		return c.wordwrapMessage(prefix, c.formatMessageText(msg.Message, event.DisplayModifier))
-	case *twitchirc.Notice:
-		title := "Notice"
-		if event.IsFakeEvent {
-			title = "Fake-Notice"
-		}
-
-		prefix := c.buildAlertPrefix(msg.FakeTimestamp, title, c.noticeAlertStyle)
-
-		event.DisplayModifier.Italic = true
-		c.setUserColorModifier(msg.Message, &event.DisplayModifier)
-
-		return c.wordwrapMessage(prefix, c.formatMessageText(msg.Message, event.DisplayModifier))
-	case *twitchirc.ClearMessage:
-		prefix := c.buildAlertPrefix(msg.TMISentTS, "Clear Message", c.clearChatAlertStyle)
-		prefix += "A message from "
-		text := msg.Login + " was removed."
-
-		c.setUserColorModifier(text, &event.DisplayModifier)
-
-		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.DisplayModifier))
-	case *twitchirc.ClearChat:
-		prefix := c.buildAlertPrefix(msg.TMISentTS, "Clear Chat", c.clearChatAlertStyle)
-
-		if msg.TargetUserID == nil {
-			return c.wordwrapMessage(prefix, c.formatMessageText("Clear chat prevented by Chatuino. Chat restored.", event.DisplayModifier))
-		}
-
-		text := *msg.UserName
-
-		if msg.BanDuration != nil && *msg.BanDuration > 0 {
-			text += " was timed out for " + humanizeDuration(time.Duration(*msg.BanDuration)*time.Second)
-		} else {
-			text += " was permanently banned."
-		}
-
-		c.setUserColorModifier(text, &event.DisplayModifier)
-
-		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.DisplayModifier))
-	case *twitchirc.SubMessage:
-		prefix := c.buildAlertPrefix(msg.TMISentTS, "Sub Alert", c.subAlertStyle)
-
-		subResubText := "subscribed"
-		if msg.MsgID == "resub" {
-			subResubText = "resubscribed"
-		}
-
-		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
-		text := fmt.Sprintf("%s just %s with a %s subscription. (%d Months, %d Month Streak)",
-			msg.DisplayName,
-			subResubText,
-			msg.SubPlan.String(),
-			msg.CumulativeMonths,
-			msg.StreakMonths,
-		)
-
-		// Append user message if present
-		if msg.Message != "" {
-			text += ": " + msg.Message
-		}
-
-		c.setUserColorModifier(text, &event.DisplayModifier)
-
-		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.DisplayModifier))
-	case *twitchirc.SubGiftMessage:
-		prefix := c.buildAlertPrefix(msg.TMISentTS, "Sub Gift Alert", c.subAlertStyle)
-
-		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
-
-		text := fmt.Sprintf("%s gifted a %s sub to %s. (%d Months)",
-			msg.DisplayName,
-			msg.SubPlan.String(),
-			msg.ReceiptDisplayName,
-			msg.Months,
-		)
-
-		c.setUserColorModifier(text, &event.DisplayModifier)
-
-		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.DisplayModifier))
-	case *twitchirc.AnnouncementMessage:
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
-		prefix := "  " + c.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
-
-		_ = c.getSetUserColorFunc(msg.Login, msg.Color)
-		// Unlike other messages the announcer name is part of the wrapped body
-		// (not the prefix). Build the raw text and let formatMessageText apply
-		// emote/color replacements exactly once, matching the regular message path.
-		text := fmt.Sprintf("%s: %s", msg.DisplayName, msg.Message)
-
-		c.setUserColorModifier(text, &event.DisplayModifier)
-
-		return c.wordwrapMessage(prefix, c.formatMessageText(text, event.DisplayModifier))
-	}
-
-	return []string{}
-}
-
-func (c *chatWindow) getSetUserColorFunc(name string, colorHex string) func(strs ...string) string {
-	_, ok := c.userColorCache[name]
-
-	if !ok {
-		if colorHex == "" {
-			colorHex = randomHexColor()
-		}
-
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-		c.userColorCache[name] = style.Render
-	}
-
-	return c.userColorCache[name]
-}
-
-func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
-	// Strip duplicate-bypass rune (U+E0000) used to bypass Twitch spam detection.
-	// Guard with ContainsRune to avoid allocating when the rune isn't present (vast majority of messages).
-	if strings.ContainsRune(content, duplicateBypass) {
-		content = strings.Map(func(r rune) rune {
-			if r == duplicateBypass {
-				return -1
-			}
-			return r
-		}, content)
-	}
-
-	prefixWidth := lipgloss.Width(prefix)
-
-	// Assure that the prefix is at least prefixPadding wide
-	if prefixWidth < prefixPadding {
-		prefix = prefix + strings.Repeat(" ", prefixPadding-prefixWidth)
-		prefixWidth = lipgloss.Width(prefix)
-	}
-
-	contentWidthLimit := c.width - c.indicatorWidth - prefixWidth
-
-	// softwrap text to contentWidthLimit, if soft wrapping fails (for example in links) force break
-	wrappedText := wrap.String(wordwrap.String(content, contentWidthLimit), contentWidthLimit)
-	splits := strings.Split(wrappedText, "\n")
-
-	lines := make([]string, 0, len(splits))
-	lines = append(lines, prefix+splits[0]) // first line is prefix + content at index 0
-
-	// if there are more lines, add prefixPadding spaces to the beginning of the line
-	for _, line := range splits[1:] {
-		if c.settings.Chat.DisablePaddingWrappedLines {
-			lines = append(lines, strings.Repeat(" ", c.timePaddingWidth)+line)
-		} else {
-			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
-		}
-	}
-
-	return expandGraphicRows(lines, graphicRows(c.settings))
-}
-
-// graphicRows returns the number of terminal rows graphic emotes/badges span, 1 if graphics are disabled.
-func graphicRows(settings save.Settings) int {
-	if !settings.Chat.GraphicEmotes && !settings.Chat.GraphicBadges {
-		return 1
-	}
-
-	return max(settings.Chat.GraphicScale, 1)
-}
-
-// expandGraphicRows makes lines containing images rows high by inserting rows-1 lines above them.
-// Images are bottom aligned with the text, their upper rows are rendered in the inserted lines.
-// Lines without images are unaffected.
-func expandGraphicRows(lines []string, rows int) []string {
-	if rows <= 1 {
-		return lines
-	}
-
-	expanded := make([]string, 0, len(lines)+rows-1)
-	for _, line := range lines {
-		expanded = append(expanded, kittyimg.PlaceholderRowsAbove(line, rows)...)
-		expanded = append(expanded, line)
-	}
-
-	return expanded
 }
 
 func (c *chatWindow) updatePort() {
@@ -1316,7 +994,7 @@ func (c *chatWindow) recalculateLines() {
 			lastCursorEnd = prevEntry.Position.CursorEnd
 		}
 
-		lines := c.messageToText(e.Event)
+		lines := c.renderer.Render(e.Event)
 		c.lines = append(c.lines, lines...)
 
 		e.Position.CursorStart = lastCursorEnd + 1
@@ -1444,19 +1122,4 @@ func (c *chatWindow) entryMatchesSearch(e *chatEntry) bool {
 	}
 
 	return c.currentMatcher.Match(cast)
-}
-
-func formatBadgeReplacement(settings save.Settings, replacements map[string]string) string {
-	// Sort keys for deterministic badge order
-	keys := slices.Sorted(maps.Keys(replacements))
-	values := make([]string, 0, len(keys))
-	for _, k := range keys {
-		values = append(values, replacements[k])
-	}
-
-	if !settings.Chat.GraphicBadges {
-		return fmt.Sprintf("[%s]", strings.Join(values, ","))
-	}
-
-	return strings.Join(values, "")
 }

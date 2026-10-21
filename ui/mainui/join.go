@@ -106,11 +106,9 @@ func newJoin(
 	clients map[string]tab.ClientCapabilities,
 	accountProvider tab.AccountProvider,
 ) *join {
-	emptyUserMap := map[string]func(...string) string{}
-
 	modalWidth := calcModalWidth(parentWidth)
 
-	input := component.NewSuggestionTextInput(emptyUserMap, nil)
+	input := component.NewSuggestionTextInput(nil, nil)
 	input.DisableAutoSpaceSuggestion = true
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "

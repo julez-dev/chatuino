@@ -14,7 +14,7 @@ func newTestChatInput(t *testing.T, width int) *chatInput {
 	t.Helper()
 
 	settings := save.BuildDefaultSettings()
-	input := newChatInput(map[string]func(...string) string{}, settings.BuildCustomSuggestionMap(), save.BuildDefaultTheme(), nil)
+	input := newChatInput(newUserPalette(), settings.BuildCustomSuggestionMap(), save.BuildDefaultTheme(), nil)
 	input.SetWidth(width)
 
 	return input
@@ -191,8 +191,8 @@ func TestApplyWordReplacements(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c := &chatWindow{}
-			got := c.applyWordReplacements(tt.content, tt.replacements)
+			r := &messageRenderer{}
+			got := r.applyWordReplacements(tt.content, tt.replacements)
 			require.Equal(t, tt.want, got)
 		})
 	}

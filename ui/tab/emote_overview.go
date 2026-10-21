@@ -99,7 +99,7 @@ func (e *emoteOverview) Init() tea.Cmd {
 						return
 					}
 
-					prepare, overwrite, err := e.emoteReplacer.Replace(e.channelID, emote.Text, nil)
+					prepare, overwrite, err := e.emoteReplacer.Replace(e.ctx, e.channelID, emote.Text, nil)
 					if err != nil {
 						log.Logger.Error().Err(err).Send()
 						continue
