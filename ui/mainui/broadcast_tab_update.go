@@ -110,24 +110,24 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 
 	t.channelLogin = msg.channelLogin
 	t.channelID = msg.channelID
-	t.streamInfo = newStreamInfo(msg.channelID, t.deps.Clients[t.account.ID].API, t.width)
+	t.streamInfo = newStreamInfo(msg.channelID, t.client.API, t.width)
 	t.poll = newPoll(t.width)
-	t.chatWindow = newChatWindow(t.width, t.height, t.deps)
+	t.chatWindow = newChatWindow(t.width, t.height, t.settings, t.theme, t.keymap)
 
 	// enable inline emote replacement; the single line input can only display single row images
 	var emoteReplacer component.Replacer
-	if graphicRows(t.deps.UserConfig.Settings) <= 1 {
-		emoteReplacer = t.deps.EmoteReplacer
+	if graphicRows(t.settings) <= 1 {
+		emoteReplacer = t.emoteReplacer
 	}
-	t.input = newChatInput(t.chatWindow.userColorCache, t.deps.UserConfig.Settings.BuildCustomSuggestionMap(), t.deps.UserConfig.Theme, emoteReplacer)
-	t.input.SetSuggestionKeyMap(t.deps.Keymap)
+	t.input = newChatInput(t.chatWindow.userColorCache, t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
+	t.input.SetSuggestionKeyMap(t.keymap)
 
 	if len(t.pendingChannelSuggestions) > 0 {
 		t.input.SetChannelSuggestions(t.pendingChannelSuggestions)
 		t.pendingChannelSuggestions = nil
 	}
 
-	t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.deps)
+	t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.theme, t.client.API)
 
 	// set chat suggestions if non-anonymous user
 	if !t.account.IsAnonymous {
@@ -184,8 +184,8 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 	accountID := t.account.ID
 	channelLogin := msg.channelLogin
 	ircCmds = append(ircCmds, func() tea.Msg {
-		t.deps.Pool.ConnectIRC(accountID)
-		t.deps.Pool.JoinChannel(accountID, channelLogin)
+		t.pool.ConnectIRC(accountID)
+		t.pool.JoinChannel(accountID, channelLogin)
 		return nil
 	})
 
@@ -206,7 +206,7 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 //
 // sadly due to cost limits, we only allow this events users channel not other channels
 func (t *broadcastTab) subscribeChannelEventCmds(channelID string) []tea.Cmd {
-	eventSubAPI := t.deps.Clients[t.account.ID].EventSub
+	eventSubAPI := t.client.EventSub
 	if eventSubAPI == nil || t.account.ID != channelID {
 		return nil
 	}
@@ -217,7 +217,7 @@ func (t *broadcastTab) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end", "channel.ad_break.begin"} {
 		subType := subType // capture for closure
 		cmds = append(cmds, func() tea.Msg {
-			t.deps.Pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
 				Type:    subType,
 				Version: "1",
 				Condition: map[string]string{
@@ -229,7 +229,7 @@ func (t *broadcastTab) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	}
 
 	cmds = append(cmds, func() tea.Msg {
-		t.deps.Pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+		t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
 			Type:    "channel.raid",
 			Version: "1",
 			Condition: map[string]string{
@@ -240,7 +240,7 @@ func (t *broadcastTab) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	})
 
 	cmds = append(cmds, func() tea.Msg {
-		t.deps.Pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+		t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
 			Type:    "channel.raid",
 			Version: "1",
 			Condition: map[string]string{
@@ -265,11 +265,11 @@ func (t *broadcastTab) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea
 		return nil
 	}
 
-	userEmoteSet := t.deps.EmoteCache.AllEmotesUsableByUser(t.account.ID)
+	userEmoteSet := t.emoteCache.AllEmotesUsableByUser(t.account.ID)
 
 	log.Info().Str("user-id", t.account.ID).Int("len", len(userEmoteSet)).Msg("fetched emotes for user")
 
-	channelEmoteSet := t.deps.EmoteCache.GetAllForChannel(t.channelID) // includes bttv, 7tv
+	channelEmoteSet := t.emoteCache.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
 	t.input.SetSuggestions(emoteSuggestions(userEmoteSet, channelEmoteSet))
 

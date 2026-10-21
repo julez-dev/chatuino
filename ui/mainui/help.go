@@ -3,6 +3,8 @@ package mainui
 import (
 	"strings"
 
+	"github.com/julez-dev/chatuino/save"
+
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -20,68 +22,68 @@ type help struct {
 	port        viewport.Model
 }
 
-func newHelp(height, width int, deps *DependencyContainer) *help {
+func newHelp(height, width int, keymap save.KeyMap) *help {
 	sections := []helpSection{
 		{
 			"General",
 			[]key.Binding{
-				deps.Keymap.Up,
-				deps.Keymap.Down,
-				deps.Keymap.Escape,
-				deps.Keymap.Confirm,
-				deps.Keymap.Help,
+				keymap.Up,
+				keymap.Down,
+				keymap.Escape,
+				keymap.Confirm,
+				keymap.Help,
 			},
 		},
 		{
 			"App Binds",
 			[]key.Binding{
-				deps.Keymap.Quit,
-				deps.Keymap.Create,
-				deps.Keymap.QuickJoin,
-				deps.Keymap.Remove,
-				deps.Keymap.CloseTab,
-				deps.Keymap.DumpScreen,
+				keymap.Quit,
+				keymap.Create,
+				keymap.QuickJoin,
+				keymap.Remove,
+				keymap.CloseTab,
+				keymap.DumpScreen,
 			},
 		},
 		{
 			"Tab Binds",
 			[]key.Binding{
-				deps.Keymap.Next,
-				deps.Keymap.Previous,
+				keymap.Next,
+				keymap.Previous,
 			},
 		},
 		{
 			"Suggestion Binds",
 			[]key.Binding{
-				deps.Keymap.AcceptSuggestion,
-				deps.Keymap.NextSuggestion,
-				deps.Keymap.PrevSuggestion,
+				keymap.AcceptSuggestion,
+				keymap.NextSuggestion,
+				keymap.PrevSuggestion,
 			},
 		},
 		{
 			"Chat Binds",
 			[]key.Binding{
-				deps.Keymap.InsertMode,
-				deps.Keymap.InspectMode,
-				deps.Keymap.ChatPopUp,
-				deps.Keymap.ChannelPopUp,
-				deps.Keymap.GoToTop,
-				deps.Keymap.GoToBottom,
-				deps.Keymap.PageUp,
-				deps.Keymap.PageDown,
-				deps.Keymap.DumpChat,
-				deps.Keymap.QuickTimeout,
-				deps.Keymap.CopyMessage,
-				deps.Keymap.CopyToClipboard,
-				deps.Keymap.SearchMode,
-				deps.Keymap.QuickSent,
-				deps.Keymap.ReplyMessage,
+				keymap.InsertMode,
+				keymap.InspectMode,
+				keymap.ChatPopUp,
+				keymap.ChannelPopUp,
+				keymap.GoToTop,
+				keymap.GoToBottom,
+				keymap.PageUp,
+				keymap.PageDown,
+				keymap.DumpChat,
+				keymap.QuickTimeout,
+				keymap.CopyMessage,
+				keymap.CopyToClipboard,
+				keymap.SearchMode,
+				keymap.QuickSent,
+				keymap.ReplyMessage,
 			},
 		},
 		{
 			"Account Binds",
 			[]key.Binding{
-				deps.Keymap.MarkLeader,
+				keymap.MarkLeader,
 			},
 		},
 	}

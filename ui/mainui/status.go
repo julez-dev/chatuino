@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
@@ -75,7 +76,7 @@ type streamStatus struct {
 	accountID     string
 	channelID     string
 	tab           *broadcastTab
-	deps          *DependencyContainer
+	api           APIClient
 
 	spinner spinner.Model
 
@@ -90,9 +91,9 @@ type streamStatus struct {
 	rightAlignStyle lipgloss.Style // right-aligned layout; Width set at render time
 }
 
-func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID string, deps *DependencyContainer) *streamStatus {
+func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID string, theme save.Theme, api APIClient) *streamStatus {
 	return &streamStatus{
-		deps:      deps,
+		api:       api,
 		tab:       tab,
 		accountID: accountID,
 		width:     width,
@@ -101,8 +102,8 @@ func newStreamStatus(width, height int, tab *broadcastTab, accountID, channelID 
 		spinner:   spinner.New(spinner.WithSpinner(loadingSpinner)),
 
 		maxWidthStyle:   lipgloss.NewStyle(), // Width set at render time
-		statusHighlight: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.StatusColor)),
-		updateHighlight: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.SplashHighlightColor)),
+		statusHighlight: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.StatusColor)),
+		updateHighlight: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SplashHighlightColor)),
 		rightAlignStyle: lipgloss.NewStyle().AlignHorizontal(lipgloss.Right), // Width set at render time
 	}
 }
@@ -112,7 +113,7 @@ func (s *streamStatus) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		settingsResp, err := s.deps.Clients[s.accountID].API.GetChatSettings(ctx, s.channelID, "")
+		settingsResp, err := s.api.GetChatSettings(ctx, s.channelID, "")
 		if err != nil {
 			return setSteamStatusDataMessage{
 				target: s.tab.id,

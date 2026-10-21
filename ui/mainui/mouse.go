@@ -34,7 +34,7 @@ func (r *Root) activeTab() tab {
 // tabLocalCoords translates screen coordinates into coordinates relative to the
 // active tab's view. inTab is false when the cell belongs to the tab header.
 func (r *Root) tabLocalCoords(x, y int) (localX, localY int, inTab bool) {
-	if r.dependencies.UserConfig.Settings.VerticalTabList {
+	if r.settings.VerticalTabList {
 		headerWidth := lipgloss.Width(r.header.View(r.tabs.Rows()))
 		if x < headerWidth {
 			return 0, 0, false
@@ -126,7 +126,7 @@ func (r *Root) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 	if !inTab {
 		// Bubbles' list has no wheel support, so wheel over the vertical tab
 		// list moves the active tab instead.
-		if r.dependencies.UserConfig.Settings.VerticalTabList {
+		if r.settings.VerticalTabList {
 			switch wheelDelta(msg) {
 			case -3:
 				r.prevTab()

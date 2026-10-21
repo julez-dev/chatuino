@@ -49,14 +49,9 @@ func newReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
 
 	client := &fakeUserClient{}
 
-	deps := &DependencyContainer{
-		UserConfig: UserConfiguration{
-			Settings: save.BuildDefaultSettings(),
-			Theme:    save.BuildDefaultTheme(),
-		},
-		Keymap:         save.BuildDefaultKeyMap(),
-		Clients:        map[string]ClientCapabilities{"account": {API: client, Chat: client}},
-	}
+	settings := save.BuildDefaultSettings()
+	theme := save.BuildDefaultTheme()
+	keymap := save.BuildDefaultKeyMap()
 
 	tab := &broadcastTab{
 		id:      "tab",
@@ -64,11 +59,15 @@ func newReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
 		state:   insertMode,
 		width:   80,
 		height:  24,
-		deps:    deps,
+
+		settings: settings,
+		theme:    theme,
+		keymap:   keymap,
+		client:   ClientCapabilities{API: client, Chat: client},
 	}
 
-	tab.chatWindow = newChatWindow(tab.width, tab.height, deps)
-	tab.input = newChatInput(tab.chatWindow.userColorCache, deps.UserConfig.Settings.BuildCustomSuggestionMap(), deps.UserConfig.Theme, nil)
+	tab.chatWindow = newChatWindow(tab.width, tab.height, settings, theme, keymap)
+	tab.input = newChatInput(tab.chatWindow.userColorCache, settings.BuildCustomSuggestionMap(), theme, nil)
 	tab.input.SetWidth(tab.width)
 
 	return tab, client
@@ -84,7 +83,7 @@ func newLoadedReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
 	tab.channelID = "channel-id"
 	tab.channelLogin = "channel"
 	tab.channelDataLoaded = true
-	tab.statusInfo = newStreamStatus(tab.width, tab.height, tab, tab.account.ID, tab.channelID, tab.deps)
+	tab.statusInfo = newStreamStatus(tab.width, tab.height, tab, tab.account.ID, tab.channelID, tab.theme, tab.client.API)
 	tab.streamInfo = newStreamInfo(tab.channelID, client, tab.width)
 	tab.poll = newPoll(tab.width)
 	tab.HandleResize()

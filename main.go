@@ -260,28 +260,6 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				}()
 			}
 
-			deps := &mainui.DependencyContainer{
-				UserConfig: mainui.UserConfiguration{
-					Settings: settings,
-					Theme:    theme,
-				},
-				Version:              Version,
-				AppStateManager:      appStateManager,
-				Keymap:               keymap,
-				ServerAPI:            serverAPI,
-				AccountProvider:      accountProvider,
-				EmoteCache:           emoteCache,
-				BadgeCache:           badgeCache,
-				EmoteReplacer:        emoteReplacer,
-				BadgeReplacer:        badgeReplacer,
-				ImageDisplayManager:  displayManager,
-				RecentMessageService: recentMessageService,
-				MessageLogger:        messageLogger,
-				Pool:                 pool,
-				Clients:              clients,
-				ChannelHistory:       channelHistoryManager,
-			}
-
 			// Fetch all Accounts
 			accounts, err := accountProvider.GetAllAccounts()
 			if err != nil {
@@ -319,8 +297,6 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				clients[acc.ID] = mainui.NewClientCapabilities(ttvAPI)
 			}
 
-			deps.Accounts = accounts
-
 			var initialState *save.AppState
 			if tabSpecs := command.StringSlice("tab"); len(tabSpecs) > 0 {
 				state, err := buildInitialState(tabSpecs, accounts)
@@ -333,7 +309,24 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 			p := tea.NewProgram(
 				mainui.NewUI(
 					messageLoggerChan,
-					deps,
+					settings,
+					theme,
+					keymap,
+					accounts,
+					Version,
+					serverAPI,
+					clients,
+					accountProvider,
+					emoteCache,
+					badgeCache,
+					emoteReplacer,
+					badgeReplacer,
+					displayManager,
+					recentMessageService,
+					messageLogger,
+					pool,
+					appStateManager,
+					channelHistoryManager,
 					initialState,
 				),
 				tea.WithContext(ctx),

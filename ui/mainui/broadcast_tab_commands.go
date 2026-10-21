@@ -34,7 +34,7 @@ func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
 
 	channel := strings.ToLower(args[0])
 	account := t.account
-	client := t.deps.Clients[account.ID].API
+	client := t.client.API
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -110,7 +110,7 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		}
 	}
 
-	client := t.deps.Clients[t.account.ID].Chat
+	client := t.client.Chat
 	if client == nil {
 		log.Logger.Warn().Str("account", t.account.DisplayName).Msg("account has no authenticated API client")
 		return nil
@@ -256,7 +256,7 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 
 func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 	return func() tea.Msg {
-		api := t.deps.Clients[t.account.ID].Chat
+		api := t.client.Chat
 		if api == nil {
 			log.Logger.Warn().Str("broadcast", t.channelLogin).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
 			return nil
@@ -314,7 +314,8 @@ func (t *broadcastTab) handleOpenUserInspect(args []string) tea.Cmd {
 
 	username := args[0]
 
-	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID, t.deps)
+	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID,
+		t.settings, t.theme, t.keymap, t.client.API, t.messageLogger, t.emoteReplacer, t.badgeReplacer)
 	t.userInspect.chatWindow.userColorCache = t.chatWindow.userColorCache
 
 	// The table blurs the chat window and focuses the new inspect window.

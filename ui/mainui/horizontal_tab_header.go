@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/julez-dev/chatuino/save"
+
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/ui/nav"
 )
@@ -16,7 +18,6 @@ type tabHitSpan struct {
 
 type horizontalTabHeader struct {
 	width int
-	deps  *DependencyContainer
 
 	// pre-created styles to avoid allocations in View()/renderTabContent() (called every frame)
 	borderStyle       lipgloss.Style
@@ -26,15 +27,14 @@ type horizontalTabHeader struct {
 	notificationStyle lipgloss.Style
 }
 
-func newHorizontalTabHeader(width int, deps *DependencyContainer) *horizontalTabHeader {
+func newHorizontalTabHeader(width int, theme save.Theme) *horizontalTabHeader {
 	return &horizontalTabHeader{
 		width:             width,
-		deps:              deps,
-		borderStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		separatorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.DimmedTextColor)),
-		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)),
+		borderStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
+		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
+		separatorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
+		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor)),
+		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)),
 	}
 }
 

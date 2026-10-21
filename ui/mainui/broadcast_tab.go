@@ -14,6 +14,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -108,7 +109,18 @@ type broadcastTab struct {
 	width, height int
 	fullWidth     int // full terminal width (for status bar in vertical mode)
 
-	deps       *DependencyContainer
+	settings       save.Settings
+	theme          save.Theme
+	keymap         save.KeyMap
+	client         ClientCapabilities
+	pool           ConnectionPool
+	recentMessages RecentMessageService
+	messageLogger  MessageLogger
+	emoteCache     EmoteCache
+	emoteReplacer  EmoteReplacer
+	badgeCache     *badge.Cache
+	badgeReplacer  BadgeReplacer
+
 	modFetcher ModStatusFetcher
 
 	// pre-created style to avoid allocations in View()
@@ -132,7 +144,17 @@ func newBroadcastTab(
 	width, height int,
 	account save.Account,
 	channel string,
-	deps *DependencyContainer,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	client ClientCapabilities,
+	pool ConnectionPool,
+	recentMessages RecentMessageService,
+	messageLogger MessageLogger,
+	emoteCache EmoteCache,
+	emoteReplacer EmoteReplacer,
+	badgeCache *badge.Cache,
+	badgeReplacer BadgeReplacer,
 ) *broadcastTab {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](time.Second * 10),
@@ -140,16 +162,26 @@ func newBroadcastTab(
 	go cache.Start()
 
 	return &broadcastTab{
-		id:           tabID,
-		width:        width,
-		height:       height,
-		account:      account,
-		channel:      channel,
-		channelLogin: channel, // Initialize from param; updated to canonical value after init
-		lastMessages: cache,
-		deps:         deps,
-		modFetcher:   ivr.NewAPI(http.DefaultClient),
-		spinner:      spinner.New(spinner.WithSpinner(loadingSpinner)),
+		id:             tabID,
+		width:          width,
+		height:         height,
+		account:        account,
+		channel:        channel,
+		channelLogin:   channel, // Initialize from param; updated to canonical value after init
+		lastMessages:   cache,
+		settings:       settings,
+		theme:          theme,
+		keymap:         keymap,
+		client:         client,
+		pool:           pool,
+		recentMessages: recentMessages,
+		messageLogger:  messageLogger,
+		emoteCache:     emoteCache,
+		emoteReplacer:  emoteReplacer,
+		badgeCache:     badgeCache,
+		badgeReplacer:  badgeReplacer,
+		modFetcher:     ivr.NewAPI(http.DefaultClient),
+		spinner:        spinner.New(spinner.WithSpinner(loadingSpinner)),
 
 		centeredStyle: lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center),
 	}
@@ -175,7 +207,7 @@ func (t *broadcastTab) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
-		userData, err := t.deps.Clients[t.account.ID].API.GetUsers(ctx, []string{t.channel}, nil)
+		userData, err := t.client.API.GetUsers(ctx, []string{t.channel}, nil)
 		if err != nil {
 			return nav.Address(t.id, setErrorMessage{
 				err: fmt.Errorf("could not fetch ttv user %s: %w", t.channel, err),
@@ -206,7 +238,7 @@ func (t *broadcastTab) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 		var recentMessages []twitchirc.IRCer
 		group.Go(func() error {
 			// fetch recent messages
-			msgs, err := t.deps.RecentMessageService.GetRecentMessagesFor(ctx, userData.Login)
+			msgs, err := t.recentMessages.GetRecentMessagesFor(ctx, userData.Login)
 			// call sometimes timeouts, but recent message are not really that important to crash the tab, so ignore the error
 			if err != nil {
 				return nil
@@ -266,7 +298,7 @@ func (t *broadcastTab) refreshEmotes(login, channelID string, manually bool) tea
 		group, ctx := errgroup.WithContext(ctx)
 
 		group.Go(func() error {
-			if err := t.deps.EmoteCache.RefreshLocal(ctx, channelID); err != nil {
+			if err := t.emoteCache.RefreshLocal(ctx, channelID); err != nil {
 				return fmt.Errorf("could not refresh emote cache for %s (%s): %w", login, channelID, err)
 			}
 
@@ -274,7 +306,7 @@ func (t *broadcastTab) refreshEmotes(login, channelID string, manually bool) tea
 		})
 
 		group.Go(func() error {
-			if err := t.deps.BadgeCache.RefreshChannel(ctx, channelID); err != nil {
+			if err := t.badgeCache.RefreshChannel(ctx, channelID); err != nil {
 				return fmt.Errorf("could not refresh badge cache for %s (%s): %w", login, channelID, err)
 			}
 

@@ -9,13 +9,13 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/nav"
 )
 
 type verticalTabHeader struct {
 	width  int
 	height int
-	deps   *DependencyContainer
 
 	borderStyle lipgloss.Style // pre-created for View() border rendering
 
@@ -29,7 +29,6 @@ type verticalTabHeader struct {
 }
 
 type verticalTabDelegate struct {
-	deps *DependencyContainer
 
 	// pre-created styles to avoid allocations in Render() (called per visible item per frame)
 	bulletStyle       lipgloss.Style
@@ -85,12 +84,11 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 	fmt.Fprint(w, line.String())
 }
 
-func newVerticalTabHeader(width, height int, deps *DependencyContainer) *verticalTabHeader {
+func newVerticalTabHeader(width, height int, theme save.Theme) *verticalTabHeader {
 	delegate := verticalTabDelegate{
-		deps:              deps,
-		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)),
+		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
+		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor)),
+		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)),
 	}
 
 	// Adjust dimensions for border: -2 width for left/right │, -2 height for top/bottom borders
@@ -113,8 +111,7 @@ func newVerticalTabHeader(width, height int, deps *DependencyContainer) *vertica
 	return &verticalTabHeader{
 		width:       width,
 		height:      height,
-		deps:        deps,
-		borderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		borderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
 		list:        l,
 		delegate:    delegate,
 	}

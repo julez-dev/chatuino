@@ -65,8 +65,14 @@ type join struct {
 	accountList   list.Model
 	selectedInput currentJoinInput
 
-	accounts         []save.Account
-	deps             *DependencyContainer
+	accounts []save.Account
+
+	settings        save.Settings
+	theme           save.Theme
+	keymap          save.KeyMap
+	clients         map[string]ClientCapabilities
+	accountProvider AccountProvider
+
 	followedFetchers map[string]FollowedChannelsAPI
 	hasLoaded        bool
 }
@@ -91,7 +97,14 @@ func createDefaultList(height int, selectedColor string) list.Model {
 	return newList
 }
 
-func newJoin(parentWidth int, deps *DependencyContainer) *join {
+func newJoin(
+	parentWidth int,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	clients map[string]ClientCapabilities,
+	accountProvider AccountProvider,
+) *join {
 	emptyUserMap := map[string]func(...string) string{}
 
 	modalWidth := calcModalWidth(parentWidth)
@@ -101,7 +114,7 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "
 	joinStyles := input.InputModel.Styles()
-	joinStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
+	joinStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
 	input.InputModel.SetStyles(joinStyles)
 	input.InputModel.Placeholder = "Channel"
 	input.InputModel.Validate = func(s string) error {
@@ -124,13 +137,13 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	// Use the configured suggestion keys. Tab still moves between fields, so
 	// Space remains a join-only alias (channel names cannot contain it).
 	input.KeyMap = component.KeyMap{
-		AcceptSuggestion: deps.Keymap.AcceptSuggestion,
-		NextSuggestion:   deps.Keymap.NextSuggestion,
-		PrevSuggestion:   deps.Keymap.PrevSuggestion,
+		AcceptSuggestion: keymap.AcceptSuggestion,
+		NextSuggestion:   keymap.NextSuggestion,
+		PrevSuggestion:   keymap.PrevSuggestion,
 	}
 	input.KeyMap.AcceptSuggestion.SetKeys(append(slices.Clone(input.KeyMap.AcceptSuggestion.Keys()), "space")...)
 
-	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
+	tabKindList := createDefaultList(0, theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
@@ -149,12 +162,12 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
+	channelList := createDefaultList(0, theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
 	followedFetchers := map[string]FollowedChannelsAPI{}
 
-	for id, client := range deps.Clients {
+	for id, client := range clients {
 		if client.Follows != nil {
 			followedFetchers[id] = client.Follows
 		}
@@ -164,7 +177,11 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 		width:            modalWidth,
 		height:           0, // Height will be dynamic based on content
 		input:            input,
-		deps:             deps,
+		settings:         settings,
+		theme:            theme,
+		keymap:           keymap,
+		clients:          clients,
+		accountProvider:  accountProvider,
 		accountList:      channelList,
 		tabKindList:      tabKindList,
 		followedFetchers: followedFetchers,
@@ -180,7 +197,7 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 func (j *join) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			accounts, err := j.deps.AccountProvider.GetAllAccounts()
+			accounts, err := j.accountProvider.GetAllAccounts()
 			if err != nil {
 				return nil
 			}
@@ -194,7 +211,7 @@ func (j *join) Init() tea.Cmd {
 			return setJoinAccountsMessage{accounts: accounts}
 		},
 		func() tea.Msg {
-			accounts, err := j.deps.AccountProvider.GetAllAccounts()
+			accounts, err := j.accountProvider.GetAllAccounts()
 			if err != nil {
 				return nil
 			}
@@ -280,7 +297,7 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 				return j, nil
 			}
 
-			if key.Matches(msg, j.deps.Keymap.Next) {
+			if key.Matches(msg, j.keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
 					// For mention/live notification tabs, Tab does nothing (only one field)
@@ -300,7 +317,7 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 				return j, cmd
 			}
 
-			if key.Matches(msg, j.deps.Keymap.Previous) {
+			if key.Matches(msg, j.keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
 				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
 					// For mention/live notification tabs, Shift+Tab does nothing (only one field)
@@ -328,14 +345,14 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 				kind == MentionTabKind ||
 				kind == LiveNotificationTabKind
 
-			if key.Matches(msg, j.deps.Keymap.Confirm) && isValid {
+			if key.Matches(msg, j.keymap.Confirm) && isValid {
 				channel := j.input.Value()
 				account := j.accounts[j.accountList.Cursor()]
 
 				return j, func() tea.Msg {
 					// Normalize channel name via Twitch API for broadcast tabs
 					if kind == BroadcastTabKind {
-						for accountID, client := range j.deps.Clients {
+						for accountID, client := range j.clients {
 							if accountID != account.ID {
 								continue
 							}
@@ -398,7 +415,7 @@ func (j *join) View() string {
 		Width(j.width).
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
+		BorderForeground(lipgloss.Color(j.theme.ListLabelColor))
 
 	// Center content within the calculated width
 	styleCenter := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Center)
@@ -406,7 +423,7 @@ func (j *join) View() string {
 	// Left-aligned style for status
 	styleLeft := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Left)
 
-	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
+	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.theme.ListLabelColor)).Render
 
 	var (
 		labelTab      string
@@ -414,7 +431,7 @@ func (j *join) View() string {
 		labelIdentity string
 	)
 
-	selectedLabelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).Bold(true).Render
+	selectedLabelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.theme.ActiveLabelColor)).Bold(true).Render
 
 	switch j.selectedInput {
 	case channelInput:
@@ -438,7 +455,7 @@ func (j *join) View() string {
 	b := strings.Builder{}
 
 	// Headline
-	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).MarginBottom(1)
+	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(j.theme.ActiveLabelColor)).MarginBottom(1)
 	_, _ = b.WriteString(styleCenter.Render(headlineStyle.Render("Create new Tab")) + "\n")
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
@@ -467,7 +484,7 @@ func (j *join) View() string {
 	// Show keybind hints (centered, styled with theme)
 	_, _ = b.WriteString("\n\n")
 	var hints string
-	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Faint(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.theme.StatusColor)).Faint(true)
 
 	switch j.selectedInput {
 	case channelInput:
@@ -481,7 +498,7 @@ func (j *join) View() string {
 
 	// Show status at bottom (left-aligned)
 	_, _ = b.WriteString("\n")
-	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
+	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.theme.StatusColor)).Render(j.selectedInput.String()))
 	_, _ = b.WriteString(styleLeft.Render(stateStr))
 
 	return style.Padding(0).Render(b.String())

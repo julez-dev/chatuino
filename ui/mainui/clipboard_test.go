@@ -3,6 +3,7 @@ package mainui
 import (
 	"testing"
 
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/stretchr/testify/require"
 )
@@ -10,7 +11,7 @@ import (
 func TestChatWindow_ClipboardText(t *testing.T) {
 	t.Parallel()
 
-	c := newChatWindow(40, 10, newTestDeps())
+	c := newChatWindow(40, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
 
 	user := "bob"
 	banDuration := 600

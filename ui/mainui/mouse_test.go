@@ -10,20 +10,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestDeps() *DependencyContainer {
-	return &DependencyContainer{
-		UserConfig: UserConfiguration{
-			Settings: save.BuildDefaultSettings(),
-			Theme:    save.BuildDefaultTheme(),
-		},
-		Keymap: save.BuildDefaultKeyMap(),
-	}
+// newTestRoot wires a Root with the default test configuration and a size.
+func newTestRoot(t *testing.T, accounts []save.Account, clients map[string]ClientCapabilities, initialState *save.AppState) *Root {
+	t.Helper()
+
+	root := NewUI(
+		nil,                         // message logger channel
+		save.BuildDefaultSettings(), // settings
+		save.BuildDefaultTheme(),    // theme
+		save.BuildDefaultKeyMap(),   // keymap
+		accounts,                    // accounts
+		"",                          // version
+		nil,                         // server API
+		clients,                     // per-account clients
+		nil,                         // account provider
+		nil,                         // emote cache
+		nil,                         // badge cache
+		nil,                         // emote replacer
+		nil,                         // badge replacer
+		nil,                         // image display manager
+		nil,                         // recent messages
+		nil,                         // message logger
+		nil,                         // connection pool
+		nil,                         // app state manager
+		nil,                         // channel history
+		initialState,                // initial app state
+	)
+	root.width, root.height = 80, 24
+
+	return root
+}
+
+// newTestTab builds a chat tab wired with the default test configuration.
+func newTestTab(id string, width, height int, account save.Account, channel string) *broadcastTab {
+	return newBroadcastTab(id, width, height, account, channel,
+		save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap(),
+		ClientCapabilities{}, nil, nil, nil, nil, nil, nil, nil)
 }
 
 func newTestChatWindow(t *testing.T, height, entryCount int) *chatWindow {
 	t.Helper()
 
-	c := newChatWindow(40, height, newTestDeps())
+	c := newChatWindow(40, height, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
 
 	for i := 0; i < entryCount; i++ {
 		c.lines = append(c.lines, fmt.Sprintf("line %d", i))
@@ -62,7 +90,7 @@ func headerRows(active int, names ...string) []nav.Row {
 func TestHorizontalTabHeader_TabAt(t *testing.T) {
 	t.Parallel()
 
-	h := newHorizontalTabHeader(80, newTestDeps())
+	h := newHorizontalTabHeader(80, save.BuildDefaultTheme())
 	rows := headerRows(1, "alpha", "beta", "gamma")
 
 	h.View(rows) // render once so the layout is exercised before hit-testing
@@ -97,7 +125,7 @@ func TestHorizontalTabHeader_TabAt(t *testing.T) {
 func TestHorizontalTabHeader_TabAtReflectsRows(t *testing.T) {
 	t.Parallel()
 
-	h := newHorizontalTabHeader(80, newTestDeps())
+	h := newHorizontalTabHeader(80, save.BuildDefaultTheme())
 	h.View(headerRows(0, "alpha"))
 
 	rows := headerRows(1, "alpha", "beta")
@@ -110,7 +138,7 @@ func TestHorizontalTabHeader_TabAtReflectsRows(t *testing.T) {
 func TestVerticalTabHeader_TabAt(t *testing.T) {
 	t.Parallel()
 
-	v := newVerticalTabHeader(30, 10, newTestDeps())
+	v := newVerticalTabHeader(30, 10, save.BuildDefaultTheme())
 	rows := headerRows(1, "alpha", "beta", "gamma")
 	v.View(rows)
 
@@ -142,7 +170,7 @@ func TestVerticalTabHeader_TabAt(t *testing.T) {
 func TestVerticalTabHeader_TabAtPaged(t *testing.T) {
 	t.Parallel()
 
-	v := newVerticalTabHeader(30, 6, newTestDeps())
+	v := newVerticalTabHeader(30, 6, save.BuildDefaultTheme())
 
 	names := make([]string, 0, 10)
 	for i := 0; i < 10; i++ {

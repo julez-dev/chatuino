@@ -6,13 +6,17 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 type liveNotificationTab struct {
-	id   string
-	deps *DependencyContainer
+	id string
+
+	settings save.Settings
+	theme    save.Theme
+	keymap   save.KeyMap
 
 	focused bool
 
@@ -23,14 +27,22 @@ type liveNotificationTab struct {
 	chatWindow   *chatWindow
 }
 
-func newLiveNotificationTab(id string, width, height int, deps *DependencyContainer) *liveNotificationTab {
+func newLiveNotificationTab(
+	id string,
+	width, height int,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+) *liveNotificationTab {
 	return &liveNotificationTab{
 		id:           id,
-		deps:         deps,
+		settings:     settings,
+		theme:        theme,
+		keymap:       keymap,
 		state:        inChatWindow,
 		width:        width,
 		height:       height,
-		chatWindow:   newChatWindow(width, height, deps),
+		chatWindow:   newChatWindow(width, height, settings, theme, keymap),
 		streamerLive: map[string]bool{},
 	}
 }

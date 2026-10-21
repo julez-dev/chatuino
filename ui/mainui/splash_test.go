@@ -13,9 +13,7 @@ func newTestSplash() splash {
 		width:  100,
 		height: 40,
 		keymap: save.BuildDefaultKeyMap(),
-		userConfiguration: UserConfiguration{
-			Theme: save.BuildDefaultTheme(),
-		},
+		theme:  save.BuildDefaultTheme(),
 	}
 }
 

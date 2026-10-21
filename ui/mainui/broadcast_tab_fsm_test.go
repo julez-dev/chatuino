@@ -80,14 +80,12 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 func newFSMTestTab(t *testing.T, anonymous bool) *broadcastTab {
 	t.Helper()
 
-	deps := newTestDeps()
-
 	account := save.Account{ID: "acc", DisplayName: "me"}
 	if anonymous {
 		account = save.Account{ID: "anon", IsAnonymous: true}
 	}
 
-	tab := newBroadcastTab("tab-1", 80, 24, account, "chan", deps)
+	tab := newTestTab("tab-1", 80, 24, account, "chan")
 	tab.handleChannelDataLoaded(setChannelDataMessage{
 		channelID:    "chan-id",
 		channel:      "chan",
@@ -107,7 +105,8 @@ func enterMode(t *testing.T, tab *broadcastTab, mode broadcastTabState) {
 	t.Helper()
 
 	inspect := func() {
-		tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID, tab.deps)
+		tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID,
+			tab.settings, tab.theme, tab.keymap, tab.client.API, tab.messageLogger, tab.emoteReplacer, tab.badgeReplacer)
 		_, _ = tab.transit(eventInspect)
 	}
 
@@ -183,7 +182,8 @@ func TestTabTransitions_Matrix(t *testing.T) {
 				// Entering inspect mode needs a window to show; production builds it
 				// from the selected message before calling transit.
 				if event == eventInspect && fsmExpectations[mode][event].allowed && tab.userInspect == nil {
-					tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID, tab.deps)
+					tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID,
+						tab.settings, tab.theme, tab.keymap, tab.client.API, tab.messageLogger, tab.emoteReplacer, tab.badgeReplacer)
 				}
 
 				applied, _ := tab.transit(event)

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
-	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/stretchr/testify/require"
 )
@@ -112,35 +111,29 @@ func Test_centerOverlay(t *testing.T) {
 // modal must composite over the screen without changing its dimensions, otherwise
 // the terminal wraps or the layout jumps.
 func Test_Root_modalKeepsScreenDimensions(t *testing.T) {
-	deps := &DependencyContainer{
-		UserConfig: UserConfiguration{
-			Settings: save.BuildDefaultSettings(),
-			Theme:    save.BuildDefaultTheme(),
-		},
-		Keymap:         save.BuildDefaultKeyMap(),
-		Clients: map[string]ClientCapabilities{},
-	}
-
 	for _, tc := range []struct {
 		name   string
 		push   func(*Root) nav.Screen
 		marker string
 	}{
 		{
-			name:   "join modal",
-			push:   func(r *Root) nav.Screen { return newJoin(r.width, r.dependencies) },
+			name: "join modal",
+			push: func(r *Root) nav.Screen {
+				return newJoin(r.width, r.settings, r.theme, r.keymap, r.clients, r.accountProvider)
+			},
 			marker: "Create new Tab",
 		},
 		{
-			name:   "quick join modal",
-			push:   func(r *Root) nav.Screen { return newQuickJoin(r.width, r.dependencies) },
+			name: "quick join modal",
+			push: func(r *Root) nav.Screen {
+				return newQuickJoin(r.width, r.settings, r.theme, r.keymap, r.clients, r.accountProvider, r.channelHistory)
+			},
 			marker: "Join",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := NewUI(nil, deps, nil)
+			root := newTestRoot(t, nil, map[string]ClientCapabilities{}, nil)
 			root.hasLoadedSession = true
-			root.width, root.height = 80, 24
 			root.handleResize()
 
 			background := root.dimmedScreenBackground()
@@ -157,26 +150,16 @@ func Test_Root_modalKeepsScreenDimensions(t *testing.T) {
 
 // Closing a modal must hand focus back to whatever had it before the push.
 func Test_Root_modalPopRestoresFocus(t *testing.T) {
-	deps := &DependencyContainer{
-		UserConfig: UserConfiguration{
-			Settings: save.BuildDefaultSettings(),
-			Theme:    save.BuildDefaultTheme(),
-		},
-		Keymap:         save.BuildDefaultKeyMap(),
-		Clients: map[string]ClientCapabilities{},
-	}
-
-	root := NewUI(nil, deps, nil)
+	root := newTestRoot(t, nil, map[string]ClientCapabilities{}, nil)
 	root.hasLoadedSession = true
-	root.width, root.height = 80, 24
 
-	tab := newMentionTab("tab-1", root.width, root.height, deps)
+	tab := newMentionTab("tab-1", root.width, root.height, root.settings, root.theme, root.keymap, root.accountProvider)
 	root.tabs.Add(tab)
 	root.tabs.SetActive(tab.ID())
 	require.True(t, tab.Focused())
 
 	root.tabs.BlurActive()
-	root.stack.Push(newJoin(root.width, root.dependencies))
+	root.stack.Push(newJoin(root.width, root.settings, root.theme, root.keymap, root.clients, root.accountProvider))
 
 	require.Equal(t, joinRoute, root.stack.Route())
 	require.False(t, tab.Focused(), "a modal takes focus away from the tab")

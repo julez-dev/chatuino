@@ -12,20 +12,7 @@ import (
 func newRestoreTestRoot(t *testing.T) *Root {
 	t.Helper()
 
-	deps := &DependencyContainer{
-		UserConfig: UserConfiguration{
-			Settings: save.BuildDefaultSettings(),
-			Theme:    save.BuildDefaultTheme(),
-		},
-		Keymap:         save.BuildDefaultKeyMap(),
-		Clients: map[string]ClientCapabilities{},
-		Accounts:       []save.Account{{ID: "acc", DisplayName: "me"}},
-	}
-
-	root := NewUI(nil, deps, nil)
-	root.width, root.height = 80, 24
-
-	return root
+	return newTestRoot(t, []save.Account{{ID: "acc", DisplayName: "me"}}, map[string]ClientCapabilities{}, nil)
 }
 
 // Restoring a session activates the outgoing tab before the incoming one. Restored
@@ -104,9 +91,7 @@ func Test_Root_handlePersistedDataLoaded_FallsBackToFirstTab(t *testing.T) {
 // A tab whose channel data never loaded must tolerate Blur: it has no composer and
 // no chat window to hand focus back from.
 func Test_BroadcastTab_BlurWithoutComposer(t *testing.T) {
-	deps := newTestDeps()
-
-	tab := newBroadcastTab("tab-1", 80, 24, save.Account{ID: "acc", DisplayName: "me"}, "chan", deps)
+	tab := newTestTab("tab-1", 80, 24, save.Account{ID: "acc", DisplayName: "me"}, "chan")
 	tab.Focus()
 
 	require.NotPanics(t, tab.Blur)
@@ -143,9 +128,7 @@ func Test_Root_isTyping_ToleratesUnloadedTabs(t *testing.T) {
 // A tab becomes active before its channel data is fetched, so every method Root
 // may call through the tab interface has to tolerate missing children.
 func Test_BroadcastTab_UnloadedTabToleratesInterfaceCalls(t *testing.T) {
-	deps := newTestDeps()
-
-	tab := newBroadcastTab("tab-1", 80, 24, save.Account{ID: "acc", DisplayName: "me"}, "chan", deps)
+	tab := newTestTab("tab-1", 80, 24, save.Account{ID: "acc", DisplayName: "me"}, "chan")
 
 	require.NotPanics(t, func() {
 		_ = tab.View()

@@ -16,7 +16,7 @@ import (
 // through to the message input and child components.
 func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	// Focus message input, when not in insert mode and not in search mode inside chat window, depending on the current active chat window
-	if key.Matches(msg, t.deps.Keymap.InsertMode) &&
+	if key.Matches(msg, t.keymap.InsertMode) &&
 		(t.state == inChatWindow && t.chatWindow.state != searchChatWindowState || t.state == userInspectMode && t.userInspect.chatWindow.state != searchChatWindowState) {
 		return true, t.handleStartInsertMode()
 	}
@@ -25,23 +25,23 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	searching := t.isChatSearching()
 
 	// Open user inspect mode, where only messages from a specific user are shown
-	if key.Matches(msg, t.deps.Keymap.InspectMode) && !searching && t.state.isViewing() {
+	if key.Matches(msg, t.keymap.InspectMode) && !searching && t.state.isViewing() {
 		return true, t.handleOpenUserInspectFromMessage()
 	}
 
 	// Open chat in browser
-	if key.Matches(msg, t.deps.Keymap.ChatPopUp, t.deps.Keymap.ChannelPopUp) && !searching && t.state.isViewing() {
+	if key.Matches(msg, t.keymap.ChatPopUp, t.keymap.ChannelPopUp) && !searching && t.state.isViewing() {
 		return true, t.handleOpenBrowser(msg)
 	}
 
 	// Send message
-	if key.Matches(msg, t.deps.Keymap.Confirm) && len(t.input.Value()) > 0 && t.state.isComposing() {
+	if key.Matches(msg, t.keymap.Confirm) && len(t.input.Value()) > 0 && t.state.isComposing() {
 		t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit history entry
 		return true, t.handleMessageSent(false)
 	}
 
 	// Send message - quick send
-	if key.Matches(msg, t.deps.Keymap.QuickSent) && len(t.input.Value()) > 0 && t.state.isComposing() {
+	if key.Matches(msg, t.keymap.QuickSent) && len(t.input.Value()) > 0 && t.state.isComposing() {
 		t.input.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit history entry
 		return true, t.handleMessageSent(true)
 	}
@@ -58,25 +58,25 @@ func (t *broadcastTab) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 
 	// Set quick time out message to message input
-	if key.Matches(msg, t.deps.Keymap.QuickTimeout) && !searching && t.state.isViewing() {
+	if key.Matches(msg, t.keymap.QuickTimeout) && !searching && t.state.isViewing() {
 		t.handleTimeoutShortcut()
 		return true, nil
 	}
 
 	// Copy selected message to message input
-	if key.Matches(msg, t.deps.Keymap.CopyMessage) && !searching && t.state.isViewing() {
+	if key.Matches(msg, t.keymap.CopyMessage) && !searching && t.state.isViewing() {
 		t.handleCopyMessage()
 		return true, nil
 	}
 
 	// Reply to selected message
-	if key.Matches(msg, t.deps.Keymap.ReplyMessage) && !searching && t.state.isViewing() {
+	if key.Matches(msg, t.keymap.ReplyMessage) && !searching && t.state.isViewing() {
 		t.handleReplyMessage()
 		return true, nil
 	}
 
 	// Close overlay windows
-	if key.Matches(msg, t.deps.Keymap.Escape) {
+	if key.Matches(msg, t.keymap.Escape) {
 		var cmd tea.Cmd
 
 		// first end search in user inspect sub window
@@ -146,7 +146,7 @@ func (t *broadcastTab) handleEscapePressed() {
 func (t *broadcastTab) handleOpenBrowser(msg tea.KeyPressMsg) tea.Cmd {
 	return func() tea.Msg {
 		// open popup chat if modifier is pressed
-		if key.Matches(msg, t.deps.Keymap.ChatPopUp) {
+		if key.Matches(msg, t.keymap.ChatPopUp) {
 			t.handleOpenBrowserChatPopUp()()
 			return nil
 		}
@@ -334,7 +334,7 @@ func (t *broadcastTab) handleOpenEmoteOverview() tea.Cmd {
 		return nil
 	}
 
-	t.emoteOverview = NewEmoteOverview(t.channelID, t.deps.EmoteCache, t.deps.EmoteReplacer, graphicRows(t.deps.UserConfig.Settings), t.width, t.height)
+	t.emoteOverview = NewEmoteOverview(t.channelID, t.emoteCache, t.emoteReplacer, graphicRows(t.settings), t.width, t.height)
 	t.HandleResize()
 	return t.emoteOverview.Init()
 }
@@ -344,7 +344,7 @@ func (t *broadcastTab) handleManualRefreshEmotes() tea.Cmd {
 		return nil
 	}
 
-	t.deps.EmoteCache.RemoveEmoteSetForChannel(t.channelID)
+	t.emoteCache.RemoveEmoteSetForChannel(t.channelID)
 
 	return t.refreshEmotes(t.channelLogin, t.channelID, true)
 }

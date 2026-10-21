@@ -76,7 +76,9 @@ const (
 )
 
 type chatWindow struct {
-	deps          *DependencyContainer
+	settings save.Settings
+	keymap   save.KeyMap
+
 	width, height int
 
 	timeFormatFunc func(time.Time) string
@@ -137,20 +139,20 @@ type chatWindow struct {
 	strikethroughItalicStyle lipgloss.Style
 }
 
-func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
+func newChatWindow(width, height int, settings save.Settings, theme save.Theme, keymap save.KeyMap) *chatWindow {
 	input := textinput.New()
 	input.CharLimit = 128
 	input.Prompt = "  /"
 	input.Placeholder = "search — content: user: /regex/ badge: is:mod|sub|vip|first"
 	styles := input.Styles()
-	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
 	styles.Cursor.BlinkSpeed = time.Millisecond * 750
 	input.SetStyles(styles)
 	input.SetWidth(width)
 
-	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Background(lipgloss.Color(deps.UserConfig.Theme.ChatIndicatorColor)).Render(">")
+	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatIndicatorColor)).Background(lipgloss.Color(theme.ChatIndicatorColor)).Render(">")
 
-	timeFormat := deps.UserConfig.Settings.Chat.TimeFormat
+	timeFormat := settings.Chat.TimeFormat
 	timeFormatFn := func(t time.Time) string {
 		return t.Local().Format(timeFormat)
 	}
@@ -162,7 +164,8 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 	timePadWidth := timeFormatWidth + 3 // +3 matches the "  " prefix + " " separator in messageToText
 
 	c := chatWindow{
-		deps:             deps,
+		settings:         settings,
+		keymap:           keymap,
 		width:            width,
 		height:           height,
 		userColorCache:   map[string]func(...string) string{},
@@ -173,11 +176,11 @@ func newChatWindow(width, height int, deps *DependencyContainer) *chatWindow {
 
 		indicator:           indicator,
 		indicatorWidth:      lipgloss.Width(indicator),
-		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatSubAlertColor)).Bold(true),
-		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)).Bold(true),
-		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatClearChatColor)).Bold(true),
-		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatErrorColor)).Bold(true),
-		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.DimmedTextColor)),
+		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatSubAlertColor)).Bold(true),
+		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)).Bold(true),
+		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatClearChatColor)).Bold(true),
+		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatErrorColor)).Bold(true),
+		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
 
 		strikethroughStyle:       lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false),
 		italicStyle:              lipgloss.NewStyle().Italic(true),
@@ -220,13 +223,13 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 		if c.focused {
 			switch {
 			// start search (only when not already searching — otherwise '/' is forwarded to the input)
-			case key.Matches(msg, c.deps.Keymap.SearchMode) && c.state != searchChatWindowState:
+			case key.Matches(msg, c.keymap.SearchMode) && c.state != searchChatWindowState:
 				return c, c.handleStartSearchMode()
 			// stop search
-			case key.Matches(msg, c.deps.Keymap.Escape) && c.state == searchChatWindowState:
+			case key.Matches(msg, c.keymap.Escape) && c.state == searchChatWindowState:
 				c.handleStopSearchMode()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.Confirm) && c.state == searchChatWindowState:
+			case key.Matches(msg, c.keymap.Confirm) && c.state == searchChatWindowState:
 				c.handleStopSearchModeKeepSelected()
 				return c, nil
 			// update search, allow up and down arrow keys for navigation in result
@@ -235,31 +238,31 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				c.applySearch()
 				cmds = append(cmds, cmd)
 				return c, tea.Batch(cmds...)
-			case key.Matches(msg, c.deps.Keymap.Down):
+			case key.Matches(msg, c.keymap.Down):
 				c.messageDown(1)
 				c.snapScroll()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.Up):
+			case key.Matches(msg, c.keymap.Up):
 				c.messageUp(1)
 				c.snapScroll()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.PageUp):
+			case key.Matches(msg, c.keymap.PageUp):
 				c.pageUp()
 				c.snapScroll()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.PageDown):
+			case key.Matches(msg, c.keymap.PageDown):
 				c.pageDown()
 				c.snapScroll()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.GoToBottom):
+			case key.Matches(msg, c.keymap.GoToBottom):
 				c.moveToBottom()
 				c.snapScroll()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.GoToTop):
+			case key.Matches(msg, c.keymap.GoToTop):
 				c.moveToTop()
 				c.snapScroll()
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.CopyToClipboard):
+			case key.Matches(msg, c.keymap.CopyToClipboard):
 				_, entry := c.entryForCurrentCursor()
 				if entry == nil {
 					return c, nil
@@ -270,7 +273,7 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 				}
 
 				return c, nil
-			case key.Matches(msg, c.deps.Keymap.DumpChat):
+			case key.Matches(msg, c.keymap.DumpChat):
 				c.debugDumpChat()
 			}
 		}
@@ -855,7 +858,7 @@ func (c *chatWindow) handleMessage(msg chatEventMessage) tea.Cmd {
 
 	if wasLatestMessage {
 		c.moveToBottom()
-		if c.deps.UserConfig.Settings.Chat.SmoothScroll {
+		if c.settings.Chat.SmoothScroll {
 			return c.startAnimating()
 		}
 	}
@@ -1045,9 +1048,9 @@ func (c *chatWindow) messageToText(event chatEventMessage) []string {
 			parts = append(parts, "|"+event.channelGuestDisplayName+"|")
 		}
 
-		if len(event.displayModifier.badgeReplacement) > 0 && !c.deps.UserConfig.Settings.Chat.DisableBadges {
-			badges := formatBadgeReplacement(c.deps.UserConfig.Settings, event.displayModifier.badgeReplacement)
-			if c.deps.UserConfig.Settings.Chat.GraphicBadges {
+		if len(event.displayModifier.badgeReplacement) > 0 && !c.settings.Chat.DisableBadges {
+			badges := formatBadgeReplacement(c.settings, event.displayModifier.badgeReplacement)
+			if c.settings.Chat.GraphicBadges {
 				// Hair space (U+200A) - narrower gap since badges have pixel padding
 				parts = append(parts, badges+" "+userRenderFunc(msg.DisplayName)+": ")
 			} else {
@@ -1203,14 +1206,14 @@ func (c *chatWindow) wordwrapMessage(prefix, content string) []string {
 
 	// if there are more lines, add prefixPadding spaces to the beginning of the line
 	for _, line := range splits[1:] {
-		if c.deps.UserConfig.Settings.Chat.DisablePaddingWrappedLines {
+		if c.settings.Chat.DisablePaddingWrappedLines {
 			lines = append(lines, strings.Repeat(" ", c.timePaddingWidth)+line)
 		} else {
 			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
 		}
 	}
 
-	return expandGraphicRows(lines, graphicRows(c.deps.UserConfig.Settings))
+	return expandGraphicRows(lines, graphicRows(c.settings))
 }
 
 // graphicRows returns the number of terminal rows graphic emotes/badges span, 1 if graphics are disabled.

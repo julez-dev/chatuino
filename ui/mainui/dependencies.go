@@ -3,9 +3,7 @@ package mainui
 import (
 	"context"
 
-	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/server"
@@ -13,11 +11,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/wspool"
 )
-
-type UserConfiguration struct {
-	Settings save.Settings
-	Theme    save.Theme
-}
 
 type AccountProvider interface {
 	GetAllAccounts() ([]save.Account, error)
@@ -153,27 +146,4 @@ type AppStateManager interface {
 type ChannelHistory interface {
 	LoadHistory() ([]save.ChannelHistoryEntry, error)
 	RecordChannel(login string) error
-}
-
-type DependencyContainer struct {
-	UserConfig UserConfiguration
-	Keymap     save.KeyMap
-	Accounts   []save.Account
-	Version    string
-
-	ServerAPI ChatuinoServer
-	// Clients holds one capability record per account. See ClientCapabilities.
-	Clients map[string]ClientCapabilities
-
-	AccountProvider      AccountProvider
-	EmoteCache           EmoteCache
-	BadgeCache           *badge.Cache
-	EmoteReplacer        EmoteReplacer
-	BadgeReplacer        BadgeReplacer
-	ImageDisplayManager  *kittyimg.DisplayManager
-	RecentMessageService RecentMessageService
-	MessageLogger        MessageLogger
-	Pool                 ConnectionPool
-	AppStateManager      AppStateManager
-	ChannelHistory       ChannelHistory
 }

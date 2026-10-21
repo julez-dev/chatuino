@@ -18,7 +18,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/badge"
 	"github.com/julez-dev/chatuino/emote"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -121,7 +123,28 @@ type Root struct {
 
 	userIDDisplayName *sync.Map
 
-	dependencies *DependencyContainer
+	// collaborators, each passed in by main.go. There is no dependency struct:
+	// the signature of NewUI is the complete list of what the shell needs.
+	settings save.Settings
+	theme    save.Theme
+	keymap   save.KeyMap
+	accounts []save.Account
+	version  string
+
+	serverAPI ChatuinoServer
+	clients   map[string]ClientCapabilities
+
+	accountProvider     AccountProvider
+	emoteCache          EmoteCache
+	badgeCache          *badge.Cache
+	emoteReplacer       EmoteReplacer
+	badgeReplacer       BadgeReplacer
+	imageDisplayManager *kittyimg.DisplayManager
+	recentMessages      RecentMessageService
+	messageLogger       MessageLogger
+	pool                ConnectionPool
+	appStateManager     AppStateManager
+	channelHistory      ChannelHistory
 
 	// message logger
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
@@ -143,29 +166,63 @@ type Root struct {
 // from disk and no state is persisted, allowing multiple independent instances.
 func NewUI(
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
-	dependencies *DependencyContainer,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	accounts []save.Account,
+	version string,
+	serverAPI ChatuinoServer,
+	clients map[string]ClientCapabilities,
+	accountProvider AccountProvider,
+	emoteCache EmoteCache,
+	badgeCache *badge.Cache,
+	emoteReplacer EmoteReplacer,
+	badgeReplacer BadgeReplacer,
+	imageDisplayManager *kittyimg.DisplayManager,
+	recentMessages RecentMessageService,
+	messageLogger MessageLogger,
+	pool ConnectionPool,
+	appStateManager AppStateManager,
+	channelHistory ChannelHistory,
 	initialState *save.AppState,
 ) *Root {
 	var header header
-	if dependencies.UserConfig.Settings.VerticalTabList {
-		header = newVerticalTabHeader(10, 10, dependencies)
+	if settings.VerticalTabList {
+		header = newVerticalTabHeader(10, 10, theme)
 	} else {
-		header = newHorizontalTabHeader(10, dependencies)
+		header = newHorizontalTabHeader(10, theme)
 	}
 
 	r := &Root{
-		initialState:      initialState,
-		dependencies:      dependencies,
-		width:             10,
-		height:            10,
-		userIDDisplayName: &sync.Map{},
-		tabs:              nav.NewRegistry(tabRow),
+		initialState:        initialState,
+		settings:            settings,
+		theme:               theme,
+		keymap:              keymap,
+		accounts:            accounts,
+		version:             version,
+		serverAPI:           serverAPI,
+		clients:             clients,
+		accountProvider:     accountProvider,
+		emoteCache:          emoteCache,
+		badgeCache:          badgeCache,
+		emoteReplacer:       emoteReplacer,
+		badgeReplacer:       badgeReplacer,
+		imageDisplayManager: imageDisplayManager,
+		recentMessages:      recentMessages,
+		messageLogger:       messageLogger,
+		pool:                pool,
+		appStateManager:     appStateManager,
+		channelHistory:      channelHistory,
+		width:               10,
+		height:              10,
+		userIDDisplayName:   &sync.Map{},
+		tabs:                nav.NewRegistry(tabRow),
 
 		// components
 		splash: splash{
-			keymap:            dependencies.Keymap,
-			userConfiguration: dependencies.UserConfig,
-			spinner:           spinner.New(spinner.WithSpinner(loadingSpinner)),
+			theme:   theme,
+			keymap:  keymap,
+			spinner: spinner.New(spinner.WithSpinner(loadingSpinner)),
 		},
 		header: header,
 
@@ -195,7 +252,7 @@ func (r *Root) Init() tea.Cmd {
 			if r.initialState != nil {
 				state = *r.initialState
 			} else {
-				state, err = r.dependencies.AppStateManager.LoadAppState()
+				state, err = r.appStateManager.LoadAppState()
 				if err != nil {
 					return persistedDataLoadedMessage{
 						err: fmt.Errorf("failed to load save state: %w", err),
@@ -211,7 +268,7 @@ func (r *Root) Init() tea.Cmd {
 				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 				defer cancel()
 
-				if err := r.dependencies.BadgeCache.RefreshGlobal(ctx); err != nil {
+				if err := r.badgeCache.RefreshGlobal(ctx); err != nil {
 					log.Logger.Error().Err(err).Msg("could not fetch global badges")
 				}
 
@@ -222,7 +279,7 @@ func (r *Root) Init() tea.Cmd {
 				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
 				defer cancel()
 
-				if err := r.dependencies.EmoteCache.RefreshGlobal(ctx); err != nil {
+				if err := r.emoteCache.RefreshGlobal(ctx); err != nil {
 					log.Logger.Error().Err(err).Msg("could not fetch global emotes")
 				}
 
@@ -230,12 +287,12 @@ func (r *Root) Init() tea.Cmd {
 			})
 
 			// fetch usable emotes for all users
-			for _, acc := range r.dependencies.Accounts {
+			for _, acc := range r.accounts {
 				if acc.IsAnonymous {
 					continue
 				}
 
-				client, has := r.dependencies.Clients[acc.ID]
+				client, has := r.clients[acc.ID]
 				if !has {
 					continue
 				}
@@ -276,7 +333,7 @@ func (r *Root) Init() tea.Cmd {
 						})
 					}
 
-					r.dependencies.EmoteCache.AddUserEmotes(acc.ID, emotes)
+					r.emoteCache.AddUserEmotes(acc.ID, emotes)
 					return nil
 				})
 			}
@@ -299,7 +356,7 @@ func (r *Root) Init() tea.Cmd {
 
 			if len(logins) > 0 {
 				wg.Go(func() error {
-					resp, err := r.dependencies.ServerAPI.GetUsers(ctx, logins, nil)
+					resp, err := r.serverAPI.GetUsers(ctx, logins, nil)
 					if err != nil {
 						log.Logger.Error().Err(err).Msg("could not fetch users for tabs")
 						return fmt.Errorf("could not fetch users for tabs: %w", err)
@@ -320,8 +377,8 @@ func (r *Root) Init() tea.Cmd {
 			wg.Go(func() error {
 				seen := make(map[string]struct{})
 
-				if r.dependencies.ChannelHistory != nil {
-					entries, err := r.dependencies.ChannelHistory.LoadHistory()
+				if r.channelHistory != nil {
+					entries, err := r.channelHistory.LoadHistory()
 					if err != nil {
 						log.Logger.Err(err).Msg("could not load channel history for suggestions")
 					} else {
@@ -334,7 +391,7 @@ func (r *Root) Init() tea.Cmd {
 					}
 				}
 
-				for accountID, client := range r.dependencies.Clients {
+				for accountID, client := range r.clients {
 					fc := client.Follows
 					if fc == nil {
 						continue
@@ -420,9 +477,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.channelSuggestions = append(r.channelSuggestions, channel)
 			}
 
-			if r.dependencies.ChannelHistory != nil {
+			if r.channelHistory != nil {
 				initCmds = append(initCmds, func() tea.Msg {
-					if err := r.dependencies.ChannelHistory.RecordChannel(channel); err != nil {
+					if err := r.channelHistory.RecordChannel(channel); err != nil {
 						log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
 					}
 					return nil
@@ -515,7 +572,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		// q-to-quit must not steal printable keys while an input is focused.
 		// Modifier-driven quit keys (ctrl+c) still work everywhere.
-		if key.Matches(msg, r.dependencies.Keymap.Quit) && !(r.isTyping() && msg.Text != "") {
+		if key.Matches(msg, r.keymap.Quit) && !(r.isTyping() && msg.Text != "") {
 			return r, tea.Quit
 		}
 
@@ -525,12 +582,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Help must not steal '?' while any text input (including chat search)
 		// is capturing printable characters.
-		if key.Matches(msg, r.dependencies.Keymap.Help) && !r.isTyping() && r.stack.Len() == 0 {
+		if key.Matches(msg, r.keymap.Help) && !r.isTyping() && r.stack.Len() == 0 {
 			r.tabs.BlurActive()
-			return r, r.stack.Push(newHelp(r.height, r.width, r.dependencies))
+			return r, r.stack.Push(newHelp(r.height, r.width, r.keymap))
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.Escape) {
+		if key.Matches(msg, r.keymap.Escape) {
 			if r.stack.Len() > 0 {
 				r.tabs.FocusActive()
 
@@ -538,7 +595,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.DumpScreen) {
+		if key.Matches(msg, r.keymap.DumpScreen) {
 			f, err := os.Create(fmt.Sprintf("%s_dump.txt", time.Now().Format("2006-01-02_15_04_05")))
 			if err != nil {
 				return r, nil
@@ -553,7 +610,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.Create) {
+		if key.Matches(msg, r.keymap.Create) {
 			// The key toggles the join modal.
 			if r.stack.Route() == joinRoute {
 				r.tabs.FocusActive()
@@ -566,14 +623,16 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			r.tabs.BlurActive()
 
-			joinInput := newJoin(r.width, r.dependencies)
+			joinInput := newJoin(r.width,
+				r.settings, r.theme, r.keymap,
+				r.clients, r.accountProvider)
 			joinInput.Resize(r.width, r.height)
 			joinInput.setTabOptions(r.availableTabKinds()...)
 
 			return r, r.stack.Push(joinInput)
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.QuickJoin) {
+		if key.Matches(msg, r.keymap.QuickJoin) {
 			// The key toggles the quick join modal.
 			if r.stack.Route() == quickJoinRoute {
 				r.tabs.FocusActive()
@@ -586,7 +645,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			r.tabs.BlurActive()
 
-			quickJoinInput := newQuickJoin(r.width, r.dependencies)
+			quickJoinInput := newQuickJoin(r.width,
+				r.settings, r.theme, r.keymap,
+				r.clients, r.accountProvider, r.channelHistory)
 			quickJoinInput.Resize(r.width, r.height)
 
 			return r, r.stack.Push(quickJoinInput)
@@ -594,7 +655,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if r.stack.Len() == 0 {
 
-			if key.Matches(msg, r.dependencies.Keymap.Next) {
+			if key.Matches(msg, r.keymap.Next) {
 				if active, ok := r.tabs.Active(); ok && active.State().isComposing() {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
@@ -603,7 +664,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.nextTab()
 			}
 
-			if key.Matches(msg, r.dependencies.Keymap.Previous) {
+			if key.Matches(msg, r.keymap.Previous) {
 				if active, ok := r.tabs.Active(); ok && active.State().isComposing() {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
@@ -612,7 +673,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				r.prevTab()
 			}
 
-			if key.Matches(msg, r.dependencies.Keymap.CloseTab) {
+			if key.Matches(msg, r.keymap.CloseTab) {
 				if active, ok := r.tabs.Active(); ok && !(active.State().isComposing() || active.IsSearching()) {
 					currentTab := active
 					r.closeTab()
@@ -639,20 +700,20 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							accountID := currentTab.AccountID()
 							channel := currentTab.Channel()
 							cmds = append(cmds, func() tea.Msg {
-								r.dependencies.Pool.SendIRC(accountID, twitchirc.PartMessage{Channel: channel})
+								r.pool.SendIRC(accountID, twitchirc.PartMessage{Channel: channel})
 								return nil
 							})
 						}
 
 						if !hasTabsSameChannel {
 							log.Logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
-							r.dependencies.EmoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
+							r.emoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
 						}
 
 						// Disconnect IRC for this account
 						accountID := currentTab.AccountID()
 						cmds = append(cmds, func() tea.Msg {
-							r.dependencies.Pool.DisconnectIRC(accountID)
+							r.pool.DisconnectIRC(accountID)
 							return nil
 						})
 
@@ -687,7 +748,7 @@ func (r *Root) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = "Chatuino"
 
-	if r.dependencies.UserConfig.Settings.Mouse {
+	if r.settings.Mouse {
 		v.MouseMode = tea.MouseModeCellMotion
 	}
 
@@ -710,7 +771,7 @@ func (r *Root) screenContent() string {
 		return r.splash.View()
 	}
 
-	if r.dependencies.UserConfig.Settings.VerticalTabList {
+	if r.settings.VerticalTabList {
 		// In vertical mode, render status bar separately at full width
 		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(r.tabs.Rows()), tab.ViewWithoutStatusBar())
 		if statusBar := tab.StatusBarView(); statusBar != "" {
@@ -765,7 +826,7 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 	return tea.Tick(time.Second*15, func(_ time.Time) tea.Msg {
 		log.Logger.Info().Msg("saving app state inside ticker")
 
-		if err := r.dependencies.AppStateManager.SaveAppState(state); err != nil {
+		if err := r.appStateManager.SaveAppState(state); err != nil {
 			log.Logger.Err(err).Msg("failed to save app state")
 		}
 
@@ -774,7 +835,7 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
-	clients := maps.Clone(r.dependencies.Clients)
+	clients := maps.Clone(r.clients)
 
 	// collect all open broadcasters
 	openBroadcasts := map[string]struct{}{}
@@ -800,7 +861,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	}
 
 	return tea.Tick(time.Second*90, func(_ time.Time) tea.Msg {
-		accounts, err := r.dependencies.AccountProvider.GetAllAccounts()
+		accounts, err := r.accountProvider.GetAllAccounts()
 		if err != nil {
 			return polledStreamInfoMessage{}
 		}
@@ -817,7 +878,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		if client, has := clients[mainAccountID]; has && client.API != nil {
 			fetcher = client.API
 		} else {
-			fetcher = r.dependencies.ServerAPI
+			fetcher = r.serverAPI
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -886,14 +947,20 @@ func (r *Root) createTab(account save.Account, channel string, kind TabKind) (ta
 
 	switch kind {
 	case BroadcastTabKind:
-		nTab := newBroadcastTab(uuid.NewString(), r.width, r.height-headerHeight, account, channel, r.dependencies)
+		nTab := newBroadcastTab(uuid.NewString(), r.width, r.height-headerHeight, account, channel,
+			r.settings, r.theme, r.keymap,
+			r.clients[account.ID], r.pool,
+			r.recentMessages, r.messageLogger,
+			r.emoteCache, r.emoteReplacer, r.badgeCache, r.badgeReplacer)
 		nTab.updateInfo = r.updateInfo
 		return nTab, nil
 	case MentionTabKind:
-		nTab := newMentionTab(uuid.NewString(), r.width, r.height-headerHeight, r.dependencies)
+		nTab := newMentionTab(uuid.NewString(), r.width, r.height-headerHeight,
+			r.settings, r.theme, r.keymap, r.accountProvider)
 		return nTab, nil
 	case LiveNotificationTabKind:
-		nTab := newLiveNotificationTab(uuid.NewString(), r.width, r.height-headerHeight, r.dependencies)
+		nTab := newLiveNotificationTab(uuid.NewString(), r.width, r.height-headerHeight,
+			r.settings, r.theme, r.keymap)
 		return nTab, nil
 	}
 
@@ -930,7 +997,7 @@ func (r *Root) handleResize() {
 	// open modals follow the terminal size
 	r.stack.Resize(r.width, r.height)
 
-	if r.dependencies.UserConfig.Settings.VerticalTabList {
+	if r.settings.VerticalTabList {
 		rows := r.tabs.Rows()
 		minWidth := r.header.MinWidth(rows)
 		r.header.Resize(minWidth, r.height)
@@ -973,7 +1040,7 @@ func (r *Root) checkVersionCommand() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
-		info, err := checkForUpdate(ctx, r.dependencies.ServerAPI, r.dependencies.Version)
+		info, err := checkForUpdate(ctx, r.serverAPI, r.version)
 		return versionCheckMessage{info: info, err: err}
 	}
 }
@@ -1020,7 +1087,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		case BroadcastTabKind:
 			var account save.Account
 
-			for _, a := range r.dependencies.Accounts {
+			for _, a := range r.accounts {
 				if a.ID == t.IdentityID {
 					account = a
 				}
@@ -1035,7 +1102,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
 		case MentionTabKind:
 			// don't load mention tab, when there are no longer any non-anonymous accounts
-			hasNormalAccount := slices.ContainsFunc(r.dependencies.Accounts, func(e save.Account) bool {
+			hasNormalAccount := slices.ContainsFunc(r.accounts, func(e save.Account) bool {
 				return !e.IsAnonymous
 			})
 
@@ -1114,10 +1181,10 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 				channelGuestDisplayName = v.(string)
 			} else {
 				// try refresh emotes for guest
-				_ = r.dependencies.EmoteCache.RefreshLocal(context.Background(), channelGuestID)
-				_ = r.dependencies.BadgeCache.RefreshChannel(context.Background(), channelGuestID)
+				_ = r.emoteCache.RefreshLocal(context.Background(), channelGuestID)
+				_ = r.badgeCache.RefreshChannel(context.Background(), channelGuestID)
 
-				resp, err := r.dependencies.ServerAPI.GetUsers(context.Background(), nil, []string{channelGuestID})
+				resp, err := r.serverAPI.GetUsers(context.Background(), nil, []string{channelGuestID})
 				if err == nil && len(resp.Data) > 0 {
 					channelGuestDisplayName = resp.Data[0].DisplayName
 					r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
@@ -1212,7 +1279,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	var replaceCommand string
 
 	if len(message) > 0 {
-		p, replacement, err := r.dependencies.EmoteReplacer.Replace(emoteSourceRoom, message, emotes)
+		p, replacement, err := r.emoteReplacer.Replace(emoteSourceRoom, message, emotes)
 		if err != nil {
 			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace emotes")
 		}
@@ -1225,7 +1292,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	}
 
 	if len(badges) > 0 {
-		p, replace, err := r.dependencies.BadgeReplacer.Replace(emoteSourceRoom, badges)
+		p, replace, err := r.badgeReplacer.Replace(emoteSourceRoom, badges)
 		if err != nil {
 			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace badges")
 		}
@@ -1235,21 +1302,21 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 	}
 
 	if loginName != "" {
-		p, err := r.dependencies.BadgeReplacer.InjectContributorBadge(loginName, event.displayModifier.badgeReplacement)
+		p, err := r.badgeReplacer.InjectContributorBadge(loginName, event.displayModifier.badgeReplacement)
 		if err != nil {
 			log.Logger.Info().Err(err).Str("login", loginName).Msg("failed to inject contributor badge")
 		}
 		replaceCommand += p
 	}
 
-	if r.dependencies.UserConfig.Settings.Security.CheckLinks && len(message) > 0 {
+	if r.settings.Security.CheckLinks && len(message) > 0 {
 		// Key link annotations on the whole space-delimited token so they match
 		// exactly in applyWordReplacements (same contract as emotes). The URL is
 		// annotated in place, preserving any surrounding punctuation in the token.
 		for _, token := range strings.Split(message, " ") {
 			annotated := token
 			for _, u := range extractValidURLs(token) {
-				resp, err := r.dependencies.ServerAPI.CheckLink(context.Background(), u)
+				resp, err := r.serverAPI.CheckLink(context.Background(), u)
 				if err != nil {
 					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
 					continue
@@ -1287,7 +1354,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 // imageCleanUpCommand returns a command that ticks after 1 minute and
 // clean all images that were not used in the last 10 minutes
 func (r *Root) imageCleanUpCommand() tea.Cmd {
-	if !r.dependencies.UserConfig.Settings.Chat.GraphicEmotes && !r.dependencies.UserConfig.Settings.Chat.GraphicBadges {
+	if !r.settings.Chat.GraphicEmotes && !r.settings.Chat.GraphicBadges {
 		return nil
 	}
 
@@ -1295,7 +1362,7 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 		log.Logger.Info().Msg("image clean up tick start")
 		defer log.Logger.Info().Msg("image clean up tick end")
 
-		data := r.dependencies.ImageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
+		data := r.imageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
 
 		return imageCleanupTickMessage{
 			deletionCommand: data,

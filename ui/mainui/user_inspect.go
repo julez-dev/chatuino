@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -39,28 +40,50 @@ type userInspect struct {
 	badges          []twitchirc.Badge
 	formattedBadges wordReplacement
 
-	ivr     *ivr.API
-	deps    *DependencyContainer
-	spinner spinner.Model
+	ivr           *ivr.API
+	settings      save.Settings
+	theme         save.Theme
+	api           APIClient
+	messageLogger MessageLogger
+	emoteReplacer EmoteReplacer
+	badgeReplacer BadgeReplacer
+	spinner       spinner.Model
 
 	chatWindow *chatWindow
 }
 
-func newUserInspect(tabID string, width, height int, user, channel string, accountID string, deps *DependencyContainer) *userInspect {
-	c := newChatWindow(width, height, deps)
-	timeFormat := deps.UserConfig.Settings.Chat.UserInspectTimeFormat
+func newUserInspect(
+	tabID string,
+	width, height int,
+	user, channel string,
+	accountID string,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	api APIClient,
+	messageLogger MessageLogger,
+	emoteReplacer EmoteReplacer,
+	badgeReplacer BadgeReplacer,
+) *userInspect {
+	c := newChatWindow(width, height, settings, theme, keymap)
+	timeFormat := settings.Chat.UserInspectTimeFormat
 	c.timeFormatFunc = func(t time.Time) string {
 		return t.Local().Format(timeFormat)
 	}
 
 	return &userInspect{
-		tabID:     tabID,
-		channel:   channel,
-		accountID: accountID,
-		user:      user,
-		ivr:       ivr.NewAPI(http.DefaultClient),
-		deps:      deps,
-		spinner:   spinner.New(spinner.WithSpinner(loadingSpinner)),
+		tabID:         tabID,
+		channel:       channel,
+		accountID:     accountID,
+		user:          user,
+		ivr:           ivr.NewAPI(http.DefaultClient),
+		settings:      settings,
+		theme:         theme,
+		api:           api,
+		messageLogger: messageLogger,
+		emoteReplacer: emoteReplacer,
+		badgeReplacer: badgeReplacer,
+		spinner:       spinner.New(spinner.WithSpinner(loadingSpinner)),
 		// start chat window in full size, will be resized once data is fetched
 		chatWindow: c,
 	}
@@ -89,7 +112,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		ttvResp, err := u.deps.Clients[u.accountID].API.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
+		ttvResp, err := u.api.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
@@ -105,7 +128,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		}
 
 		// get all recent messages for user
-		loggedEntries, err := u.deps.MessageLogger.MessagesFromUserInChannel(u.user, u.channel)
+		loggedEntries, err := u.messageLogger.MessagesFromUserInChannel(u.user, u.channel)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,
@@ -132,10 +155,10 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.deps.EmoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
+			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
 			prepareCmd.WriteString(prepare)
 
-			prepare, badgeOverwrite, _ := u.deps.BadgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
+			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
 			prepareCmd.WriteString(prepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chatEventMessage{
@@ -306,7 +329,7 @@ func (u *userInspect) renderUserInfo() string {
 	style := lipgloss.NewStyle().
 		Padding(0).
 		Border(border, true).
-		BorderForeground(lipgloss.Color(u.deps.UserConfig.Theme.InspectBorderColor)).
+		BorderForeground(lipgloss.Color(u.theme.InspectBorderColor)).
 		Width(u.width - 2)
 
 	styleCentered := style.MaxWidth(u.width).AlignHorizontal(lipgloss.Center)
@@ -322,7 +345,7 @@ func (u *userInspect) renderUserInfo() string {
 	b := &strings.Builder{}
 	_, _ = fmt.Fprintf(b, "User %s (%s)", u.subAge.User.DisplayName, u.subAge.User.ID)
 	if len(u.formattedBadges) > 0 {
-		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.deps.UserConfig.Settings, u.formattedBadges))
+		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.settings, u.formattedBadges))
 	} else {
 		_, _ = fmt.Fprintf(b, "\n")
 	}

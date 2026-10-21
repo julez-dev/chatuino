@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
@@ -17,8 +18,12 @@ type setMentionTabData struct {
 }
 
 type mentionTab struct {
-	id   string
-	deps *DependencyContainer
+	id string
+
+	settings        save.Settings
+	theme           save.Theme
+	keymap          save.KeyMap
+	accountProvider AccountProvider
 
 	focused bool
 
@@ -31,21 +36,31 @@ type mentionTab struct {
 	chatWindow *chatWindow
 }
 
-func newMentionTab(id string, width, height int, deps *DependencyContainer) *mentionTab {
+func newMentionTab(
+	id string,
+	width, height int,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	accountProvider AccountProvider,
+) *mentionTab {
 	return &mentionTab{
-		id:         id,
-		deps:       deps,
-		state:      inChatWindow,
-		width:      width,
-		height:     height,
-		chatWindow: newChatWindow(width, height, deps),
+		id:              id,
+		state:           inChatWindow,
+		width:           width,
+		height:          height,
+		settings:        settings,
+		theme:           theme,
+		keymap:          keymap,
+		accountProvider: accountProvider,
+		chatWindow:      newChatWindow(width, height, settings, theme, keymap),
 	}
 }
 
 func (m *mentionTab) Init() tea.Cmd {
 	return func() tea.Msg {
 		// fetch all of users account names
-		accounts, err := m.deps.AccountProvider.GetAllAccounts()
+		accounts, err := m.accountProvider.GetAllAccounts()
 		if err != nil {
 			return setMentionTabData{
 				err: err,
@@ -119,7 +134,7 @@ func (m *mentionTab) Update(msg tea.Msg) (tab, tea.Cmd) {
 				}
 			}
 
-			if !mentioned || messageMatchesBlocked(event.message, m.deps.UserConfig.Settings.BlockSettings) {
+			if !mentioned || messageMatchesBlocked(event.message, m.settings.BlockSettings) {
 				return m, nil
 			}
 

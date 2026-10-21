@@ -18,7 +18,7 @@ import (
 )
 
 func (t *broadcastTab) shouldIgnoreMessage(msg twitchirc.IRCer) bool {
-	if messageMatchesBlocked(msg, t.deps.UserConfig.Settings.BlockSettings) {
+	if messageMatchesBlocked(msg, t.settings.BlockSettings) {
 		return true
 	}
 
@@ -201,7 +201,7 @@ func (t *broadcastTab) dispatchSlashCommand(name string, args []string) tea.Cmd 
 	}
 
 	// Moderation commands need the account's own token.
-	client := t.deps.Clients[t.account.ID].Moderation
+	client := t.client.Moderation
 	if client == nil {
 		return t.localNoticeCmd("This account cannot use moderation commands")
 	}
@@ -223,7 +223,7 @@ func applyDuplicateBypass(input, lastSent string) string {
 // the API, delayed so that consecutive sends are at least a second apart.
 func (t *broadcastTab) sendChatMessageCmd(input, replyTo string) tea.Cmd {
 	lastSent := t.lastMessageSentAt
-	client := t.deps.Clients[t.account.ID].Chat
+	client := t.client.Chat
 	if client == nil {
 		return nil
 	}
