@@ -9,10 +9,6 @@ import (
 	"github.com/julez-dev/chatuino/wspool"
 )
 
-// The ports a tab consumes are declared in the tab package. What is left here is
-// what only the shell uses, plus the composite types that wire concrete clients
-// into the capability record.
-
 // ChatuinoServer is the chatuino server API plus the endpoints only the shell
 // calls: token refresh, link checking and the version check.
 type ChatuinoServer interface {
