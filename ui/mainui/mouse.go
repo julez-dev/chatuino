@@ -3,32 +3,20 @@ package mainui
 import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/ui/tab"
 )
 
 // mouseAware is implemented by tabs that understand cell-relative mouse input.
 // Coordinates passed to these methods are relative to the tab's own view.
 type mouseAware interface {
-	handleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd
-	handleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd
-}
-
-// wheelDelta converts a wheel event into a line delta. Positive values scroll
-// towards newer content.
-func wheelDelta(msg tea.MouseWheelMsg) int {
-	switch msg.Button {
-	case tea.MouseWheelUp:
-		return -3
-	case tea.MouseWheelDown:
-		return 3
-	default:
-		return 0
-	}
+	HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd
+	HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd
 }
 
 // activeTab returns the currently focused tab, or nil when none exists.
-func (r *Root) activeTab() tab {
-	tab, _ := r.tabs.Active()
-	return tab
+func (r *Root) activeTab() tab.Tab {
+	t, _ := r.tabs.Active()
+	return t
 }
 
 // tabLocalCoords translates screen coordinates into coordinates relative to the
@@ -70,11 +58,8 @@ func (r *Root) isTyping() bool {
 		return ok && capturer.CapturesText()
 	}
 
-	if t := r.activeTab(); t != nil {
-		state := t.State()
-		if state == insertMode || state == userInspectInsertMode || t.IsSearching() {
-			return true
-		}
+	if t := r.activeTab(); t != nil && (t.IsComposing() || t.IsSearching()) {
+		return true
 	}
 
 	return false
@@ -101,7 +86,7 @@ func (r *Root) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
 		return nil
 	}
 
-	return tab.handleMouseClick(msg, localX, localY)
+	return tab.HandleMouseClick(msg, localX, localY)
 }
 
 // handleMouseWheel routes a wheel event to the help viewport, the vertical tab
@@ -127,7 +112,7 @@ func (r *Root) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 		// Bubbles' list has no wheel support, so wheel over the vertical tab
 		// list moves the active tab instead.
 		if r.settings.VerticalTabList {
-			switch wheelDelta(msg) {
+			switch tab.WheelDelta(msg) {
 			case -3:
 				r.prevTab()
 			case 3:
@@ -143,5 +128,5 @@ func (r *Root) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 		return nil
 	}
 
-	return tab.handleMouseWheel(msg, localX, localY)
+	return tab.HandleMouseWheel(msg, localX, localY)
 }

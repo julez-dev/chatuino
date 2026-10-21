@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/ui/mainui"
+	"github.com/julez-dev/chatuino/ui/tab"
 )
 
 // tabSpec is a parsed but unresolved tab specification from a CLI --tab flag.
 type tabSpec struct {
 	account string // login or display name (lowercase), empty = default
 	channel string // channel login (lowercase)
-	kind    mainui.TabKind
+	kind    tab.TabKind
 }
 
 // parseTabSpec parses a single --tab flag value.
@@ -33,12 +33,12 @@ func parseTabSpec(raw string) (tabSpec, error) {
 
 	switch lower {
 	case "notification", "notifications":
-		return tabSpec{kind: mainui.LiveNotificationTabKind}, nil
+		return tabSpec{kind: tab.LiveNotificationKind}, nil
 	case "mention", "mentions":
-		return tabSpec{kind: mainui.MentionTabKind}, nil
+		return tabSpec{kind: tab.MentionKind}, nil
 	}
 
-	spec := tabSpec{kind: mainui.BroadcastTabKind}
+	spec := tabSpec{kind: tab.BroadcastKind}
 
 	if idx := strings.Index(lower, "@"); idx != -1 {
 		spec.account = lower[:idx]
@@ -82,17 +82,17 @@ func buildInitialState(rawSpecs []string, accounts []save.Account) (save.AppStat
 		var ts save.TabState
 
 		switch spec.kind {
-		case mainui.BroadcastTabKind:
+		case tab.BroadcastKind:
 			account, err := resolveAccount(spec.account, accounts, defaultAccount)
 			if err != nil {
 				return save.AppState{}, err
 			}
 			ts = save.TabState{
-				Kind:       int(mainui.BroadcastTabKind),
+				Kind:       int(tab.BroadcastKind),
 				Channel:    spec.channel,
 				IdentityID: account.ID,
 			}
-		case mainui.MentionTabKind:
+		case tab.MentionKind:
 			if hasMention {
 				continue
 			}
@@ -106,16 +106,16 @@ func buildInitialState(rawSpecs []string, accounts []save.Account) (save.AppStat
 
 			hasMention = true
 			ts = save.TabState{
-				Kind: int(mainui.MentionTabKind),
+				Kind: int(tab.MentionKind),
 			}
-		case mainui.LiveNotificationTabKind:
+		case tab.LiveNotificationKind:
 			if hasNotification {
 				continue
 			}
 
 			hasNotification = true
 			ts = save.TabState{
-				Kind: int(mainui.LiveNotificationTabKind),
+				Kind: int(tab.LiveNotificationKind),
 			}
 		}
 

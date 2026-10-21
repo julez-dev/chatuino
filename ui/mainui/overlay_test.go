@@ -7,6 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/stretchr/testify/require"
 )
 
@@ -132,7 +133,7 @@ func Test_Root_modalKeepsScreenDimensions(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := newTestRoot(t, nil, map[string]ClientCapabilities{}, nil)
+			root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
 			root.hasLoadedSession = true
 			root.handleResize()
 
@@ -150,23 +151,23 @@ func Test_Root_modalKeepsScreenDimensions(t *testing.T) {
 
 // Closing a modal must hand focus back to whatever had it before the push.
 func Test_Root_modalPopRestoresFocus(t *testing.T) {
-	root := newTestRoot(t, nil, map[string]ClientCapabilities{}, nil)
+	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
 	root.hasLoadedSession = true
 
-	tab := newMentionTab("tab-1", root.width, root.height, root.settings, root.theme, root.keymap, root.accountProvider)
-	root.tabs.Add(tab)
-	root.tabs.SetActive(tab.ID())
-	require.True(t, tab.Focused())
+	mention := tab.NewMention("tab-1", root.width, root.height, root.settings, root.theme, root.keymap, root.accountProvider)
+	root.tabs.Add(mention)
+	root.tabs.SetActive(mention.ID())
+	require.True(t, mention.Focused())
 
 	root.tabs.BlurActive()
 	root.stack.Push(newJoin(root.width, root.settings, root.theme, root.keymap, root.clients, root.accountProvider))
 
 	require.Equal(t, joinRoute, root.stack.Route())
-	require.False(t, tab.Focused(), "a modal takes focus away from the tab")
+	require.False(t, mention.Focused(), "a modal takes focus away from the tab")
 
 	root.tabs.FocusActive()
 	root.stack.Pop()
 
 	require.Equal(t, 0, root.stack.Len())
-	require.True(t, tab.Focused(), "focus returns to the tab that had it")
+	require.True(t, mention.Focused(), "focus returns to the tab that had it")
 }

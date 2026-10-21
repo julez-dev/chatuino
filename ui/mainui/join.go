@@ -16,6 +16,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/rs/zerolog/log"
 )
 
@@ -42,7 +43,7 @@ func (c currentJoinInput) String() string {
 
 type listItem struct {
 	title string
-	kind  TabKind
+	kind  tab.TabKind
 }
 
 func (i listItem) Title() string       { return i.title }
@@ -70,10 +71,10 @@ type join struct {
 	settings        save.Settings
 	theme           save.Theme
 	keymap          save.KeyMap
-	clients         map[string]ClientCapabilities
-	accountProvider AccountProvider
+	clients         map[string]tab.ClientCapabilities
+	accountProvider tab.AccountProvider
 
-	followedFetchers map[string]FollowedChannelsAPI
+	followedFetchers map[string]tab.FollowedChannelsAPI
 	hasLoaded        bool
 }
 
@@ -102,8 +103,8 @@ func newJoin(
 	settings save.Settings,
 	theme save.Theme,
 	keymap save.KeyMap,
-	clients map[string]ClientCapabilities,
-	accountProvider AccountProvider,
+	clients map[string]tab.ClientCapabilities,
+	accountProvider tab.AccountProvider,
 ) *join {
 	emptyUserMap := map[string]func(...string) string{}
 
@@ -147,16 +148,16 @@ func newJoin(
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
-			title: BroadcastTabKind.String(),
-			kind:  BroadcastTabKind,
+			title: tab.BroadcastKind.String(),
+			kind:  tab.BroadcastKind,
 		},
 		listItem{
-			title: MentionTabKind.String(),
-			kind:  MentionTabKind,
+			title: tab.MentionKind.String(),
+			kind:  tab.MentionKind,
 		},
 		listItem{
-			title: LiveNotificationTabKind.String(),
-			kind:  LiveNotificationTabKind,
+			title: tab.LiveNotificationKind.String(),
+			kind:  tab.LiveNotificationKind,
 		},
 	})
 	tabKindList.Select(0)
@@ -165,7 +166,7 @@ func newJoin(
 	channelList := createDefaultList(0, theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
-	followedFetchers := map[string]FollowedChannelsAPI{}
+	followedFetchers := map[string]tab.FollowedChannelsAPI{}
 
 	for id, client := range clients {
 		if client.Follows != nil {
@@ -299,7 +300,7 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 
 			if key.Matches(msg, j.keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == tab.MentionKind.String() || i.title == tab.LiveNotificationKind.String()) {
 					// For mention/live notification tabs, Tab does nothing (only one field)
 					return j, nil
 				}
@@ -319,7 +320,7 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 
 			if key.Matches(msg, j.keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == tab.MentionKind.String() || i.title == tab.LiveNotificationKind.String()) {
 					// For mention/live notification tabs, Shift+Tab does nothing (only one field)
 					return j, nil
 				}
@@ -341,9 +342,9 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
 			// Check if inputs are valid for confirmation
-			isValid := (j.input.Value() != "" && kind == BroadcastTabKind) ||
-				kind == MentionTabKind ||
-				kind == LiveNotificationTabKind
+			isValid := (j.input.Value() != "" && kind == tab.BroadcastKind) ||
+				kind == tab.MentionKind ||
+				kind == tab.LiveNotificationKind
 
 			if key.Matches(msg, j.keymap.Confirm) && isValid {
 				channel := j.input.Value()
@@ -351,7 +352,7 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 
 				return j, func() tea.Msg {
 					// Normalize channel name via Twitch API for broadcast tabs
-					if kind == BroadcastTabKind {
+					if kind == tab.BroadcastKind {
 						for accountID, client := range j.clients {
 							if accountID != account.ID {
 								continue
@@ -371,10 +372,10 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 						}
 					}
 
-					return joinChannelMessage{
-						tabKind: kind,
-						channel: channel,
-						account: account,
+					return tab.JoinChannelMessage{
+						TabKind: kind,
+						Channel: channel,
+						Account: account,
 					}
 				}
 			}
@@ -459,7 +460,7 @@ func (j *join) View() string {
 	_, _ = b.WriteString(styleCenter.Render(headlineStyle.Render("Create new Tab")) + "\n")
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
-	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
+	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == tab.MentionKind.String() || i.title == tab.LiveNotificationKind.String()) {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
 		_, _ = labelIdentity, labelChannel
@@ -539,7 +540,7 @@ func (c *join) Resize(width, height int) { c.handleResize(width, height) }
 // CapturesText reports whether printable keys belong to this screen's input.
 func (c *join) CapturesText() bool { return c.input.InputModel.Focused() }
 
-func (c *join) setTabOptions(kinds ...TabKind) {
+func (c *join) setTabOptions(kinds ...tab.TabKind) {
 	var items []list.Item
 
 	for _, kind := range kinds {

@@ -25,60 +25,38 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
-type TabKind int
-
-const (
-	BroadcastTabKind TabKind = iota
-	MentionTabKind
-	LiveNotificationTabKind
-)
-
-func (t TabKind) String() string {
-	switch t {
-	case BroadcastTabKind:
-		return "Channel (Default)"
-	case MentionTabKind:
-		return "Mention"
-	case LiveNotificationTabKind:
-		return "Live Notifications"
-	}
-
-	return "<not implemented>"
+// updateNotifier is implemented by tabs that advertise a newer version.
+type updateNotifier interface {
+	SetUpdateAvailable(latest string)
 }
 
-type tab interface {
-	Init() tea.Cmd
-	InitWithUserData(twitchapi.UserData) tea.Cmd
-	Update(tea.Msg) (tab, tea.Cmd)
-	View() string
-	ViewWithoutStatusBar() string // for vertical tab mode
-	StatusBarView() string        // for vertical tab mode
-	Focus()
-	Blur()
-	AccountID() string
-	Channel() string
-	State() broadcastTabState
-	IsSearching() bool
-	IsDataLoaded() bool
-	ID() string
-	Focused() bool
-	ChannelID() string
-	HandleResize()
-	SetSize(width, height int)
-	SetFullWidth(width int) // for status bar in vertical tab mode
-	Kind() TabKind
-	Title() string    // header label, e.g. the channel name
-	Identity() string // account label shown next to the title
+// localFilters is implemented by tabs that keep per-tab display filters, which
+// the shell persists and restores with the rest of the app state.
+type localFilters interface {
+	LocalUniqueOnly() bool
+	SetLocalUniqueOnly(bool)
+	LocalSubOnly() bool
+	SetLocalSubOnly(bool)
+}
+
+// latestVersion is the version to advertise, empty when there is no newer one.
+func (r *Root) latestVersion() string {
+	if r.updateInfo != nil && r.updateInfo.HasUpdate {
+		return r.updateInfo.LatestVersion
+	}
+
+	return ""
 }
 
 // tabRow projects a tab into the registry's rendering row, so headers never look
 // at tabs themselves.
-func tabRow(t tab) nav.Row {
+func tabRow(t tab.Tab) nav.Row {
 	return nav.Row{
 		Title:    t.Title(),
 		Identity: t.Identity(),
@@ -86,7 +64,7 @@ func tabRow(t tab) nav.Row {
 }
 
 // updateTab adapts the self-typed tab.Update to the registry's updater shape.
-func updateTab(t tab, msg tea.Msg) (tab, tea.Cmd) {
+func updateTab(t tab.Tab, msg tea.Msg) (tab.Tab, tea.Cmd) {
 	return t.Update(msg)
 }
 
@@ -132,17 +110,17 @@ type Root struct {
 	version  string
 
 	serverAPI ChatuinoServer
-	clients   map[string]ClientCapabilities
+	clients   map[string]tab.ClientCapabilities
 
-	accountProvider     AccountProvider
-	emoteCache          EmoteCache
+	accountProvider     tab.AccountProvider
+	emoteCache          tab.EmoteCache
 	badgeCache          *badge.Cache
-	emoteReplacer       EmoteReplacer
-	badgeReplacer       BadgeReplacer
+	emoteReplacer       tab.EmoteReplacer
+	badgeReplacer       tab.BadgeReplacer
 	imageDisplayManager *kittyimg.DisplayManager
-	recentMessages      RecentMessageService
-	messageLogger       MessageLogger
-	pool                ConnectionPool
+	recentMessages      tab.RecentMessageService
+	messageLogger       tab.MessageLogger
+	pool                tab.ConnectionPool
 	appStateManager     AppStateManager
 	channelHistory      ChannelHistory
 
@@ -156,7 +134,7 @@ type Root struct {
 	// itself is the base and is rendered by screenContent.
 	stack *nav.Stack
 
-	tabs               *nav.Registry[tab]
+	tabs               *nav.Registry[tab.Tab]
 	channelSuggestions []string // cached for broadcast to new tabs
 	updateInfo         *UpdateInfo
 }
@@ -172,16 +150,16 @@ func NewUI(
 	accounts []save.Account,
 	version string,
 	serverAPI ChatuinoServer,
-	clients map[string]ClientCapabilities,
-	accountProvider AccountProvider,
-	emoteCache EmoteCache,
+	clients map[string]tab.ClientCapabilities,
+	accountProvider tab.AccountProvider,
+	emoteCache tab.EmoteCache,
 	badgeCache *badge.Cache,
-	emoteReplacer EmoteReplacer,
-	badgeReplacer BadgeReplacer,
+	emoteReplacer tab.EmoteReplacer,
+	badgeReplacer tab.BadgeReplacer,
 	imageDisplayManager *kittyimg.DisplayManager,
-	recentMessages RecentMessageService,
-	messageLogger MessageLogger,
-	pool ConnectionPool,
+	recentMessages tab.RecentMessageService,
+	messageLogger tab.MessageLogger,
+	pool tab.ConnectionPool,
 	appStateManager AppStateManager,
 	channelHistory ChannelHistory,
 	initialState *save.AppState,
@@ -222,7 +200,7 @@ func NewUI(
 		splash: splash{
 			theme:   theme,
 			keymap:  keymap,
-			spinner: spinner.New(spinner.WithSpinner(loadingSpinner)),
+			spinner: spinner.New(spinner.WithSpinner(tab.LoadingSpinner)),
 		},
 		header: header,
 
@@ -345,11 +323,11 @@ func (r *Root) Init() tea.Cmd {
 			loginsUnique := make(map[string]struct{}, len(state.Tabs))
 			logins := make([]string, 0, len(state.Tabs))
 
-			for _, tab := range state.Tabs {
-				if tab.Kind != int(BroadcastTabKind) {
+			for _, spec := range state.Tabs {
+				if spec.Kind != int(tab.BroadcastKind) {
 					continue
 				}
-				loginsUnique[tab.Channel] = struct{}{}
+				loginsUnique[spec.Channel] = struct{}{}
 			}
 
 			logins = slices.AppendSeq(logins, maps.Keys(loginsUnique))
@@ -454,12 +432,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Batch(cmds...)
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
-	case joinChannelMessage:
+	case tab.JoinChannelMessage:
 		// Close whichever modal asked for the join. Pop() blurs it through its
 		// Disappeared hook and drops the screen, so its state is collected.
 		r.stack.Pop()
 
-		nTab, cmd := r.createTab(msg.account, msg.channel, msg.tabKind)
+		nTab, cmd := r.createTab(msg.Account, msg.Channel, msg.TabKind)
 
 		r.tabs.Add(nTab)
 		r.tabs.SetActive(nTab.ID())
@@ -469,8 +447,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		initCmds := []tea.Cmd{nTab.Init(), cmd}
 
 		// Record channel in history for broadcast tabs
-		if msg.tabKind == BroadcastTabKind && msg.channel != "" {
-			channel := msg.channel
+		if msg.TabKind == tab.BroadcastKind && msg.Channel != "" {
+			channel := msg.Channel
 
 			// update cached suggestions with new channel
 			if !slices.Contains(r.channelSuggestions, channel) {
@@ -489,8 +467,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// send cached suggestions to new tab
 		if len(r.channelSuggestions) > 0 {
-			initCmds = append(initCmds, nav.To(nTab.ID(), channelSuggestionsLoadedMessage{
-				channels: r.channelSuggestions,
+			initCmds = append(initCmds, nav.To(nTab.ID(), tab.ChannelSuggestionsLoadedMessage{
+				Channels: r.channelSuggestions,
 			}))
 		}
 
@@ -500,9 +478,9 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			// Connection error - display as notice in all tabs for this account
 			errEvt := r.buildChatEventMessage(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
-			if errEvt.prepareCommand != "" {
-				cmds = append(cmds, tea.Raw(errEvt.prepareCommand))
-				errEvt.prepareCommand = ""
+			if errEvt.PrepareCommand != "" {
+				cmds = append(cmds, tea.Raw(errEvt.PrepareCommand))
+				errEvt.PrepareCommand = ""
 			}
 			cmds = append(cmds, r.tabs.UpdateAll(errEvt, updateTab))
 			return r, tea.Batch(cmds...)
@@ -515,20 +493,20 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Build and forward event to tabs
 		evt := r.buildChatEventMessage(msg.AccountID, "", msg.Message, false)
-		if evt.prepareCommand != "" {
-			cmds = append(cmds, tea.Raw(evt.prepareCommand))
-			evt.prepareCommand = ""
+		if evt.PrepareCommand != "" {
+			cmds = append(cmds, tea.Raw(evt.PrepareCommand))
+			evt.PrepareCommand = ""
 		}
 		cmds = append(cmds, r.tabs.UpdateAll(evt, updateTab))
 		return r, tea.Batch(cmds...)
-	case chatEventMessage:
+	case tab.ChatEventMessage:
 		// Handle locally-generated chat events (e.g., from recent messages)
-		if msg.prepareCommand != "" {
-			cmds = append(cmds, tea.Raw(msg.prepareCommand))
-			msg.prepareCommand = ""
+		if msg.PrepareCommand != "" {
+			cmds = append(cmds, tea.Raw(msg.PrepareCommand))
+			msg.PrepareCommand = ""
 		}
-		if msg.tabID != "" {
-			if cmd, ok := r.tabs.UpdateOne(msg.tabID, msg, updateTab); ok {
+		if msg.TabID != "" {
+			if cmd, ok := r.tabs.UpdateOne(msg.TabID, msg, updateTab); ok {
 				cmds = append(cmds, cmd)
 			}
 
@@ -537,16 +515,16 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
 		return r, tea.Batch(cmds...)
-	case requestLocalMessageHandleMessage:
+	case tab.RequestLocalMessageHandleMessage:
 		return r, func() tea.Msg {
-			return r.buildChatEventMessage(msg.accountID, msg.tabID, msg.message, true)
+			return r.buildChatEventMessage(msg.AccountID, msg.TabID, msg.Message, true)
 		}
-	case requestLocalMessageHandleBatchMessage:
-		batched := make([]tea.Cmd, 0, len(msg.messages))
+	case tab.RequestLocalMessageHandleBatchMessage:
+		batched := make([]tea.Cmd, 0, len(msg.Messages))
 
-		for ircer := range slices.Values(msg.messages) {
+		for ircer := range slices.Values(msg.Messages) {
 			batched = append(batched, func() tea.Msg {
-				return r.buildChatEventMessage(msg.accountID, msg.tabID, ircer, true)
+				return r.buildChatEventMessage(msg.AccountID, msg.TabID, ircer, true)
 			})
 		}
 
@@ -605,7 +583,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = f.Close()
 			}()
 
-			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.renderView())))
+			_, _ = io.Copy(f, strings.NewReader(tab.StripANSI(r.renderView())))
 
 			return r, nil
 		}
@@ -656,7 +634,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if r.stack.Len() == 0 {
 
 			if key.Matches(msg, r.keymap.Next) {
-				if active, ok := r.tabs.Active(); ok && active.State().isComposing() {
+				if active, ok := r.tabs.Active(); ok && active.IsComposing() {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
@@ -665,7 +643,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.Previous) {
-				if active, ok := r.tabs.Active(); ok && active.State().isComposing() {
+				if active, ok := r.tabs.Active(); ok && active.IsComposing() {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
@@ -674,22 +652,22 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if key.Matches(msg, r.keymap.CloseTab) {
-				if active, ok := r.tabs.Active(); ok && !(active.State().isComposing() || active.IsSearching()) {
+				if active, ok := r.tabs.Active(); ok && !(active.IsComposing() || active.IsSearching()) {
 					currentTab := active
 					r.closeTab()
 
 					// if tab was connected to IRC, disconnect it
-					if currentTab.IsDataLoaded() && currentTab.Kind() == BroadcastTabKind {
+					if currentTab.IsDataLoaded() && currentTab.Kind() == tab.BroadcastKind {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
-						hasTabsSameAccountAndChannel := r.tabs.Any(func(t tab) bool {
+						hasTabsSameAccountAndChannel := r.tabs.Any(func(t tab.Tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.AccountID() == currentTab.AccountID() &&
 								t.ChannelID() == currentTab.ChannelID()
 						})
 
-						hasTabsSameChannel := r.tabs.Any(func(t tab) bool {
+						hasTabsSameChannel := r.tabs.Any(func(t tab.Tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.ChannelID() == currentTab.ChannelID()
 						})
@@ -731,8 +709,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	if req, ok := msg.(requestNotificationIconMessage); ok {
-		r.tabs.Notify(req.tabID)
+	if req, ok := msg.(tab.RequestNotificationIconMessage); ok {
+		r.tabs.Notify(req.TabID)
 	}
 
 	cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
@@ -809,9 +787,9 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 			Kind:       int(t.Kind()),
 		}
 
-		if t.Kind() == BroadcastTabKind {
-			tabState.IsLocalUnique = t.(*broadcastTab).isUniqueOnlyChat
-			tabState.IsLocalSub = t.(*broadcastTab).isLocalSub
+		if lf, ok := t.(localFilters); ok {
+			tabState.IsLocalUnique = lf.LocalUniqueOnly()
+			tabState.IsLocalSub = lf.LocalSubOnly()
 		}
 
 		appState.Tabs = append(appState.Tabs, tabState)
@@ -841,12 +819,12 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	openBroadcasts := map[string]struct{}{}
 	channelIDNames := map[string]string{}
 
-	for _, tab := range r.tabs.All() {
-		if tab.Kind() != BroadcastTabKind {
+	for _, t := range r.tabs.All() {
+		if t.Kind() != tab.BroadcastKind {
 			continue
 		}
-		openBroadcasts[tab.ChannelID()] = struct{}{}
-		channelIDNames[tab.ChannelID()] = tab.Channel()
+		openBroadcasts[t.ChannelID()] = struct{}{}
+		channelIDNames[t.ChannelID()] = t.Channel()
 	}
 
 	if len(openBroadcasts) == 0 {
@@ -874,7 +852,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 			}
 		}
 
-		var fetcher APIClient
+		var fetcher tab.APIClient
 		if client, has := clients[mainAccountID]; has && client.API != nil {
 			fetcher = client.API
 		} else {
@@ -890,16 +868,16 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		}
 
 		polled := polledStreamInfoMessage{
-			streamInfos: make([]setStreamInfoMessage, 0, len(broadcastIDs)),
+			streamInfos: make([]tab.SetStreamInfoMessage, 0, len(broadcastIDs)),
 		}
 
 		// Update status for all streams
 		// If a stream is offline the twitch API does not return any item for this broadcaster_id
 		// To still update the title etc. to empty value, send an empty info to component.
 		for ib := range broadcastIDs {
-			info := setStreamInfoMessage{
-				target:   broadcastIDs[ib],
-				username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
+			info := tab.SetStreamInfoMessage{
+				Target:   broadcastIDs[ib],
+				Username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
 			}
 
 			for id := range resp.Data {
@@ -908,11 +886,11 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 					continue
 				}
 
-				info.viewer = resp.Data[id].ViewerCount
-				info.username = resp.Data[id].UserName
-				info.title = resp.Data[id].Title
-				info.game = resp.Data[id].GameName
-				info.isLive = !resp.Data[id].StartedAt.IsZero()
+				info.Viewer = resp.Data[id].ViewerCount
+				info.Username = resp.Data[id].UserName
+				info.Title = resp.Data[id].Title
+				info.Game = resp.Data[id].GameName
+				info.IsLive = !resp.Data[id].StartedAt.IsZero()
 			}
 
 			polled.streamInfos = append(polled.streamInfos, info)
@@ -926,7 +904,7 @@ func (r *Root) handlePolledStreamInfo(polled polledStreamInfoMessage) tea.Cmd {
 	var cmds []tea.Cmd
 
 	for _, info := range polled.streamInfos {
-		cmds = append(cmds, r.tabs.UpdateAll(info, func(t tab, msg tea.Msg) (tab, tea.Cmd) {
+		cmds = append(cmds, r.tabs.UpdateAll(info, func(t tab.Tab, msg tea.Msg) (tab.Tab, tea.Cmd) {
 			if !t.IsDataLoaded() {
 				return t, nil
 			}
@@ -942,24 +920,24 @@ func (r *Root) handlePolledStreamInfo(polled polledStreamInfoMessage) tea.Cmd {
 // createTab builds a tab for the given kind. It does not add the tab to the
 // registry: the caller owns that, so tab creation and tab activation stay
 // separate decisions.
-func (r *Root) createTab(account save.Account, channel string, kind TabKind) (tab, tea.Cmd) {
+func (r *Root) createTab(account save.Account, channel string, kind tab.TabKind) (tab.Tab, tea.Cmd) {
 	headerHeight := r.getHeaderHeight()
 
 	switch kind {
-	case BroadcastTabKind:
-		nTab := newBroadcastTab(uuid.NewString(), r.width, r.height-headerHeight, account, channel,
+	case tab.BroadcastKind:
+		nTab := tab.NewBroadcast(uuid.NewString(), r.width, r.height-headerHeight, account, channel,
 			r.settings, r.theme, r.keymap,
 			r.clients[account.ID], r.pool,
 			r.recentMessages, r.messageLogger,
 			r.emoteCache, r.emoteReplacer, r.badgeCache, r.badgeReplacer)
-		nTab.updateInfo = r.updateInfo
+		nTab.SetUpdateAvailable(r.latestVersion())
 		return nTab, nil
-	case MentionTabKind:
-		nTab := newMentionTab(uuid.NewString(), r.width, r.height-headerHeight,
+	case tab.MentionKind:
+		nTab := tab.NewMention(uuid.NewString(), r.width, r.height-headerHeight,
 			r.settings, r.theme, r.keymap, r.accountProvider)
 		return nTab, nil
-	case LiveNotificationTabKind:
-		nTab := newLiveNotificationTab(uuid.NewString(), r.width, r.height-headerHeight,
+	case tab.LiveNotificationKind:
+		nTab := tab.NewLiveNotification(uuid.NewString(), r.width, r.height-headerHeight,
 			r.settings, r.theme, r.keymap)
 		return nTab, nil
 	}
@@ -968,18 +946,18 @@ func (r *Root) createTab(account save.Account, channel string, kind TabKind) (ta
 }
 
 // availableTabKinds returns the tab kinds that are not open yet, in menu order.
-func (r *Root) availableTabKinds() []TabKind {
-	hasMention := r.tabs.Any(func(t tab) bool { return t.Kind() == MentionTabKind })
-	hasNotification := r.tabs.Any(func(t tab) bool { return t.Kind() == LiveNotificationTabKind })
+func (r *Root) availableTabKinds() []tab.TabKind {
+	hasMention := r.tabs.Any(func(t tab.Tab) bool { return t.Kind() == tab.MentionKind })
+	hasNotification := r.tabs.Any(func(t tab.Tab) bool { return t.Kind() == tab.LiveNotificationKind })
 
-	kinds := []TabKind{BroadcastTabKind}
+	kinds := []tab.TabKind{tab.BroadcastKind}
 
 	if !hasMention {
-		kinds = append(kinds, MentionTabKind)
+		kinds = append(kinds, tab.MentionKind)
 	}
 
 	if !hasNotification {
-		kinds = append(kinds, LiveNotificationTabKind)
+		kinds = append(kinds, tab.LiveNotificationKind)
 	}
 
 	return kinds
@@ -1059,8 +1037,8 @@ func (r *Root) handleVersionCheck(msg versionCheckMessage) tea.Cmd {
 	r.splash.updateInfo = &msg.info
 
 	for _, t := range r.tabs.All() {
-		if bt, ok := t.(*broadcastTab); ok {
-			bt.updateInfo = r.updateInfo
+		if n, ok := t.(updateNotifier); ok {
+			n.SetUpdateAvailable(r.latestVersion())
 		}
 	}
 
@@ -1080,11 +1058,11 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	var hasActiveTab bool
 	for _, t := range msg.state.Tabs {
 		var (
-			newTab tab
+			newTab tab.Tab
 			cmd    tea.Cmd
 		)
-		switch TabKind(t.Kind) {
-		case BroadcastTabKind:
+		switch tab.TabKind(t.Kind) {
+		case tab.BroadcastKind:
 			var account save.Account
 
 			for _, a := range r.accounts {
@@ -1097,10 +1075,12 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab, cmd = r.createTab(account, t.Channel, BroadcastTabKind)
-			newTab.(*broadcastTab).isUniqueOnlyChat = t.IsLocalUnique
-			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
-		case MentionTabKind:
+			newTab, cmd = r.createTab(account, t.Channel, tab.BroadcastKind)
+			if lf, ok := newTab.(localFilters); ok {
+				lf.SetLocalUniqueOnly(t.IsLocalUnique)
+				lf.SetLocalSubOnly(t.IsLocalSub)
+			}
+		case tab.MentionKind:
 			// don't load mention tab, when there are no longer any non-anonymous accounts
 			hasNormalAccount := slices.ContainsFunc(r.accounts, func(e save.Account) bool {
 				return !e.IsAnonymous
@@ -1110,9 +1090,9 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab, cmd = r.createTab(save.Account{}, "", MentionTabKind)
-		case LiveNotificationTabKind:
-			newTab, cmd = r.createTab(save.Account{}, "", LiveNotificationTabKind)
+			newTab, cmd = r.createTab(save.Account{}, "", tab.MentionKind)
+		case tab.LiveNotificationKind:
+			newTab, cmd = r.createTab(save.Account{}, "", tab.LiveNotificationKind)
 		}
 
 		if newTab == nil {
@@ -1142,8 +1122,8 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	r.channelSuggestions = msg.channelSuggestions
 	if len(r.channelSuggestions) > 0 {
 		for _, t := range r.tabs.All() {
-			cmds = append(cmds, nav.To(t.ID(), channelSuggestionsLoadedMessage{
-				channels: r.channelSuggestions,
+			cmds = append(cmds, nav.To(t.ID(), tab.ChannelSuggestionsLoadedMessage{
+				Channels: r.channelSuggestions,
 			}))
 		}
 	}
@@ -1156,7 +1136,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitchirc.IRCer, isFakeEvent bool) chatEventMessage {
+func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitchirc.IRCer, isFakeEvent bool) tab.ChatEventMessage {
 	var (
 		channel                 string
 		message                 string
@@ -1260,19 +1240,19 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		channel = ircMessage.ChannelUserName
 	}
 
-	event := chatEventMessage{
-		isFakeEvent:             isFakeEvent,
-		accountID:               accountID,
-		channel:                 channel,
-		channelID:               channelID,
-		channelGuestID:          channelGuestID,
-		channelGuestDisplayName: channelGuestDisplayName,
-		tabID:                   tabID,
+	event := tab.ChatEventMessage{
+		IsFakeEvent:             isFakeEvent,
+		AccountID:               accountID,
+		Channel:                 channel,
+		ChannelID:               channelID,
+		ChannelGuestID:          channelGuestID,
+		ChannelGuestDisplayName: channelGuestDisplayName,
+		TabID:                   tabID,
 
-		message: ircer,
-		displayModifier: messageContentModifier{
-			wordReplacements: make(wordReplacement),
-			badgeReplacement: make(wordReplacement),
+		Message: ircer,
+		DisplayModifier: tab.MessageContentModifier{
+			WordReplacements: make(tab.WordReplacement),
+			BadgeReplacement: make(tab.WordReplacement),
 		},
 	}
 
@@ -1285,7 +1265,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		}
 
 		for k, v := range replacement {
-			event.displayModifier.wordReplacements[k] = v
+			event.DisplayModifier.WordReplacements[k] = v
 		}
 
 		replaceCommand += p
@@ -1297,12 +1277,12 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace badges")
 		}
 
-		event.displayModifier.badgeReplacement = replace
+		event.DisplayModifier.BadgeReplacement = replace
 		replaceCommand += p
 	}
 
 	if loginName != "" {
-		p, err := r.badgeReplacer.InjectContributorBadge(loginName, event.displayModifier.badgeReplacement)
+		p, err := r.badgeReplacer.InjectContributorBadge(loginName, event.DisplayModifier.BadgeReplacement)
 		if err != nil {
 			log.Logger.Info().Err(err).Str("login", loginName).Msg("failed to inject contributor badge")
 		}
@@ -1315,7 +1295,7 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 		// annotated in place, preserving any surrounding punctuation in the token.
 		for _, token := range strings.Split(message, " ") {
 			annotated := token
-			for _, u := range extractValidURLs(token) {
+			for _, u := range tab.ExtractValidURLs(token) {
 				resp, err := r.serverAPI.CheckLink(context.Background(), u)
 				if err != nil {
 					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
@@ -1342,12 +1322,12 @@ func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitc
 			}
 
 			if annotated != token {
-				event.displayModifier.wordReplacements[token] = annotated
+				event.DisplayModifier.WordReplacements[token] = annotated
 			}
 		}
 	}
 
-	event.prepareCommand = replaceCommand
+	event.PrepareCommand = replaceCommand
 	return event
 }
 
@@ -1376,9 +1356,7 @@ func (r *Root) closeTab() {
 		return
 	}
 
-	if active.Kind() == BroadcastTabKind {
-		active.(*broadcastTab).close()
-	}
+	active.Close()
 
 	// Remove activates the neighbour, so no cursor bookkeeping is needed here.
 	r.tabs.Remove(active.ID())

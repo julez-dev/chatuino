@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/ui/mainui"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +15,7 @@ func TestParseTabSpec(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("streamer1")
 		require.NoError(t, err)
-		require.Equal(t, mainui.BroadcastTabKind, spec.kind)
+		require.Equal(t, tab.BroadcastKind, spec.kind)
 		require.Equal(t, "streamer1", spec.channel)
 		require.Empty(t, spec.account)
 	})
@@ -24,7 +24,7 @@ func TestParseTabSpec(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("myuser@streamer1")
 		require.NoError(t, err)
-		require.Equal(t, mainui.BroadcastTabKind, spec.kind)
+		require.Equal(t, tab.BroadcastKind, spec.kind)
 		require.Equal(t, "streamer1", spec.channel)
 		require.Equal(t, "myuser", spec.account)
 	})
@@ -33,7 +33,7 @@ func TestParseTabSpec(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("notification")
 		require.NoError(t, err)
-		require.Equal(t, mainui.LiveNotificationTabKind, spec.kind)
+		require.Equal(t, tab.LiveNotificationKind, spec.kind)
 		require.Empty(t, spec.channel)
 		require.Empty(t, spec.account)
 	})
@@ -42,32 +42,32 @@ func TestParseTabSpec(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("notifications")
 		require.NoError(t, err)
-		require.Equal(t, mainui.LiveNotificationTabKind, spec.kind)
+		require.Equal(t, tab.LiveNotificationKind, spec.kind)
 	})
 
 	t.Run("mention keyword", func(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("mention")
 		require.NoError(t, err)
-		require.Equal(t, mainui.MentionTabKind, spec.kind)
+		require.Equal(t, tab.MentionKind, spec.kind)
 	})
 
 	t.Run("mentions alias", func(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("mentions")
 		require.NoError(t, err)
-		require.Equal(t, mainui.MentionTabKind, spec.kind)
+		require.Equal(t, tab.MentionKind, spec.kind)
 	})
 
 	t.Run("case insensitive keywords", func(t *testing.T) {
 		t.Parallel()
 		spec, err := parseTabSpec("NOTIFICATION")
 		require.NoError(t, err)
-		require.Equal(t, mainui.LiveNotificationTabKind, spec.kind)
+		require.Equal(t, tab.LiveNotificationKind, spec.kind)
 
 		spec, err = parseTabSpec("Mention")
 		require.NoError(t, err)
-		require.Equal(t, mainui.MentionTabKind, spec.kind)
+		require.Equal(t, tab.MentionKind, spec.kind)
 	})
 
 	t.Run("strips whitespace", func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestBuildInitialState(t *testing.T) {
 		state, err := buildInitialState([]string{"streamer1"}, allAccounts)
 		require.NoError(t, err)
 		require.Len(t, state.Tabs, 1)
-		require.Equal(t, int(mainui.BroadcastTabKind), state.Tabs[0].Kind)
+		require.Equal(t, int(tab.BroadcastKind), state.Tabs[0].Kind)
 		require.Equal(t, "streamer1", state.Tabs[0].Channel)
 		require.Equal(t, "main-id", state.Tabs[0].IdentityID)
 		require.True(t, state.Tabs[0].IsFocused)
@@ -199,8 +199,8 @@ func TestBuildInitialState(t *testing.T) {
 		state, err := buildInitialState([]string{"notification", "streamer1"}, allAccounts)
 		require.NoError(t, err)
 		require.Len(t, state.Tabs, 2)
-		require.Equal(t, int(mainui.LiveNotificationTabKind), state.Tabs[0].Kind)
-		require.Equal(t, int(mainui.BroadcastTabKind), state.Tabs[1].Kind)
+		require.Equal(t, int(tab.LiveNotificationKind), state.Tabs[0].Kind)
+		require.Equal(t, int(tab.BroadcastKind), state.Tabs[1].Kind)
 		require.True(t, state.Tabs[0].IsFocused)
 		require.False(t, state.Tabs[1].IsFocused)
 	})
@@ -251,11 +251,11 @@ func TestBuildInitialState(t *testing.T) {
 		)
 		require.NoError(t, err)
 		require.Len(t, state.Tabs, 4)
-		require.Equal(t, int(mainui.LiveNotificationTabKind), state.Tabs[0].Kind)
-		require.Equal(t, int(mainui.MentionTabKind), state.Tabs[1].Kind)
-		require.Equal(t, int(mainui.BroadcastTabKind), state.Tabs[2].Kind)
+		require.Equal(t, int(tab.LiveNotificationKind), state.Tabs[0].Kind)
+		require.Equal(t, int(tab.MentionKind), state.Tabs[1].Kind)
+		require.Equal(t, int(tab.BroadcastKind), state.Tabs[2].Kind)
 		require.Equal(t, "second-id", state.Tabs[2].IdentityID)
-		require.Equal(t, int(mainui.BroadcastTabKind), state.Tabs[3].Kind)
+		require.Equal(t, int(tab.BroadcastKind), state.Tabs[3].Kind)
 		require.Equal(t, "main-id", state.Tabs[3].IdentityID)
 	})
 

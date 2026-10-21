@@ -6,13 +6,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/stretchr/testify/require"
 )
 
 func newRestoreTestRoot(t *testing.T) *Root {
 	t.Helper()
 
-	return newTestRoot(t, []save.Account{{ID: "acc", DisplayName: "me"}}, map[string]ClientCapabilities{}, nil)
+	return newTestRoot(t, []save.Account{{ID: "acc", DisplayName: "me"}}, map[string]tab.ClientCapabilities{}, nil)
 }
 
 // Restoring a session activates the outgoing tab before the incoming one. Restored
@@ -23,8 +24,8 @@ func Test_Root_handlePersistedDataLoaded_RestoresUnloadedTabs(t *testing.T) {
 
 	msg := persistedDataLoadedMessage{
 		state: save.AppState{Tabs: []save.TabState{
-			{Channel: "alpha", IdentityID: "acc", Kind: int(BroadcastTabKind)},
-			{Channel: "beta", IdentityID: "acc", Kind: int(BroadcastTabKind), IsFocused: true},
+			{Channel: "alpha", IdentityID: "acc", Kind: int(tab.BroadcastKind)},
+			{Channel: "beta", IdentityID: "acc", Kind: int(tab.BroadcastKind), IsFocused: true},
 		}},
 		ttvUsers: map[string]twitchapi.UserData{},
 	}
@@ -34,10 +35,8 @@ func Test_Root_handlePersistedDataLoaded_RestoresUnloadedTabs(t *testing.T) {
 	}, "blurring a restored tab must not touch the composer it does not have yet")
 
 	t.Cleanup(func() {
-		for _, tab := range root.tabs.All() {
-			if bt, ok := tab.(*broadcastTab); ok {
-				bt.close()
-			}
+		for _, t := range root.tabs.All() {
+			t.Close()
 		}
 	})
 
@@ -65,8 +64,8 @@ func Test_Root_handlePersistedDataLoaded_FallsBackToFirstTab(t *testing.T) {
 
 	msg := persistedDataLoadedMessage{
 		state: save.AppState{Tabs: []save.TabState{
-			{Channel: "alpha", IdentityID: "acc", Kind: int(BroadcastTabKind)},
-			{Channel: "beta", IdentityID: "acc", Kind: int(BroadcastTabKind)},
+			{Channel: "alpha", IdentityID: "acc", Kind: int(tab.BroadcastKind)},
+			{Channel: "beta", IdentityID: "acc", Kind: int(tab.BroadcastKind)},
 		}},
 		ttvUsers: map[string]twitchapi.UserData{},
 	}
@@ -76,10 +75,8 @@ func Test_Root_handlePersistedDataLoaded_FallsBackToFirstTab(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		for _, tab := range root.tabs.All() {
-			if bt, ok := tab.(*broadcastTab); ok {
-				bt.close()
-			}
+		for _, t := range root.tabs.All() {
+			t.Close()
 		}
 	})
 
@@ -105,16 +102,14 @@ func Test_Root_isTyping_ToleratesUnloadedTabs(t *testing.T) {
 
 	root.handlePersistedDataLoaded(persistedDataLoadedMessage{
 		state: save.AppState{Tabs: []save.TabState{
-			{Channel: "alpha", IdentityID: "acc", Kind: int(BroadcastTabKind), IsFocused: true},
+			{Channel: "alpha", IdentityID: "acc", Kind: int(tab.BroadcastKind), IsFocused: true},
 		}},
 		ttvUsers: map[string]twitchapi.UserData{},
 	})
 
 	t.Cleanup(func() {
-		for _, tab := range root.tabs.All() {
-			if bt, ok := tab.(*broadcastTab); ok {
-				bt.close()
-			}
+		for _, t := range root.tabs.All() {
+			t.Close()
 		}
 	})
 
@@ -137,7 +132,6 @@ func Test_BroadcastTab_UnloadedTabToleratesInterfaceCalls(t *testing.T) {
 		_ = tab.IsSearching()
 		_ = tab.IsDataLoaded()
 		_ = tab.Focused()
-		_ = tab.State()
 		_ = tab.Title()
 		_ = tab.Identity()
 		tab.SetSize(80, 24)
@@ -148,6 +142,6 @@ func Test_BroadcastTab_UnloadedTabToleratesInterfaceCalls(t *testing.T) {
 		_, _ = tab.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 		_, _ = tab.Update(tea.MouseClickMsg{X: 2, Y: 2, Button: tea.MouseLeft})
 		_, _ = tab.Update(tea.MouseWheelMsg{X: 2, Y: 2, Button: tea.MouseWheelDown})
-		tab.close()
+		tab.Close()
 	})
 }

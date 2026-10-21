@@ -13,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/rs/zerolog/log"
 )
 
@@ -102,11 +103,11 @@ type quickJoin struct {
 	settings        save.Settings
 	theme           save.Theme
 	keymap          save.KeyMap
-	clients         map[string]ClientCapabilities
-	accountProvider AccountProvider
+	clients         map[string]tab.ClientCapabilities
+	accountProvider tab.AccountProvider
 	channelHistory  ChannelHistory
 
-	followedFetchers map[string]FollowedChannelsAPI
+	followedFetchers map[string]tab.FollowedChannelsAPI
 	hasLoaded        bool
 }
 
@@ -115,13 +116,13 @@ func newQuickJoin(
 	settings save.Settings,
 	theme save.Theme,
 	keymap save.KeyMap,
-	clients map[string]ClientCapabilities,
-	accountProvider AccountProvider,
+	clients map[string]tab.ClientCapabilities,
+	accountProvider tab.AccountProvider,
 	channelHistory ChannelHistory,
 ) *quickJoin {
 	modalWidth := calcModalWidth(parentWidth)
 
-	followedFetchers := map[string]FollowedChannelsAPI{}
+	followedFetchers := map[string]tab.FollowedChannelsAPI{}
 
 	for id, client := range clients {
 		if client.Follows != nil {
@@ -419,10 +420,10 @@ func (q *quickJoin) confirmSelection() tea.Cmd {
 			channel = resp.Data[0].Login
 		}
 
-		return joinChannelMessage{
-			tabKind: BroadcastTabKind,
-			channel: channel,
-			account: account,
+		return tab.JoinChannelMessage{
+			TabKind: tab.BroadcastKind,
+			Channel: channel,
+			Account: account,
 		}
 	}
 }
@@ -434,14 +435,14 @@ func (q *quickJoin) updateStreamInfo(msg polledStreamInfoMessage) {
 	}
 }
 
-func updateItemStreamInfo(items []quickJoinChannelItem, info setStreamInfoMessage) {
+func updateItemStreamInfo(items []quickJoinChannelItem, info tab.SetStreamInfoMessage) {
 	for i := range items {
-		if !strings.EqualFold(items[i].login, info.username) {
+		if !strings.EqualFold(items[i].login, info.Username) {
 			continue
 		}
-		items[i].isLive = info.isLive
-		items[i].viewers = info.viewer
-		items[i].game = info.game
+		items[i].isLive = info.IsLive
+		items[i].viewers = info.Viewer
+		items[i].game = info.Game
 	}
 }
 

@@ -36,6 +36,7 @@ import (
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
+	"github.com/julez-dev/chatuino/ui/tab"
 	_ "github.com/mailru/easyjson"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
@@ -217,7 +218,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote/badge fetching.
-			clients := make(map[string]mainui.ClientCapabilities)
+			clients := make(map[string]tab.ClientCapabilities)
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
@@ -285,7 +286,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				if acc.IsAnonymous {
 					// Anonymous accounts go through the server proxy: read-only, no user
 					// token, so only the base API capability is available.
-					clients[acc.ID] = mainui.ClientCapabilities{API: serverAPI}
+					clients[acc.ID] = tab.ClientCapabilities{API: serverAPI}
 					continue
 				}
 

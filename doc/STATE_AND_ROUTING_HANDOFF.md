@@ -39,7 +39,10 @@ Implemented on branch `refactor/ui-state-and-routing`, branched from `main` @
 | `5836a7c` | 2 | `ui/nav.Stack` owns the modals; join/quick-join/help are `Screen`s with `Appeared`/`Disappeared`, `Overlay`, `Routed` and `Resize`. `screenType` is gone. |
 | `53f81b0` | 3 | Tab-scoped results are produced with `nav.Address`/`nav.To` and delivered by `Registry.Dispatch`; the `targetID` fields and child-side filters are gone. |
 | `55f469b` | 4 | `tabTransitions` declares every (mode, event) pair; `transit` is the only assignment to `t.state`; a modes x events matrix test asserts the invariants. |
-| (this commit) | 5 (partial) | Mode-pair checks are expressed through `isComposing` / `isInspecting` / `isViewing` predicates. The full mode-keyed key table is deferred (§4, phase 5). |
+| `a38df0a` | 5 (partial) | Mode-pair checks are expressed through `isComposing` / `isInspecting` / `isViewing` predicates. The full mode-keyed key table is deferred (§4, phase 5). |
+| `1706f97` | — | `ClientCapabilities` records what an account's client can do; 11 runtime client type assertions became field tests, and wiring now checks a client's shape at compile time. |
+| `ad57942` | — | Components take collaborators as parameters; every dependency-collecting type is gone (`DependencyContainer`, `tabDeps`, `joinDeps`, `quickJoinDeps`, `Deps`, `UserConfiguration`). `NewUI` names all 17 of the shell's collaborators. |
+| (this commit) | — | Tab implementations move to `ui/tab` (29 files moved, 6,767 non-test LOC); `ui/mainui` is the shell only (3,774). `tab.Tab` replaces the shell's private interface, and the messages tabs exchange moved with them. |
 
 ### Measured before / after
 
@@ -55,7 +58,26 @@ Implemented on branch `refactor/ui-state-and-routing`, branched from `main` @
 | `msg.targetID != ...` child-side filters | 7 | 0 |
 | `msg.target != ...` data-identity filters | 4 | 4 (intentional, see below) |
 | state-transition tests | 0 | matrix over 5 modes x 6 events + invariant assertions |
+| runtime client type assertions | 11 | 0 (capability fields instead) |
+| dependency-collecting types | 1 (`DependencyContainer`, 18 fields) | 0 |
 | non-test LOC in `ui/` | 11,971 | 12,502 (incl. 521 new `ui/nav`) |
+| largest package (non-test LOC) | `ui/mainui` 11,971 | `ui/tab` 6,767, `ui/mainui` 3,774 |
+
+### Package layout after the extraction
+
+| Package | Holds | Imports |
+| --- | --- | --- |
+| `ui/nav` | Tab registry, modal stack, addresses | — |
+| `ui/tab` | The three tab kinds, chat window/composer/status/inspect, the ports a tab consumes, the messages tabs exchange | `ui/nav`, `ui/component` |
+| `ui/mainui` | Shell: root model, headers, modals (join/quick-join/help), splash, mouse routing, app-state wiring | `ui/nav`, `ui/tab`, `ui/component` |
+
+The direction is one-way: `ui/tab` never imports `ui/mainui`, so a tab cannot reach
+Root, the registry or another tab. The shell talks to tabs through `tab.Tab` plus a
+handful of capability interfaces it declares itself (`mouseAware`, `updateNotifier`,
+`localFilters`, `textCapturer`), which is why none of them needs a concrete tab type.
+That last point is load-bearing: when the mouse capability was left unexported, the
+assertion failed silently and clicks stopped reaching tabs — `Test_Root_activeTabSatisfiesMouseAware`
+pins it.
 
 The four remaining `msg.target != ...` guards are **not** tab addressing: they key
 data by channel id or window id inside a sub-component
@@ -105,7 +127,7 @@ component" with "which channel", so they stay.
 | `emoteOverviewMode`: mode or overlay? | Kept as a mode, but its transitions now blur the chat window, so it behaves like an overlay with respect to focus. |
 | Where do `tea.View` flags live? | Outer model only: `Root.View` still sets `AltScreen`, `WindowTitle` and `MouseMode`; `nav.Stack` returns a plain string. |
 | Self-typed `Update` or `tea.Model`? | Self-typed kept; `Registry[T Item]` handles it with generics and no casts. |
-| `Intent()` vs `State()` | Both, narrowly: `textCapturer` on screens for "is text captured?", `State().isComposing()`/`isInspecting()` on tabs. `Root` no longer compares modes to pairs of constants. |
+| `Intent()` vs `State()` | Predicates, not state: `textCapturer` on screens for "is text captured?", `Tab.IsComposing()`/`IsSearching()` on tabs. The mode type stayed package-private to `ui/tab`, and `State()` was dropped once nothing outside the package compared modes. |
 | Second consumer for `ui/nav`? | Still open; `accountui` is the candidate. |
 
 ---
