@@ -110,7 +110,7 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 
 	t.channelLogin = msg.channelLogin
 	t.channelID = msg.channelID
-	t.streamInfo = newStreamInfo(msg.channelID, t.deps.APIUserClients[t.account.ID], t.width)
+	t.streamInfo = newStreamInfo(msg.channelID, t.deps.Clients[t.account.ID].API, t.width)
 	t.poll = newPoll(t.width)
 	t.chatWindow = newChatWindow(t.width, t.height, t.deps)
 
@@ -206,8 +206,8 @@ func (t *broadcastTab) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cm
 //
 // sadly due to cost limits, we only allow this events users channel not other channels
 func (t *broadcastTab) subscribeChannelEventCmds(channelID string) []tea.Cmd {
-	eventSubAPI, ok := t.deps.APIUserClients[t.account.ID].(wspool.EventSubService)
-	if !ok || t.account.ID != channelID {
+	eventSubAPI := t.deps.Clients[t.account.ID].EventSub
+	if eventSubAPI == nil || t.account.ID != channelID {
 		return nil
 	}
 

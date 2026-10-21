@@ -99,17 +99,18 @@ type quickJoin struct {
 	activeSection    quickJoinSection
 	accounts         []save.Account
 	deps             *DependencyContainer
-	followedFetchers map[string]followedFetcher
+	followedFetchers map[string]FollowedChannelsAPI
 	hasLoaded        bool
 }
 
 func newQuickJoin(parentWidth int, deps *DependencyContainer) *quickJoin {
 	modalWidth := calcModalWidth(parentWidth)
 
-	followedFetchers := map[string]followedFetcher{}
-	for id, client := range deps.APIUserClients {
-		if c, ok := client.(followedFetcher); ok {
-			followedFetchers[id] = c
+	followedFetchers := map[string]FollowedChannelsAPI{}
+
+	for id, client := range deps.Clients {
+		if client.Follows != nil {
+			followedFetchers[id] = client.Follows
 		}
 	}
 
@@ -387,7 +388,7 @@ func (q *quickJoin) confirmSelection() tea.Cmd {
 	}
 
 	account := q.accounts[q.accountCursor]
-	client := q.deps.APIUserClients[account.ID]
+	client := q.deps.Clients[account.ID].API
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

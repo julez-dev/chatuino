@@ -118,7 +118,7 @@ func Test_Root_modalKeepsScreenDimensions(t *testing.T) {
 			Theme:    save.BuildDefaultTheme(),
 		},
 		Keymap:         save.BuildDefaultKeyMap(),
-		APIUserClients: map[string]APIClient{},
+		Clients: map[string]ClientCapabilities{},
 	}
 
 	for _, tc := range []struct {
@@ -163,7 +163,7 @@ func Test_Root_modalPopRestoresFocus(t *testing.T) {
 			Theme:    save.BuildDefaultTheme(),
 		},
 		Keymap:         save.BuildDefaultKeyMap(),
-		APIUserClients: map[string]APIClient{},
+		Clients: map[string]ClientCapabilities{},
 	}
 
 	root := NewUI(nil, deps, nil)

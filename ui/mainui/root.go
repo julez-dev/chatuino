@@ -235,13 +235,13 @@ func (r *Root) Init() tea.Cmd {
 					continue
 				}
 
-				client, has := r.dependencies.APIUserClients[acc.ID]
+				client, has := r.dependencies.Clients[acc.ID]
 				if !has {
 					continue
 				}
 
-				fetcher, ok := client.(UserEmoteClient)
-				if !ok {
+				fetcher := client.Emotes
+				if fetcher == nil {
 					log.Logger.Error().Msg("failed to parse user emote client")
 					continue
 				}
@@ -334,9 +334,9 @@ func (r *Root) Init() tea.Cmd {
 					}
 				}
 
-				for accountID, client := range r.dependencies.APIUserClients {
-					fc, ok := client.(followedFetcher)
-					if !ok {
+				for accountID, client := range r.dependencies.Clients {
+					fc := client.Follows
+					if fc == nil {
 						continue
 					}
 
@@ -774,7 +774,7 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
-	clients := maps.Clone(r.dependencies.APIUserClients)
+	clients := maps.Clone(r.dependencies.Clients)
 
 	// collect all open broadcasters
 	openBroadcasts := map[string]struct{}{}
@@ -814,8 +814,8 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		}
 
 		var fetcher APIClient
-		if _, has := clients[mainAccountID]; has {
-			fetcher = clients[mainAccountID]
+		if client, has := clients[mainAccountID]; has && client.API != nil {
+			fetcher = client.API
 		} else {
 			fetcher = r.dependencies.ServerAPI
 		}

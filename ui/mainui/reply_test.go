@@ -55,7 +55,7 @@ func newReplyTab(t *testing.T) (*broadcastTab, *fakeUserClient) {
 			Theme:    save.BuildDefaultTheme(),
 		},
 		Keymap:         save.BuildDefaultKeyMap(),
-		APIUserClients: map[string]APIClient{"account": client},
+		Clients:        map[string]ClientCapabilities{"account": {API: client, Chat: client}},
 	}
 
 	tab := &broadcastTab{

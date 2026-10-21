@@ -74,21 +74,6 @@ const (
 	emoteOverviewMode
 )
 
-type moderationAPIClient interface {
-	APIClient
-	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitchapi.BanUserData) error
-	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
-	DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error
-	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitchapi.CreateChatAnnouncementRequest) error
-	CreateStreamMarker(ctx context.Context, req twitchapi.CreateStreamMarkerRequest) (twitchapi.StreamMarker, error)
-}
-
-type userAuthenticatedAPIClient interface {
-	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitchapi.CreatedClip, error)
-	GetUserChatColor(ctx context.Context, userIDs []string) ([]twitchapi.UserChatColor, error)
-	SendChatMessage(ctx context.Context, data twitchapi.SendChatMessageRequest) (twitchapi.SendChatMessageResponse, error)
-}
-
 type ModStatusFetcher interface {
 	GetModVIPList(ctx context.Context, channel string) (ivr.ModVIPResponse, error)
 }
@@ -190,7 +175,7 @@ func (t *broadcastTab) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 		defer cancel()
 
-		userData, err := t.deps.APIUserClients[t.account.ID].GetUsers(ctx, []string{t.channel}, nil)
+		userData, err := t.deps.Clients[t.account.ID].API.GetUsers(ctx, []string{t.channel}, nil)
 		if err != nil {
 			return nav.Address(t.id, setErrorMessage{
 				err: fmt.Errorf("could not fetch ttv user %s: %w", t.channel, err),

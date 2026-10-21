@@ -62,6 +62,70 @@ type UserEmoteClient interface {
 	FetchAllUserEmotes(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.UserEmoteImage, string, error)
 }
 
+// UserAuthenticatedAPI is the part of a Twitch client that only works with the
+// account's own token: sending messages, making clips, reading chat colours.
+type UserAuthenticatedAPI interface {
+	CreateClip(ctx context.Context, broadcastID string, hasDelay bool) (twitchapi.CreatedClip, error)
+	GetUserChatColor(ctx context.Context, userIDs []string) ([]twitchapi.UserChatColor, error)
+	SendChatMessage(ctx context.Context, data twitchapi.SendChatMessageRequest) (twitchapi.SendChatMessageResponse, error)
+}
+
+// ModerationAPI is the moderation surface of a Twitch client.
+type ModerationAPI interface {
+	APIClient
+	BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitchapi.BanUserData) error
+	UnbanUser(ctx context.Context, broadcasterID string, moderatorID string, userID string) error
+	DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error
+	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitchapi.CreateChatAnnouncementRequest) error
+	CreateStreamMarker(ctx context.Context, req twitchapi.CreateStreamMarkerRequest) (twitchapi.StreamMarker, error)
+}
+
+// FollowedChannelsAPI lists the channels an account follows.
+type FollowedChannelsAPI interface {
+	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.FollowedChannel, error)
+}
+
+// ClientCapabilities is what one account's API client can actually do.
+//
+// main.go fills in only the capabilities the account has: an account signed in with
+// its own token gets all of them, an anonymous account gets the server proxy and
+// nothing else. A nil field means "not available for this account", so callers test
+// the field instead of asserting an interface at every call site. Because each
+// capability is a separate field, wiring a client into them also makes the compiler
+// check it: assigning a client that lacks a method does not compile, where a type
+// assertion would only fail once that path was reached.
+type ClientCapabilities struct {
+	API        APIClient
+	Chat       UserAuthenticatedAPI
+	Moderation ModerationAPI
+	Emotes     UserEmoteClient
+	EventSub   wspool.EventSubService
+	Follows    FollowedChannelsAPI
+}
+
+// fullClient is the widest capability set a client can have. Taking it as the
+// parameter type is what turns the capability list into a compile-time check.
+type fullClient interface {
+	APIClient
+	UserAuthenticatedAPI
+	ModerationAPI
+	UserEmoteClient
+	FollowedChannelsAPI
+	wspool.EventSubService
+}
+
+// NewClientCapabilities records every capability of a fully authenticated client.
+func NewClientCapabilities(client fullClient) ClientCapabilities {
+	return ClientCapabilities{
+		API:        client,
+		Chat:       client,
+		Moderation: client,
+		Emotes:     client,
+		EventSub:   client,
+		Follows:    client,
+	}
+}
+
 // ConnectionPool manages WebSocket connections for IRC and EventSub.
 type ConnectionPool interface {
 	ConnectIRC(accountID string) error
@@ -97,8 +161,9 @@ type DependencyContainer struct {
 	Accounts   []save.Account
 	Version    string
 
-	ServerAPI      ChatuinoServer
-	APIUserClients map[string]APIClient
+	ServerAPI ChatuinoServer
+	// Clients holds one capability record per account. See ClientCapabilities.
+	Clients map[string]ClientCapabilities
 
 	AccountProvider      AccountProvider
 	EmoteCache           EmoteCache

@@ -16,7 +16,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
-func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient) tea.Cmd {
+func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI) tea.Cmd {
 	noticeCommandFunc := func(msg string) tea.Cmd {
 		return func() tea.Msg {
 			return chatEventMessage{
@@ -51,7 +51,7 @@ func handleCommand(name string, args []string, channelID string, channel string,
 	return nil
 }
 
-func handleMarker(args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleMarker(args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	var description string
 	if len(args) > 0 {
 		description = strings.Join(args, " ")
@@ -87,7 +87,7 @@ func handleMarker(args []string, channelID string, channel string, userAccountID
 	}
 }
 
-func handleAnnouncement(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleAnnouncement(args []string, channel string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	if len(args) < 2 {
 		return noticeFunc("Expected Usage: /announcement <blue|green|orange|purple|primary> <message>")
 	}
@@ -141,7 +141,7 @@ func handleAnnouncement(args []string, channel string, channelID string, userAcc
 	}
 }
 
-func handleUnban(args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleUnban(args []string, channel string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	if len(args) < 1 {
 		return noticeFunc("Expected Usage: /unban <username>")
 	}
@@ -168,7 +168,7 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 	}
 }
 
-func handleTimeout(name string, args []string, channelID string, channel string, userAccountID string, ttv moderationAPIClient, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleTimeout(name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	if len(args) < 1 && (name == "timeout" || name == "timeout_selected") {
 		return noticeFunc("Expected Usage: /timeout <username> [duration] [reason]")
 	}
@@ -233,7 +233,7 @@ func handleTimeout(name string, args []string, channelID string, channel string,
 	}
 }
 
-func handleDeleteMessages(name string, args []string, channel string, channelID string, userAccountID string, ttv moderationAPIClient, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleDeleteMessages(name string, args []string, channel string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

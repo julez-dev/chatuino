@@ -14,15 +14,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/rs/zerolog/log"
 )
-
-type followedFetcher interface {
-	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.FollowedChannel, error)
-}
 
 type currentJoinInput int
 
@@ -72,7 +67,7 @@ type join struct {
 
 	accounts         []save.Account
 	deps             *DependencyContainer
-	followedFetchers map[string]followedFetcher
+	followedFetchers map[string]FollowedChannelsAPI
 	hasLoaded        bool
 }
 
@@ -157,10 +152,11 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	channelList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
-	followedFetchers := map[string]followedFetcher{}
-	for id, client := range deps.APIUserClients {
-		if c, ok := client.(followedFetcher); ok {
-			followedFetchers[id] = c
+	followedFetchers := map[string]FollowedChannelsAPI{}
+
+	for id, client := range deps.Clients {
+		if client.Follows != nil {
+			followedFetchers[id] = client.Follows
 		}
 	}
 
@@ -339,12 +335,12 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 				return j, func() tea.Msg {
 					// Normalize channel name via Twitch API for broadcast tabs
 					if kind == BroadcastTabKind {
-						for accountID, client := range j.deps.APIUserClients {
+						for accountID, client := range j.deps.Clients {
 							if accountID != account.ID {
 								continue
 							}
 
-							resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+							resp, err := client.API.GetUsers(context.Background(), []string{channel}, nil)
 							if err != nil {
 								break
 							}

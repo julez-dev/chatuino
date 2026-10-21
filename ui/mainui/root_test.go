@@ -18,7 +18,7 @@ func newRestoreTestRoot(t *testing.T) *Root {
 			Theme:    save.BuildDefaultTheme(),
 		},
 		Keymap:         save.BuildDefaultKeyMap(),
-		APIUserClients: map[string]APIClient{},
+		Clients: map[string]ClientCapabilities{},
 		Accounts:       []save.Account{{ID: "acc", DisplayName: "me"}},
 	}
 

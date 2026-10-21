@@ -34,7 +34,7 @@ func (t *broadcastTab) handleJoinCommand(args []string) tea.Cmd {
 
 	channel := strings.ToLower(args[0])
 	account := t.account
-	client := t.deps.APIUserClients[account.ID]
+	client := t.deps.Clients[account.ID].API
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -110,7 +110,12 @@ func (t *broadcastTab) handlePyramidMessagesCommand(args []string) tea.Cmd {
 		}
 	}
 
-	client := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
+	client := t.deps.Clients[t.account.ID].Chat
+	if client == nil {
+		log.Logger.Warn().Str("account", t.account.DisplayName).Msg("account has no authenticated API client")
+		return nil
+	}
+
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
@@ -251,8 +256,8 @@ func (t *broadcastTab) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 
 func (t *broadcastTab) handleCreateClipMessage() tea.Cmd {
 	return func() tea.Msg {
-		api, ok := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
-		if !ok {
+		api := t.deps.Clients[t.account.ID].Chat
+		if api == nil {
 			log.Logger.Warn().Str("broadcast", t.channelLogin).Str("account", t.account.DisplayName).Msg("provided API does not support user authenticated API")
 			return nil
 		}

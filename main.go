@@ -217,11 +217,11 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 
 			// If the user has provided an account we can use the users local authentication
 			// Instead of using Chatuino's server to handle requests for emote/badge fetching.
-			clients := make(map[string]mainui.APIClient)
+			clients := make(map[string]mainui.ClientCapabilities)
 			if mainAccount, err := accountProvider.GetMainAccount(); err == nil {
 				ttvAPI, err := twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, mainAccount.ID))
 				if err == nil {
-					clients[mainAccount.ID] = ttvAPI
+					clients[mainAccount.ID] = mainui.NewClientCapabilities(ttvAPI)
 					emoteCache = emote.NewCache(log.Logger, ttvAPI, stvAPI, bttvAPI, ffzAPI)
 					badgeCache = badge.NewCache(ttvAPI)
 				}
@@ -278,7 +278,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				RecentMessageService: recentMessageService,
 				MessageLogger:        messageLogger,
 				Pool:                 pool,
-				APIUserClients:       clients,
+				Clients:              clients,
 				ChannelHistory:       channelHistoryManager,
 			}
 
@@ -304,18 +304,19 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 					continue
 				}
 
-				var api mainui.APIClient
-
-				if !acc.IsAnonymous {
-					api, err = twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, acc.ID))
-					if err != nil {
-						return fmt.Errorf("failed to build api client for %s: %w", acc.DisplayName, err)
-					}
-				} else {
-					api = serverAPI
+				if acc.IsAnonymous {
+					// Anonymous accounts go through the server proxy: read-only, no user
+					// token, so only the base API capability is available.
+					clients[acc.ID] = mainui.ClientCapabilities{API: serverAPI}
+					continue
 				}
 
-				clients[acc.ID] = api
+				ttvAPI, err := twitchapi.NewAPI(command.String("client-id"), twitchapi.WithUserAuthentication(accountProvider, serverAPI, acc.ID))
+				if err != nil {
+					return fmt.Errorf("failed to build api client for %s: %w", acc.DisplayName, err)
+				}
+
+				clients[acc.ID] = mainui.NewClientCapabilities(ttvAPI)
 			}
 
 			deps.Accounts = accounts

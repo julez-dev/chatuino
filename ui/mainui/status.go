@@ -112,7 +112,7 @@ func (s *streamStatus) Init() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		settingsResp, err := s.deps.APIUserClients[s.accountID].GetChatSettings(ctx, s.channelID, "")
+		settingsResp, err := s.deps.Clients[s.accountID].API.GetChatSettings(ctx, s.channelID, "")
 		if err != nil {
 			return setSteamStatusDataMessage{
 				target: s.tab.id,

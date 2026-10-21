@@ -89,7 +89,7 @@ func (u *userInspect) init(initialEvents []chatEventMessage) tea.Cmd {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		ttvResp, err := u.deps.APIUserClients[u.accountID].GetUsers(ctx, []string{ivrResp.User.Login}, nil)
+		ttvResp, err := u.deps.Clients[u.accountID].API.GetUsers(ctx, []string{ivrResp.User.Login}, nil)
 		if err != nil {
 			return setUserInspectData{
 				target: u.tabID,

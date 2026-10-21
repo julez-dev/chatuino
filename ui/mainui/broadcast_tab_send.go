@@ -200,9 +200,11 @@ func (t *broadcastTab) dispatchSlashCommand(name string, args []string) tea.Cmd 
 		}
 	}
 
-	// Message input is only allowed for authenticated users
-	// so ttvAPI is guaranteed to be a moderationAPIClient
-	client := t.deps.APIUserClients[t.account.ID].(moderationAPIClient)
+	// Moderation commands need the account's own token.
+	client := t.deps.Clients[t.account.ID].Moderation
+	if client == nil {
+		return t.localNoticeCmd("This account cannot use moderation commands")
+	}
 
 	return handleCommand(name, args, t.channelID, t.channelLogin, t.account.ID, client)
 }
@@ -221,7 +223,11 @@ func applyDuplicateBypass(input, lastSent string) string {
 // the API, delayed so that consecutive sends are at least a second apart.
 func (t *broadcastTab) sendChatMessageCmd(input, replyTo string) tea.Cmd {
 	lastSent := t.lastMessageSentAt
-	client := t.deps.APIUserClients[t.account.ID].(userAuthenticatedAPIClient)
+	client := t.deps.Clients[t.account.ID].Chat
+	if client == nil {
+		return nil
+	}
+
 	broadcasterID := t.channelID
 	userID := t.account.ID
 
