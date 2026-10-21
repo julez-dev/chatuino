@@ -98,16 +98,6 @@ func (t *broadcastTab) transit(event tabEvent) (bool, tea.Cmd) {
 	return true, nil
 }
 
-// canGo reports whether event is legal in the current mode, without applying it.
-func (t *broadcastTab) canGo(event tabEvent) bool {
-	transition, ok := tabTransitions[t.state][event]
-	if !ok {
-		return false
-	}
-
-	return transition.guard == nil || transition.guard(t)
-}
-
 // --- guards ---
 
 // canInteract blocks the transitions that need an authenticated account: anonymous
