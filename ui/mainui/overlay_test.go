@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
-	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/stretchr/testify/require"
 )
 
@@ -111,34 +112,62 @@ func Test_centerOverlay(t *testing.T) {
 // modal must composite over the screen without changing its dimensions, otherwise
 // the terminal wraps or the layout jumps.
 func Test_Root_modalKeepsScreenDimensions(t *testing.T) {
-	deps := &DependencyContainer{
-		UserConfig: UserConfiguration{
-			Settings: save.BuildDefaultSettings(),
-			Theme:    save.BuildDefaultTheme(),
-		},
-		Keymap:         save.BuildDefaultKeyMap(),
-		APIUserClients: map[string]APIClient{},
-	}
-
 	for _, tc := range []struct {
 		name   string
-		screen activeScreen
+		push   func(*Root) nav.Screen
 		marker string
 	}{
-		{name: "join modal", screen: inputScreen, marker: "Create new Tab"},
-		{name: "quick join modal", screen: quickJoinScreen, marker: "Join"},
+		{
+			name: "join modal",
+			push: func(r *Root) nav.Screen {
+				return newJoin(r.width, r.settings, r.theme, r.keymap, r.clients, r.accountProvider)
+			},
+			marker: "Create new Tab",
+		},
+		{
+			name: "quick join modal",
+			push: func(r *Root) nav.Screen {
+				return newQuickJoin(r.width, r.settings, r.theme, r.keymap, r.clients, r.accountProvider, r.channelHistory)
+			},
+			marker: "Join",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := NewUI(nil, deps, nil)
+			root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
 			root.hasLoadedSession = true
-			root.screenType = tc.screen
+			root.handleResize()
 
 			background := root.dimmedScreenBackground()
+			root.stack.Push(tc.push(root))
 			got := root.renderView()
 
 			require.Equal(t, lipgloss.Width(background), lipgloss.Width(got))
 			require.Equal(t, lipgloss.Height(background), lipgloss.Height(got))
 			require.Contains(t, stripANSI(got), tc.marker)
+			require.Equal(t, 1, root.stack.Len())
 		})
 	}
+}
+
+// Closing a modal must hand focus back to whatever had it before the push.
+func Test_Root_modalPopRestoresFocus(t *testing.T) {
+	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
+	root.hasLoadedSession = true
+
+	mention := tab.NewMention("tab-1", root.width, root.height, root.settings, root.theme, root.keymap, root.accountProvider)
+	root.tabs.Add(mention)
+	root.tabs.SetActive(mention.ID())
+	require.True(t, mention.Focused())
+
+	root.tabs.BlurActive()
+	root.stack.Push(newJoin(root.width, root.settings, root.theme, root.keymap, root.clients, root.accountProvider))
+
+	require.Equal(t, joinRoute, root.stack.Route())
+	require.False(t, mention.Focused(), "a modal takes focus away from the tab")
+
+	root.tabs.FocusActive()
+	root.stack.Pop()
+
+	require.Equal(t, 0, root.stack.Len())
+	require.True(t, mention.Focused(), "focus returns to the tab that had it")
 }

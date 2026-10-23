@@ -3,28 +3,32 @@ package mainui
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/google/uuid"
-	"github.com/rs/zerolog/log"
+	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/ui/nav"
 )
 
 type verticalTabHeader struct {
 	width  int
 	height int
-	deps   *DependencyContainer
 
 	borderStyle lipgloss.Style // pre-created for View() border rendering
 
 	list     list.Model
 	delegate verticalTabDelegate
+
+	// lastRows is the projection currently pushed into the list. The list is only
+	// repopulated when the projection actually changes, so the scroll position and
+	// pagination stay stable between frames.
+	lastRows []nav.Row
 }
 
 type verticalTabDelegate struct {
-	deps *DependencyContainer
 
 	// pre-created styles to avoid allocations in Render() (called per visible item per frame)
 	bulletStyle       lipgloss.Style
@@ -40,12 +44,12 @@ func (d verticalTabDelegate) Spacing() int {
 	return 0
 }
 
-func (d verticalTabDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
+func (d verticalTabDelegate) Update(tea.Msg, *list.Model) tea.Cmd {
 	return nil
 }
 
 func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	entry, ok := item.(tabHeaderEntry)
+	entry, ok := item.(rowItem)
 	if !ok {
 		return
 	}
@@ -62,10 +66,10 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 	}
 
 	// Tab content
-	content := entry.render()
+	content := rowLabel(entry.Row)
 	if selected {
 		line.WriteString(d.activeStyle.Render(content))
-	} else if entry.hasNotification {
+	} else if entry.HasNotification {
 		line.WriteString(d.notificationStyle.Render(content))
 	} else {
 		line.WriteString(content)
@@ -80,12 +84,11 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 	fmt.Fprint(w, line.String())
 }
 
-func newVerticalTabHeader(width, height int, deps *DependencyContainer) *verticalTabHeader {
+func newVerticalTabHeader(width, height int, theme save.Theme) *verticalTabHeader {
 	delegate := verticalTabDelegate{
-		deps:              deps,
-		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
-		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.ChatNoticeAlertColor)),
+		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
+		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor)),
+		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)),
 	}
 
 	// Adjust dimensions for border: -2 width for left/right │, -2 height for top/bottom borders
@@ -108,137 +111,39 @@ func newVerticalTabHeader(width, height int, deps *DependencyContainer) *vertica
 	return &verticalTabHeader{
 		width:       width,
 		height:      height,
-		deps:        deps,
-		borderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor)),
+		borderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
 		list:        l,
 		delegate:    delegate,
 	}
 }
 
-func (v *verticalTabHeader) AddTab(channel, identity string) (string, tea.Cmd) {
-	entry := tabHeaderEntry{
-		id:       uuid.New().String(),
-		name:     channel,
-		identity: identity,
+// syncList pushes the registry projection into the bubbles list and selects the
+// active row. It is a no-op when the projection did not change.
+func (v *verticalTabHeader) syncList(rows []nav.Row) {
+	if len(v.lastRows) == len(rows) && slices.Equal(v.lastRows, rows) {
+		return
 	}
 
-	// append new entry to the end of list
-	i := len(v.list.Items())
-	cmd := v.list.InsertItem(i, entry)
+	v.lastRows = slices.Clone(rows)
 
-	return entry.id, cmd
-}
+	items := make([]list.Item, len(rows))
+	activeIndex := 0
 
-func (v *verticalTabHeader) SelectTab(id string) {
-	for i, item := range v.list.Items() {
-		e := item.(tabHeaderEntry)
-		if e.id == id {
-			// reset notification flag on select
-			if e.hasNotification {
-				e.hasNotification = false
-				v.list.SetItem(i, e)
-			}
+	for i, row := range rows {
+		items[i] = rowItem{Row: row}
 
-			v.list.Select(i)
-		}
-	}
-}
-
-func (v *verticalTabHeader) RemoveTab(id string) {
-	for i, item := range v.list.Items() {
-		if item != nil && item.(tabHeaderEntry).id == id {
-			v.list.RemoveItem(i)
-		}
-	}
-}
-
-// TabAt returns the tab at the given cell. The list renders one entry per row;
-// the first header row is the top border.
-func (v *verticalTabHeader) TabAt(x, y int) (string, bool) {
-	if x < 0 || x >= v.width || y < 1 {
-		return "", false
-	}
-
-	items := v.list.Items()
-	if len(items) == 0 {
-		return "", false
-	}
-
-	// The list renders at most PerPage item rows below the top border.
-	perPage := v.list.Paginator.PerPage
-	if perPage <= 0 {
-		perPage = max(1, v.height-2)
-	}
-
-	if y > perPage {
-		return "", false
-	}
-
-	idx := v.list.Paginator.Page*perPage + (y - 1)
-	if idx < 0 || idx >= len(items) {
-		return "", false
-	}
-
-	entry, ok := items[idx].(tabHeaderEntry)
-	if !ok {
-		return "", false
-	}
-
-	return entry.id, true
-}
-
-func (v *verticalTabHeader) MinWidth() int {
-	minWidth := 10
-
-	for _, e := range v.list.Items() {
-		e := e.(tabHeaderEntry)
-		e.hasNotification = true
-		if w := lipgloss.Width(e.render()); w > minWidth {
-			minWidth = w
+		if row.Active {
+			activeIndex = i
 		}
 	}
 
-	// Add 4 for left/right border characters (2) + bullet prefix (2)
-	return minWidth + 4
+	v.list.SetItems(items)
+	v.list.Select(activeIndex)
 }
 
-func (v *verticalTabHeader) Resize(width, height int) {
-	v.width = width
-	v.height = height
-	// Adjust for border: -2 width for left/right │, -2 height for top/bottom borders
-	v.list.SetWidth(max(1, width-2))
-	v.list.SetHeight(max(1, height-2))
-}
+func (v *verticalTabHeader) View(rows []nav.Row) string {
+	v.syncList(rows)
 
-func (v *verticalTabHeader) Init() tea.Cmd {
-	return nil
-}
-
-func (v *verticalTabHeader) Update(msg tea.Msg) (header, tea.Cmd) {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
-
-	v.list, cmd = v.list.Update(msg)
-	cmds = append(cmds, cmd)
-
-	if req, ok := msg.(requestNotificationIconMessage); ok {
-		log.Logger.Info().Str("id", req.tabID).Msg("got noti request")
-		for i, e := range v.list.Items() {
-			e := e.(tabHeaderEntry)
-			// add bell prefix if tab id matched, and tab is not already active
-			if e.id == req.tabID && v.list.Index() != i {
-				e.hasNotification = true
-				v.list.SetItem(i, e)
-			}
-		}
-	}
-
-	return v, tea.Batch(cmds...)
-}
-
-func (v *verticalTabHeader) View() string {
 	borderStyle := v.borderStyle
 
 	innerWidth := v.width - 2   // -2 for left/right │
@@ -251,7 +156,7 @@ func (v *verticalTabHeader) View() string {
 	}
 
 	// Check if we need scroll indicators
-	totalItems := len(v.list.Items())
+	totalItems := len(rows)
 	visibleItems := innerHeight
 	currentIndex := v.list.Index()
 
@@ -306,4 +211,51 @@ func (v *verticalTabHeader) View() string {
 	result += borderStyle.Render(bottomBorder)
 
 	return result
+}
+
+// TabAt returns the tab rendered at the given cell, if any.
+func (v *verticalTabHeader) TabAt(rows []nav.Row, x, y int) (string, bool) {
+	if x < 0 || x >= v.width || y < 1 || len(rows) == 0 {
+		return "", false
+	}
+
+	// The list renders at most PerPage item rows below the top border.
+	perPage := v.list.Paginator.PerPage
+	if perPage <= 0 {
+		perPage = max(1, v.height-2)
+	}
+
+	if y > perPage {
+		return "", false
+	}
+
+	idx := v.list.Paginator.Page*perPage + (y - 1)
+	if idx < 0 || idx >= len(rows) {
+		return "", false
+	}
+
+	return rows[idx].ID, true
+}
+
+func (v *verticalTabHeader) MinWidth(rows []nav.Row) int {
+	minWidth := 10
+
+	for _, row := range rows {
+		// measure with the notification marker so the width does not jump when one arrives
+		row.HasNotification = true
+		if w := lipgloss.Width(rowLabel(row)); w > minWidth {
+			minWidth = w
+		}
+	}
+
+	// Add 4 for left/right border characters (2) + bullet prefix (2)
+	return minWidth + 4
+}
+
+func (v *verticalTabHeader) Resize(width, height int) {
+	v.width = width
+	v.height = height
+	// Adjust for border: -2 width for left/right │, -2 height for top/bottom borders
+	v.list.SetWidth(max(1, width-2))
+	v.list.SetHeight(max(1, height-2))
 }

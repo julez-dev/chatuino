@@ -2,17 +2,19 @@ package emote
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/julez-dev/chatuino/httputil"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/rs/zerolog/log"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +46,7 @@ func TestReplacer_Replace_GraphicsEnabled(t *testing.T) {
 
 		replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-		command, replacement, err := replacer.Replace("", "Test Message with Kappa emote", nil)
+		command, replacement, err := replacer.Replace(t.Context(), "", "Test Message with Kappa emote", nil)
 		require.NoError(t, err)
 		require.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=10,v=10;/path/to/kappa.png\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=2\x1b\\", command)
 		require.Equal(t, map[string]string{"Kappa": "\x1b[38;2;0;0;1m\U0010eeee\U0010eeee\x1b[39m"}, replacement)
@@ -103,7 +105,7 @@ func TestReplacer_Replace_GraphicsEnabled(t *testing.T) {
 
 		replacer := NewReplacer(client, store, true, save.Theme{}, mockDisplay)
 
-		command, replacement, err := replacer.Replace("", "Test Message with Kappa emote", nil)
+		command, replacement, err := replacer.Replace(t.Context(), "", "Test Message with Kappa emote", nil)
 		require.NoError(t, err)
 		require.True(t, loadCalled, "Load function should be called")
 		require.Equal(t, "\x1b_Gf=32,i=1,t=f,q=2,s=28,v=28;L3BhdGgvdG8va2FwcGEucG5n\x1b\\\x1b_Ga=p,i=1,p=1,q=2,U=1,r=1,c=1\x1b\\", command)
@@ -138,7 +140,7 @@ func TestReplacer_Replace_GraphicsEnabled(t *testing.T) {
 
 		replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-		command, replacedText, err := replacer.Replace("", "PogChamp", nil)
+		command, replacedText, err := replacer.Replace(t.Context(), "", "PogChamp", nil)
 		require.NoError(t, err)
 		require.NotEmpty(t, command)
 		require.Contains(t, replacedText["PogChamp"], "\U0010eeee")
@@ -204,7 +206,7 @@ func TestReplacer_Replace_ColorMode(t *testing.T) {
 
 			replacer := NewReplacer(nil, store, false, tt.theme, nil)
 
-			command, replacement, err := replacer.Replace("", "Test Message with "+tt.emoteText+" emote", nil)
+			command, replacement, err := replacer.Replace(t.Context(), "", "Test Message with "+tt.emoteText+" emote", nil)
 			require.NoError(t, err)
 			require.Empty(t, command, "should not generate graphics commands in color mode")
 			require.Equal(t, tt.expected, replacement)
@@ -237,7 +239,7 @@ func TestReplacer_Replace_WithBadgeList(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacement, err := replacer.Replace("123", "Test Message with Kappa emote", []twitchirc.Emote{
+	command, replacement, err := replacer.Replace(t.Context(), "123", "Test Message with Kappa emote", []twitchirc.Emote{
 		{
 			ID: "KappaCustomID",
 			Positions: []twitchirc.EmotePosition{
@@ -279,7 +281,7 @@ func TestReplacer_Replace_ForeignEmote(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacement, err := replacer.Replace("channel123", "Check out ForeignEmote here", []twitchirc.Emote{
+	command, replacement, err := replacer.Replace(t.Context(), "channel123", "Check out ForeignEmote here", []twitchirc.Emote{
 		{
 			ID: "ForeignEmoteID",
 			Positions: []twitchirc.EmotePosition{
@@ -328,7 +330,7 @@ func TestReplacer_Replace_MultipleEmotes(t *testing.T) {
 
 	replacer := NewReplacer(nil, store, true, save.Theme{}, mockDisplay)
 
-	command, replacement, err := replacer.Replace("", "Kappa and PogChamp", nil)
+	command, replacement, err := replacer.Replace(t.Context(), "", "Kappa and PogChamp", nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, command)
 	require.Equal(t, map[string]string{"Kappa": "\x1b[38;2;0;0;1m\U0010eeee\x1b[39m", "PogChamp": "\x1b[38;2;0;0;2m\U0010eeee\x1b[39m"}, replacement)
@@ -366,4 +368,37 @@ func (m *mockDisplayManager) Convert(unit kittyimg.DisplayUnit) (kittyimg.KittyD
 		return m.convertFunc(unit)
 	}
 	return kittyimg.KittyDisplayUnit{}, nil
+}
+
+func TestReplacer_DeadlineCancelsImageDownload(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: httputil.RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if _, ok := req.Context().Deadline(); !ok {
+			return nil, fmt.Errorf("download has no deadline")
+		}
+		select {
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		case <-time.After(time.Second):
+			return nil, fmt.Errorf("download did not receive its caller's deadline")
+		}
+	})}
+	store := &mockEmoteStore{emotes: map[string]Emote{
+		"Kappa": {ID: "deadline", Text: "Kappa", URL: "https://example.com/kappa.png", Platform: Twitch},
+	}}
+	display := &mockDisplayManager{convertFunc: func(unit kittyimg.DisplayUnit) (kittyimg.KittyDisplayUnit, error) {
+		body, _, err := unit.Load()
+		if body != nil {
+			body.Close()
+		}
+		return kittyimg.KittyDisplayUnit{}, err
+	}}
+	replacer := NewReplacer(client, store, true, save.BuildDefaultTheme(), display)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+
+	_, replacements, err := replacer.Replace(ctx, "channel", "Kappa", nil)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Empty(t, replacements)
 }

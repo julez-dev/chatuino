@@ -14,14 +14,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/ui/component"
+	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/rs/zerolog/log"
 )
-
-type followedFetcher interface {
-	FetchUserFollowedChannels(ctx context.Context, userID string, broadcasterID string) ([]twitchapi.FollowedChannel, error)
-}
 
 type currentJoinInput int
 
@@ -46,7 +43,7 @@ func (c currentJoinInput) String() string {
 
 type listItem struct {
 	title string
-	kind  TabKind
+	kind  tab.TabKind
 }
 
 func (i listItem) Title() string       { return i.title }
@@ -69,9 +66,15 @@ type join struct {
 	accountList   list.Model
 	selectedInput currentJoinInput
 
-	accounts         []save.Account
-	deps             *DependencyContainer
-	followedFetchers map[string]followedFetcher
+	accounts []save.Account
+
+	settings        save.Settings
+	theme           save.Theme
+	keymap          save.KeyMap
+	clients         map[string]tab.ClientCapabilities
+	accountProvider tab.AccountProvider
+
+	followedFetchers map[string]tab.FollowedChannelsAPI
 	hasLoaded        bool
 }
 
@@ -95,17 +98,22 @@ func createDefaultList(height int, selectedColor string) list.Model {
 	return newList
 }
 
-func newJoin(parentWidth int, deps *DependencyContainer) *join {
-	emptyUserMap := map[string]func(...string) string{}
-
+func newJoin(
+	parentWidth int,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	clients map[string]tab.ClientCapabilities,
+	accountProvider tab.AccountProvider,
+) *join {
 	modalWidth := calcModalWidth(parentWidth)
 
-	input := component.NewSuggestionTextInput(emptyUserMap, nil)
+	input := component.NewSuggestionTextInput(nil, nil)
 	input.DisableAutoSpaceSuggestion = true
 	input.InputModel.CharLimit = 25
 	input.InputModel.Prompt = " "
 	joinStyles := input.InputModel.Styles()
-	joinStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(deps.UserConfig.Theme.InputPromptColor))
+	joinStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
 	input.InputModel.SetStyles(joinStyles)
 	input.InputModel.Placeholder = "Channel"
 	input.InputModel.Validate = func(s string) error {
@@ -128,38 +136,39 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 	// Use the configured suggestion keys. Tab still moves between fields, so
 	// Space remains a join-only alias (channel names cannot contain it).
 	input.KeyMap = component.KeyMap{
-		AcceptSuggestion: deps.Keymap.AcceptSuggestion,
-		NextSuggestion:   deps.Keymap.NextSuggestion,
-		PrevSuggestion:   deps.Keymap.PrevSuggestion,
+		AcceptSuggestion: keymap.AcceptSuggestion,
+		NextSuggestion:   keymap.NextSuggestion,
+		PrevSuggestion:   keymap.PrevSuggestion,
 	}
 	input.KeyMap.AcceptSuggestion.SetKeys(append(slices.Clone(input.KeyMap.AcceptSuggestion.Keys()), "space")...)
 
-	tabKindList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
+	tabKindList := createDefaultList(0, theme.ListSelectedColor)
 	tabKindList.SetStatusBarItemName("kind", "kinds")
 	tabKindList.SetItems([]list.Item{
 		listItem{
-			title: BroadcastTabKind.String(),
-			kind:  BroadcastTabKind,
+			title: tab.BroadcastKind.String(),
+			kind:  tab.BroadcastKind,
 		},
 		listItem{
-			title: MentionTabKind.String(),
-			kind:  MentionTabKind,
+			title: tab.MentionKind.String(),
+			kind:  tab.MentionKind,
 		},
 		listItem{
-			title: LiveNotificationTabKind.String(),
-			kind:  LiveNotificationTabKind,
+			title: tab.LiveNotificationKind.String(),
+			kind:  tab.LiveNotificationKind,
 		},
 	})
 	tabKindList.Select(0)
 	tabKindList.SetHeight(4)
 
-	channelList := createDefaultList(0, deps.UserConfig.Theme.ListSelectedColor)
+	channelList := createDefaultList(0, theme.ListSelectedColor)
 	channelList.SetStatusBarItemName("account", "accounts")
 
-	followedFetchers := map[string]followedFetcher{}
-	for id, client := range deps.APIUserClients {
-		if c, ok := client.(followedFetcher); ok {
-			followedFetchers[id] = c
+	followedFetchers := map[string]tab.FollowedChannelsAPI{}
+
+	for id, client := range clients {
+		if client.Follows != nil {
+			followedFetchers[id] = client.Follows
 		}
 	}
 
@@ -167,7 +176,11 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 		width:            modalWidth,
 		height:           0, // Height will be dynamic based on content
 		input:            input,
-		deps:             deps,
+		settings:         settings,
+		theme:            theme,
+		keymap:           keymap,
+		clients:          clients,
+		accountProvider:  accountProvider,
 		accountList:      channelList,
 		tabKindList:      tabKindList,
 		followedFetchers: followedFetchers,
@@ -183,7 +196,7 @@ func newJoin(parentWidth int, deps *DependencyContainer) *join {
 func (j *join) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			accounts, err := j.deps.AccountProvider.GetAllAccounts()
+			accounts, err := j.accountProvider.GetAllAccounts()
 			if err != nil {
 				return nil
 			}
@@ -197,7 +210,7 @@ func (j *join) Init() tea.Cmd {
 			return setJoinAccountsMessage{accounts: accounts}
 		},
 		func() tea.Msg {
-			accounts, err := j.deps.AccountProvider.GetAllAccounts()
+			accounts, err := j.accountProvider.GetAllAccounts()
 			if err != nil {
 				return nil
 			}
@@ -234,7 +247,7 @@ func (j *join) Init() tea.Cmd {
 	)
 }
 
-func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
+func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -283,9 +296,9 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, nil
 			}
 
-			if key.Matches(msg, j.deps.Keymap.Next) {
+			if key.Matches(msg, j.keymap.Next) {
 				// don't allow next input when mention or live notification tab selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == tab.MentionKind.String() || i.title == tab.LiveNotificationKind.String()) {
 					// For mention/live notification tabs, Tab does nothing (only one field)
 					return j, nil
 				}
@@ -303,9 +316,9 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 				return j, cmd
 			}
 
-			if key.Matches(msg, j.deps.Keymap.Previous) {
+			if key.Matches(msg, j.keymap.Previous) {
 				// don't allow previous input when mention or live notification tab selected
-				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
+				if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == tab.MentionKind.String() || i.title == tab.LiveNotificationKind.String()) {
 					// For mention/live notification tabs, Shift+Tab does nothing (only one field)
 					return j, nil
 				}
@@ -327,23 +340,23 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 			kind := j.tabKindList.SelectedItem().(listItem).kind
 
 			// Check if inputs are valid for confirmation
-			isValid := (j.input.Value() != "" && kind == BroadcastTabKind) ||
-				kind == MentionTabKind ||
-				kind == LiveNotificationTabKind
+			isValid := (j.input.Value() != "" && kind == tab.BroadcastKind) ||
+				kind == tab.MentionKind ||
+				kind == tab.LiveNotificationKind
 
-			if key.Matches(msg, j.deps.Keymap.Confirm) && isValid {
+			if key.Matches(msg, j.keymap.Confirm) && isValid {
 				channel := j.input.Value()
 				account := j.accounts[j.accountList.Cursor()]
 
 				return j, func() tea.Msg {
 					// Normalize channel name via Twitch API for broadcast tabs
-					if kind == BroadcastTabKind {
-						for accountID, client := range j.deps.APIUserClients {
+					if kind == tab.BroadcastKind {
+						for accountID, client := range j.clients {
 							if accountID != account.ID {
 								continue
 							}
 
-							resp, err := client.GetUsers(context.Background(), []string{channel}, nil)
+							resp, err := client.API.GetUsers(context.Background(), []string{channel}, nil)
 							if err != nil {
 								break
 							}
@@ -357,10 +370,10 @@ func (j *join) Update(msg tea.Msg) (*join, tea.Cmd) {
 						}
 					}
 
-					return joinChannelMessage{
-						tabKind: kind,
-						channel: channel,
-						account: account,
+					return tab.JoinChannelMessage{
+						TabKind: kind,
+						Channel: channel,
+						Account: account,
 					}
 				}
 			}
@@ -401,7 +414,7 @@ func (j *join) View() string {
 		Width(j.width).
 		Padding(1, 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor))
+		BorderForeground(lipgloss.Color(j.theme.ListLabelColor))
 
 	// Center content within the calculated width
 	styleCenter := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Center)
@@ -409,7 +422,7 @@ func (j *join) View() string {
 	// Left-aligned style for status
 	styleLeft := lipgloss.NewStyle().Width(j.width).AlignHorizontal(lipgloss.Left)
 
-	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ListLabelColor)).Render
+	labelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.theme.ListLabelColor)).Render
 
 	var (
 		labelTab      string
@@ -417,7 +430,7 @@ func (j *join) View() string {
 		labelIdentity string
 	)
 
-	selectedLabelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).Bold(true).Render
+	selectedLabelStyle := lipgloss.NewStyle().MarginBottom(1).MarginTop(1).Foreground(lipgloss.Color(j.theme.ActiveLabelColor)).Bold(true).Render
 
 	switch j.selectedInput {
 	case channelInput:
@@ -441,11 +454,11 @@ func (j *join) View() string {
 	b := strings.Builder{}
 
 	// Headline
-	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(j.deps.UserConfig.Theme.ActiveLabelColor)).MarginBottom(1)
+	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(j.theme.ActiveLabelColor)).MarginBottom(1)
 	_, _ = b.WriteString(styleCenter.Render(headlineStyle.Render("Create new Tab")) + "\n")
 
 	// If mention tab is selected, only display kind select input, because other values are not needed
-	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == MentionTabKind.String() || i.title == LiveNotificationTabKind.String()) {
+	if i, ok := j.tabKindList.SelectedItem().(listItem); ok && (i.title == tab.MentionKind.String() || i.title == tab.LiveNotificationKind.String()) {
 		_, _ = b.WriteString(styleCenter.Render(labelTab + "\n" + j.tabKindList.View() + "\n"))
 	} else {
 		_, _ = labelIdentity, labelChannel
@@ -470,7 +483,7 @@ func (j *join) View() string {
 	// Show keybind hints (centered, styled with theme)
 	_, _ = b.WriteString("\n\n")
 	var hints string
-	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Faint(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(j.theme.StatusColor)).Faint(true)
 
 	switch j.selectedInput {
 	case channelInput:
@@ -484,7 +497,7 @@ func (j *join) View() string {
 
 	// Show status at bottom (left-aligned)
 	_, _ = b.WriteString("\n")
-	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.deps.UserConfig.Theme.StatusColor)).Render(j.selectedInput.String()))
+	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(j.theme.StatusColor)).Render(j.selectedInput.String()))
 	_, _ = b.WriteString(styleLeft.Render(stateStr))
 
 	return style.Padding(0).Render(b.String())
@@ -505,7 +518,27 @@ func (c *join) handleResize(parentWidth, parentHeight int) {
 	c.height = 0
 }
 
-func (c *join) setTabOptions(kinds ...TabKind) {
+// Screen implementation. The join modal overlays the tab view and owns the
+// keyboard while it is on the stack; the stack drives focus through Appeared and
+// Disappeared instead of every caller remembering to focus and blur it.
+
+func (c *join) OverlaysBackground() bool { return true }
+
+func (c *join) Route() string { return joinRoute }
+
+func (c *join) Appeared() tea.Cmd {
+	c.focus()
+	return c.Init()
+}
+
+func (c *join) Disappeared() { c.blur() }
+
+func (c *join) Resize(width, height int) { c.handleResize(width, height) }
+
+// CapturesText reports whether printable keys belong to this screen's input.
+func (c *join) CapturesText() bool { return c.input.InputModel.Focused() }
+
+func (c *join) setTabOptions(kinds ...tab.TabKind) {
 	var items []list.Item
 
 	for _, kind := range kinds {

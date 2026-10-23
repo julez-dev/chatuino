@@ -12,6 +12,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/rs/zerolog/log"
 )
 
@@ -95,20 +97,36 @@ type quickJoin struct {
 	// Account picker (manual rendering for consistent alignment).
 	accountCursor int
 
-	activeSection    quickJoinSection
-	accounts         []save.Account
-	deps             *DependencyContainer
-	followedFetchers map[string]followedFetcher
+	activeSection quickJoinSection
+	accounts      []save.Account
+
+	settings        save.Settings
+	theme           save.Theme
+	keymap          save.KeyMap
+	clients         map[string]tab.ClientCapabilities
+	accountProvider tab.AccountProvider
+	channelHistory  ChannelHistory
+
+	followedFetchers map[string]tab.FollowedChannelsAPI
 	hasLoaded        bool
 }
 
-func newQuickJoin(parentWidth int, deps *DependencyContainer) *quickJoin {
+func newQuickJoin(
+	parentWidth int,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	clients map[string]tab.ClientCapabilities,
+	accountProvider tab.AccountProvider,
+	channelHistory ChannelHistory,
+) *quickJoin {
 	modalWidth := calcModalWidth(parentWidth)
 
-	followedFetchers := map[string]followedFetcher{}
-	for id, client := range deps.APIUserClients {
-		if c, ok := client.(followedFetcher); ok {
-			followedFetchers[id] = c
+	followedFetchers := map[string]tab.FollowedChannelsAPI{}
+
+	for id, client := range clients {
+		if client.Follows != nil {
+			followedFetchers[id] = client.Follows
 		}
 	}
 
@@ -116,7 +134,12 @@ func newQuickJoin(parentWidth int, deps *DependencyContainer) *quickJoin {
 		width:            modalWidth,
 		maxVisibleRows:   maxVisibleChannels,
 		activeTab:        recentTab,
-		deps:             deps,
+		settings:         settings,
+		theme:            theme,
+		keymap:           keymap,
+		clients:          clients,
+		accountProvider:  accountProvider,
+		channelHistory:   channelHistory,
 		followedFetchers: followedFetchers,
 	}
 }
@@ -135,7 +158,7 @@ func calcModalWidth(parentWidth int) int {
 func (q *quickJoin) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			accounts, err := q.deps.AccountProvider.GetAllAccounts()
+			accounts, err := q.accountProvider.GetAllAccounts()
 			if err != nil {
 				return nil
 			}
@@ -148,9 +171,9 @@ func (q *quickJoin) Init() tea.Cmd {
 		},
 		func() tea.Msg {
 			var recent []save.ChannelHistoryEntry
-			if q.deps.ChannelHistory != nil {
+			if q.channelHistory != nil {
 				var err error
-				recent, err = q.deps.ChannelHistory.LoadHistory()
+				recent, err = q.channelHistory.LoadHistory()
 				if err != nil {
 					log.Logger.Err(err).Msg("could not load channel history")
 				}
@@ -182,7 +205,7 @@ func (q *quickJoin) Init() tea.Cmd {
 	)
 }
 
-func (q *quickJoin) Update(msg tea.Msg) (*quickJoin, tea.Cmd) {
+func (q *quickJoin) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 	case setQuickJoinAccountsMessage:
 		q.accounts = msg.accounts
@@ -225,7 +248,7 @@ func (q *quickJoin) Update(msg tea.Msg) (*quickJoin, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		// Tab/Shift+Tab: switch between channel picker and account list.
-		if key.Matches(msg, q.deps.Keymap.Next) || key.Matches(msg, q.deps.Keymap.Previous) {
+		if key.Matches(msg, q.keymap.Next) || key.Matches(msg, q.keymap.Previous) {
 			q.toggleSection()
 			return q, nil
 		}
@@ -235,18 +258,18 @@ func (q *quickJoin) Update(msg tea.Msg) (*quickJoin, tea.Cmd) {
 		}
 
 		// Account section.
-		if key.Matches(msg, q.deps.Keymap.Confirm) {
+		if key.Matches(msg, q.keymap.Confirm) {
 			return q, q.confirmSelection()
 		}
 
-		if key.Matches(msg, q.deps.Keymap.Up) {
+		if key.Matches(msg, q.keymap.Up) {
 			if q.accountCursor > 0 {
 				q.accountCursor--
 			}
 			return q, nil
 		}
 
-		if key.Matches(msg, q.deps.Keymap.Down) {
+		if key.Matches(msg, q.keymap.Down) {
 			if q.accountCursor < len(q.accounts)-1 {
 				q.accountCursor++
 			}
@@ -265,17 +288,17 @@ func (q *quickJoin) handleChannelKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
-	if key.Matches(msg, q.deps.Keymap.Up) {
+	if key.Matches(msg, q.keymap.Up) {
 		q.moveCursorActive(-1)
 		return nil
 	}
 
-	if key.Matches(msg, q.deps.Keymap.Down) {
+	if key.Matches(msg, q.keymap.Down) {
 		q.moveCursorActive(1)
 		return nil
 	}
 
-	if key.Matches(msg, q.deps.Keymap.Confirm) {
+	if key.Matches(msg, q.keymap.Confirm) {
 		return q.confirmSelection()
 	}
 
@@ -386,7 +409,7 @@ func (q *quickJoin) confirmSelection() tea.Cmd {
 	}
 
 	account := q.accounts[q.accountCursor]
-	client := q.deps.APIUserClients[account.ID]
+	client := q.clients[account.ID].API
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -397,10 +420,10 @@ func (q *quickJoin) confirmSelection() tea.Cmd {
 			channel = resp.Data[0].Login
 		}
 
-		return joinChannelMessage{
-			tabKind: BroadcastTabKind,
-			channel: channel,
-			account: account,
+		return tab.JoinChannelMessage{
+			TabKind: tab.BroadcastKind,
+			Channel: channel,
+			Account: account,
 		}
 	}
 }
@@ -412,14 +435,14 @@ func (q *quickJoin) updateStreamInfo(msg polledStreamInfoMessage) {
 	}
 }
 
-func updateItemStreamInfo(items []quickJoinChannelItem, info setStreamInfoMessage) {
+func updateItemStreamInfo(items []quickJoinChannelItem, info tab.SetStreamInfoMessage) {
 	for i := range items {
-		if !strings.EqualFold(items[i].login, info.username) {
+		if !strings.EqualFold(items[i].login, info.Username) {
 			continue
 		}
-		items[i].isLive = info.isLive
-		items[i].viewers = info.viewer
-		items[i].game = info.game
+		items[i].isLive = info.IsLive
+		items[i].viewers = info.Viewer
+		items[i].game = info.Game
 	}
 }
 
@@ -428,14 +451,14 @@ func (q *quickJoin) View() string {
 	style := lipgloss.NewStyle().
 		Width(q.width).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(q.deps.UserConfig.Theme.ListLabelColor))
+		BorderForeground(lipgloss.Color(q.theme.ListLabelColor))
 
 	center := func(s string) string {
 		return lipgloss.PlaceHorizontal(q.width, lipgloss.Center, s)
 	}
 
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.deps.UserConfig.Theme.ListLabelColor))
-	selectedLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.deps.UserConfig.Theme.ActiveLabelColor)).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.ListLabelColor))
+	selectedLabelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.ActiveLabelColor)).Bold(true)
 
 	sectionLabel := func(name string, section quickJoinSection) string {
 		if q.activeSection == section {
@@ -447,7 +470,7 @@ func (q *quickJoin) View() string {
 	b := strings.Builder{}
 
 	// Headline
-	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.deps.UserConfig.Theme.ActiveLabelColor))
+	headlineStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ActiveLabelColor))
 	b.WriteString(center(headlineStyle.Render("Quick Join Channel")) + "\n\n")
 
 	// Channel section
@@ -465,7 +488,7 @@ func (q *quickJoin) View() string {
 
 	// Hints
 	b.WriteString("\n")
-	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.deps.UserConfig.Theme.StatusColor)).Faint(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.StatusColor)).Faint(true)
 	var hints string
 	switch q.activeSection {
 	case quickJoinChannelSection:
@@ -476,7 +499,7 @@ func (q *quickJoin) View() string {
 	b.WriteString(center(hints) + "\n")
 
 	// Status
-	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(q.deps.UserConfig.Theme.StatusColor)).Render(q.activeSection.String()))
+	stateStr := fmt.Sprintf(" -- %s --", lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.StatusColor)).Render(q.activeSection.String()))
 	b.WriteString(stateStr)
 
 	return style.Render(b.String())
@@ -484,8 +507,8 @@ func (q *quickJoin) View() string {
 
 // renderTabBar renders the [Recent | Followed] toggle.
 func (q *quickJoin) renderTabBar() string {
-	activeColor := lipgloss.Color(q.deps.UserConfig.Theme.ActiveLabelColor)
-	inactiveColor := lipgloss.Color(q.deps.UserConfig.Theme.ListLabelColor)
+	activeColor := lipgloss.Color(q.theme.ActiveLabelColor)
+	inactiveColor := lipgloss.Color(q.theme.ListLabelColor)
 
 	active := lipgloss.NewStyle().Bold(true).Foreground(activeColor).Underline(true)
 	inactive := lipgloss.NewStyle().Foreground(inactiveColor).Faint(true)
@@ -516,8 +539,8 @@ func (q *quickJoin) renderChannelLines() []string {
 	cursor := q.activeCursor()
 	scroll := q.activeScroll()
 
-	selectedColor := lipgloss.Color(q.deps.UserConfig.Theme.ListSelectedColor)
-	liveColor := lipgloss.Color(q.deps.UserConfig.Theme.ActiveLabelColor)
+	selectedColor := lipgloss.Color(q.theme.ListSelectedColor)
+	liveColor := lipgloss.Color(q.theme.ActiveLabelColor)
 	faintStyle := lipgloss.NewStyle().Faint(true)
 
 	end := scroll + q.maxVisibleRows
@@ -567,7 +590,7 @@ func (q *quickJoin) renderAccountLines() []string {
 		return []string{lipgloss.NewStyle().Faint(true).Render("no accounts")}
 	}
 
-	selectedColor := lipgloss.Color(q.deps.UserConfig.Theme.ListSelectedColor)
+	selectedColor := lipgloss.Color(q.theme.ListSelectedColor)
 	var lines []string
 
 	for i, acc := range q.accounts {
@@ -593,6 +616,22 @@ func (q *quickJoin) focus() {
 func (q *quickJoin) blur() {
 	q.focused = false
 }
+
+func (q *quickJoin) OverlaysBackground() bool { return true }
+
+func (q *quickJoin) Route() string { return quickJoinRoute }
+
+func (q *quickJoin) Appeared() tea.Cmd {
+	q.focus()
+	return q.Init()
+}
+
+func (q *quickJoin) Disappeared() { q.blur() }
+
+func (q *quickJoin) Resize(width, height int) { q.handleResize(width, height) }
+
+// CapturesText reports whether printable keys belong to this screen's filter input.
+func (q *quickJoin) CapturesText() bool { return true }
 
 func (q *quickJoin) handleResize(parentWidth, parentHeight int) {
 	q.width = calcModalWidth(parentWidth)

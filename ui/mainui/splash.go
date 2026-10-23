@@ -15,11 +15,11 @@ import (
 var splashArt string
 
 type splash struct {
-	width, height     int
-	keymap            save.KeyMap
-	userConfiguration UserConfiguration
-	spinner           spinner.Model
-	updateInfo        *UpdateInfo
+	width, height int
+	keymap        save.KeyMap
+	theme         save.Theme
+	spinner       spinner.Model
+	updateInfo    *UpdateInfo
 }
 
 func (s splash) Init() tea.Cmd {
@@ -36,7 +36,7 @@ func (s splash) view(loading bool, err error) string {
 	style := lipgloss.NewStyle().AlignHorizontal(lipgloss.Center).AlignVertical(lipgloss.Center).Width(s.width).Height(s.height)
 
 	highlight := func(keys string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render(keys)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(s.theme.SplashHighlightColor)).Render(keys)
 	}
 
 	// Mention both ways to open a channel. Either binding may be unbound in a
@@ -51,9 +51,9 @@ func (s splash) view(loading bool, err error) string {
 	joinHint := strings.Join(hints, "\n")
 
 	name := strings.Builder{}
-	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render("Cha"))
-	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.ChatuinoSplashColor)).Bold(true).Render("tui"))
-	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor)).Render("no"))
+	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.theme.SplashHighlightColor)).Render("Cha"))
+	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.theme.ChatuinoSplashColor)).Bold(true).Render("tui"))
+	_, _ = name.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(s.theme.SplashHighlightColor)).Render("no"))
 
 	var help string
 	switch {
@@ -70,7 +70,7 @@ func (s splash) view(loading bool, err error) string {
 
 	var updateLine string
 	if s.updateInfo != nil && s.updateInfo.HasUpdate {
-		highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(s.userConfiguration.Theme.SplashHighlightColor))
+		highlightStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(s.theme.SplashHighlightColor))
 		updateLine = "\n" + highlightStyle.Render("New update available: "+s.updateInfo.LatestVersion) + " (current: " + s.updateInfo.CurrentVersion + ")"
 	}
 

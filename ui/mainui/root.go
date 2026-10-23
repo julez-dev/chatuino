@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net/http"
-	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -17,79 +15,60 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/julez-dev/chatuino/emote"
+	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/badge"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/nav"
+	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 )
 
-type TabKind int
+// updateNotifier is implemented by tabs that advertise a newer version.
+type updateNotifier interface {
+	SetUpdateAvailable(latest string)
+}
 
-const (
-	BroadcastTabKind TabKind = iota
-	MentionTabKind
-	LiveNotificationTabKind
-)
+// localFilters is implemented by tabs that keep per-tab display filters, which
+// the shell persists and restores with the rest of the app state.
+type localFilters interface {
+	LocalUniqueOnly() bool
+	SetLocalUniqueOnly(bool)
+	LocalSubOnly() bool
+	SetLocalSubOnly(bool)
+}
 
-func (t TabKind) String() string {
-	switch t {
-	case BroadcastTabKind:
-		return "Channel (Default)"
-	case MentionTabKind:
-		return "Mention"
-	case LiveNotificationTabKind:
-		return "Live Notifications"
+// latestVersion is the version to advertise, empty when there is no newer one.
+func (r *Root) latestVersion() string {
+	if r.updateInfo != nil && r.updateInfo.HasUpdate {
+		return r.updateInfo.LatestVersion
 	}
 
-	return "<not implemented>"
+	return ""
 }
 
-type tab interface {
-	Init() tea.Cmd
-	InitWithUserData(twitchapi.UserData) tea.Cmd
-	Update(tea.Msg) (tab, tea.Cmd)
-	View() string
-	ViewWithoutStatusBar() string // for vertical tab mode
-	StatusBarView() string        // for vertical tab mode
-	Focus()
-	Blur()
-	AccountID() string
-	Channel() string
-	State() broadcastTabState
-	IsSearching() bool
-	IsDataLoaded() bool
-	ID() string
-	Focused() bool
-	ChannelID() string
-	HandleResize()
-	SetSize(width, height int)
-	SetFullWidth(width int) // for status bar in vertical tab mode
-	Kind() TabKind
+// tabRow projects a tab into the registry's rendering row, so headers never look
+// at tabs themselves.
+func tabRow(t tab.Tab) nav.Row {
+	return nav.Row{
+		Title:    t.Title(),
+		Identity: t.Identity(),
+	}
 }
 
-type header interface {
-	Init() tea.Cmd
-	Update(tea.Msg) (header, tea.Cmd)
-	View() string
-	AddTab(channel, identity string) (string, tea.Cmd)
-	RemoveTab(id string)
-	SelectTab(id string)
-	Resize(width, height int)
-	MinWidth() int
-	// TabAt returns the id of the tab rendered at the given cell, if any.
-	TabAt(x, y int) (string, bool)
+// updateTab adapts the self-typed tab.Update to the registry's updater shape.
+func updateTab(t tab.Tab, msg tea.Msg) (tab.Tab, tea.Cmd) {
+	return t.Update(msg)
 }
 
-type activeScreen int
-
+// Modal routes. Root compares against these to toggle a modal instead of
+// type-asserting on concrete screen types.
 const (
-	mainScreen activeScreen = iota
-	inputScreen
-	quickJoinScreen
-	helpScreen
+	joinRoute      = "join"
+	quickJoinRoute = "quick-join"
+	helpRoute      = "help"
 )
 
 type ircConnectionError struct {
@@ -114,251 +93,147 @@ type Root struct {
 	hasLoadedSession bool
 	isDetached       bool           // when true, state is not loaded from or saved to disk
 	initialState     *save.AppState // when non-nil, overrides persisted state
-	screenType       activeScreen
 
 	userIDDisplayName *sync.Map
 
-	dependencies *DependencyContainer
+	// collaborators, each passed in by main.go. There is no dependency struct:
+	// the signature of NewUI is the complete list of what the shell needs.
+	settings save.Settings
+	theme    save.Theme
+	keymap   save.KeyMap
+	accounts []save.Account
+	version  string
+
+	serverAPI ChatuinoServer
+	clients   map[string]tab.ClientCapabilities
+
+	accountProvider     tab.AccountProvider
+	emoteCache          tab.EmoteCache
+	badgeCache          *badge.Cache
+	emoteReplacer       tab.EmoteReplacer
+	badgeReplacer       tab.BadgeReplacer
+	imageDisplayManager *kittyimg.DisplayManager
+	recentMessages      tab.RecentMessageService
+	messageLogger       tab.MessageLogger
+	pool                tab.ConnectionPool
+	appStateManager     AppStateManager
+	channelHistory      ChannelHistory
 
 	// message logger
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
 	// components
-	splash         splash
-	header         header
-	joinInput      *join
-	quickJoinInput *quickJoin
-	help           *help
+	splash splash
+	header header
+	// stack owns the modal screens layered over the tab view; the tab view
+	// itself is the base and is rendered by screenContent.
+	stack *nav.Stack
 
-	tabCursor          int
-	tabs               []tab
+	tabs               *nav.Registry[tab.Tab]
 	channelSuggestions []string // cached for broadcast to new tabs
 	updateInfo         *UpdateInfo
+
+	// Chat events are enriched off the update loop, one at a time, in arrival
+	// order. The preparer owns the enrichment rules; the queue owns ordering.
+	preparer *chatEventPreparer
+	events   eventQueue
 }
 
 // NewUI creates the root Bubble Tea model. When initialState is non-nil the
 // session runs in detached mode: the provided state is used instead of loading
 // from disk and no state is persisted, allowing multiple independent instances.
 func NewUI(
+	ctx context.Context,
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
-	dependencies *DependencyContainer,
+	settings save.Settings,
+	theme save.Theme,
+	keymap save.KeyMap,
+	accounts []save.Account,
+	version string,
+	serverAPI ChatuinoServer,
+	clients map[string]tab.ClientCapabilities,
+	accountProvider tab.AccountProvider,
+	emoteCache tab.EmoteCache,
+	badgeCache *badge.Cache,
+	emoteReplacer tab.EmoteReplacer,
+	badgeReplacer tab.BadgeReplacer,
+	imageDisplayManager *kittyimg.DisplayManager,
+	recentMessages tab.RecentMessageService,
+	messageLogger tab.MessageLogger,
+	pool tab.ConnectionPool,
+	appStateManager AppStateManager,
+	channelHistory ChannelHistory,
 	initialState *save.AppState,
 ) *Root {
 	var header header
-	if dependencies.UserConfig.Settings.VerticalTabList {
-		header = newVerticalTabHeader(10, 10, dependencies)
+	if settings.VerticalTabList {
+		header = newVerticalTabHeader(10, 10, theme)
 	} else {
-		header = newHorizontalTabHeader(10, dependencies)
+		header = newHorizontalTabHeader(10, theme)
 	}
 
-	return &Root{
-		initialState:      initialState,
-		dependencies:      dependencies,
-		width:             10,
-		height:            10,
-		userIDDisplayName: &sync.Map{},
+	r := &Root{
+		initialState:        initialState,
+		settings:            settings,
+		theme:               theme,
+		keymap:              keymap,
+		accounts:            accounts,
+		version:             version,
+		serverAPI:           serverAPI,
+		clients:             clients,
+		accountProvider:     accountProvider,
+		emoteCache:          emoteCache,
+		badgeCache:          badgeCache,
+		emoteReplacer:       emoteReplacer,
+		badgeReplacer:       badgeReplacer,
+		imageDisplayManager: imageDisplayManager,
+		recentMessages:      recentMessages,
+		messageLogger:       messageLogger,
+		pool:                pool,
+		appStateManager:     appStateManager,
+		channelHistory:      channelHistory,
+		width:               10,
+		height:              10,
+		userIDDisplayName:   &sync.Map{},
+		tabs:                nav.NewRegistry(tabRow),
 
 		// components
 		splash: splash{
-			keymap:            dependencies.Keymap,
-			userConfiguration: dependencies.UserConfig,
-			spinner:           spinner.New(spinner.WithSpinner(loadingSpinner)),
+			theme:   theme,
+			keymap:  keymap,
+			spinner: spinner.New(spinner.WithSpinner(tab.LoadingSpinner)),
 		},
-		header:         header,
-		help:           newHelp(10, 10, dependencies),
-		joinInput:      newJoin(10, dependencies),
-		quickJoinInput: newQuickJoin(10, dependencies),
+		header: header,
 
 		messageLoggerChan: messageLoggerChan,
+		events:            newEventQueue(512),
 	}
+
+	r.preparer = newChatEventPreparer(ctx, r)
+
+	// Modals composite over the tab view, which stays visible but dimmed behind
+	// them. The base view is a function so it always renders current state.
+	r.stack = nav.NewStack(r.screenContent, func(fg, bg string) string {
+		return centerOverlay(fg, lipgloss.NewStyle().Faint(true).Render(bg))
+	})
+
+	return r
+}
+
+// Close cancels and drains chat-event preparation. Call it after Program.Run,
+// including error/cancellation exits. Quit keys also close preparation promptly.
+func (r *Root) Close() {
+	r.preparer.close()
 }
 
 func (r *Root) Init() tea.Cmd {
+	// Detached sessions use the state passed on the command line instead of
+	// loading it from disk and never persist it back.
 	r.isDetached = r.initialState != nil
 
 	return tea.Batch(
 		r.splash.Init(),
-		func() tea.Msg {
-			var (
-				state save.AppState
-				err   error
-			)
-
-			if r.initialState != nil {
-				state = *r.initialState
-			} else {
-				state, err = r.dependencies.AppStateManager.LoadAppState()
-				if err != nil {
-					return persistedDataLoadedMessage{
-						err: fmt.Errorf("failed to load save state: %w", err),
-					}
-				}
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-			defer cancel()
-			wg, ctx := errgroup.WithContext(ctx)
-
-			wg.Go(func() error {
-				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-				defer cancel()
-
-				if err := r.dependencies.BadgeCache.RefreshGlobal(ctx); err != nil {
-					log.Logger.Error().Err(err).Msg("could not fetch global badges")
-				}
-
-				return nil
-			})
-
-			wg.Go(func() error {
-				ctx, cancel := context.WithTimeout(ctx, time.Second*5)
-				defer cancel()
-
-				if err := r.dependencies.EmoteCache.RefreshGlobal(ctx); err != nil {
-					log.Logger.Error().Err(err).Msg("could not fetch global emotes")
-				}
-
-				return nil
-			})
-
-			// fetch usable emotes for all users
-			for _, acc := range r.dependencies.Accounts {
-				if acc.IsAnonymous {
-					continue
-				}
-
-				client, has := r.dependencies.APIUserClients[acc.ID]
-				if !has {
-					continue
-				}
-
-				fetcher, ok := client.(UserEmoteClient)
-				if !ok {
-					log.Logger.Error().Msg("failed to parse user emote client")
-					continue
-				}
-
-				wg.Go(func() error {
-					set, template, err := fetcher.FetchAllUserEmotes(ctx, acc.ID, "")
-					if err != nil {
-						log.Logger.Error().Str("user_id", acc.ID).Err(err).Msg("could not fetch user emotes")
-						return nil
-					}
-
-					emotes := make(emote.EmoteSet, 0, len(set))
-					for _, e := range set {
-						animated := slices.Contains(e.Format, "animated")
-
-						format := "static"
-						if animated {
-							format = "animated"
-						}
-
-						url := strings.ReplaceAll(template, "{{id}}", e.ID)
-						url = strings.ReplaceAll(url, "{{format}}", format)
-						url = strings.ReplaceAll(url, "{{theme_mode}}", "light")
-						url = strings.ReplaceAll(url, "{{scale}}", "1.0")
-
-						emotes = append(emotes, emote.Emote{
-							ID:         e.ID,
-							Text:       e.Name,
-							Platform:   emote.Twitch,
-							IsAnimated: animated,
-							URL:        url,
-						})
-					}
-
-					r.dependencies.EmoteCache.AddUserEmotes(acc.ID, emotes)
-					return nil
-				})
-			}
-
-			// pre fetch all of tabs twitch users in one single call, this saves a lot of calls if the app was previously closed with a lot of tabs
-			ttvUsers := make(map[string]twitchapi.UserData, len(state.Tabs))
-			usersLock := &sync.Mutex{}
-
-			loginsUnique := make(map[string]struct{}, len(state.Tabs))
-			logins := make([]string, 0, len(state.Tabs))
-
-			for _, tab := range state.Tabs {
-				if tab.Kind != int(BroadcastTabKind) {
-					continue
-				}
-				loginsUnique[tab.Channel] = struct{}{}
-			}
-
-			logins = slices.AppendSeq(logins, maps.Keys(loginsUnique))
-
-			if len(logins) > 0 {
-				wg.Go(func() error {
-					resp, err := r.dependencies.ServerAPI.GetUsers(ctx, logins, nil)
-					if err != nil {
-						log.Logger.Error().Err(err).Msg("could not fetch users for tabs")
-						return fmt.Errorf("could not fetch users for tabs: %w", err)
-					}
-
-					for _, data := range resp.Data {
-						usersLock.Lock()
-						ttvUsers[data.Login] = data
-						usersLock.Unlock()
-					}
-
-					return nil
-				})
-			}
-
-			// pre-fetch channel suggestions (history + followed) once for all tabs
-			var channelSuggestions []string
-			wg.Go(func() error {
-				seen := make(map[string]struct{})
-
-				if r.dependencies.ChannelHistory != nil {
-					entries, err := r.dependencies.ChannelHistory.LoadHistory()
-					if err != nil {
-						log.Logger.Err(err).Msg("could not load channel history for suggestions")
-					} else {
-						for _, e := range entries {
-							if _, ok := seen[e.ChannelLogin]; !ok {
-								seen[e.ChannelLogin] = struct{}{}
-								channelSuggestions = append(channelSuggestions, e.ChannelLogin)
-							}
-						}
-					}
-				}
-
-				for accountID, client := range r.dependencies.APIUserClients {
-					fc, ok := client.(followedFetcher)
-					if !ok {
-						continue
-					}
-
-					followed, err := fc.FetchUserFollowedChannels(ctx, accountID, "")
-					if err != nil {
-						log.Logger.Err(err).Str("account-id", accountID).Msg("could not fetch followed channels for suggestions")
-						continue
-					}
-
-					for _, f := range followed {
-						login := strings.ToLower(f.BroadcasterLogin)
-						if _, ok := seen[login]; !ok {
-							seen[login] = struct{}{}
-							channelSuggestions = append(channelSuggestions, login)
-						}
-					}
-				}
-
-				return nil
-			})
-
-			err = wg.Wait()
-
-			return persistedDataLoadedMessage{
-				state:              state,
-				ttvUsers:           ttvUsers,
-				channelSuggestions: channelSuggestions,
-				err:                err,
-			}
-		},
+		newStartupLoader(r).loadCmd(),
 		r.tickPollStreamInfos(),
 		r.imageCleanUpCommand(),
 		r.checkVersionCommand(),
@@ -370,6 +245,12 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
+
+	// Addressed messages belong to exactly one tab; the registry decides which,
+	// so no child has to re-check a target id.
+	if tabCmd, ok := r.tabs.Dispatch(msg, updateTab); ok {
+		return r, tabCmd
+	}
 
 	switch msg := msg.(type) {
 	case persistedDataLoadedMessage:
@@ -383,37 +264,32 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Batch(cmds...)
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
-	case joinChannelMessage:
-		r.screenType = mainScreen
+	case tab.JoinChannelMessage:
+		// Close whichever modal asked for the join. Pop() blurs it through its
+		// Disappeared hook and drops the screen, so its state is collected.
+		r.stack.Pop()
 
-		nTab, cmd := r.createTab(msg.account, msg.channel, msg.tabKind)
-		nTab.Focus()
+		nTab, cmd := r.createTab(msg.Account, msg.Channel, msg.TabKind)
 
-		r.tabs = append(r.tabs, nTab)
-
-		r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-		r.header.SelectTab(nTab.ID())
-
-		r.joinInput.blur()
-		r.joinInput.input.SetSuggestions(nil) // free up some memory
-		r.quickJoinInput.blur()
+		r.tabs.Add(nTab)
+		r.tabs.SetActive(nTab.ID())
 
 		r.handleResize()
 
 		initCmds := []tea.Cmd{nTab.Init(), cmd}
 
 		// Record channel in history for broadcast tabs
-		if msg.tabKind == BroadcastTabKind && msg.channel != "" {
-			channel := msg.channel
+		if msg.TabKind == tab.BroadcastKind && msg.Channel != "" {
+			channel := msg.Channel
 
 			// update cached suggestions with new channel
 			if !slices.Contains(r.channelSuggestions, channel) {
 				r.channelSuggestions = append(r.channelSuggestions, channel)
 			}
 
-			if r.dependencies.ChannelHistory != nil {
+			if r.channelHistory != nil {
 				initCmds = append(initCmds, func() tea.Msg {
-					if err := r.dependencies.ChannelHistory.RecordChannel(channel); err != nil {
+					if err := r.channelHistory.RecordChannel(channel); err != nil {
 						log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
 					}
 					return nil
@@ -423,84 +299,46 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// send cached suggestions to new tab
 		if len(r.channelSuggestions) > 0 {
-			tabID := nTab.ID()
-			suggestions := r.channelSuggestions
-			initCmds = append(initCmds, func() tea.Msg {
-				return channelSuggestionsLoadedMessage{
-					targetID: tabID,
-					channels: suggestions,
-				}
-			})
+			initCmds = append(initCmds, nav.To(nTab.ID(), tab.ChannelSuggestionsLoadedMessage{
+				Channels: r.channelSuggestions,
+			}))
 		}
 
 		return r, tea.Batch(initCmds...)
 	case wspool.IRCEvent:
-		// Handle IRC events from the connection pool
+		// Handle IRC events from the connection pool. Enrichment (guest-channel
+		// lookup, emote/badge replacement, link checks) happens off the update
+		// loop; the event is routed once its turn in the queue comes up.
 		if msg.Error != nil {
 			// Connection error - display as notice in all tabs for this account
-			errEvt := r.buildChatEventMessage(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
-			if errEvt.prepareCommand != "" {
-				cmds = append(cmds, tea.Raw(errEvt.prepareCommand))
-				errEvt.prepareCommand = ""
-			}
-			for i := range r.tabs {
-				r.tabs[i], cmd = r.tabs[i].Update(errEvt)
-				cmds = append(cmds, cmd)
-			}
-			return r, tea.Batch(cmds...)
+			return r, r.enqueueChatEvent(msg.AccountID, "", ircConnectionError{err: msg.Error}, false)
 		}
 
-		// Log private messages
+		// Log private messages before enrichment so logging never depends on it.
 		if privateMsg, ok := msg.Message.(*twitchirc.PrivateMessage); ok {
 			r.messageLoggerChan <- privateMsg.Clone()
 		}
 
-		// Build and forward event to tabs
-		evt := r.buildChatEventMessage(msg.AccountID, "", msg.Message, false)
-		if evt.prepareCommand != "" {
-			cmds = append(cmds, tea.Raw(evt.prepareCommand))
-			evt.prepareCommand = ""
-		}
-		for i := range r.tabs {
-			r.tabs[i], cmd = r.tabs[i].Update(evt)
-			cmds = append(cmds, cmd)
-		}
-		return r, tea.Batch(cmds...)
-	case chatEventMessage:
-		// Handle locally-generated chat events (e.g., from recent messages)
-		if msg.prepareCommand != "" {
-			cmds = append(cmds, tea.Raw(msg.prepareCommand))
-			msg.prepareCommand = ""
-		}
-		for i := range r.tabs {
-			if msg.tabID != "" && msg.tabID != r.tabs[i].ID() {
-				continue
-			}
-
-			r.tabs[i], cmd = r.tabs[i].Update(msg)
-			cmds = append(cmds, cmd)
-		}
-		return r, tea.Batch(cmds...)
-	case requestLocalMessageHandleMessage:
-		return r, func() tea.Msg {
-			return r.buildChatEventMessage(msg.accountID, msg.tabID, msg.message, true)
-		}
-	case requestLocalMessageHandleBatchMessage:
-		batched := make([]tea.Cmd, 0, len(msg.messages))
-
-		for ircer := range slices.Values(msg.messages) {
-			batched = append(batched, func() tea.Msg {
-				return r.buildChatEventMessage(msg.accountID, msg.tabID, ircer, true)
-			})
+		return r, r.enqueueChatEvent(msg.AccountID, "", msg.Message, false)
+	case tab.ChatEventMessage:
+		// Already prepared (for example by a tab emitting a local notice).
+		return r, r.dispatchPreparedEvent(msg)
+	case tab.RequestLocalMessageHandleMessage:
+		return r, r.enqueueChatEvent(msg.AccountID, msg.TabID, msg.Message, true)
+	case tab.RequestLocalMessageHandleBatchMessage:
+		for ircer := range slices.Values(msg.Messages) {
+			r.addChatEvent(msg.AccountID, msg.TabID, ircer, true)
 		}
 
-		cmds = append(cmds, tea.Sequence(batched...))
-		return r, tea.Batch(cmds...)
+		return r, r.pumpChatEventPreparation()
+	case preparedChatEvent:
+		return r, r.releasePreparedEvent(msg)
+	case routedPreparedEvent:
+		return r, r.finishAndRoute(msg.seq, msg.event)
 	case polledStreamInfoMessage:
-		if r.screenType == quickJoinScreen {
-			r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
-			cmds = append(cmds, cmd)
-		}
+		// The quick join modal shows live status for its channels. Screens that do
+		// not care ignore the message.
+		cmds = append(cmds, r.stack.Update(msg))
 		cmds = append(cmds, r.handlePolledStreamInfo(msg))
 		return r, tea.Batch(cmds...)
 	case appStateSaveMessage:
@@ -517,7 +355,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		// q-to-quit must not steal printable keys while an input is focused.
 		// Modifier-driven quit keys (ctrl+c) still work everywhere.
-		if key.Matches(msg, r.dependencies.Keymap.Quit) && !(r.isTyping() && msg.Text != "") {
+		if key.Matches(msg, r.keymap.Quit) && !(r.isTyping() && msg.Text != "") {
+			r.Close()
 			return r, tea.Quit
 		}
 
@@ -527,30 +366,20 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Help must not steal '?' while any text input (including chat search)
 		// is capturing printable characters.
-		if key.Matches(msg, r.dependencies.Keymap.Help) && !r.isTyping() {
-			r.screenType = helpScreen
-			r.joinInput.blur()
-			if len(r.tabs) > r.tabCursor {
-				r.tabs[r.tabCursor].Blur()
-			}
-			return r, nil
+		if key.Matches(msg, r.keymap.Help) && !r.isTyping() && r.stack.Len() == 0 {
+			r.tabs.BlurActive()
+			return r, r.stack.Push(newHelp(r.height, r.width, r.keymap))
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.Escape) {
-			if r.screenType == inputScreen || r.screenType == helpScreen || r.screenType == quickJoinScreen {
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Focus()
-				}
+		if key.Matches(msg, r.keymap.Escape) {
+			if r.stack.Len() > 0 {
+				r.tabs.FocusActive()
 
-				r.joinInput.blur()
-				r.quickJoinInput.blur()
-				r.screenType = mainScreen
-
-				return r, nil
+				return r, r.stack.Pop()
 			}
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.DumpScreen) {
+		if key.Matches(msg, r.keymap.DumpScreen) {
 			f, err := os.Create(fmt.Sprintf("%s_dump.txt", time.Now().Format("2006-01-02_15_04_05")))
 			if err != nil {
 				return r, nil
@@ -560,114 +389,91 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = f.Close()
 			}()
 
-			_, _ = io.Copy(f, strings.NewReader(stripAnsi(r.renderView())))
+			_, _ = io.Copy(f, strings.NewReader(tab.StripANSI(r.renderView())))
 
 			return r, nil
 		}
 
-		if key.Matches(msg, r.dependencies.Keymap.Create) {
-			switch r.screenType {
-			case mainScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Blur()
-				}
-
-				r.screenType = inputScreen
-				r.joinInput = newJoin(r.width, r.dependencies)
-				hasMentionTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
-					return t.Kind() == MentionTabKind
-				})
-
-				hasNotificationTab := slices.ContainsFunc(r.tabs, func(t tab) bool {
-					return t.Kind() == LiveNotificationTabKind
-				})
-
-				var validTabKinds []TabKind
-				validTabKinds = append(validTabKinds, BroadcastTabKind)
-
-				if !hasMentionTab {
-					validTabKinds = append(validTabKinds, MentionTabKind)
-				}
-
-				if !hasNotificationTab {
-					validTabKinds = append(validTabKinds, LiveNotificationTabKind)
-				}
-
-				r.joinInput.setTabOptions(validTabKinds...)
-				r.joinInput.focus()
-				return r, r.joinInput.Init()
-			case inputScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Focus()
-				}
-
-				r.joinInput.blur()
-				r.screenType = mainScreen
+		if key.Matches(msg, r.keymap.Create) {
+			// The key toggles the join modal.
+			if r.stack.Route() == joinRoute {
+				r.tabs.FocusActive()
+				return r, r.stack.Pop()
 			}
 
-			return r, nil
-		}
-
-		if key.Matches(msg, r.dependencies.Keymap.QuickJoin) {
-			switch r.screenType {
-			case mainScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Blur()
-				}
-
-				r.screenType = quickJoinScreen
-				r.quickJoinInput = newQuickJoin(r.width, r.dependencies)
-				r.quickJoinInput.focus()
-				return r, r.quickJoinInput.Init()
-			case quickJoinScreen:
-				if len(r.tabs) > r.tabCursor {
-					r.tabs[r.tabCursor].Focus()
-				}
-
-				r.quickJoinInput.blur()
-				r.screenType = mainScreen
+			if r.stack.Len() > 0 {
+				return r, nil
 			}
 
-			return r, nil
+			r.tabs.BlurActive()
+
+			joinInput := newJoin(r.width,
+				r.settings, r.theme, r.keymap,
+				r.clients, r.accountProvider)
+			joinInput.Resize(r.width, r.height)
+			joinInput.setTabOptions(r.availableTabKinds()...)
+
+			return r, r.stack.Push(joinInput)
 		}
 
-		if r.screenType == mainScreen {
+		if key.Matches(msg, r.keymap.QuickJoin) {
+			// The key toggles the quick join modal.
+			if r.stack.Route() == quickJoinRoute {
+				r.tabs.FocusActive()
+				return r, r.stack.Pop()
+			}
 
-			if key.Matches(msg, r.dependencies.Keymap.Next) {
-				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
-					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
+			if r.stack.Len() > 0 {
+				return r, nil
+			}
+
+			r.tabs.BlurActive()
+
+			quickJoinInput := newQuickJoin(r.width,
+				r.settings, r.theme, r.keymap,
+				r.clients, r.accountProvider, r.channelHistory)
+			quickJoinInput.Resize(r.width, r.height)
+
+			return r, r.stack.Push(quickJoinInput)
+		}
+
+		if r.stack.Len() == 0 {
+
+			if key.Matches(msg, r.keymap.Next) {
+				if active, ok := r.tabs.Active(); ok && active.IsComposing() {
+					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
 
 				r.nextTab()
 			}
 
-			if key.Matches(msg, r.dependencies.Keymap.Previous) {
-				if len(r.tabs) > r.tabCursor && (r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode) {
-					r.tabs[r.tabCursor], cmd = r.tabs[r.tabCursor].Update(msg)
+			if key.Matches(msg, r.keymap.Previous) {
+				if active, ok := r.tabs.Active(); ok && active.IsComposing() {
+					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
 
 				r.prevTab()
 			}
 
-			if key.Matches(msg, r.dependencies.Keymap.CloseTab) {
-				if len(r.tabs) > r.tabCursor && !(r.tabs[r.tabCursor].State() == insertMode || r.tabs[r.tabCursor].State() == userInspectInsertMode || r.tabs[r.tabCursor].IsSearching()) {
-					currentTab := r.tabs[r.tabCursor]
+			if key.Matches(msg, r.keymap.CloseTab) {
+				if active, ok := r.tabs.Active(); ok && !(active.IsComposing() || active.IsSearching()) {
+					currentTab := active
 					r.closeTab()
 
 					// if tab was connected to IRC, disconnect it
-					if currentTab.IsDataLoaded() && currentTab.Kind() == BroadcastTabKind {
+					if currentTab.IsDataLoaded() && currentTab.Kind() == tab.BroadcastKind {
 						cmds := make([]tea.Cmd, 0, 2)
 
 						// if there is another tab for the same channel and the same account
-						hasTabsSameAccountAndChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
+						hasTabsSameAccountAndChannel := r.tabs.Any(func(t tab.Tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.AccountID() == currentTab.AccountID() &&
 								t.ChannelID() == currentTab.ChannelID()
 						})
 
-						hasTabsSameChannel := slices.ContainsFunc(r.tabs, func(t tab) bool {
+						hasTabsSameChannel := r.tabs.Any(func(t tab.Tab) bool {
 							return t.ID() != currentTab.ID() &&
 								t.ChannelID() == currentTab.ChannelID()
 						})
@@ -678,20 +484,20 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							accountID := currentTab.AccountID()
 							channel := currentTab.Channel()
 							cmds = append(cmds, func() tea.Msg {
-								r.dependencies.Pool.SendIRC(accountID, twitchirc.PartMessage{Channel: channel})
+								r.pool.SendIRC(accountID, twitchirc.PartMessage{Channel: channel})
 								return nil
 							})
 						}
 
 						if !hasTabsSameChannel {
 							log.Logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
-							r.dependencies.EmoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
+							r.emoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
 						}
 
 						// Disconnect IRC for this account
 						accountID := currentTab.AccountID()
 						cmds = append(cmds, func() tea.Msg {
-							r.dependencies.Pool.DisconnectIRC(accountID)
+							r.pool.DisconnectIRC(accountID)
 							return nil
 						})
 
@@ -709,28 +515,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	r.header, cmd = r.header.Update(msg)
-	cmds = append(cmds, cmd)
-
-	for i, tab := range r.tabs {
-		r.tabs[i], cmd = tab.Update(msg)
-		cmds = append(cmds, cmd)
+	if req, ok := msg.(tab.RequestNotificationIconMessage); ok {
+		r.tabs.Notify(req.TabID)
 	}
 
-	if r.screenType == inputScreen {
-		r.joinInput, cmd = r.joinInput.Update(msg)
-		cmds = append(cmds, cmd)
-	}
+	cmds = append(cmds, r.tabs.UpdateAll(msg, updateTab))
 
-	if r.screenType == quickJoinScreen {
-		r.quickJoinInput, cmd = r.quickJoinInput.Update(msg)
-		cmds = append(cmds, cmd)
-	}
-
-	if r.screenType == helpScreen {
-		r.help, cmd = r.help.Update(msg)
-		cmds = append(cmds, cmd)
-	}
+	// Only the topmost modal sees input; the stack guarantees that.
+	cmds = append(cmds, r.stack.Update(msg))
 
 	return r, tea.Batch(cmds...)
 }
@@ -740,7 +532,7 @@ func (r *Root) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = "Chatuino"
 
-	if r.dependencies.UserConfig.Settings.Mouse {
+	if r.settings.Mouse {
 		v.MouseMode = tea.MouseModeCellMotion
 	}
 
@@ -752,40 +544,27 @@ func (r *Root) renderView() string {
 		return r.splash.ViewLoading()
 	}
 
-	switch r.screenType {
-	case mainScreen:
-		return r.screenContent()
-	case inputScreen:
-		// Composite join modal over the current active tab
-		return centerOverlay(r.joinInput.View(), r.dimmedScreenBackground())
-	case quickJoinScreen:
-		return centerOverlay(r.quickJoinInput.View(), r.dimmedScreenBackground())
-	case helpScreen:
-		return r.help.View()
-	}
-
-	return ""
+	return r.stack.View()
 }
 
 // screenContent renders the current screen behind any modal: the header plus the
 // active tab, or the splash when no tab is open.
 func (r *Root) screenContent() string {
-	if len(r.tabs) == 0 || r.tabCursor >= len(r.tabs) {
+	tab, ok := r.tabs.Active()
+	if !ok {
 		return r.splash.View()
 	}
 
-	tab := r.tabs[r.tabCursor]
-
-	if r.dependencies.UserConfig.Settings.VerticalTabList {
+	if r.settings.VerticalTabList {
 		// In vertical mode, render status bar separately at full width
-		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(), tab.ViewWithoutStatusBar())
+		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(r.tabs.Rows()), tab.ViewWithoutStatusBar())
 		if statusBar := tab.StatusBarView(); statusBar != "" {
 			return mainContent + "\n" + statusBar
 		}
 		return mainContent
 	}
 
-	return r.header.View() + "\n" + tab.View()
+	return r.header.View(r.tabs.Rows()) + "\n" + tab.View()
 }
 
 // dimmedScreenBackground renders screenContent faint, for use behind a modal.
@@ -806,7 +585,7 @@ func (r *Root) IsDetached() bool {
 func (r *Root) TakeStateSnapshot() save.AppState {
 	appState := save.AppState{}
 
-	for _, t := range r.tabs {
+	for _, t := range r.tabs.All() {
 		tabState := save.TabState{
 			IsFocused:  t.Focused(),
 			Channel:    t.Channel(),
@@ -814,9 +593,9 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 			Kind:       int(t.Kind()),
 		}
 
-		if t.Kind() == BroadcastTabKind {
-			tabState.IsLocalUnique = t.(*broadcastTab).isUniqueOnlyChat
-			tabState.IsLocalSub = t.(*broadcastTab).isLocalSub
+		if lf, ok := t.(localFilters); ok {
+			tabState.IsLocalUnique = lf.LocalUniqueOnly()
+			tabState.IsLocalSub = lf.LocalSubOnly()
 		}
 
 		appState.Tabs = append(appState.Tabs, tabState)
@@ -831,7 +610,7 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 	return tea.Tick(time.Second*15, func(_ time.Time) tea.Msg {
 		log.Logger.Info().Msg("saving app state inside ticker")
 
-		if err := r.dependencies.AppStateManager.SaveAppState(state); err != nil {
+		if err := r.appStateManager.SaveAppState(state); err != nil {
 			log.Logger.Err(err).Msg("failed to save app state")
 		}
 
@@ -840,18 +619,18 @@ func (r *Root) tickSaveAppState() tea.Cmd {
 }
 
 func (r *Root) tickPollStreamInfos() tea.Cmd {
-	clients := maps.Clone(r.dependencies.APIUserClients)
+	clients := maps.Clone(r.clients)
 
 	// collect all open broadcasters
 	openBroadcasts := map[string]struct{}{}
 	channelIDNames := map[string]string{}
 
-	for _, tab := range r.tabs {
-		if tab.Kind() != BroadcastTabKind {
+	for _, t := range r.tabs.All() {
+		if t.Kind() != tab.BroadcastKind {
 			continue
 		}
-		openBroadcasts[tab.ChannelID()] = struct{}{}
-		channelIDNames[tab.ChannelID()] = tab.Channel()
+		openBroadcasts[t.ChannelID()] = struct{}{}
+		channelIDNames[t.ChannelID()] = t.Channel()
 	}
 
 	if len(openBroadcasts) == 0 {
@@ -866,7 +645,7 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 	}
 
 	return tea.Tick(time.Second*90, func(_ time.Time) tea.Msg {
-		accounts, err := r.dependencies.AccountProvider.GetAllAccounts()
+		accounts, err := r.accountProvider.GetAllAccounts()
 		if err != nil {
 			return polledStreamInfoMessage{}
 		}
@@ -879,11 +658,11 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 			}
 		}
 
-		var fetcher APIClient
-		if _, has := clients[mainAccountID]; has {
-			fetcher = clients[mainAccountID]
+		var fetcher tab.APIClient
+		if client, has := clients[mainAccountID]; has && client.API != nil {
+			fetcher = client.API
 		} else {
-			fetcher = r.dependencies.ServerAPI
+			fetcher = r.serverAPI
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -895,16 +674,16 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 		}
 
 		polled := polledStreamInfoMessage{
-			streamInfos: make([]setStreamInfoMessage, 0, len(broadcastIDs)),
+			streamInfos: make([]tab.SetStreamInfoMessage, 0, len(broadcastIDs)),
 		}
 
 		// Update status for all streams
 		// If a stream is offline the twitch API does not return any item for this broadcaster_id
 		// To still update the title etc. to empty value, send an empty info to component.
 		for ib := range broadcastIDs {
-			info := setStreamInfoMessage{
-				target:   broadcastIDs[ib],
-				username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
+			info := tab.SetStreamInfoMessage{
+				Target:   broadcastIDs[ib],
+				Username: channelIDNames[broadcastIDs[ib]], // fall back channel name, so it can still be displayed when offline
 			}
 
 			for id := range resp.Data {
@@ -913,11 +692,11 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 					continue
 				}
 
-				info.viewer = resp.Data[id].ViewerCount
-				info.username = resp.Data[id].UserName
-				info.title = resp.Data[id].Title
-				info.game = resp.Data[id].GameName
-				info.isLive = !resp.Data[id].StartedAt.IsZero()
+				info.Viewer = resp.Data[id].ViewerCount
+				info.Username = resp.Data[id].UserName
+				info.Title = resp.Data[id].Title
+				info.Game = resp.Data[id].GameName
+				info.IsLive = !resp.Data[id].StartedAt.IsZero()
 			}
 
 			polled.streamInfos = append(polled.streamInfos, info)
@@ -928,60 +707,70 @@ func (r *Root) tickPollStreamInfos() tea.Cmd {
 }
 
 func (r *Root) handlePolledStreamInfo(polled polledStreamInfoMessage) tea.Cmd {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
+	var cmds []tea.Cmd
 
 	for _, info := range polled.streamInfos {
-		for it, tab := range r.tabs {
-			if tab.IsDataLoaded() {
-				r.tabs[it], cmd = tab.Update(info)
-				cmds = append(cmds, cmd)
+		cmds = append(cmds, r.tabs.UpdateAll(info, func(t tab.Tab, msg tea.Msg) (tab.Tab, tea.Cmd) {
+			if !t.IsDataLoaded() {
+				return t, nil
 			}
-		}
+
+			return t.Update(msg)
+		}))
 	}
 
 	cmds = append(cmds, r.tickPollStreamInfos())
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) createTab(account save.Account, channel string, kind TabKind) (tab, tea.Cmd) {
+// createTab builds a tab for the given kind. It does not add the tab to the
+// registry: the caller owns that, so tab creation and tab activation stay
+// separate decisions.
+func (r *Root) createTab(account save.Account, channel string, kind tab.TabKind) (tab.Tab, tea.Cmd) {
+	headerHeight := r.getHeaderHeight()
+
 	switch kind {
-	case BroadcastTabKind:
-		identity := account.DisplayName
-
-		if account.IsAnonymous {
-			identity = "Anonymous"
-		}
-
-		id, cmd := r.header.AddTab(channel, identity)
-
-		headerHeight := r.getHeaderHeight()
-
-		nTab := newBroadcastTab(id, r.width, r.height-headerHeight, account, channel, r.dependencies)
-		nTab.updateInfo = r.updateInfo
-		return nTab, cmd
-	case MentionTabKind:
-		id, cmd := r.header.AddTab("mentioned", "all")
-		headerHeight := r.getHeaderHeight()
-		nTab := newMentionTab(id, r.width, r.height-headerHeight, r.dependencies)
-		return nTab, cmd
-	case LiveNotificationTabKind:
-		id, cmd := r.header.AddTab("live notifications", "all")
-		headerHeight := r.getHeaderHeight()
-		nTab := newLiveNotificationTab(id, r.width, r.height-headerHeight, r.dependencies)
-		return nTab, cmd
+	case tab.BroadcastKind:
+		nTab := tab.NewBroadcast(uuid.NewString(), r.width, r.height-headerHeight, account, channel,
+			r.settings, r.theme, r.keymap,
+			r.clients[account.ID], r.pool,
+			r.recentMessages, r.messageLogger,
+			r.emoteCache, r.emoteReplacer, r.badgeCache, r.badgeReplacer)
+		nTab.SetUpdateAvailable(r.latestVersion())
+		return nTab, nil
+	case tab.MentionKind:
+		nTab := tab.NewMention(uuid.NewString(), r.width, r.height-headerHeight,
+			r.settings, r.theme, r.keymap, r.accountProvider)
+		return nTab, nil
+	case tab.LiveNotificationKind:
+		nTab := tab.NewLiveNotification(uuid.NewString(), r.width, r.height-headerHeight,
+			r.settings, r.theme, r.keymap)
+		return nTab, nil
 	}
-
-	r.handleResize()
 
 	return nil, nil
 }
 
+// availableTabKinds returns the tab kinds that are not open yet, in menu order.
+func (r *Root) availableTabKinds() []tab.TabKind {
+	hasMention := r.tabs.Any(func(t tab.Tab) bool { return t.Kind() == tab.MentionKind })
+	hasNotification := r.tabs.Any(func(t tab.Tab) bool { return t.Kind() == tab.LiveNotificationKind })
+
+	kinds := []tab.TabKind{tab.BroadcastKind}
+
+	if !hasMention {
+		kinds = append(kinds, tab.MentionKind)
+	}
+
+	if !hasNotification {
+		kinds = append(kinds, tab.LiveNotificationKind)
+	}
+
+	return kinds
+}
+
 func (r *Root) getHeaderHeight() int {
-	headerView := r.header.View()
-	return lipgloss.Height(headerView)
+	return lipgloss.Height(r.header.View(r.tabs.Rows()))
 }
 
 func (r *Root) handleResize() {
@@ -989,81 +778,45 @@ func (r *Root) handleResize() {
 	r.splash.width = r.width
 	r.splash.height = r.height
 
-	// channel join input
-	r.joinInput.handleResize(r.width, r.height)
-	r.quickJoinInput.handleResize(r.width, r.height)
+	// open modals follow the terminal size
+	r.stack.Resize(r.width, r.height)
 
-	// help
-	r.help.handleResize(r.width, r.height)
-
-	if r.dependencies.UserConfig.Settings.VerticalTabList {
-		minWidth := r.header.MinWidth()
+	if r.settings.VerticalTabList {
+		rows := r.tabs.Rows()
+		minWidth := r.header.MinWidth(rows)
 		r.header.Resize(minWidth, r.height)
 
-		headerWidth := lipgloss.Width(r.header.View())
-		headerHeight := lipgloss.Height(r.header.View())
+		headerView := r.header.View(rows)
+		headerWidth := lipgloss.Width(headerView)
+		headerHeight := lipgloss.Height(headerView)
 
-		for i := range r.tabs {
+		for _, t := range r.tabs.All() {
 			// Tab height matches header height (status bar is rendered separately below both)
-			r.tabs[i].SetSize(r.width-headerWidth, headerHeight)
-			r.tabs[i].SetFullWidth(r.width) // for status bar to span full width
-			r.tabs[i].HandleResize()
+			t.SetSize(r.width-headerWidth, headerHeight)
+			t.SetFullWidth(r.width) // for status bar to span full width
+			t.HandleResize()
 		}
 
 		return
-	} else {
-		r.header.Resize(r.width-3, 0) // one placeholder space foreach side
 	}
+
+	r.header.Resize(r.width-3, 0) // one placeholder space foreach side
 
 	// tab
 	headerHeight := r.getHeaderHeight()
 
-	for i := range r.tabs {
-		r.tabs[i].SetSize(r.width, r.height-headerHeight)
-		r.tabs[i].HandleResize()
+	for _, t := range r.tabs.All() {
+		t.SetSize(r.width, r.height-headerHeight)
+		t.HandleResize()
 	}
 }
 
 func (r *Root) nextTab() {
-	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
-		r.tabs[r.tabCursor].Blur()
-	}
-
-	newIndex := r.tabCursor + 1
-
-	if newIndex >= len(r.tabs) {
-		newIndex = 0
-	}
-
-	r.tabCursor = newIndex
-
-	if len(r.tabs) > r.tabCursor {
-		r.header.SelectTab(r.tabs[r.tabCursor].ID())
-		r.tabs[r.tabCursor].Focus()
-	}
+	r.tabs.Next()
 }
 
 func (r *Root) prevTab() {
-	if len(r.tabs) > r.tabCursor && r.tabCursor > -1 {
-		r.tabs[r.tabCursor].Blur()
-	}
-
-	newIndex := r.tabCursor - 1
-
-	if newIndex < 0 {
-		newIndex = len(r.tabs) - 1
-
-		if newIndex < 0 {
-			newIndex = 0
-		}
-	}
-
-	r.tabCursor = newIndex
-
-	if len(r.tabs) > r.tabCursor {
-		r.header.SelectTab(r.tabs[r.tabCursor].ID())
-		r.tabs[r.tabCursor].Focus()
-	}
+	r.tabs.Prev()
 }
 
 func (r *Root) checkVersionCommand() tea.Cmd {
@@ -1071,7 +824,7 @@ func (r *Root) checkVersionCommand() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
-		info, err := checkForUpdate(ctx, r.dependencies.ServerAPI, r.dependencies.Version)
+		info, err := checkForUpdate(ctx, r.serverAPI, r.version)
 		return versionCheckMessage{info: info, err: err}
 	}
 }
@@ -1089,9 +842,9 @@ func (r *Root) handleVersionCheck(msg versionCheckMessage) tea.Cmd {
 	r.updateInfo = &msg.info
 	r.splash.updateInfo = &msg.info
 
-	for _, t := range r.tabs {
-		if bt, ok := t.(*broadcastTab); ok {
-			bt.updateInfo = r.updateInfo
+	for _, t := range r.tabs.All() {
+		if n, ok := t.(updateNotifier); ok {
+			n.SetUpdateAvailable(r.latestVersion())
 		}
 	}
 
@@ -1110,17 +863,15 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	// restore tabs
 	var hasActiveTab bool
 	for _, t := range msg.state.Tabs {
-		r.screenType = mainScreen
-
 		var (
-			newTab tab
+			newTab tab.Tab
 			cmd    tea.Cmd
 		)
-		switch TabKind(t.Kind) {
-		case BroadcastTabKind:
+		switch tab.TabKind(t.Kind) {
+		case tab.BroadcastKind:
 			var account save.Account
 
-			for _, a := range r.dependencies.Accounts {
+			for _, a := range r.accounts {
 				if a.ID == t.IdentityID {
 					account = a
 				}
@@ -1130,12 +881,14 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab, cmd = r.createTab(account, t.Channel, BroadcastTabKind)
-			newTab.(*broadcastTab).isUniqueOnlyChat = t.IsLocalUnique
-			newTab.(*broadcastTab).isLocalSub = t.IsLocalSub
-		case MentionTabKind:
+			newTab, cmd = r.createTab(account, t.Channel, tab.BroadcastKind)
+			if lf, ok := newTab.(localFilters); ok {
+				lf.SetLocalUniqueOnly(t.IsLocalUnique)
+				lf.SetLocalSubOnly(t.IsLocalSub)
+			}
+		case tab.MentionKind:
 			// don't load mention tab, when there are no longer any non-anonymous accounts
-			hasNormalAccount := slices.ContainsFunc(r.dependencies.Accounts, func(e save.Account) bool {
+			hasNormalAccount := slices.ContainsFunc(r.accounts, func(e save.Account) bool {
 				return !e.IsAnonymous
 			})
 
@@ -1143,34 +896,30 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 				continue
 			}
 
-			newTab, cmd = r.createTab(save.Account{}, "", MentionTabKind)
-		case LiveNotificationTabKind:
-			newTab, cmd = r.createTab(save.Account{}, "", LiveNotificationTabKind)
+			newTab, cmd = r.createTab(save.Account{}, "", tab.MentionKind)
+		case tab.LiveNotificationKind:
+			newTab, cmd = r.createTab(save.Account{}, "", tab.LiveNotificationKind)
+		}
+
+		if newTab == nil {
+			continue
 		}
 
 		cmds = append(cmds, cmd)
-
-		if t.IsFocused {
-			newTab.Focus()
-		}
-
-		r.tabs = append(r.tabs, newTab)
+		r.tabs.Add(newTab)
 
 		if t.IsFocused {
 			hasActiveTab = true
-			r.tabCursor = len(r.tabs) - 1 // set index to the newest tab
-			r.header.SelectTab(newTab.ID())
+			r.tabs.SetActive(newTab.ID())
 		}
 		log.Logger.Info().Any("data", msg.ttvUsers).Msg("Initialized tab with user data")
 		cmds = append(cmds, newTab.InitWithUserData(msg.ttvUsers[t.Channel]))
 	}
 
-	// if for some reason there were tabs persisted but non tab has the focus flag set
+	// if for some reason there were tabs persisted but none has the focus flag set
 	// focus the first tab
-	if len(r.tabs) > 0 && !hasActiveTab {
-		r.header.SelectTab(r.tabs[0].ID())
-		r.tabCursor = 0
-		r.tabs[0].Focus()
+	if tabs := r.tabs.All(); len(tabs) > 0 && !hasActiveTab {
+		r.tabs.SetActive(tabs[0].ID())
 	}
 
 	r.handleResize()
@@ -1178,15 +927,10 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	// cache and broadcast channel suggestions to all tabs
 	r.channelSuggestions = msg.channelSuggestions
 	if len(r.channelSuggestions) > 0 {
-		for _, t := range r.tabs {
-			suggestions := r.channelSuggestions
-			tabID := t.ID()
-			cmds = append(cmds, func() tea.Msg {
-				return channelSuggestionsLoadedMessage{
-					targetID: tabID,
-					channels: suggestions,
-				}
-			})
+		for _, t := range r.tabs.All() {
+			cmds = append(cmds, nav.To(t.ID(), tab.ChannelSuggestionsLoadedMessage{
+				Channels: r.channelSuggestions,
+			}))
 		}
 	}
 
@@ -1198,205 +942,128 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 	return tea.Batch(cmds...)
 }
 
-func (r *Root) buildChatEventMessage(accountID string, tabID string, ircer twitchirc.IRCer, isFakeEvent bool) chatEventMessage {
-	var (
-		channel                 string
-		message                 string
-		badges                  []twitchirc.Badge
-		emotes                  []twitchirc.Emote
-		emoteSourceRoom         string
-		channelID               string
-		channelGuestID          string
-		channelGuestDisplayName string
-		loginName               string
-	)
+// addChatEvent appends an event to the ordered preparation queue. It reports the
+// request so callers can test the ordering rules.
+func (r *Root) addChatEvent(accountID, tabID string, ircer twitchirc.IRCer, isFake bool) (prepareRequest, bool) {
+	if r.preparer.ctx.Err() != nil {
+		return prepareRequest{}, false
+	}
+	req, ok := r.events.add(accountID, tabID, ircer, isFake)
+	if !ok {
+		log.Logger.Warn().
+			Int("pending", r.events.len()).
+			Str("account_id", accountID).
+			Msg("chat event dropped: preparation queue is full")
 
-	// Check when currently in shared session.
-	// If so then load emotes and badges for guest so the message content can be replaced
-	if msg, ok := ircer.(*twitchirc.PrivateMessage); ok {
-		channelID = msg.RoomID
-		channelGuestID = msg.SourceRoomID
-
-		// shared chat, get display name of guest stream chat, channelGuestID will be empty when not shared chat
-		if channelID != "" && channelGuestID != "" {
-			if v, ok := r.userIDDisplayName.Load(channelGuestID); ok {
-				channelGuestDisplayName = v.(string)
-			} else {
-				// try refresh emotes for guest
-				_ = r.dependencies.EmoteCache.RefreshLocal(context.Background(), channelGuestID)
-				_ = r.dependencies.BadgeCache.RefreshChannel(context.Background(), channelGuestID)
-
-				resp, err := r.dependencies.ServerAPI.GetUsers(context.Background(), nil, []string{channelGuestID})
-				if err == nil && len(resp.Data) > 0 {
-					channelGuestDisplayName = resp.Data[0].DisplayName
-					r.userIDDisplayName.Store(channelGuestID, channelGuestDisplayName)
-				}
-			}
-		}
+		return prepareRequest{}, false
 	}
 
-	switch ircMessage := ircer.(type) {
-	case *twitchirc.PrivateMessage:
-		channelID = ircMessage.RoomID
-		channelGuestID = ircMessage.SourceRoomID
-		channel = ircMessage.ChannelUserName
-		message = ircMessage.Message
-		loginName = ircMessage.LoginName
+	return req, true
+}
 
-		// if is shared display emotes from guest channel, when message is from guest
-		emoteSourceRoom = channelID
-		badges = ircMessage.Badges
-		emotes = ircMessage.Emotes
-
-		if channelGuestID != "" && channelID != channelGuestID {
-			emoteSourceRoom = channelGuestID
-			badges = ircMessage.SourceBadges
-		}
-
-	case *twitchirc.RoomState:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *twitchirc.UserNotice:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.UserState:
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.ClearChat:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *twitchirc.ClearMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-	case *twitchirc.SubMessage:
-		channelID = ircMessage.RoomID
-		emoteSourceRoom = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		message = ircMessage.Message
-		emotes = ircMessage.Emotes
-		badges = ircMessage.Badges
-	case *twitchirc.RaidMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.SubGiftMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		badges = ircMessage.Badges
-	case *twitchirc.RitualMessage:
-		channelID = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		emoteSourceRoom = ircMessage.RoomID
-		message = ircMessage.Message
-		emotes = ircMessage.Emotes
-		badges = ircMessage.Badges
-	case *twitchirc.AnnouncementMessage:
-		channelID = ircMessage.RoomID
-		emoteSourceRoom = ircMessage.RoomID
-		channel = ircMessage.ChannelUserName
-		message = ircMessage.Message
-		emotes = ircMessage.Emotes
-		badges = ircMessage.Badges
-	case *twitchirc.Notice:
-		channel = ircMessage.ChannelUserName
+// enqueueChatEvent appends an event and starts the next preparation when the
+// queue is idle.
+func (r *Root) enqueueChatEvent(accountID, tabID string, ircer twitchirc.IRCer, isFake bool) tea.Cmd {
+	if _, ok := r.addChatEvent(accountID, tabID, ircer, isFake); !ok {
+		return nil
 	}
 
-	event := chatEventMessage{
-		isFakeEvent:             isFakeEvent,
-		accountID:               accountID,
-		channel:                 channel,
-		channelID:               channelID,
-		channelGuestID:          channelGuestID,
-		channelGuestDisplayName: channelGuestDisplayName,
-		tabID:                   tabID,
+	return r.pumpChatEventPreparation()
+}
 
-		message: ircer,
-		displayModifier: messageContentModifier{
-			wordReplacements: make(wordReplacement),
-			badgeReplacement: make(wordReplacement),
+// pumpChatEventPreparation starts exactly one preparation command, capturing the
+// preparer's collaborators instead of the Root model. Results re-enter the update
+// loop and pump the next event, so enrichment runs one event at a time in arrival
+// order without one goroutine per incoming message.
+func (r *Root) pumpChatEventPreparation() tea.Cmd {
+	if r.preparer.ctx.Err() != nil {
+		return nil
+	}
+	req, ok := r.events.start()
+	if !ok {
+		return nil
+	}
+
+	preparer := r.preparer
+
+	return func() tea.Msg {
+		return preparedChatEvent{seq: req.seq, event: preparer.prepare(req)}
+	}
+}
+
+// releasePreparedEvent hands a finished preparation to the terminal or directly
+// to the tabs.
+//
+// When the event carries a kitty graphics command, the raw write is run first and
+// routing happens only after its message has been handled, so the image exists
+// before the row that references it is rendered. The queue stays in flight across
+// that hand-off, which keeps routing in arrival order.
+func (r *Root) releasePreparedEvent(msg preparedChatEvent) tea.Cmd {
+	if r.preparer.ctx.Err() != nil || !r.events.release(msg.seq) {
+		return nil
+	}
+	if msg.event.PrepareCommand == "" {
+		return r.finishAndRoute(msg.seq, msg.event)
+	}
+
+	prepareCommand := msg.event.PrepareCommand
+	msg.event.PrepareCommand = ""
+
+	return tea.Sequence(
+		tea.Raw(prepareCommand),
+		func() tea.Msg {
+			return routedPreparedEvent(msg)
 		},
+	)
+}
+
+// finishAndRoute releases the queue slot, routes the event and starts the next
+// preparation. A superseded result is dropped.
+func (r *Root) finishAndRoute(seq uint64, event tab.ChatEventMessage) tea.Cmd {
+	if r.preparer.ctx.Err() != nil {
+		return nil
+	}
+	var cmds []tea.Cmd
+
+	if r.events.finish(seq) {
+		cmds = append(cmds, r.dispatchPreparedEvent(event))
+	} else {
+		log.Logger.Warn().Uint64("seq", seq).Msg("dropped a superseded chat event result")
 	}
 
-	var replaceCommand string
+	cmds = append(cmds, r.pumpChatEventPreparation())
 
-	if len(message) > 0 {
-		p, replacement, err := r.dependencies.EmoteReplacer.Replace(emoteSourceRoom, message, emotes)
-		if err != nil {
-			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace emotes")
-		}
+	return tea.Batch(cmds...)
+}
 
-		for k, v := range replacement {
-			event.displayModifier.wordReplacements[k] = v
-		}
+// dispatchPreparedEvent routes an event to its tab, or to every tab when it is
+// not tab-addressed. A tab-addressed event whose tab has closed in the meantime is
+// dropped by the registry instead of reaching a different tab.
+func (r *Root) dispatchPreparedEvent(event tab.ChatEventMessage) tea.Cmd {
+	var cmds []tea.Cmd
 
-		replaceCommand += p
+	if event.PrepareCommand != "" {
+		cmds = append(cmds, tea.Raw(event.PrepareCommand))
+		event.PrepareCommand = ""
 	}
 
-	if len(badges) > 0 {
-		p, replace, err := r.dependencies.BadgeReplacer.Replace(emoteSourceRoom, badges)
-		if err != nil {
-			log.Logger.Info().Err(err).Str("message", message).Msg("failed to replace badges")
+	if event.TabID != "" {
+		if cmd, ok := r.tabs.UpdateOne(event.TabID, event, updateTab); ok {
+			cmds = append(cmds, cmd)
 		}
 
-		event.displayModifier.badgeReplacement = replace
-		replaceCommand += p
+		return tea.Batch(cmds...)
 	}
 
-	if loginName != "" {
-		p, err := r.dependencies.BadgeReplacer.InjectContributorBadge(loginName, event.displayModifier.badgeReplacement)
-		if err != nil {
-			log.Logger.Info().Err(err).Str("login", loginName).Msg("failed to inject contributor badge")
-		}
-		replaceCommand += p
-	}
+	cmds = append(cmds, r.tabs.UpdateAll(event, updateTab))
 
-	if r.dependencies.UserConfig.Settings.Security.CheckLinks && len(message) > 0 {
-		// Key link annotations on the whole space-delimited token so they match
-		// exactly in applyWordReplacements (same contract as emotes). The URL is
-		// annotated in place, preserving any surrounding punctuation in the token.
-		for _, token := range strings.Split(message, " ") {
-			annotated := token
-			for _, u := range extractValidURLs(token) {
-				resp, err := r.dependencies.ServerAPI.CheckLink(context.Background(), u)
-				if err != nil {
-					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
-					continue
-				}
-
-				parts := []string{http.StatusText(resp.RemoteStatusCode)}
-
-				if resp.RemoteContentType != "" {
-					before, _, _ := strings.Cut(resp.RemoteContentType, ";")
-					parts = append(parts, before)
-				}
-
-				for _, visited := range resp.VisitedURLs {
-					d, err := url.QueryUnescape(visited)
-					if err != nil {
-						log.Logger.Info().Err(err).Str("url", visited).Msg("failed to unescape url")
-						continue
-					}
-					parts = append(parts, d)
-				}
-
-				annotated = strings.Replace(annotated, u, fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", ")), 1)
-			}
-
-			if annotated != token {
-				event.displayModifier.wordReplacements[token] = annotated
-			}
-		}
-	}
-
-	event.prepareCommand = replaceCommand
-	return event
+	return tea.Batch(cmds...)
 }
 
 // imageCleanUpCommand returns a command that ticks after 1 minute and
 // clean all images that were not used in the last 10 minutes
 func (r *Root) imageCleanUpCommand() tea.Cmd {
-	if !r.dependencies.UserConfig.Settings.Chat.GraphicEmotes && !r.dependencies.UserConfig.Settings.Chat.GraphicBadges {
+	if !r.settings.Chat.GraphicEmotes && !r.settings.Chat.GraphicBadges {
 		return nil
 	}
 
@@ -1404,7 +1071,7 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 		log.Logger.Info().Msg("image clean up tick start")
 		defer log.Logger.Info().Msg("image clean up tick end")
 
-		data := r.dependencies.ImageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
+		data := r.imageDisplayManager.CleanupOldImagesCommand(time.Minute * 10)
 
 		return imageCleanupTickMessage{
 			deletionCommand: data,
@@ -1413,18 +1080,14 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 }
 
 func (r *Root) closeTab() {
-	if len(r.tabs) > r.tabCursor {
-		tabID := r.tabs[r.tabCursor].ID()
-		if r.tabs[r.tabCursor].Kind() == BroadcastTabKind {
-			r.tabs[r.tabCursor].(*broadcastTab).close()
-		}
-		r.header.RemoveTab(tabID)
-		r.tabs = slices.DeleteFunc(r.tabs, func(t tab) bool {
-			return t.ID() == tabID
-		})
-
-		r.tabCursor--
-		r.nextTab()
-		r.handleResize()
+	active, ok := r.tabs.Active()
+	if !ok {
+		return
 	}
+
+	active.Close()
+
+	// Remove activates the neighbour, so no cursor bookkeeping is needed here.
+	r.tabs.Remove(active.ID())
+	r.handleResize()
 }

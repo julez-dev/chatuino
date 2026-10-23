@@ -3,10 +3,13 @@ package mainui
 import (
 	"strings"
 
+	"github.com/julez-dev/chatuino/save"
+
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/ui/nav"
 )
 
 type helpSection struct {
@@ -19,68 +22,68 @@ type help struct {
 	port        viewport.Model
 }
 
-func newHelp(height, width int, deps *DependencyContainer) *help {
+func newHelp(height, width int, keymap save.KeyMap) *help {
 	sections := []helpSection{
 		{
 			"General",
 			[]key.Binding{
-				deps.Keymap.Up,
-				deps.Keymap.Down,
-				deps.Keymap.Escape,
-				deps.Keymap.Confirm,
-				deps.Keymap.Help,
+				keymap.Up,
+				keymap.Down,
+				keymap.Escape,
+				keymap.Confirm,
+				keymap.Help,
 			},
 		},
 		{
 			"App Binds",
 			[]key.Binding{
-				deps.Keymap.Quit,
-				deps.Keymap.Create,
-				deps.Keymap.QuickJoin,
-				deps.Keymap.Remove,
-				deps.Keymap.CloseTab,
-				deps.Keymap.DumpScreen,
+				keymap.Quit,
+				keymap.Create,
+				keymap.QuickJoin,
+				keymap.Remove,
+				keymap.CloseTab,
+				keymap.DumpScreen,
 			},
 		},
 		{
 			"Tab Binds",
 			[]key.Binding{
-				deps.Keymap.Next,
-				deps.Keymap.Previous,
+				keymap.Next,
+				keymap.Previous,
 			},
 		},
 		{
 			"Suggestion Binds",
 			[]key.Binding{
-				deps.Keymap.AcceptSuggestion,
-				deps.Keymap.NextSuggestion,
-				deps.Keymap.PrevSuggestion,
+				keymap.AcceptSuggestion,
+				keymap.NextSuggestion,
+				keymap.PrevSuggestion,
 			},
 		},
 		{
 			"Chat Binds",
 			[]key.Binding{
-				deps.Keymap.InsertMode,
-				deps.Keymap.InspectMode,
-				deps.Keymap.ChatPopUp,
-				deps.Keymap.ChannelPopUp,
-				deps.Keymap.GoToTop,
-				deps.Keymap.GoToBottom,
-				deps.Keymap.PageUp,
-				deps.Keymap.PageDown,
-				deps.Keymap.DumpChat,
-				deps.Keymap.QuickTimeout,
-				deps.Keymap.CopyMessage,
-				deps.Keymap.CopyToClipboard,
-				deps.Keymap.SearchMode,
-				deps.Keymap.QuickSent,
-				deps.Keymap.ReplyMessage,
+				keymap.InsertMode,
+				keymap.InspectMode,
+				keymap.ChatPopUp,
+				keymap.ChannelPopUp,
+				keymap.GoToTop,
+				keymap.GoToBottom,
+				keymap.PageUp,
+				keymap.PageDown,
+				keymap.DumpChat,
+				keymap.QuickTimeout,
+				keymap.CopyMessage,
+				keymap.CopyToClipboard,
+				keymap.SearchMode,
+				keymap.QuickSent,
+				keymap.ReplyMessage,
 			},
 		},
 		{
 			"Account Binds",
 			[]key.Binding{
-				deps.Keymap.MarkLeader,
+				keymap.MarkLeader,
 			},
 		},
 	}
@@ -95,7 +98,7 @@ func (h *help) Init() tea.Cmd {
 	return nil
 }
 
-func (h *help) Update(msg tea.Msg) (*help, tea.Cmd) {
+func (h *help) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	var cmd tea.Cmd
 	h.port, cmd = h.port.Update(msg)
 	return h, cmd
@@ -104,6 +107,18 @@ func (h *help) Update(msg tea.Msg) (*help, tea.Cmd) {
 func (h *help) View() string {
 	return h.port.View()
 }
+
+// Screen implementation. Help replaces the view instead of overlaying it and
+// never captures text, so '?' keeps toggling it from the chat view.
+
+func (h *help) OverlaysBackground() bool { return false }
+
+func (h *help) Route() string { return helpRoute }
+
+func (h *help) Resize(width, height int) { h.handleResize(width, height) }
+
+// scrollsOnWheel marks this screen as consuming mouse wheel messages.
+func (h *help) scrollsOnWheel() {}
 
 func (h *help) handleResize(width, height int) {
 	h.port.SetWidth(width)

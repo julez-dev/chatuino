@@ -2,7 +2,9 @@ package emote_test
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/mocks"
@@ -14,6 +16,104 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCache_RefreshCancelledWaiterDoesNotCancelSharedFetch(t *testing.T) {
+	t.Parallel()
+
+	for _, scope := range []string{"channel", "global"} {
+		t.Run(scope, func(t *testing.T) {
+			t.Parallel()
+
+			store, started, release := newBlockedEmoteRefresh(t, scope)
+			refresh := func(ctx context.Context) error {
+				if scope == "global" {
+					return store.RefreshGlobal(ctx)
+				}
+				return store.RefreshLocal(ctx, "shared-channel")
+			}
+			leader := make(chan error, 1)
+			go func() { leader <- refresh(t.Context()) }()
+			var sharedCtx context.Context
+			select {
+			case sharedCtx = <-started:
+			case <-time.After(time.Second):
+				t.Fatal("shared refresh did not start")
+			}
+
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+			defer cancel()
+			follower := make(chan error, 1)
+			go func() { follower <- refresh(ctx) }()
+			returned := false
+			select {
+			case err := <-follower:
+				returned = true
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			case <-time.After(time.Second):
+				t.Error("cancelled waiter remained blocked on another caller's refresh")
+			}
+			select {
+			case <-sharedCtx.Done():
+				t.Error("cancelling a waiter cancelled the shared fetch")
+			default:
+			}
+
+			release()
+			select {
+			case err := <-leader:
+				require.NoError(t, err, "the original caller must still receive its emotes")
+			case <-time.After(time.Second):
+				t.Fatal("original refresh did not finish")
+			}
+			if !returned {
+				select {
+				case <-follower:
+				case <-time.After(time.Second):
+					t.Fatal("waiter did not finish after releasing the shared fetch")
+				}
+			}
+			_, ok := store.GetAllForChannel("shared-channel").GetByText("SharedEmote")
+			require.True(t, ok, "the successful refresh must populate the cache")
+		})
+	}
+}
+
+// The fetchers are external API boundaries; the cache and its coalescing remain real.
+func newBlockedEmoteRefresh(t *testing.T, scope string) (*emote.Cache, <-chan context.Context, func()) {
+	t.Helper()
+
+	ttv := mocks.NewMockTwitchEmoteFetcher(t)
+	seven := mocks.NewMockSevenTVEmoteFetcher(t)
+	bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+	ffzService := mocks.NewMockFFZEmoteFetcher(t)
+	started := make(chan context.Context, 1)
+	release := make(chan struct{})
+	releaseRefresh := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(releaseRefresh)
+	fetch := func(ctx context.Context) (twitchapi.EmoteResponse, error) {
+		started <- ctx
+		select {
+		case <-release:
+			return twitchapi.EmoteResponse{Data: []twitchapi.EmoteData{{ID: "shared", Name: "SharedEmote"}}}, nil
+		case <-ctx.Done():
+			return twitchapi.EmoteResponse{}, ctx.Err()
+		}
+	}
+	if scope == "global" {
+		ttv.EXPECT().GetGlobalEmotes(mock.Anything).RunAndReturn(fetch).Once()
+		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(seventv.EmoteResponse{}, nil)
+		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(bttv.GlobalEmoteResponse{}, nil)
+		ffzService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(nil, nil)
+	} else {
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").RunAndReturn(func(ctx context.Context, _ string) (twitchapi.EmoteResponse, error) {
+			return fetch(ctx)
+		}).Once()
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").Once().Return(bttv.UserResponse{}, nil)
+		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").Once().Return(nil, nil)
+	}
+	return emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService), started, releaseRefresh
+}
 
 func TestRefreshLocal(t *testing.T) {
 	ttv := mocks.NewMockTwitchEmoteFetcher(t)

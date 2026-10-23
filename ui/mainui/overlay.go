@@ -10,12 +10,6 @@ import (
 // larger than the background is clipped rather than allowed to overflow the
 // terminal.
 //
-// This replaces github.com/julez-dev/bubbletea-overlay, a fork of
-// rmhubbert/bubbletea-overlay. Upstream stopped adding features on 2026-02-28
-// once lipgloss v2 shipped a built-in cell compositor, and the fork had drifted
-// (1 commit ahead, 10 behind) while pinning bubbletea/lipgloss v2.0.0 and
-// dragging x/ansi and xo/terminfo backwards.
-//
 // Position semantics match the old overlay.Composite(fg, bg, Center, Center, 0, 0)
 // call exactly, including the integer-division centering: bgWidth/2-fgWidth/2,
 // which differs from (bgWidth-fgWidth)/2 when the widths have different parity.
