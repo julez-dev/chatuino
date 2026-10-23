@@ -76,34 +76,6 @@ func (r *replyState) View(width int, accent, dimmed lipgloss.Style) string {
 	return accent.Render(label) + dimmed.Render(snippet) + strings.Repeat(" ", gap) + dimmed.Render(hint)
 }
 
-// takeReplyTarget returns the armed reply's message ID and disarms the reply. The
-// layout is recalculated because the indicator row is given back to the chat window.
-func (t *Broadcast) takeReplyTarget() string {
-	id := t.input.TakeReply()
-	if id != "" {
-		t.HandleResize()
-	}
-
-	return id
-}
-
-// clearReplyTarget disarms the armed reply. The reply indicator occupies a row above
-// the message input, so the layout is recalculated here: otherwise the chat window
-// keeps the height it had while the indicator was visible and the view ends up a row
-// short, floating the status bar above the bottom of the terminal.
-func (t *Broadcast) clearReplyTarget() {
-	// A tab has no composer before its channel data loaded, and therefore no reply
-	// to disarm. Guarding here keeps every caller safe rather than only the ones
-	// that remember to check.
-	if t.input == nil {
-		return
-	}
-
-	if t.input.ClearReply() {
-		t.HandleResize()
-	}
-}
-
 // replySnippet normalizes a chat message into a single line for the reply indicator.
 func replySnippet(message string) string {
 	message = strings.ReplaceAll(message, string(duplicateBypass), "")

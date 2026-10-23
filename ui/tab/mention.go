@@ -224,6 +224,23 @@ func (m *mentionTab) ChannelID() string {
 	return ""
 }
 
+func (m *mentionTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
+	if msg.Button == tea.MouseLeft {
+		m.chatWindow.selectAtViewportRow(y)
+	}
+
+	return nil
+}
+
+func (m *mentionTab) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
+	if delta := WheelDelta(msg); delta != 0 {
+		m.chatWindow.scrollByLines(delta)
+		m.chatWindow.snapScroll()
+	}
+
+	return nil
+}
+
 func (m *mentionTab) HandleResize() {
 	m.chatWindow.Resize(m.width, m.height)
 }

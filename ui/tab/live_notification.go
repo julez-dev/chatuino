@@ -176,6 +176,23 @@ func (l *liveNotificationTab) ChannelID() string {
 	return ""
 }
 
+func (l *liveNotificationTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
+	if msg.Button == tea.MouseLeft {
+		l.chatWindow.selectAtViewportRow(y)
+	}
+
+	return nil
+}
+
+func (l *liveNotificationTab) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
+	if delta := WheelDelta(msg); delta != 0 {
+		l.chatWindow.scrollByLines(delta)
+		l.chatWindow.snapScroll()
+	}
+
+	return nil
+}
+
 func (l *liveNotificationTab) HandleResize() {
 	l.chatWindow.Resize(l.width, l.height)
 }
