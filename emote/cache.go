@@ -14,7 +14,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/singleflight"
+	"resenje.org/singleflight"
 
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/rs/zerolog"
@@ -60,8 +60,8 @@ type Cache struct {
 	bttvEmotes    BTTVEmoteFetcher
 	ffzEmotes     FFZEmoteFetcher
 
-	// supress duplicated calls
-	single          *singleflight.Group
+	// Shared fetches stay alive while at least one caller is waiting.
+	single          *singleflight.Group[string, EmoteSet]
 	channelsFetched map[string]struct{}
 	globalFetched   bool
 }
@@ -75,7 +75,7 @@ func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 		sevenTVEmotes:   sevenTVEmotes,
 		bttvEmotes:      bttvEmotes,
 		ffzEmotes:       ffzEmotes,
-		single:          &singleflight.Group{},
+		single:          &singleflight.Group[string, EmoteSet]{},
 		channelsFetched: map[string]struct{}{},
 		user:            map[string]EmoteSet{},
 		foreignEmotes:   map[string]Emote{},
@@ -85,6 +85,10 @@ func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 // RefreshLocal refreshes the local emote cache for a specific channel.
 // When a 3rd party API fails, the cache will still be refreshed but a ErrPartialFetch will be returned.
 func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	s.m.RLock()
 	if _, isCached := s.channelsFetched[channelID]; isCached {
 		s.m.RUnlock()
@@ -92,7 +96,7 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 	}
 	s.m.RUnlock()
 
-	set, err, _ := s.single.Do("channel"+channelID, func() (any, error) {
+	set, _, err := s.single.Do(ctx, "channel"+channelID, func(ctx context.Context) (EmoteSet, error) {
 		var (
 			ttvResp  twitchapi.EmoteResponse
 			stvResp  seventv.ChannelEmoteResponse
@@ -241,12 +245,16 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	s.channelsFetched[channelID] = struct{}{}
-	s.channel[channelID] = set.(EmoteSet)
+	s.channel[channelID] = set
 
 	return err
 }
 
 func (s *Cache) RefreshGlobal(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	s.m.RLock()
 	if s.globalFetched {
 		s.m.RUnlock()
@@ -254,7 +262,7 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 	}
 	s.m.RUnlock()
 
-	set, err, shared := s.single.Do("global", func() (any, error) {
+	set, shared, err := s.single.Do(ctx, "global", func(ctx context.Context) (EmoteSet, error) {
 		group, ctx := errgroup.WithContext(ctx)
 
 		var (
@@ -375,7 +383,7 @@ func (s *Cache) RefreshGlobal(ctx context.Context) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	s.globalFetched = true
-	s.global = set.(EmoteSet)
+	s.global = set
 
 	return nil
 }

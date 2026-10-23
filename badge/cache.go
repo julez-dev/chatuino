@@ -6,7 +6,7 @@ import (
 
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"golang.org/x/sync/singleflight"
+	"resenje.org/singleflight"
 )
 
 type BadgeFetcher interface {
@@ -18,7 +18,7 @@ type Cache struct {
 	globalBadges  []twitchapi.BadgeSet
 	channelBadges map[string][]twitchapi.BadgeSet // channelID:badgeSet
 
-	single *singleflight.Group
+	single *singleflight.Group[string, struct{}]
 	l      *sync.RWMutex
 
 	fetcher BadgeFetcher
@@ -28,7 +28,7 @@ func NewCache(fetcher BadgeFetcher) *Cache {
 	return &Cache{
 		l:             &sync.RWMutex{},
 		fetcher:       fetcher,
-		single:        &singleflight.Group{},
+		single:        &singleflight.Group[string, struct{}]{},
 		channelBadges: make(map[string][]twitchapi.BadgeSet),
 	}
 }
@@ -45,18 +45,24 @@ func (c *Cache) RefreshGlobal(ctx context.Context) error {
 	return nil
 }
 
+// RefreshChannel lets each caller cancel its wait independently. The shared
+// fetch is cancelled only after every caller has stopped waiting.
 func (c *Cache) RefreshChannel(ctx context.Context, broadcasterID string) error {
-	_, err, _ := c.single.Do(broadcasterID, func() (any, error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	_, _, err := c.single.Do(ctx, broadcasterID, func(ctx context.Context) (struct{}, error) {
 		badges, err := c.fetcher.GetChannelChatBadges(ctx, broadcasterID)
 		if err != nil {
-			return nil, err
+			return struct{}{}, err
 		}
 
 		c.l.Lock()
 		c.channelBadges[broadcasterID] = badges
 		c.l.Unlock()
 
-		return nil, nil
+		return struct{}{}, nil
 	})
 
 	return err

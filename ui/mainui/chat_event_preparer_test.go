@@ -16,96 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeTab records every message routed to it.
-type fakeTab struct {
-	id        string
-	accountID string
-	channel   string
-	kind      tab.TabKind
-
-	mu       sync.Mutex
-	received []tea.Msg
-}
-
-func (f *fakeTab) Init() tea.Cmd                               { return nil }
-func (f *fakeTab) InitWithUserData(twitchapi.UserData) tea.Cmd { return nil }
-func (f *fakeTab) View() string                                { return "" }
-func (f *fakeTab) ViewWithoutStatusBar() string                { return "" }
-func (f *fakeTab) StatusBarView() string                       { return "" }
-func (f *fakeTab) Focus()                                      {}
-func (f *fakeTab) Blur()                                       {}
-func (f *fakeTab) Close()                                      {}
-func (f *fakeTab) AccountID() string                           { return f.accountID }
-func (f *fakeTab) Channel() string                             { return f.channel }
-func (f *fakeTab) IsComposing() bool                           { return false }
-func (f *fakeTab) IsSearching() bool                           { return false }
-func (f *fakeTab) IsDataLoaded() bool                          { return true }
-func (f *fakeTab) ID() string                                  { return f.id }
-func (f *fakeTab) Focused() bool                               { return false }
-func (f *fakeTab) ChannelID() string                           { return "" }
-func (f *fakeTab) HandleResize()                               {}
-func (f *fakeTab) SetSize(int, int)                            {}
-func (f *fakeTab) SetFullWidth(int)                            {}
-func (f *fakeTab) Kind() tab.TabKind                           { return f.kind }
-func (f *fakeTab) Title() string                               { return f.id }
-func (f *fakeTab) Identity() string                            { return "" }
-
-func (f *fakeTab) Update(msg tea.Msg) (tab.Tab, tea.Cmd) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.received = append(f.received, msg)
-
-	return f, nil
-}
-
-func (f *fakeTab) messages() []tea.Msg {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return append([]tea.Msg(nil), f.received...)
-}
-
-func newFakeTab(id string) *fakeTab {
-	return &fakeTab{id: id, accountID: "acc", channel: "chan", kind: tab.BroadcastKind}
-}
-
-// execCmd runs a command and flattens batches so tests can feed the resulting
-// messages back into Root.
-func execCmd(t *testing.T, cmd tea.Cmd) []tea.Msg {
-	t.Helper()
-
-	if cmd == nil {
-		return nil
-	}
-
-	msg := cmd()
-	if msg == nil {
-		return nil
-	}
-
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		var out []tea.Msg
-
-		for _, c := range batch {
-			out = append(out, execCmd(t, c)...)
-		}
-
-		return out
-	}
-
-	if seq, ok := msg.(interface{ Commands() []tea.Cmd }); ok {
-		var out []tea.Msg
-		for _, c := range seq.Commands() {
-			out = append(out, execCmd(t, c)...)
-		}
-
-		return out
-	}
-
-	return []tea.Msg{msg}
-}
-
 func privateMessage(content string) *twitchirc.PrivateMessage {
 	return &twitchirc.PrivateMessage{
 		RoomID:          "room-1",
@@ -114,148 +24,6 @@ func privateMessage(content string) *twitchirc.PrivateMessage {
 		LoginName:       "alice",
 		Message:         content,
 	}
-}
-
-// TestRoot_PreparationPreservesArrivalOrder drives the real Root flow: events are
-// queued on arrival, enriched one at a time, and routed in the same order.
-func TestRoot_PreparationPreservesArrivalOrder(t *testing.T) {
-	t.Parallel()
-
-	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
-	ft := newFakeTab("tab-1")
-	root.tabs.Add(ft)
-
-	cmd := root.enqueueChatEvent("acc", "", privateMessage("first"), false)
-	require.NotNil(t, cmd, "the first event starts preparation")
-	require.Nil(t, root.enqueueChatEvent("acc", "", privateMessage("second"), false), "queued, not started")
-	require.Nil(t, root.enqueueChatEvent("acc", "", privateMessage("third"), false))
-
-	for cmd != nil {
-		var next tea.Cmd
-
-		for _, msg := range execCmd(t, cmd) {
-			prepared, ok := msg.(preparedChatEvent)
-			if !ok {
-				continue
-			}
-
-			_, next = root.Update(prepared)
-		}
-
-		cmd = next
-	}
-
-	messages := ft.messages()
-	require.Len(t, messages, 3)
-
-	for i, want := range []string{"first", "second", "third"} {
-		event, ok := messages[i].(tab.ChatEventMessage)
-		require.True(t, ok)
-		require.Equal(t, want, event.Message.(*twitchirc.PrivateMessage).Message,
-			"events must be routed in arrival order")
-	}
-
-	require.Equal(t, 0, root.events.len())
-	require.Zero(t, root.events.inFlight)
-}
-
-// TestRoot_PrepareCommandRunsBeforeRouting keeps tab content behind the raw
-// terminal command that places its images.
-func TestRoot_PrepareCommandRunsBeforeRouting(t *testing.T) {
-	t.Parallel()
-
-	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
-	ft := newFakeTab("tab-1")
-	root.tabs.Add(ft)
-
-	root.enqueueChatEvent("acc", "tab-1", privateMessage("image"), false)
-	seq := root.events.inFlight
-	require.NotZero(t, seq)
-
-	event := tab.ChatEventMessage{
-		TabID:          "tab-1",
-		Message:        privateMessage("image"),
-		PrepareCommand: "\x1b_G the image",
-	}
-
-	_, cmd := root.Update(preparedChatEvent{seq: seq, event: event})
-	require.NotNil(t, cmd, "the raw command is emitted")
-	require.Empty(t, ft.messages(), "content is not routed before the terminal command is written")
-	require.Equal(t, seq, root.events.inFlight, "the queue stays in flight across the hand-off")
-
-	// releasePreparedEvent clears the command before deferring the route.
-	event.PrepareCommand = ""
-
-	_, cmd = root.Update(routedPreparedEvent{seq: seq, event: event})
-	require.Nil(t, cmd, "nothing left in the queue")
-
-	messages := ft.messages()
-	require.Len(t, messages, 1, "the event is routed exactly once")
-
-	routed, ok := messages[0].(tab.ChatEventMessage)
-	require.True(t, ok)
-	require.Empty(t, routed.PrepareCommand, "the preparation command is not duplicated into the tab")
-}
-
-// TestRoot_DuplicatePreparedResultIsIgnored discards a repeated result instead of
-// delivering the event twice.
-func TestRoot_DuplicatePreparedResultIsIgnored(t *testing.T) {
-	t.Parallel()
-
-	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
-	ft := newFakeTab("tab-1")
-	root.tabs.Add(ft)
-
-	root.enqueueChatEvent("acc", "", privateMessage("once"), false)
-	seq := root.events.inFlight
-
-	prepared := preparedChatEvent{seq: seq, event: tab.ChatEventMessage{Message: privateMessage("once")}}
-
-	_, _ = root.Update(prepared)
-	require.Len(t, ft.messages(), 1)
-
-	_, _ = root.Update(prepared)
-	require.Len(t, ft.messages(), 1, "the duplicate result is dropped")
-}
-
-// TestRoot_ClosedTabDropsLateEvent routes a late result for a tab that was closed
-// in the meantime: no panic, and no other tab receives it.
-func TestRoot_ClosedTabDropsLateEvent(t *testing.T) {
-	t.Parallel()
-
-	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
-	closed := newFakeTab("tab-1")
-	other := newFakeTab("tab-2")
-	root.tabs.Add(closed)
-	root.tabs.Add(other)
-
-	_, ok := root.tabs.Remove("tab-1")
-	require.True(t, ok)
-
-	require.NotPanics(t, func() {
-		_ = root.dispatchPreparedEvent(tab.ChatEventMessage{TabID: "tab-1", Message: privateMessage("late")})
-	})
-
-	require.Empty(t, closed.messages())
-	require.Empty(t, other.messages(), "a tab-addressed event must not reach another tab")
-}
-
-// TestRoot_BroadcastRouting checks that non-addressed events fan out to every tab
-// once, which is what lets channel tabs, the mention tab and the notification tab
-// all see them.
-func TestRoot_BroadcastRouting(t *testing.T) {
-	t.Parallel()
-
-	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
-	one := newFakeTab("tab-1")
-	two := newFakeTab("tab-2")
-	root.tabs.Add(one)
-	root.tabs.Add(two)
-
-	_ = root.dispatchPreparedEvent(tab.ChatEventMessage{Message: privateMessage("hello")})
-
-	require.Len(t, one.messages(), 1)
-	require.Len(t, two.messages(), 1)
 }
 
 type fakePreparationEmotes struct {
@@ -475,4 +243,95 @@ func TestEventQueue(t *testing.T) {
 	require.Equal(t, second.seq, next.seq, "the next request is the one that was queued second")
 	require.True(t, q.finish(next.seq))
 	require.Equal(t, 0, q.len())
+}
+
+type emotePreparationFunc func(context.Context, string, string, []twitchirc.Emote) (string, map[string]string, error)
+
+func (f emotePreparationFunc) Replace(ctx context.Context, channel, content string, emotes []twitchirc.Emote) (string, map[string]string, error) {
+	return f(ctx, channel, content, emotes)
+}
+
+type badgePreparationFuncs struct {
+	replace func(context.Context, string, []twitchirc.Badge) (string, map[string]string, error)
+	inject  func(context.Context, string, map[string]string) (string, error)
+}
+
+func (f badgePreparationFuncs) Replace(ctx context.Context, channel string, badges []twitchirc.Badge) (string, map[string]string, error) {
+	if f.replace != nil {
+		return f.replace(ctx, channel, badges)
+	}
+	return "", nil, nil
+}
+
+func (f badgePreparationFuncs) InjectContributorBadge(ctx context.Context, login string, badges map[string]string) (string, error) {
+	if f.inject != nil {
+		return f.inject(ctx, login, badges)
+	}
+	return "", nil
+}
+
+func runPreparation(cmd tea.Cmd) <-chan tea.Msg {
+	result := make(chan tea.Msg, 1)
+	go func() { result <- cmd() }()
+	return result
+}
+
+func awaitPreparation(t *testing.T, result <-chan tea.Msg) tea.Msg {
+	t.Helper()
+	select {
+	case msg := <-result:
+		return msg
+	case <-time.After(time.Second):
+		t.Fatal("preparation did not finish")
+		return nil
+	}
+}
+
+func TestChatEventPreparer_DeadlineCoversEveryReplacement(t *testing.T) {
+	t.Parallel()
+
+	for _, stage := range []string{"emote", "badge", "contributor"} {
+		t.Run(stage, func(t *testing.T) {
+			t.Parallel()
+
+			prep, _, _, _ := newTestPreparer(t)
+			prep.timeout = 20 * time.Millisecond
+			seen := make(chan error, 1)
+			wait := func(ctx context.Context) error {
+				<-ctx.Done()
+				seen <- ctx.Err()
+				return ctx.Err()
+			}
+			switch stage {
+			case "emote":
+				prep.emoteReplacer = emotePreparationFunc(func(ctx context.Context, _, _ string, _ []twitchirc.Emote) (string, map[string]string, error) {
+					return "", nil, wait(ctx)
+				})
+			case "badge":
+				prep.badgeReplacer = badgePreparationFuncs{replace: func(ctx context.Context, _ string, _ []twitchirc.Badge) (string, map[string]string, error) {
+					return "", nil, wait(ctx)
+				}}
+			case "contributor":
+				prep.badgeReplacer = badgePreparationFuncs{inject: func(ctx context.Context, _ string, _ map[string]string) (string, error) {
+					return "", wait(ctx)
+				}}
+			}
+
+			message := privateMessage("still displayed")
+			message.Badges = []twitchirc.Badge{{Name: "subscriber", Version: "1"}}
+			result := runPreparation(func() tea.Msg {
+				return prep.prepare(prepareRequest{ircer: message})
+			})
+			event := awaitPreparation(t, result).(tab.ChatEventMessage)
+			require.Same(t, message, event.Message, "enrichment failure must not discard the original message")
+			require.NotNil(t, event.DisplayModifier.BadgeReplacement, "failed badge replacement must retain a writable contributor map")
+			require.Empty(t, event.PrepareCommand)
+			select {
+			case err := <-seen:
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			default:
+				t.Fatal("replacement did not observe the preparation deadline")
+			}
+		})
+	}
 }

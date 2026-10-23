@@ -1,7 +1,6 @@
 package tab
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -341,27 +340,4 @@ func Test_messageRenderer_DoesNotMutateEventData(t *testing.T) {
 
 	require.Equal(t, WordReplacement{"Kappa": "[k]"}, replacements,
 		"rendering must not write the derived user colors into the event's map")
-}
-
-func TestUserPalette(t *testing.T) {
-	t.Parallel()
-
-	p := newUserPalette()
-
-	render, ok := p.Lookup("alice")
-	require.False(t, ok)
-	require.Nil(t, render)
-
-	first := p.Renderer("alice", "#123456")
-	second := p.Renderer("alice", "#abcdef")
-	require.NotNil(t, first)
-
-	require.Equal(t, fmt.Sprintf("%p", first), fmt.Sprintf("%p", second), "the cached renderer is reused")
-
-	p.Renderer("bob", "")
-
-	require.ElementsMatch(t, []string{"alice", "bob"}, p.Names())
-
-	p.Prune(map[string]struct{}{"alice": {}})
-	require.ElementsMatch(t, []string{"alice"}, p.Names())
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -1396,4 +1397,26 @@ func Test_broadcastTab_quickSendRestoresLayout(t *testing.T) {
 	require.Equal(t, chatHeightWithoutReply, tab.chatWindow.height, "quick send gives the row back to the chat window")
 	require.Equal(t, rowsWithoutReply, layoutRows(tab))
 	require.NotNil(t, cmd)
+}
+
+func TestBroadcastTab_RegisterClick(t *testing.T) {
+	t.Parallel()
+
+	tab := &Broadcast{}
+	entry := &chatEntry{Position: position{CursorStart: 0, CursorEnd: 2}}
+	other := &chatEntry{Position: position{CursorStart: 3, CursorEnd: 4}}
+
+	require.False(t, tab.registerClick(entry, 0))
+	require.True(t, tab.registerClick(entry, 2), "second click on the same entry within the window is a double-click")
+
+	require.False(t, tab.registerClick(other, 3), "a different entry is not a double-click")
+	require.True(t, tab.registerClick(other, 3), "the tracker follows the new entry")
+
+	require.False(t, tab.registerClick(entry, 10), "a click outside the entry resets the tracker")
+	require.False(t, tab.registerClick(entry, 0), "the reset click cannot pair with the earlier one")
+	require.False(t, tab.registerClick(nil, 0), "nil entries are ignored")
+
+	tab.lastClickEntry = entry
+	tab.lastClickAt = time.Now().Add(-doubleClickWindow - time.Millisecond)
+	require.False(t, tab.registerClick(entry, 0), "clicks outside the time window are not a double-click")
 }

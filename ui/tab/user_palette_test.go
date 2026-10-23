@@ -1,6 +1,7 @@
 package tab
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/julez-dev/chatuino/save"
@@ -30,4 +31,27 @@ func TestUserPalette_ComposerSeesUpdatesThroughReadOnlyInterface(t *testing.T) {
 	palette.Prune(nil)
 	input.SetValue("@al")
 	require.NotContains(t, input.View(), "@alice")
+}
+
+func TestUserPalette(t *testing.T) {
+	t.Parallel()
+
+	p := newUserPalette()
+
+	render, ok := p.Lookup("alice")
+	require.False(t, ok)
+	require.Nil(t, render)
+
+	first := p.Renderer("alice", "#123456")
+	second := p.Renderer("alice", "#abcdef")
+	require.NotNil(t, first)
+
+	require.Equal(t, fmt.Sprintf("%p", first), fmt.Sprintf("%p", second), "the cached renderer is reused")
+
+	p.Renderer("bob", "")
+
+	require.ElementsMatch(t, []string{"alice", "bob"}, p.Names())
+
+	p.Prune(map[string]struct{}{"alice": {}})
+	require.ElementsMatch(t, []string{"alice"}, p.Names())
 }
