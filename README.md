@@ -8,6 +8,10 @@ A Twitch chat client that runs in your terminal.
 
 ![Demo of chatuino.](doc/demo.gif)
 
+![Tiled workspace showing several chats side by side.](doc/screenshot/workspace-view.png)
+
+*Tiled workspace with automatic workspace switching, saved layouts, and compact pane controls.*
+
 ![vertical chatuino.](doc/screenshot/vertical-mode.png)
 
 [More screenshots](doc/SCREENSHOTS.md)
@@ -30,6 +34,7 @@ The project draws inspiration from [Chatterino](https://github.com/Chatterino/ch
 
 - Multiple accounts with easy switching
 - Join any number of chats simultaneously
+- [Tiled workspace](doc/FEATURES.md#tiled-workspace) with keyboard splits, automatic workspaces, saved layouts, and compact pane status hints
 - Anonymous lurking without an account
 - Emotes rendered in-terminal (Kitty, Ghostty)
 - 7TV and BTTV emote support

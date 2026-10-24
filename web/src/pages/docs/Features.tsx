@@ -7,7 +7,7 @@ export default function Features() {
       <Title>Features - Chatuino</Title>
       <Meta
         name="description"
-        content="Explore Chatuino features: account management, graphical emotes, 7TV/BTTV/FFZ support, user inspection, message logging, mouse support, and more."
+        content="Explore Chatuino features: tiled workspaces, account management, graphical emotes, 7TV/BTTV/FFZ support, user inspection, message logging, mouse support, and more."
       />
       <Link rel="canonical" href="https://chatuino.net/docs/features" />
       <h1 class="mb-8 text-3xl font-bold text-nord4">
@@ -250,6 +250,53 @@ export default function Features() {
               Message Search
             </p>
           </div>
+        </div>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="mb-4 text-xl font-semibold text-nord4">Tiled Workspace</h2>
+        <p class="mb-4 text-nord4">
+          Monitor several chats side by side without opening another Chatuino
+          instance. Every tab stays visible in the tab list, marked with its
+          workspace and pane, such as{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">W1.2</code>.
+          Tabs follow pane reading order, and standalone tabs use{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">·</code>.
+        </p>
+        <p class="mb-4 text-nord4">
+          Press <strong class="text-nord8">F2</strong> to enter pane mode. Use{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">v</code> or{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">s</code> to
+          split, <strong>h/j/k/l</strong> or the arrow keys to focus panes, and{" "}
+          <strong>H/J/K/L</strong> to move the focused pane. Hide panes with{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">x</code>, zoom
+          with <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">z</code>,
+          resize with{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            &lt;/&gt;
+          </code>{" "}
+          or <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">-/+</code>.
+          Cycle panes with{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">Tab</code>.
+          The themed <code class="text-nord8">-- Pane --</code> status line
+          shows the active mode and controls, adapting to narrow terminals.
+        </p>
+        <p class="mb-4 text-nord4">
+          Workspaces are automatic: selecting a tab switches to the workspace
+          that owns it, while standalone tabs open full-screen and leave the
+          active layout untouched. Press{" "}
+          <strong class="text-nord8">Ctrl+T</strong> outside pane mode for a
+          standalone tab, or inside pane mode to add a new tab as a pane in the
+          current workspace. Layouts, focus, tab order, and workspace
+          assignments restore with the saved session.
+        </p>
+        <div class="overflow-hidden rounded-lg border border-nord2">
+          <PreviewImage
+            src="/screenshots/workspace-view.png"
+            alt="Tiled workspace showing several chats side by side with workspace and pane labels"
+            class="w-full"
+            loading="lazy"
+          />
         </div>
       </section>
 

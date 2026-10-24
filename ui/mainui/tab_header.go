@@ -9,7 +9,10 @@ import (
 // rowItem adapts a nav.Row to the bubbles list.Item interface used by the
 // vertical tab header. It carries no state of its own: every field comes from the
 // registry projection it was built from.
-type rowItem struct{ nav.Row }
+type rowItem struct {
+	nav.Row
+	Badge string // Wn.pane membership or standalone marker
+}
 
 func (r rowItem) FilterValue() string { return r.Title }
 
@@ -22,6 +25,76 @@ func rowLabel(row nav.Row) string {
 	}
 
 	return base
+}
+
+// Workspace badges appear as soon as any tab belongs to a tiled screen. They
+// make ownership visible across workspaces while standalone tabs stay marked.
+func showWorkspaceBadges(rows []nav.Row) bool {
+	for _, row := range rows {
+		if row.Workspace != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func workspaceBadge(row nav.Row, show bool) string {
+	if !show {
+		return ""
+	}
+	if row.Workspace != "" && row.WorkspacePane > 0 {
+		return fmt.Sprintf("%s.%d ", row.Workspace, row.WorkspacePane)
+	}
+	return "· "
+}
+
+func workspaceRowLabel(row nav.Row, show bool) string {
+	return workspaceBadge(row, show) + rowLabel(row)
+}
+
+func workspaceSummary(rows []nav.Row) string {
+	activeWorkspace, activeStandalone, anyAssigned := "", false, false
+	for _, row := range rows {
+		if row.Workspace != "" {
+			anyAssigned = true
+		}
+		if row.Active {
+			activeWorkspace = row.Workspace
+			activeStandalone = row.Workspace == ""
+		}
+	}
+	if activeStandalone {
+		if anyAssigned {
+			return "standalone"
+		}
+		return ""
+	}
+	if activeWorkspace == "" {
+		return ""
+	}
+	panes := 0
+	for _, row := range rows {
+		if row.Workspace == activeWorkspace {
+			panes++
+		}
+	}
+	if panes > 1 {
+		return fmt.Sprintf("%d tiled", panes)
+	}
+	return ""
+}
+
+// tabHeaderLabel keeps pagination and tiling context in the existing border
+// label without changing the tab row's order.
+func tabHeaderLabel(name string, rows []nav.Row, page, pages int) string {
+	label := name
+	if pages > 1 {
+		label += fmt.Sprintf(" %d/%d", page, pages)
+	}
+	if summary := workspaceSummary(rows); summary != "" {
+		label += " " + summary
+	}
+	return fmt.Sprintf("[ %s ]", label)
 }
 
 // textCapturer marks a screen that swallows printable keys because one of its

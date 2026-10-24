@@ -19,6 +19,12 @@ const (
 
 type AppState struct {
 	Tabs []TabState `json:"tabs"`
+	// Decode layout separately, after restoring tabs. Structurally invalid or
+	// newer layout metadata must not make otherwise valid tab records unloadable.
+	Layout json.RawMessage `json:"layout,omitempty"`
+	// Multi-workspace sessions keep the legacy Layout field as the active
+	// workspace snapshot for older readers; new readers prefer Workspaces.
+	Workspaces json.RawMessage `json:"workspaces,omitempty"`
 }
 
 type TabState struct {

@@ -3,6 +3,9 @@
 ## Chat View
 ![Chat View](screenshot/chat-view.png)
 
+## Tiled Workspace
+![Tiled Workspace](screenshot/workspace-view.png)
+
 ## Vertical Mode
 ![Vertical Mode](screenshot/vertical-mode.png)
 

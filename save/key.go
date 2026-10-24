@@ -38,6 +38,27 @@ type KeyMap struct {
 	Next     key.Binding `yaml:"next"`
 	Previous key.Binding `yaml:"previous"`
 
+	// Pane controls (active only in pane mode, except PaneMode itself).
+	PaneMode         key.Binding `yaml:"pane_mode"`
+	PaneFocusLeft    key.Binding `yaml:"pane_focus_left"`
+	PaneFocusDown    key.Binding `yaml:"pane_focus_down"`
+	PaneFocusUp      key.Binding `yaml:"pane_focus_up"`
+	PaneFocusRight   key.Binding `yaml:"pane_focus_right"`
+	PaneSwapLeft     key.Binding `yaml:"pane_swap_left"`
+	PaneSwapDown     key.Binding `yaml:"pane_swap_down"`
+	PaneSwapUp       key.Binding `yaml:"pane_swap_up"`
+	PaneSwapRight    key.Binding `yaml:"pane_swap_right"`
+	PaneSplitColumns key.Binding `yaml:"pane_split_columns"`
+	PaneSplitRows    key.Binding `yaml:"pane_split_rows"`
+	PaneNarrow       key.Binding `yaml:"pane_narrow"`
+	PaneWiden        key.Binding `yaml:"pane_widen"`
+	PaneShorten      key.Binding `yaml:"pane_shorten"`
+	PaneTaller       key.Binding `yaml:"pane_taller"`
+	PaneClose        key.Binding `yaml:"pane_close"`
+	PaneZoom         key.Binding `yaml:"pane_zoom"`
+	PaneNext         key.Binding `yaml:"pane_next"`
+	PanePrevious     key.Binding `yaml:"pane_previous"`
+
 	// Quick Join
 	QuickJoin key.Binding `yaml:"quick_join"`
 
@@ -116,6 +137,10 @@ func (c *KeyMap) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+func paneBinding(description string, keys ...string) key.Binding {
+	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(strings.Join(keys, "/"), description))
+}
+
 func BuildDefaultKeyMap() KeyMap {
 	return KeyMap{
 		Up: key.NewBinding(
@@ -144,7 +169,7 @@ func BuildDefaultKeyMap() KeyMap {
 		),
 		Create: key.NewBinding(
 			key.WithKeys("ctrl+t"),
-			key.WithHelp("ctrl+t", "open new tab/add account"),
+			key.WithHelp("ctrl+t", "new tab / pane"),
 		),
 		Remove: key.NewBinding(
 			key.WithKeys("r"),
@@ -158,6 +183,25 @@ func BuildDefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+alt+d"),
 			key.WithHelp("ctrl+alt+d", "dump screen"),
 		),
+		PaneMode:         paneBinding("pane controls", "f2"),
+		PaneFocusLeft:    paneBinding("focus pane left", "left", "h"),
+		PaneFocusDown:    paneBinding("focus pane down", "down", "j"),
+		PaneFocusUp:      paneBinding("focus pane up", "up", "k"),
+		PaneFocusRight:   paneBinding("focus pane right", "right", "l"),
+		PaneSwapLeft:     paneBinding("move pane left", "H"),
+		PaneSwapDown:     paneBinding("move pane down", "J"),
+		PaneSwapUp:       paneBinding("move pane up", "K"),
+		PaneSwapRight:    paneBinding("move pane right", "L"),
+		PaneSplitColumns: paneBinding("split left/right", "v"),
+		PaneSplitRows:    paneBinding("split top/bottom", "s"),
+		PaneNarrow:       paneBinding("decrease pane width", "<"),
+		PaneWiden:        paneBinding("increase pane width", ">"),
+		PaneShorten:      paneBinding("decrease pane height", "-"),
+		PaneTaller:       paneBinding("increase pane height", "+"),
+		PaneClose:        paneBinding("hide pane (keep tab)", "x"),
+		PaneZoom:         paneBinding("zoom pane", "z"),
+		PaneNext:         paneBinding("next pane", "tab"),
+		PanePrevious:     paneBinding("previous pane", "shift+tab"),
 		QuickJoin: key.NewBinding(
 			key.WithKeys("ctrl+j"),
 			key.WithHelp("ctrl+j", "quick join channel"),

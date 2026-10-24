@@ -8,7 +8,7 @@ Chatuino allows you to manage multiple accounts in addition to an anonymous acco
 
 ## State Persistence
 
-Chatuino saves your open tabs when you exit the application. When you restart, it attempts to restore your last session with all open tabs.
+Chatuino saves your open tabs when you exit the application. When you restart, it attempts to restore your last session, including the tiled layout, split proportions, and focused tab. Older saved sessions without a layout still open in the single-tab view.
 
 Chatuino is designed for users who monitor multiple channels simultaneously over extended periods.
 
@@ -55,6 +55,44 @@ Press `?` to view all key bindings.
 ![Chat View](screenshot/chat-view.png)
 
 ![Search](screenshot/message-search.png)
+
+## Tiled Workspace
+
+Display several tabs at once without opening additional Chatuino instances. The normal single-tab presentation remains the default; only an explicit split adds another pane.
+
+![Tiled workspace with three chats in one workspace and another workspace plus a standalone tab in the tab list.](screenshot/workspace-view.png)
+
+1. Open the tabs you want to monitor.
+2. Press **F2** to enter pane mode. The status line shows a themed `-- Pane --` indicator with compact, adaptive key hints.
+3. Press **v** for a left/right split or **s** for a top/bottom split.
+4. Choose an open, unassigned tab, or choose **Open a new tab…**. Enter confirms; Escape cancels without changing the layout.
+5. Use arrows or **h/j/k/l** to focus panes. Press **Escape** or **F2** to leave pane mode and interact with the focused tab.
+
+Pane mode also supports **H/J/K/L** to move the focused pane. A move swaps with the nearest neighbour in that direction; at an outer edge it re-docks the pane as a new 50/50 outer split, which can change a row of panes into a stack or the reverse. Use **</>** to shrink/grow width, **-/+** to shrink/grow height, **z** to zoom, and **Tab/Shift+Tab** to cycle panes. See [pane controls](SETTINGS.md#pane-controls) for configuration and the full mapping.
+
+- Channel, Mention, and Live Notification tabs can all occupy panes. Each tab appears at most once. **Tab/Shift+Tab navigate without changing the layout:** an assigned tab focuses its pane and automatically shows the workspace that owns it; an unassigned tab opens as a full-screen standalone view while every workspace stays intact behind it. Clicking a tab only activates it; it never assigns it to a pane.
+- **x in pane mode hides a pane, not its tab.** Its draft, reply, history, and local modes remain available. The final pane cannot be hidden. The normal close-tab command remains separate and runs the tab's normal cleanup.
+- Each chat has its own composer. Only the focused tab receives keyboard input. Click a pane to focus and interact with it; wheel-scroll another pane without changing the typing destination. Normal notification indicators are acknowledged on focus, not merely because a pane is visible. While a composer is active, Tab is handled by suggestion completion; while chat search is active, Tab stays in search instead of changing tabs.
+- Tiled panes show their channel/tab and account identity, with a `>` marker on the focused pane. Pane headers use the same `Wn.pane` label. The tab list always shows every tab and marks workspace tabs as `W1.1`, `W2.3`, and so on (workspace and pane), with `·` for standalone tabs. Tab entries follow pane reading order, so moving a pane also moves its tab entry; standalone tabs stay after workspace tabs in their original relative order. Its border shows `N tiled` or `standalone`. Help/account/join dialogs cover the workspace rather than opening inside one pane.
+- New splits start 50/50; resizing changes the relevant split in five-percentage-point steps. Panes need at least **24 columns × 8 rows**, including pane chrome, with extra space for separators and the global tab list/status.
+- **z** temporarily shows the focused pane across the workspace. Navigation stays zoomed; successful layout edits return to tiling. Zoom is not saved across restarts.
+- If a terminal resize makes the layout too small, `SMALL TERMINAL` indicates a temporary focused-pane view. The full layout returns when it fits again. You can navigate or close panes in this state, but cannot split, move, or resize an unseen layout.
+- Detached `--tab` sessions may be tiled in memory but still never read or write saved session state.
+
+Mouse dragging, moving whole subtrees to an arbitrary target, and duplicate views of one tab are not supported.
+
+### Multiple Workspaces
+
+Workspaces are created automatically; there is no workspace picker and no separate workspace selection:
+
+- Every tab stays in the normal tab list, regardless of which workspace owns it.
+- Press **F2** on a standalone tab to create or reuse an empty workspace, make that tab its first pane, and enter pane mode. Pressing **F2** on a tab already in a workspace enters that workspace's pane mode. Pressing **F2** on another standalone tab creates another workspace when no empty workspace can be reused.
+- Tab/Shift+Tab and tab clicks automatically switch to the workspace that owns the selected tab. A standalone tab opens full-screen and leaves the current workspace untouched.
+- Use **Ctrl+T while in pane mode** to add a new tab directly to the current workspace as a new pane. Use **Ctrl+T outside pane mode** for a standalone tab.
+- The tab list shows ownership as `W1.1`, `W2.2`, etc.; standalone tabs show `·`.
+- A tab belongs to at most one workspace. Opening the same broadcast in another workspace means creating a separate tab there, with its own draft, history, selection, and pane membership. Backend connections and caches can still be shared.
+- Workspace layouts, focus, tab order, and the tab collection order restore with the saved session. Older single-layout state opens as `W1`. Empty workspaces are reused and detached sessions never load or save workspace state.
+
 
 ## Mouse
 

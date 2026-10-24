@@ -25,6 +25,12 @@ type polledStreamInfoMessage struct {
 	streamInfos []tab.SetStreamInfoMessage
 }
 
+// CloseTabMessage closes a tab by stable identity. Unlike close-pane, this runs
+// the tab's normal resource cleanup; unassigned-tab closure leaves panes alone.
+type CloseTabMessage struct {
+	TabID string
+}
+
 // appStateSaveMessage comes when current app state was saved
 type appStateSaveMessage struct{}
 

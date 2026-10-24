@@ -121,7 +121,7 @@ type Broadcast struct {
 	channelLogin string
 
 	width, height int
-	fullWidth     int // full terminal width (for status bar in vertical mode)
+	fullWidth     int // nonzero when Root renders a shared full-width status line
 
 	// layout is the row allocation recorded by HandleResize. The view and the
 	// mouse handlers read it instead of recomputing the arrangement.
@@ -359,16 +359,14 @@ func (t *Broadcast) Channel() string {
 
 // Title is the header label: the channel as the user entered it.
 func (t *Broadcast) Title() string {
-	return t.channel
+	title, _ := Caption(BroadcastKind, t.account, t.channel)
+	return title
 }
 
 // Identity is the account label shown next to the title.
 func (t *Broadcast) Identity() string {
-	if t.account.IsAnonymous {
-		return "Anonymous"
-	}
-
-	return t.account.DisplayName
+	_, identity := Caption(BroadcastKind, t.account, t.channel)
+	return identity
 }
 
 func (t *Broadcast) ChannelID() string {
@@ -439,6 +437,8 @@ func (t *Broadcast) Focus() {
 
 	// The mode decides which child owns the keyboard.
 	switch {
+	case t.state == emoteOverviewMode:
+		// The overview consumes tab input itself; do not focus hidden widgets.
 	case t.state.isComposing():
 		t.input.Focus()
 	case t.state.isInspecting():
@@ -459,9 +459,8 @@ func (t *Broadcast) Blur() {
 	// loaded. A tab that is still loading (for example a restored tab whose data is
 	// fetched after it became active) has none of them yet.
 	if t.channelDataLoaded {
-		// Leaving the tab disarms the reply, so it cannot be sent from another tab.
-		t.clearReplyTarget()
-
+		// Draft/reply/mode state belongs to this tab, not its pane's focus.
+		// Only the focused tab receives input, so another pane cannot send it.
 		t.chatWindow.Blur()
 		t.input.Blur()
 
@@ -871,8 +870,8 @@ func (t *Broadcast) View() string {
 	return t.render(true)
 }
 
-// ViewWithoutStatusBar returns the view without the status bar (for vertical tab
-// mode, where Root renders the status bar at full terminal width).
+// ViewWithoutStatusBar returns the body for a pane or vertical tab-list view;
+// Root renders the focused tab's status bar at full terminal width.
 func (t *Broadcast) ViewWithoutStatusBar() string {
 	return t.render(false)
 }
@@ -935,7 +934,7 @@ func (t *Broadcast) render(includeStatus bool) string {
 	return strings.Join(blocks, "\n")
 }
 
-// StatusBarView returns just the status bar view (for vertical tab mode)
+// StatusBarView returns the status bar for Root's shared status line.
 func (t *Broadcast) StatusBarView() string {
 	if !t.channelDataLoaded || t.statusInfo == nil {
 		return ""
@@ -965,8 +964,8 @@ func (t *Broadcast) HandleResize() {
 
 	var statusView string
 	if t.fullWidth == 0 {
-		// In vertical tab mode Root renders the status bar below the tab, so it
-		// does not take rows away from the chat.
+		// Without an external shared status line, reserve the status row inside
+		// this tab. Tiled/vertical views let Root allocate that row separately.
 		statusView = t.statusInfo.View()
 	}
 

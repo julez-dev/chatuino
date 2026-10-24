@@ -559,11 +559,24 @@ func (c *chatWindow) selectEntry(entry *chatEntry) {
 // moveSelectionByLines moves the selected message by n rendered lines, clamped
 // to the first/last message.
 func (c *chatWindow) moveSelectionByLines(n int) {
-	if len(c.activeEntries()) == 0 {
+	active := c.activeEntries()
+	if len(active) == 0 || n == 0 {
 		return
 	}
 
+	i, current := c.entryForCurrentCursor()
 	_, entry := c.entryAtLine(c.cursor + n)
+	if entry == current {
+		// A tall selected message can contain the whole wheel delta. Selecting
+		// the same entry would reset the cursor to its start and make repeated
+		// wheel-down events a permanent no-op. Advance to the neighbouring
+		// message instead; at either end the clamp below remains a no-op.
+		if n > 0 && i >= 0 && i+1 < len(active) {
+			entry = active[i+1]
+		} else if n < 0 && i > 0 {
+			entry = active[i-1]
+		}
+	}
 	c.selectEntry(entry)
 }
 

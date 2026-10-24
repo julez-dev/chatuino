@@ -69,6 +69,28 @@ func TestKeyMap_UnmarshalLegacyConfigKeepsNewFields(t *testing.T) {
 	require.Equal(t, []string{"pgup", "ctrl+u"}, keyMap.PageUp.Keys(), "new field uses the default")
 }
 
+func TestKeyMap_PaneBindingsKeepDefaultsAndExplicitOverrides(t *testing.T) {
+	t.Parallel()
+	mapping := BuildDefaultKeyMap()
+	require.Equal(t, []string{"f2"}, mapping.PaneMode.Keys())
+	require.Equal(t, []string{"left", "h"}, mapping.PaneFocusLeft.Keys())
+	require.Equal(t, []string{"H"}, mapping.PaneSwapLeft.Keys())
+	require.Equal(t, []string{"v"}, mapping.PaneSplitColumns.Keys())
+	require.Equal(t, []string{"s"}, mapping.PaneSplitRows.Keys())
+	require.NoError(t, yaml.Unmarshal([]byte("quit: [ctrl+c]\npane_mode: [ctrl+g]\npane_focus_left: []\npane_close: [ctrl+x]\n"), &mapping))
+	require.Equal(t, []string{"ctrl+g"}, mapping.PaneMode.Keys())
+	require.Empty(t, mapping.PaneFocusLeft.Keys(), "explicitly empty bindings disable that action")
+	require.Equal(t, []string{"ctrl+x"}, mapping.PaneClose.Keys())
+	require.Equal(t, []string{"tab"}, mapping.PaneNext.Keys(), "omitted new actions retain defaults")
+	require.Equal(t, []string{"ctrl+c"}, mapping.Quit.Keys())
+	encoded, err := yaml.Marshal(&mapping)
+	require.NoError(t, err)
+	roundtrip := BuildDefaultKeyMap()
+	require.NoError(t, yaml.Unmarshal(encoded, &roundtrip))
+	require.Empty(t, roundtrip.PaneFocusLeft.Keys())
+	require.Equal(t, mapping.PaneMode.Keys(), roundtrip.PaneMode.Keys())
+}
+
 func TestKeyMap_UnmarshalYAML(t *testing.T) {
 	t.Parallel()
 

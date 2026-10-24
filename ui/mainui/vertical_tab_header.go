@@ -65,7 +65,9 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 		line.WriteString("  ")
 	}
 
-	// Tab content
+	// Workspace membership badge, then tab content.
+	line.WriteString(entry.Badge)
+
 	content := rowLabel(entry.Row)
 	if selected {
 		line.WriteString(d.activeStyle.Render(content))
@@ -129,8 +131,9 @@ func (v *verticalTabHeader) syncList(rows []nav.Row) {
 	items := make([]list.Item, len(rows))
 	activeIndex := 0
 
+	showBadges := showWorkspaceBadges(rows)
 	for i, row := range rows {
-		items[i] = rowItem{Row: row}
+		items[i] = rowItem{Row: row, Badge: workspaceBadge(row, showBadges)}
 
 		if row.Active {
 			activeIndex = i
@@ -142,6 +145,9 @@ func (v *verticalTabHeader) syncList(rows []nav.Row) {
 }
 
 func (v *verticalTabHeader) View(rows []nav.Row) string {
+	if v.width <= 0 || v.height <= 0 {
+		return ""
+	}
 	v.syncList(rows)
 
 	borderStyle := v.borderStyle
@@ -163,12 +169,14 @@ func (v *verticalTabHeader) View(rows []nav.Row) string {
 	showUpArrow := currentIndex > 0 && totalItems > visibleItems
 	showDownArrow := currentIndex < totalItems-1 && totalItems > visibleItems
 
-	// Build top label with optional scroll indicator
-	topLabel := "[ Channels ]"
-	if totalItems > visibleItems {
-		// Show position indicator
-		topLabel = fmt.Sprintf("[ Channels %d/%d ]", currentIndex+1, totalItems)
+	// Build top label with optional page and workspace context. When tiling is
+	// active, workspace context takes priority over the page number so the
+	// sidebar does not grow wide enough to make the panes unusable.
+	page, pages := 0, 0
+	if workspaceSummary(rows) == "" && totalItems > visibleItems {
+		page, pages = currentIndex+1, totalItems
 	}
+	topLabel := tabHeaderLabel("Channels", rows, page, pages)
 
 	// Top border: ┌─[ Channels ]───...─┐ or with ▲
 	topFill := innerWidth - lipgloss.Width(topLabel) - 2
@@ -239,17 +247,37 @@ func (v *verticalTabHeader) TabAt(rows []nav.Row, x, y int) (string, bool) {
 
 func (v *verticalTabHeader) MinWidth(rows []nav.Row) int {
 	minWidth := 10
+	showBadges := showWorkspaceBadges(rows)
 
 	for _, row := range rows {
 		// measure with the notification marker so the width does not jump when one arrives
 		row.HasNotification = true
-		if w := lipgloss.Width(rowLabel(row)); w > minWidth {
+		if w := lipgloss.Width(workspaceRowLabel(row, showBadges)); w > minWidth {
+			minWidth = w
+		}
+	}
+	// Reserve the widest label that can be shown. Tiled mode prioritizes the
+	// workspace summary over page numbers, keeping the sidebar narrow enough for
+	// two panes; the ordinary list still reserves multi-digit page labels.
+	summary := workspaceSummary(rows)
+	if summary != "" {
+		if w := lipgloss.Width(tabHeaderLabel("Channels", rows, 0, 0)); w > minWidth {
+			minWidth = w
+		}
+	} else if len(rows) >= 10 {
+		if w := lipgloss.Width(tabHeaderLabel("Channels", rows, len(rows), len(rows))); w > minWidth {
 			minWidth = w
 		}
 	}
 
-	// Add 4 for left/right border characters (2) + bullet prefix (2)
-	return minWidth + 4
+	// Add 4 for left/right border characters (2) + bullet prefix (2). Tiled or
+	// standalone labels also need two columns for the top-label border so the
+	// rendered width matches the width reserved for the workspace.
+	extra := 4
+	if showBadges || summary != "" {
+		extra = 6
+	}
+	return minWidth + extra
 }
 
 func (v *verticalTabHeader) Resize(width, height int) {

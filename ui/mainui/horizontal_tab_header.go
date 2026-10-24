@@ -1,7 +1,6 @@
 package mainui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/julez-dev/chatuino/save"
@@ -39,7 +38,7 @@ func newHorizontalTabHeader(width int, theme save.Theme) *horizontalTabHeader {
 }
 
 func (h *horizontalTabHeader) View(rows []nav.Row) string {
-	if len(rows) == 0 {
+	if len(rows) == 0 || h.width <= 0 {
 		return ""
 	}
 
@@ -49,13 +48,10 @@ func (h *horizontalTabHeader) View(rows []nav.Row) string {
 	pages := h.calculatePages(rows)
 	currentPage, totalPages := h.findCurrentPage(rows, pages)
 
-	// Top label with page indicator
-	topLabel := "[ Tabs ]"
-	if totalPages > 1 {
-		topLabel = fmt.Sprintf("[ Tabs %d/%d ]", currentPage+1, totalPages)
-	}
+	// Top label with page and workspace context.
+	topLabel := tabHeaderLabel("Tabs", rows, currentPage+1, totalPages)
 
-	innerWidth := h.width - 2 // -2 for left/right │
+	innerWidth := max(0, h.width-2) // -2 for left/right │
 
 	// Build borders - total width should be h.width
 	// Top: ┌─ + label + fill + ─┐ = 2 + label + fill + 2 = innerWidth + 2 = h.width
@@ -100,11 +96,12 @@ func (h *horizontalTabHeader) calculatePages(rows []nav.Row) [][]int {
 	var pages [][]int
 	var currentPage []int
 	currentWidth := 0
+	showBadges := showWorkspaceBadges(rows)
 
 	for i, row := range rows {
-		// Width = bullet(2 "▸ ") + content + separator(3 " │ ")
+		// Width = bullet(2 "▸ ") + optional badge + content + separator(3 " │ ")
 		// For first item on page, no leading separator needed
-		rowWidth := 2 + lipgloss.Width(rowLabel(row))
+		rowWidth := 2 + lipgloss.Width(workspaceRowLabel(row, showBadges))
 		if len(currentPage) > 0 {
 			rowWidth += 3 // add separator width
 		}
@@ -113,7 +110,7 @@ func (h *horizontalTabHeader) calculatePages(rows []nav.Row) [][]int {
 			// Start new page
 			pages = append(pages, currentPage)
 			currentPage = []int{i}
-			currentWidth = 2 + lipgloss.Width(rowLabel(row)) // reset without separator
+			currentWidth = 2 + lipgloss.Width(workspaceRowLabel(row, showBadges)) // reset without separator
 		} else {
 			currentPage = append(currentPage, i)
 			currentWidth += rowWidth
@@ -190,9 +187,11 @@ func (h *horizontalTabHeader) renderTabContent(rows []nav.Row, pages [][]int, cu
 
 	// Render tabs on current page
 	pageRows := pages[currentPage]
+	showBadges := showWorkspaceBadges(rows)
 
 	for i, rowIdx := range pageRows {
 		row := rows[rowIdx]
+		label := workspaceRowLabel(row, showBadges)
 
 		// Add separator before (except first)
 		if i > 0 {
@@ -202,10 +201,10 @@ func (h *horizontalTabHeader) renderTabContent(rows []nav.Row, pages [][]int, cu
 		// Bullet for selected tab
 		if row.Active {
 			b.WriteString(bulletStyle.Render("▸ "))
-			b.WriteString(activeStyle.Render(rowLabel(row)))
+			b.WriteString(activeStyle.Render(label))
 		} else {
 			b.WriteString("  ") // spacing to align with bullet
-			b.WriteString(rowLabel(row))
+			b.WriteString(label)
 		}
 	}
 
@@ -236,6 +235,7 @@ func (h *horizontalTabHeader) buildHitSpans(rows []nav.Row, pages [][]int, curre
 	showNext := currentPage < totalPages-1
 
 	spans := make([]tabHitSpan, 0, len(pages[currentPage])+2)
+	showBadges := showWorkspaceBadges(rows)
 
 	// x = left border (1) + left arrow/padding (2)
 	x := 1 + 2
@@ -252,7 +252,7 @@ func (h *horizontalTabHeader) buildHitSpans(rows []nav.Row, pages [][]int, curre
 		}
 
 		start := x
-		x += 2 + lipgloss.Width(rowLabel(rows[rowIdx])) // bullet + label
+		x += 2 + lipgloss.Width(workspaceRowLabel(rows[rowIdx], showBadges)) // bullet + badge + label
 		spans = append(spans, tabHitSpan{start: start, end: x, id: rows[rowIdx].ID})
 	}
 

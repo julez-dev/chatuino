@@ -1342,6 +1342,52 @@ func Test_broadcastTab_handleMessageSent_quickSendConsumesReply(t *testing.T) {
 	require.Empty(t, client.sentRequests[1].ReplyMessageID)
 }
 
+func TestBroadcast_PaneResizeAndRefocusPreserveEveryMode(t *testing.T) {
+	for _, mode := range fsmModes {
+		t.Run(mode.String(), func(t *testing.T) {
+			t.Parallel()
+			model := newFSMTestTab(t, false)
+			t.Cleanup(model.Close)
+			enterMode(t, model, mode)
+			if mode == emoteOverviewMode {
+				model.emoteOverview = NewEmoteOverview(model.channelID, nil, nil, 1, 80, 24)
+			}
+			model.input.SetValue("a retained draft 界")
+			for _, size := range [][2]int{{0, 0}, {0, 24}, {24, 0}, {1, 1}, {24, 8}, {80, 24}} {
+				require.NotPanics(t, func() {
+					model.SetSize(size[0], size[1])
+					model.SetFullWidth(size[0])
+					model.HandleResize()
+					model.ViewWithoutStatusBar()
+				})
+			}
+			model.Blur()
+			model.Focus()
+			require.Equal(t, mode, model.state)
+			require.Equal(t, "a retained draft 界", model.input.Value())
+			assertTabInvariants(t, model)
+		})
+	}
+}
+
+func TestBroadcast_PaneFocusPreservesDraftReplyAndMode(t *testing.T) {
+	t.Parallel()
+	model, _ := newLoadedReplyTab(t)
+	model.state = insertMode
+	model.input.SetValue("unfinished reply")
+	model.input.ArmReply("message-1", "alice", "original")
+	model.Focus()
+	model.HandleResize()
+	before := layoutRows(model)
+	model.Blur()
+	require.Equal(t, "unfinished reply", model.input.Value())
+	require.True(t, model.input.ReplyArmed(), "pane focus changes must not discard reply state")
+	require.Equal(t, insertMode, model.state)
+	model.Focus()
+	require.True(t, model.input.Focused())
+	require.Equal(t, before, layoutRows(model))
+}
+
 func Test_broadcastTab_clearReplyTarget(t *testing.T) {
 	t.Parallel()
 
