@@ -23,7 +23,7 @@ func (r *Root) activeTab() tab.Tab {
 // active tab's view. inTab is false when the cell belongs to the tab header.
 func (r *Root) tabLocalCoords(x, y int) (localX, localY int, inTab bool) {
 	if r.settings.VerticalTabList {
-		headerWidth := lipgloss.Width(r.header.View(r.tabs.Rows()))
+		headerWidth := lipgloss.Width(r.header.View(r.visibleRows()))
 		if x < headerWidth {
 			return 0, 0, false
 		}
@@ -39,12 +39,10 @@ func (r *Root) tabLocalCoords(x, y int) (localX, localY int, inTab bool) {
 	return x, y - headerHeight, true
 }
 
-// switchToTab focuses the tab with the given id.
+// switchToTab activates a tab from either header. It never assigns a tab to a
+// pane: the active tab's owning workspace, when any, becomes live automatically.
 func (r *Root) switchToTab(id string) tea.Cmd {
-	// SetActive blurs the previous tab, focuses the new one and drops its
-	// notification flag; unknown ids are ignored.
-	r.tabs.SetActive(id)
-
+	r.navigateToTab(id)
 	return nil
 }
 
@@ -68,13 +66,33 @@ func (r *Root) isTyping() bool {
 // handleMouseClick routes a left click to the tab header or the active tab.
 func (r *Root) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
 	// Modals do not take mouse clicks; they are keyboard driven.
-	if msg.Button != tea.MouseLeft || !r.hasLoadedSession || r.stack.Len() > 0 {
+	if !r.settings.Mouse || msg.Button != tea.MouseLeft || !r.hasLoadedSession || r.stack.Len() > 0 ||
+		msg.X < 0 || msg.Y < 0 || msg.X >= r.width || msg.Y >= r.height {
+		return nil
+	}
+
+	if r.usesWorkspace() {
+		if id, x, y, content := r.paneMouseTarget(msg.X, msg.Y); id != "" {
+			r.switchToTab(id)
+			if aware, ok := r.tabByID(id).(mouseAware); ok && content {
+				return aware.HandleMouseClick(msg, x, y)
+			}
+			return nil
+		}
+		bounds := r.workspaceBounds()
+		inHeader := (!r.settings.VerticalTabList && msg.Y < bounds.Y) ||
+			(r.settings.VerticalTabList && msg.X < bounds.X && msg.Y < bounds.Height)
+		if inHeader {
+			if id, ok := r.header.TabAt(r.visibleRows(), msg.X, msg.Y); ok {
+				return r.switchToTab(id)
+			}
+		}
 		return nil
 	}
 
 	localX, localY, inTab := r.tabLocalCoords(msg.X, msg.Y)
 	if !inTab {
-		if id, ok := r.header.TabAt(r.tabs.Rows(), msg.X, msg.Y); ok {
+		if id, ok := r.header.TabAt(r.visibleRows(), msg.X, msg.Y); ok {
 			return r.switchToTab(id)
 		}
 
@@ -92,7 +110,7 @@ func (r *Root) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
 // handleMouseWheel routes a wheel event to the help viewport, the vertical tab
 // list, or the active tab.
 func (r *Root) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
-	if !r.hasLoadedSession {
+	if !r.settings.Mouse || !r.hasLoadedSession || msg.X < 0 || msg.Y < 0 || msg.X >= r.width || msg.Y >= r.height {
 		return nil
 	}
 
@@ -104,6 +122,25 @@ func (r *Root) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
 			return r.stack.Update(msg)
 		}
 
+		return nil
+	}
+
+	if r.usesWorkspace() {
+		if id, x, y, content := r.paneMouseTarget(msg.X, msg.Y); id != "" {
+			if aware, ok := r.tabByID(id).(mouseAware); ok && content {
+				return aware.HandleMouseWheel(msg, x, y)
+			}
+			return nil
+		}
+		bounds := r.workspaceBounds()
+		if r.settings.VerticalTabList && msg.X >= 0 && msg.X < bounds.X && msg.Y >= 0 && msg.Y < bounds.Height {
+			switch tab.WheelDelta(msg) {
+			case -3:
+				r.prevTab()
+			case 3:
+				r.nextTab()
+			}
+		}
 		return nil
 	}
 

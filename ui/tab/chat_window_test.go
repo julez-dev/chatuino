@@ -102,6 +102,33 @@ func TestChatWindow_ScrollByLines(t *testing.T) {
 	require.Equal(t, 0, selectedLine(t, c))
 }
 
+func TestChatWindow_ScrollByLinesAdvancesThroughTallEntry(t *testing.T) {
+	t.Parallel()
+
+	c := newChatWindow(40, 4, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+	c.lines = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"}
+	c.entries = []*chatEntry{
+		{Position: position{CursorStart: 0, CursorEnd: 5}, Selected: true},
+		{Position: position{CursorStart: 6, CursorEnd: 6}},
+		{Position: position{CursorStart: 7, CursorEnd: 7}},
+		{Position: position{CursorStart: 8, CursorEnd: 8}},
+		{Position: position{CursorStart: 9, CursorEnd: 9}},
+		{Position: position{CursorStart: 10, CursorEnd: 10}},
+		{Position: position{CursorStart: 11, CursorEnd: 11}},
+	}
+	c.cursor = 0
+	c.updatePort()
+	startLine := c.lineStart
+
+	for range 3 {
+		c.scrollByLines(3)
+	}
+
+	_, selected := c.entryForCurrentCursor()
+	require.NotSame(t, c.entries[0], selected, "wheel-down must not stay stuck in a tall selected message")
+	require.Greater(t, c.lineStart, startLine, "wheel-down must eventually move the viewport")
+}
+
 func TestChatWindow_EntryAtLineClamps(t *testing.T) {
 	t.Parallel()
 

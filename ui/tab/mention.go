@@ -209,11 +209,13 @@ func (m *mentionTab) ID() string {
 }
 
 func (m *mentionTab) Title() string {
-	return "mentioned"
+	title, _ := Caption(MentionKind, save.Account{}, "")
+	return title
 }
 
 func (m *mentionTab) Identity() string {
-	return "all"
+	_, identity := Caption(MentionKind, save.Account{}, "")
+	return identity
 }
 
 func (m *mentionTab) Focused() bool {

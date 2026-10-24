@@ -161,11 +161,13 @@ func (l *liveNotificationTab) ID() string {
 }
 
 func (l *liveNotificationTab) Title() string {
-	return "live notifications"
+	title, _ := Caption(LiveNotificationKind, save.Account{}, "")
+	return title
 }
 
 func (l *liveNotificationTab) Identity() string {
-	return "all"
+	_, identity := Caption(LiveNotificationKind, save.Account{}, "")
+	return identity
 }
 
 func (l *liveNotificationTab) Focused() bool {

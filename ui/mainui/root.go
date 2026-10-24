@@ -22,6 +22,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/ui/tab"
+	"github.com/julez-dev/chatuino/ui/workspace"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog/log"
 )
@@ -50,12 +51,19 @@ func (r *Root) latestVersion() string {
 }
 
 // tabRow projects a tab into the registry's rendering row, so headers never look
-// at tabs themselves.
-func tabRow(t tab.Tab) nav.Row {
-	return nav.Row{
-		Title:    t.Title(),
-		Identity: t.Identity(),
+// at tabs themselves. Pane membership is projected here because it changes
+// independently of registry membership.
+func (r *Root) tabRow(t tab.Tab) nav.Row {
+	row := nav.Row{Title: t.Title(), Identity: t.Identity()}
+	if owner := r.workspaceForTab(t.ID()); owner != nil {
+		layout := owner.layout
+		if owner.id == r.activeWorkspaceID {
+			layout = r.workspace
+		}
+		row.Workspace = r.workspaceLabelFor(owner)
+		row.WorkspacePane = layout.PaneNumber(t.ID())
 	}
+	return row
 }
 
 // updateTab adapts the self-typed tab.Update to the registry's updater shape.
@@ -133,6 +141,16 @@ type Root struct {
 	channelSuggestions []string // cached for broadcast to new tabs
 	updateInfo         *UpdateInfo
 
+	workspace         workspace.Layout // live layout of activeWorkspaceID
+	workspaces        []*namedWorkspace
+	activeWorkspaceID string
+	workspaceSeq      int
+	paneMode          bool
+	paneZoom          bool
+	paneHint          string
+	pendingSplit      *paneSplitRequest
+	splitSequence     uint64
+
 	// Chat events are enriched off the update loop, one at a time, in arrival
 	// order. The preparer owns the enrichment rules; the queue owns ordering.
 	preparer *chatEventPreparer
@@ -174,6 +192,7 @@ func NewUI(
 
 	r := &Root{
 		initialState:        initialState,
+		isDetached:          initialState != nil,
 		settings:            settings,
 		theme:               theme,
 		keymap:              keymap,
@@ -195,7 +214,6 @@ func NewUI(
 		width:               10,
 		height:              10,
 		userIDDisplayName:   &sync.Map{},
-		tabs:                nav.NewRegistry(tabRow),
 
 		// components
 		splash: splash{
@@ -208,6 +226,10 @@ func NewUI(
 		messageLoggerChan: messageLoggerChan,
 		events:            newEventQueue(512),
 	}
+
+	r.tabs = nav.NewRegistry(r.tabRow)
+	r.workspaces = []*namedWorkspace{{id: "workspace-1", name: "Workspace 1"}}
+	r.activeWorkspaceID, r.workspaceSeq = "workspace-1", 1
 
 	r.preparer = newChatEventPreparer(ctx, r)
 
@@ -265,46 +287,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
 	case tab.JoinChannelMessage:
-		// Close whichever modal asked for the join. Pop() blurs it through its
-		// Disappeared hook and drops the screen, so its state is collected.
-		r.stack.Pop()
-
-		nTab, cmd := r.createTab(msg.Account, msg.Channel, msg.TabKind)
-
-		r.tabs.Add(nTab)
-		r.tabs.SetActive(nTab.ID())
-
-		r.handleResize()
-
-		initCmds := []tea.Cmd{nTab.Init(), cmd}
-
-		// Record channel in history for broadcast tabs
-		if msg.TabKind == tab.BroadcastKind && msg.Channel != "" {
-			channel := msg.Channel
-
-			// update cached suggestions with new channel
-			if !slices.Contains(r.channelSuggestions, channel) {
-				r.channelSuggestions = append(r.channelSuggestions, channel)
-			}
-
-			if r.channelHistory != nil {
-				initCmds = append(initCmds, func() tea.Msg {
-					if err := r.channelHistory.RecordChannel(channel); err != nil {
-						log.Logger.Err(err).Str("channel", channel).Msg("failed to record channel history")
-					}
-					return nil
-				})
-			}
-		}
-
-		// send cached suggestions to new tab
-		if len(r.channelSuggestions) > 0 {
-			initCmds = append(initCmds, nav.To(nTab.ID(), tab.ChannelSuggestionsLoadedMessage{
-				Channels: r.channelSuggestions,
-			}))
-		}
-
-		return r, tea.Batch(initCmds...)
+		return r, r.finishJoin(msg, 0)
+	case paneChoiceMessage:
+		return r, r.choosePane(msg)
+	case paneJoinMessage:
+		return r, r.finishJoin(msg.join, msg.ticket)
+	case CloseTabMessage:
+		return r, r.closeTab(msg.TabID)
 	case wspool.IRCEvent:
 		// Handle IRC events from the connection pool. Enrichment (guest-channel
 		// lookup, emote/badge replacement, link checks) happens off the update
@@ -344,8 +333,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case appStateSaveMessage:
 		return r, r.tickSaveAppState()
 	case tea.WindowSizeMsg:
-		r.width = msg.Width
-		r.height = msg.Height
+		r.width = max(0, msg.Width)
+		r.height = max(0, msg.Height)
 		r.handleResize()
 		return r, nil
 	case tea.MouseClickMsg:
@@ -355,7 +344,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		// q-to-quit must not steal printable keys while an input is focused.
 		// Modifier-driven quit keys (ctrl+c) still work everywhere.
-		if key.Matches(msg, r.keymap.Quit) && !(r.isTyping() && msg.Text != "") {
+		if key.Matches(msg, r.keymap.Quit) && !((r.isTyping() || r.paneMode) && msg.Text != "") {
 			r.Close()
 			return r, tea.Quit
 		}
@@ -366,16 +355,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Help must not steal '?' while any text input (including chat search)
 		// is capturing printable characters.
-		if key.Matches(msg, r.keymap.Help) && !r.isTyping() && r.stack.Len() == 0 {
+		if key.Matches(msg, r.keymap.Help) && (!r.isTyping() || r.paneMode) && r.stack.Len() == 0 {
 			r.tabs.BlurActive()
 			return r, r.stack.Push(newHelp(r.height, r.width, r.keymap))
 		}
 
 		if key.Matches(msg, r.keymap.Escape) {
 			if r.stack.Len() > 0 {
-				r.tabs.FocusActive()
-
-				return r, r.stack.Pop()
+				return r, r.dismissModal()
 			}
 		}
 
@@ -394,11 +381,23 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return r, nil
 		}
 
+		if r.stack.Len() == 0 {
+			if r.paneMode {
+				return r, r.handlePaneKey(msg)
+			}
+			if key.Matches(msg, r.keymap.PaneMode) && r.activeID() != "" && r.enterPaneMode() {
+				return r, nil
+			}
+			if r.paneHint != "" {
+				r.paneHint = ""
+				r.handleResize()
+			}
+		}
+
 		if key.Matches(msg, r.keymap.Create) {
 			// The key toggles the join modal.
 			if r.stack.Route() == joinRoute {
-				r.tabs.FocusActive()
-				return r, r.stack.Pop()
+				return r, r.dismissModal()
 			}
 
 			if r.stack.Len() > 0 {
@@ -419,8 +418,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.keymap.QuickJoin) {
 			// The key toggles the quick join modal.
 			if r.stack.Route() == quickJoinRoute {
-				r.tabs.FocusActive()
-				return r, r.stack.Pop()
+				return r, r.dismissModal()
 			}
 
 			if r.stack.Len() > 0 {
@@ -440,73 +438,45 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if r.stack.Len() == 0 {
 
 			if key.Matches(msg, r.keymap.Next) {
-				if active, ok := r.tabs.Active(); ok && active.IsComposing() {
+				if active, ok := r.tabs.Active(); ok && (active.IsComposing() || active.IsSearching()) {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
 
 				r.nextTab()
+				return r, nil
 			}
 
 			if key.Matches(msg, r.keymap.Previous) {
-				if active, ok := r.tabs.Active(); ok && active.IsComposing() {
+				if active, ok := r.tabs.Active(); ok && (active.IsComposing() || active.IsSearching()) {
 					cmd, _ := r.tabs.UpdateActive(msg, updateTab)
 					return r, cmd
 				}
 
 				r.prevTab()
+				return r, nil
 			}
 
 			if key.Matches(msg, r.keymap.CloseTab) {
 				if active, ok := r.tabs.Active(); ok && !(active.IsComposing() || active.IsSearching()) {
-					currentTab := active
-					r.closeTab()
-
-					// if tab was connected to IRC, disconnect it
-					if currentTab.IsDataLoaded() && currentTab.Kind() == tab.BroadcastKind {
-						cmds := make([]tea.Cmd, 0, 2)
-
-						// if there is another tab for the same channel and the same account
-						hasTabsSameAccountAndChannel := r.tabs.Any(func(t tab.Tab) bool {
-							return t.ID() != currentTab.ID() &&
-								t.AccountID() == currentTab.AccountID() &&
-								t.ChannelID() == currentTab.ChannelID()
-						})
-
-						hasTabsSameChannel := r.tabs.Any(func(t tab.Tab) bool {
-							return t.ID() != currentTab.ID() &&
-								t.ChannelID() == currentTab.ChannelID()
-						})
-
-						if !hasTabsSameAccountAndChannel {
-							// send part message
-							log.Logger.Info().Str("channel", currentTab.Channel()).Str("id", currentTab.AccountID()).Msg("sending part message")
-							accountID := currentTab.AccountID()
-							channel := currentTab.Channel()
-							cmds = append(cmds, func() tea.Msg {
-								r.pool.SendIRC(accountID, twitchirc.PartMessage{Channel: channel})
-								return nil
-							})
-						}
-
-						if !hasTabsSameChannel {
-							log.Logger.Info().Str("channel", currentTab.Channel()).Str("channel-id", currentTab.ChannelID()).Msg("removing emote cache entry for channel")
-							r.emoteCache.RemoveEmoteSetForChannel(currentTab.ChannelID())
-						}
-
-						// Disconnect IRC for this account
-						accountID := currentTab.AccountID()
-						cmds = append(cmds, func() tea.Msg {
-							r.pool.DisconnectIRC(accountID)
-							return nil
-						})
-
-						return r, tea.Sequence(cmds...)
-					}
-
-					return r, nil
+					return r, r.closeTab(active.ID())
 				}
 			}
+		}
+	}
+
+	// Input belongs to one tab or the top dialog, never the event fan-out.
+	switch msg.(type) {
+	case tea.KeyPressMsg, tea.KeyReleaseMsg, tea.PasteMsg:
+		if r.stack.Len() > 0 {
+			return r, r.stack.Update(msg)
+		}
+		if r.paneMode {
+			return r, nil
+		}
+		if r.hasLoadedSession {
+			cmd, _ := r.tabs.UpdateActive(msg, updateTab)
+			return r, cmd
 		}
 	}
 
@@ -541,10 +511,10 @@ func (r *Root) View() tea.View {
 
 func (r *Root) renderView() string {
 	if !r.hasLoadedSession {
-		return r.splash.ViewLoading()
+		return r.clampScreen(r.splash.ViewLoading())
 	}
 
-	return r.stack.View()
+	return r.clampScreen(r.stack.View())
 }
 
 // screenContent renders the current screen behind any modal: the header plus the
@@ -552,19 +522,23 @@ func (r *Root) renderView() string {
 func (r *Root) screenContent() string {
 	tab, ok := r.tabs.Active()
 	if !ok {
-		return r.splash.View()
+		return r.clampScreen(r.splash.View())
+	}
+
+	if r.usesWorkspace() {
+		return r.renderWorkspace()
 	}
 
 	if r.settings.VerticalTabList {
 		// In vertical mode, render status bar separately at full width
-		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(r.tabs.Rows()), tab.ViewWithoutStatusBar())
+		mainContent := lipgloss.JoinHorizontal(lipgloss.Left, r.header.View(r.visibleRows()), tab.ViewWithoutStatusBar())
 		if statusBar := tab.StatusBarView(); statusBar != "" {
-			return mainContent + "\n" + statusBar
+			return r.clampScreen(mainContent + "\n" + statusBar)
 		}
-		return mainContent
+		return r.clampScreen(mainContent)
 	}
 
-	return r.header.View(r.tabs.Rows()) + "\n" + tab.View()
+	return r.clampScreen(r.header.View(r.visibleRows()) + "\n" + tab.View())
 }
 
 // dimmedScreenBackground renders screenContent faint, for use behind a modal.
@@ -583,11 +557,14 @@ func (r *Root) IsDetached() bool {
 }
 
 func (r *Root) TakeStateSnapshot() save.AppState {
+	r.syncWorkspaceToActive()
 	appState := save.AppState{}
+	refs := make(map[string]string, r.tabs.Len())
 
 	for _, t := range r.tabs.All() {
+		refs[t.ID()] = fmt.Sprint(len(appState.Tabs))
 		tabState := save.TabState{
-			IsFocused:  t.Focused(),
+			IsFocused:  t.ID() == r.activeID(),
 			Channel:    t.Channel(),
 			IdentityID: t.AccountID(),
 			Kind:       int(t.Kind()),
@@ -600,11 +577,16 @@ func (r *Root) TakeStateSnapshot() save.AppState {
 
 		appState.Tabs = append(appState.Tabs, tabState)
 	}
+	appState.Layout = r.snapshotWorkspace(refs)
+	appState.Workspaces = r.snapshotWorkspaces(refs)
 
 	return appState
 }
 
 func (r *Root) tickSaveAppState() tea.Cmd {
+	if r.isDetached || r.appStateManager == nil {
+		return nil
+	}
 	state := r.TakeStateSnapshot()
 
 	return tea.Tick(time.Second*15, func(_ time.Time) tea.Msg {
@@ -770,10 +752,15 @@ func (r *Root) availableTabKinds() []tab.TabKind {
 }
 
 func (r *Root) getHeaderHeight() int {
-	return lipgloss.Height(r.header.View(r.tabs.Rows()))
+	view := r.header.View(r.visibleRows())
+	if view == "" {
+		return 0
+	}
+	return lipgloss.Height(view)
 }
 
 func (r *Root) handleResize() {
+	r.syncWorkspaceToActive()
 	// splash screen
 	r.splash.width = r.width
 	r.splash.height = r.height
@@ -781,10 +768,15 @@ func (r *Root) handleResize() {
 	// open modals follow the terminal size
 	r.stack.Resize(r.width, r.height)
 
+	if r.usesWorkspace() {
+		r.resizeWorkspace()
+		return
+	}
+
 	if r.settings.VerticalTabList {
-		rows := r.tabs.Rows()
+		rows := r.visibleRows()
 		minWidth := r.header.MinWidth(rows)
-		r.header.Resize(minWidth, r.height)
+		r.header.Resize(min(minWidth, max(0, r.width)), max(0, r.height))
 
 		headerView := r.header.View(rows)
 		headerWidth := lipgloss.Width(headerView)
@@ -792,7 +784,7 @@ func (r *Root) handleResize() {
 
 		for _, t := range r.tabs.All() {
 			// Tab height matches header height (status bar is rendered separately below both)
-			t.SetSize(r.width-headerWidth, headerHeight)
+			t.SetSize(max(0, r.width-headerWidth), max(0, headerHeight))
 			t.SetFullWidth(r.width) // for status bar to span full width
 			t.HandleResize()
 		}
@@ -800,24 +792,21 @@ func (r *Root) handleResize() {
 		return
 	}
 
-	r.header.Resize(r.width-3, 0) // one placeholder space foreach side
+	r.header.Resize(max(0, r.width-3), 0) // one placeholder space foreach side
 
 	// tab
 	headerHeight := r.getHeaderHeight()
 
 	for _, t := range r.tabs.All() {
-		t.SetSize(r.width, r.height-headerHeight)
+		t.SetSize(max(0, r.width), max(0, r.height-headerHeight))
+		t.SetFullWidth(0)
 		t.HandleResize()
 	}
 }
 
-func (r *Root) nextTab() {
-	r.tabs.Next()
-}
+func (r *Root) nextTab() { r.stepTab(1) }
 
-func (r *Root) prevTab() {
-	r.tabs.Prev()
-}
+func (r *Root) prevTab() { r.stepTab(-1) }
 
 func (r *Root) checkVersionCommand() tea.Cmd {
 	return func() tea.Msg {
@@ -860,9 +849,11 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		return nil
 	}
 
-	// restore tabs
+	// restore tabs; layout references use original record positions, even when
+	// unavailable accounts/tabs cause some records to be skipped.
 	var hasActiveTab bool
-	for _, t := range msg.state.Tabs {
+	refs := make(map[string]string, len(msg.state.Tabs))
+	for index, t := range msg.state.Tabs {
 		var (
 			newTab tab.Tab
 			cmd    tea.Cmd
@@ -907,6 +898,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 
 		cmds = append(cmds, cmd)
 		r.tabs.Add(newTab)
+		refs[fmt.Sprint(index)] = newTab.ID()
 
 		if t.IsFocused {
 			hasActiveTab = true
@@ -922,6 +914,7 @@ func (r *Root) handlePersistedDataLoaded(msg persistedDataLoadedMessage) tea.Cmd
 		r.tabs.SetActive(tabs[0].ID())
 	}
 
+	r.restoreWorkspaces(msg.state.Layout, msg.state.Workspaces, refs)
 	r.handleResize()
 
 	// cache and broadcast channel suggestions to all tabs
@@ -1077,17 +1070,4 @@ func (r *Root) imageCleanUpCommand() tea.Cmd {
 			deletionCommand: data,
 		}
 	})
-}
-
-func (r *Root) closeTab() {
-	active, ok := r.tabs.Active()
-	if !ok {
-		return
-	}
-
-	active.Close()
-
-	// Remove activates the neighbour, so no cursor bookkeeping is needed here.
-	r.tabs.Remove(active.ID())
-	r.handleResize()
 }

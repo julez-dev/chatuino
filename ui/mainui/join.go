@@ -76,6 +76,9 @@ type join struct {
 
 	followedFetchers map[string]tab.FollowedChannelsAPI
 	hasLoaded        bool
+
+	// Optional shell-owned continuation for generation-checked split creation.
+	onJoin func(tab.JoinChannelMessage) tea.Msg
 }
 
 func createDefaultList(height int, selectedColor string) list.Model {
@@ -347,6 +350,7 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 			if key.Matches(msg, j.keymap.Confirm) && isValid {
 				channel := j.input.Value()
 				account := j.accounts[j.accountList.Cursor()]
+				onJoin := j.onJoin
 
 				return j, func() tea.Msg {
 					// Normalize channel name via Twitch API for broadcast tabs
@@ -370,11 +374,15 @@ func (j *join) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 						}
 					}
 
-					return tab.JoinChannelMessage{
+					joined := tab.JoinChannelMessage{
 						TabKind: kind,
 						Channel: channel,
 						Account: account,
 					}
+					if onJoin != nil {
+						return onJoin(joined)
+					}
+					return joined
 				}
 			}
 		}

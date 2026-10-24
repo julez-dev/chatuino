@@ -28,6 +28,11 @@ type Row struct {
 	Identity        string
 	Active          bool
 	HasNotification bool
+	// Workspace is the short workspace label (for example W1) owning this tab,
+	// empty for a standalone tab. WorkspacePane is the 1-based pane within that
+	// workspace. Headers render both as a membership badge.
+	Workspace     string
+	WorkspacePane int
 }
 
 // Registry is the single source of truth for the set of open items and which of
@@ -157,6 +162,16 @@ func (r *Registry[T]) SetActive(id string) bool {
 	return true
 }
 
+// ClearActive blurs the active item and leaves the registry with no active
+// item. It is used when switching to a workspace whose visible tabs are empty.
+func (r *Registry[T]) ClearActive() {
+	if i := r.index(r.active); i >= 0 {
+		r.items[i].Blur()
+	}
+	r.active = ""
+	r.dirty = true
+}
+
 // Next activates the item after the active one, wrapping around.
 func (r *Registry[T]) Next() {
 	r.step(1)
@@ -195,6 +210,12 @@ func (r *Registry[T]) Notify(id string) {
 	}
 
 	r.notify[id] = struct{}{}
+	r.dirty = true
+}
+
+// InvalidateRows drops the cached projection after state outside the registry
+// (such as workspace pane membership) changes what a row should render.
+func (r *Registry[T]) InvalidateRows() {
 	r.dirty = true
 }
 

@@ -114,7 +114,46 @@ Plain-letter bindings (`q`, `g`, `G`, `r`, `u`, `y`, `Y`) only apply outside tex
 
 Clipboard copies use the terminal's OSC 52 sequence, so they also work over SSH. Some terminals or multiplexers (for example tmux) must allow OSC 52 before the clipboard is actually updated.
 
-> **Upgrading:** Chatuino never rewrites an existing `keymap.yaml`. A file created by an older version keeps exactly the keys it contains, so new aliases only appear on fresh installs. Delete or rename `keymap.yaml` to regenerate it with the defaults above.
+> **Upgrading:** Chatuino never rewrites an existing `keymap.yaml`. Existing actions keep exactly the keys listed in your file; newly introduced actions that are absent use their defaults. To pick up new aliases for an existing action, edit that action or delete/rename `keymap.yaml` to regenerate the defaults. Explicitly empty lists disable an action.
+
+### Pane Controls
+
+Press **F2** to enter pane mode, then use the controls below. A standalone tab becomes the first pane of its own workspace; pressing F2 on a tab already in a workspace enters that workspace's pane mode. Ctrl+T inside pane mode adds a tab to the current workspace; outside pane mode it creates a standalone tab. The status line shows `-- Pane --` with themed, width-aware hints for focus, moves, splits, creating a pane, resize, zoom, cycling, and exit; printable commands are consumed by pane mode rather than typed into chat. **Escape** or **F2** exits to the focused tab's previous interaction mode. Normal chat/suggestion/tab-navigation controls retain their existing behavior outside pane mode.
+
+A move with a directional neighbour swaps the two pane contents without changing geometry. At an outer edge it detaches the pane and re-docks it as a new 50/50 split, so **H/J/K/L** can change a row layout into a stacked one, or the reverse. A move is refused if the result cannot satisfy the pane minima; the layout is left unchanged.
+
+Outside pane mode, **Tab/Shift+Tab** cycle the displayed tab list in header order without changing pane assignments: assigned tabs focus their pane and automatically show the workspace that owns them; unassigned tabs appear full-screen while the layout stays preserved. In pane mode, Tab/Shift+Tab cycle panes instead. While composing, Tab is handled as suggestion completion; while searching, it stays in search rather than switching tabs.
+
+| YAML action | Default keys | Behavior |
+| --- | --- | --- |
+| `pane_mode` | `f2` | Enter/leave pane mode |
+| `pane_focus_left` | `left`, `h` | Focus left |
+| `pane_focus_down` | `down`, `j` | Focus down |
+| `pane_focus_up` | `up`, `k` | Focus up |
+| `pane_focus_right` | `right`, `l` | Focus right |
+| `pane_swap_left` | `H` | Move left; swaps with a neighbour or re-docks to the left edge |
+| `pane_swap_down` | `J` | Move down; swaps with a neighbour or re-docks to the bottom edge |
+| `pane_swap_up` | `K` | Move up; swaps with a neighbour or re-docks to the top edge |
+| `pane_swap_right` | `L` | Move right; swaps with a neighbour or re-docks to the right edge |
+| `pane_split_columns` | `v` | Choose a tab for a new right-hand pane |
+| `pane_split_rows` | `s` | Choose a tab for a new bottom pane |
+| `pane_narrow` / `pane_widen` | `<` / `>` | Shrink/grow width |
+| `pane_shorten` / `pane_taller` | `-` / `+` | Shrink/grow height |
+| `pane_close` | `x` | Hide the pane; keep its tab open |
+| `pane_zoom` | `z` | Toggle focused-pane zoom |
+| `pane_next` / `pane_previous` | `tab` / `shift+tab` | Cycle panes in screen-reading order |
+
+All bindings use the existing `keymap.yaml` format, for example:
+
+```yaml
+pane_mode: [f2]
+pane_split_columns: [v]
+pane_split_rows: [s]
+pane_close: [x]
+pane_focus_left: [left, h]
+```
+
+The existing `escape` action also leaves pane mode. Pane mode remains active after layout commands until explicitly dismissed. **Ctrl+C** still quits; **x** is not a replacement for the existing close-tab action. For lifecycle, minimum sizes, and restoration behavior, see [Tiled Workspace](FEATURES.md#tiled-workspace).
 
 ## Mouse
 

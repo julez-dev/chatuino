@@ -9,6 +9,7 @@ package tab
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 )
 
@@ -19,8 +20,8 @@ type Tab interface {
 	InitWithUserData(twitchapi.UserData) tea.Cmd
 	Update(tea.Msg) (Tab, tea.Cmd)
 	View() string
-	ViewWithoutStatusBar() string // for vertical tab mode
-	StatusBarView() string        // for vertical tab mode
+	ViewWithoutStatusBar() string // body-only rendering, with Root's shared status line
+	StatusBarView() string        // status at full terminal width
 	Focus()
 	Blur()
 	Close() // release whatever the tab started; safe on tabs that own nothing
@@ -34,7 +35,7 @@ type Tab interface {
 	ChannelID() string
 	HandleResize()
 	SetSize(width, height int)
-	SetFullWidth(width int) // for status bar in vertical tab mode
+	SetFullWidth(width int) // nonzero when Root renders the status outside this tab
 	Kind() TabKind
 	Title() string    // header label, e.g. the channel name
 	Identity() string // account label shown next to the title
@@ -48,6 +49,24 @@ const (
 	MentionKind
 	LiveNotificationKind
 )
+
+// Caption is the common source of tab/header labels. The shell can measure a
+// prospective tab before constructing it and starting any owned resources.
+func Caption(kind TabKind, account save.Account, channel string) (title, identity string) {
+	switch kind {
+	case BroadcastKind:
+		if account.IsAnonymous {
+			return channel, "Anonymous"
+		}
+		return channel, account.DisplayName
+	case MentionKind:
+		return "mentioned", "all"
+	case LiveNotificationKind:
+		return "live notifications", "all"
+	default:
+		return "", ""
+	}
+}
 
 func (t TabKind) String() string {
 	switch t {

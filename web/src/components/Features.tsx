@@ -14,6 +14,12 @@ const features: Feature[] = [
     icon: "account",
   },
   {
+    title: "Tiled Workspace",
+    description:
+      "Monitor several chats side by side with keyboard-driven splits. Workspaces switch automatically as you change tabs.",
+    icon: "workspace",
+  },
+  {
     title: "Graphical Emotes",
     description:
       "Emotes rendered directly in your terminal. Works with Kitty and Ghostty.",
@@ -96,6 +102,8 @@ function FeatureIcon(props: { icon: string }) {
       "M15.042 21.672 13.684 16.6m0 0-2.51 2.225.569-9.47 5.227 7.917-3.286-.672ZM12 2.25V4.5m5.834.166-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243-1.59-1.59",
     server:
       "M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z",
+    workspace:
+      "M3.75 3.75h6.5v6.5h-6.5zM13.75 3.75h6.5v6.5h-6.5zM3.75 13.75h6.5v6.5h-6.5zM13.75 13.75h6.5v6.5h-6.5z",
   };
 
   return (
