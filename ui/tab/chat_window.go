@@ -13,6 +13,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/search"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -610,6 +611,49 @@ func (c *chatWindow) viewportRenderStart() int {
 	}
 
 	return start
+}
+
+// emoteNameAt returns the name of the graphic emote rendered at the given cell,
+// where row is relative to the chat view and col to the chat window's left edge.
+func (c *chatWindow) emoteNameAt(row, col int) (string, bool) {
+	if c.state == searchChatWindowState {
+		row-- // first row is the search input
+	}
+
+	if row < 0 || row >= c.height {
+		return "", false
+	}
+
+	line := c.viewportRenderStart() + row
+	if line < 0 || line >= len(c.lines) {
+		return "", false
+	}
+
+	var id int32
+	found := false
+	for _, span := range kittyimg.PlaceholderSpans(c.lines[line]) {
+		if col >= span.Col && col < span.Col+span.Width {
+			id, found = span.ID, true
+			break
+		}
+	}
+
+	if !found {
+		return "", false
+	}
+
+	_, entry := c.entryAtLine(line)
+	if entry == nil || line < entry.Position.CursorStart || line > entry.Position.CursorEnd {
+		return "", false
+	}
+
+	for word, replacement := range entry.Event.DisplayModifier.WordReplacements {
+		if replacementID, ok := kittyimg.PlaceholderID(replacement); ok && replacementID == id {
+			return word, true
+		}
+	}
+
+	return "", false
 }
 
 // selectLine selects the entry containing the given absolute rendered line.

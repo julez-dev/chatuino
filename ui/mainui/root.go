@@ -98,6 +98,8 @@ func (e ircConnectionError) IRC() string {
 type Root struct {
 	width, height int
 
+	hoverTabID string // tab the pointer is currently over, for the emote tooltip
+
 	hasLoadedSession bool
 	isDetached       bool           // when true, state is not loaded from or saved to disk
 	initialState     *save.AppState // when non-nil, overrides persisted state
@@ -339,6 +341,8 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, nil
 	case tea.MouseClickMsg:
 		return r, r.handleMouseClick(msg)
+	case tea.MouseMotionMsg:
+		return r, r.handleMouseMotion(msg)
 	case tea.MouseWheelMsg:
 		return r, r.handleMouseWheel(msg)
 	case tea.KeyPressMsg:
@@ -504,6 +508,10 @@ func (r *Root) View() tea.View {
 
 	if r.settings.Mouse {
 		v.MouseMode = tea.MouseModeCellMotion
+		if r.emoteTooltipEnabled() {
+			// hovering needs motion events without a pressed button
+			v.MouseMode = tea.MouseModeAllMotion
+		}
 	}
 
 	return v

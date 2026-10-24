@@ -179,3 +179,97 @@ func foregroundFromSGR(params, current string) string {
 
 	return current
 }
+
+// PlaceholderSpan is a run of adjacent placeholder cells belonging to one image.
+type PlaceholderSpan struct {
+	Col   int   // first terminal column of the run
+	Width int   // number of cells in the run
+	ID    int32 // image ID encoded in the foreground color
+}
+
+// PlaceholderSpans returns the image placeholder runs in a rendered line, with
+// their terminal columns. Returns nil when line contains no placeholders.
+func PlaceholderSpans(line string) []PlaceholderSpan {
+	if !strings.ContainsRune(line, placeholderRune) {
+		return nil
+	}
+
+	var (
+		spans []PlaceholderSpan
+		col   int
+		fg    string
+	)
+
+	for len(line) > 0 {
+		if line[0] == '\x1b' {
+			seq, params, isSGR := nextEscapeSequence(line)
+			line = line[len(seq):]
+
+			if isSGR {
+				fg = foregroundFromSGR(params, fg)
+			}
+			continue
+		}
+
+		end := strings.IndexByte(line, '\x1b')
+		if end == -1 {
+			end = len(line)
+		}
+		text := line[:end]
+		line = line[end:]
+
+		state := -1
+		for len(text) > 0 {
+			var (
+				cluster string
+				width   int
+			)
+			cluster, text, width, state = uniseg.FirstGraphemeClusterInString(text, state)
+
+			if r, _ := utf8.DecodeRuneInString(cluster); r == placeholderRune {
+				id, ok := idFromForeground(fg)
+				if ok {
+					if n := len(spans); n > 0 && spans[n-1].ID == id && spans[n-1].Col+spans[n-1].Width == col {
+						spans[n-1].Width++
+					} else {
+						spans = append(spans, PlaceholderSpan{Col: col, Width: 1, ID: id})
+					}
+				}
+				width = 1
+			}
+
+			col += width
+		}
+	}
+
+	return spans
+}
+
+// PlaceholderID returns the image ID encoded in the first placeholder of text.
+func PlaceholderID(text string) (int32, bool) {
+	spans := PlaceholderSpans(text)
+	if len(spans) == 0 {
+		return 0, false
+	}
+
+	return spans[0].ID, true
+}
+
+// idFromForeground decodes the image ID from "38;2;r;g;b" foreground params.
+func idFromForeground(fg string) (int32, bool) {
+	parts := strings.Split(fg, ";")
+	if len(parts) != 5 || parts[0] != "38" || parts[1] != "2" {
+		return 0, false
+	}
+
+	var id int32
+	for _, p := range parts[2:] {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || n > 255 {
+			return 0, false
+		}
+		id = id<<8 | int32(n)
+	}
+
+	return id, true
+}

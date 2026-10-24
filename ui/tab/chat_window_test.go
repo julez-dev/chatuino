@@ -341,3 +341,40 @@ func TestChatWindow_SearchFiltersRebuildLinePositions(t *testing.T) {
 		require.Equal(t, wantStart, e.Position.CursorStart)
 	}
 }
+
+func TestChatWindow_EmoteNameAt(t *testing.T) {
+	t.Parallel()
+
+	c := newTestChatWindow(t, 4, 3)
+
+	emoteLine := "  hi \x1b[38;2;0;0;7m\U0010EEEE\U0010EEEE\x1b[39m there"
+	c.lines[2] = emoteLine
+	c.entries[2].Event.DisplayModifier.WordReplacements = WordReplacement{
+		"Kappa":    "\x1b[38;2;0;0;7m\U0010EEEE\U0010EEEE\x1b[39m",
+		"@someone": "colored mention",
+	}
+	c.updatePort()
+
+	start := c.viewportRenderStart()
+	row := 2 - start
+
+	name, ok := c.emoteNameAt(row, 5)
+	require.True(t, ok)
+	require.Equal(t, "Kappa", name)
+
+	name, ok = c.emoteNameAt(row, 6)
+	require.True(t, ok)
+	require.Equal(t, "Kappa", name)
+
+	_, ok = c.emoteNameAt(row, 4)
+	require.False(t, ok, "cell before the emote")
+
+	_, ok = c.emoteNameAt(row, 7)
+	require.False(t, ok, "cell after the emote")
+
+	_, ok = c.emoteNameAt(row-1, 5)
+	require.False(t, ok, "other row")
+
+	_, ok = c.emoteNameAt(-1, 5)
+	require.False(t, ok)
+}

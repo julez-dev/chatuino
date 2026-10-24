@@ -13,6 +13,58 @@ type mouseAware interface {
 	HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd
 }
 
+// hoverAware is implemented by tabs that react to the pointer moving over them.
+// Coordinates are relative to the tab's own view.
+type hoverAware interface {
+	HandleMouseMotion(x, y int)
+	HandleMouseLeave()
+}
+
+// emoteTooltipEnabled reports whether pointer motion needs to be tracked.
+func (r *Root) emoteTooltipEnabled() bool {
+	return r.settings.Mouse && r.settings.Chat.GraphicEmotes && !r.settings.Chat.DisableEmoteTooltip
+}
+
+// handleMouseMotion forwards pointer motion to the tab under the pointer and
+// tells the previously hovered tab when the pointer left it.
+func (r *Root) handleMouseMotion(msg tea.MouseMotionMsg) tea.Cmd {
+	if !r.emoteTooltipEnabled() {
+		return nil
+	}
+
+	var (
+		id   string
+		x, y int
+	)
+
+	if r.hasLoadedSession && r.stack.Len() == 0 && msg.X >= 0 && msg.Y >= 0 && msg.X < r.width && msg.Y < r.height {
+		if r.usesWorkspace() {
+			if paneID, px, py, content := r.paneMouseTarget(msg.X, msg.Y); paneID != "" && content {
+				id, x, y = paneID, px, py
+			}
+		} else if lx, ly, inTab := r.tabLocalCoords(msg.X, msg.Y); inTab {
+			if t := r.activeTab(); t != nil {
+				id, x, y = t.ID(), lx, ly
+			}
+		}
+	}
+
+	if r.hoverTabID != "" && r.hoverTabID != id {
+		if h, ok := r.tabByID(r.hoverTabID).(hoverAware); ok {
+			h.HandleMouseLeave()
+		}
+	}
+	r.hoverTabID = id
+
+	if id != "" {
+		if h, ok := r.tabByID(id).(hoverAware); ok {
+			h.HandleMouseMotion(x, y)
+		}
+	}
+
+	return nil
+}
+
 // activeTab returns the currently focused tab, or nil when none exists.
 func (r *Root) activeTab() tab.Tab {
 	t, _ := r.tabs.Active()
