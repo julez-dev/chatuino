@@ -3,6 +3,7 @@ package tab
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
@@ -22,8 +23,29 @@ type prediction struct {
 	title    string
 	enabled  bool
 	locked   bool
+	locksAt  time.Time
 	width    int
 	outcomes []predictionOutcome
+}
+
+// predictionTickMsg is scoped to one prediction. Bubbletea messages fan out to
+// every tab, so without the owner every active prediction would schedule a new
+// ticker for every tick from any other tab.
+type predictionTickMsg struct {
+	owner *prediction
+}
+
+func predictionTickCmd(owner *prediction) tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg {
+		return predictionTickMsg{owner: owner}
+	})
+}
+
+// needsCountdown reports whether a one-second tick is still useful. A locked or
+// finished prediction stops ticking; an expired lock time stops as well, because
+// the view then says it is waiting for the lock event.
+func (p *prediction) needsCountdown(now time.Time) bool {
+	return p.enabled && !p.locked && !p.locksAt.IsZero() && now.Before(p.locksAt)
 }
 
 func newPrediction(width int) *prediction {
@@ -48,8 +70,15 @@ func (p *prediction) View() string {
 	sb := strings.Builder{}
 	_, _ = fmt.Fprintf(&sb, "Prediction: %q", p.title)
 
-	if p.locked {
+	switch {
+	case p.locked:
 		_, _ = sb.WriteString(" (locked)")
+	case !p.locksAt.IsZero():
+		if remaining := time.Until(p.locksAt); remaining > 0 {
+			_, _ = fmt.Fprintf(&sb, " (locks in %s)", remaining.Round(time.Second))
+		} else {
+			_, _ = sb.WriteString(" (locking...)")
+		}
 	}
 
 	_, _ = sb.WriteString("\n\n")
@@ -76,6 +105,7 @@ func (p *prediction) setWidth(width int) {
 
 func (p *prediction) setPredictionData(event eventsub.Message[eventsub.NotificationPayload]) {
 	p.title = event.Payload.Event.Title
+	p.locksAt = event.Payload.Event.LocksAt
 	p.outcomes = make([]predictionOutcome, 0, len(event.Payload.Event.Outcomes))
 
 	var totalPoints int

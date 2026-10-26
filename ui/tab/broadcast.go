@@ -109,8 +109,12 @@ type Broadcast struct {
 
 	// redemptions tracks notices that can still change status, so an update
 	// rewrites the existing chat notice instead of adding a second one.
-	redemptions     map[string]*twitchirc.Notice
-	updateAvailable string // newer version to advertise, empty when up to date
+	redemptions map[string]*twitchirc.Notice
+
+	// predictionCountdown keeps at most one one-second ticker alive while a
+	// prediction has a future lock time.
+	predictionCountdown bool
+	updateAvailable     string // newer version to advertise, empty when up to date
 
 	channelDataLoaded         bool
 	pendingChannelSuggestions []string
@@ -232,6 +236,19 @@ func (t *Broadcast) localNoticeCmd(message string) tea.Cmd {
 			},
 		}
 	}
+}
+
+// startPredictionCountdown arms the one-second lock countdown when a prediction
+// still has a future lock time. It is idempotent so begin and progress events can
+// both call it without starting parallel tickers.
+func (t *Broadcast) startPredictionCountdown() tea.Cmd {
+	if t.predictionCountdown || t.prediction == nil || !t.prediction.needsCountdown(time.Now()) {
+		return nil
+	}
+
+	t.predictionCountdown = true
+
+	return predictionTickCmd(t.prediction)
 }
 
 func (t *Broadcast) Init() tea.Cmd {
@@ -538,6 +555,17 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			return t, nil
 		}
 		return t, t.handleEventSubMessage(msg.Message)
+	case predictionTickMsg:
+		if msg.owner != t.prediction {
+			return t, nil
+		}
+
+		if t.prediction == nil || !t.prediction.needsCountdown(time.Now()) {
+			t.predictionCountdown = false
+			return t, nil
+		}
+
+		return t, predictionTickCmd(t.prediction)
 	case ChatEventMessage: // delegate message event to chat window
 		return t, t.handleChatEvent(msg)
 	}
@@ -2691,14 +2719,20 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 		t.prediction.locked = false
 		t.HandleResize()
 
-		return createCMDFunc(
+		cmds := []tea.Cmd{createCMDFunc(
 			&twitchirc.Notice{
 				FakeTimestamp:   time.Now(),
 				ChannelUserName: t.channelLogin,
 				MsgID:           twitchirc.MsgID(uuid.NewString()),
 				Message:         fmt.Sprintf("Prediction %q has started!", msg.Payload.Event.Title),
 			},
-		)
+		)}
+
+		if countdown := t.startPredictionCountdown(); countdown != nil {
+			cmds = append(cmds, countdown)
+		}
+
+		return tea.Batch(cmds...)
 	case "channel.prediction.progress":
 		heightBefore := viewHeight(t.prediction.View())
 		t.prediction.setPredictionData(msg)
@@ -2707,6 +2741,8 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 		if viewHeight(t.prediction.View()) != heightBefore {
 			t.HandleResize()
 		}
+
+		return t.startPredictionCountdown()
 	case "channel.prediction.lock":
 		t.prediction.setPredictionData(msg)
 		t.prediction.enabled = true
@@ -2784,7 +2820,9 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 
 		// The add event may have happened before this tab subscribed. Show the
 		// current state rather than dropping the update.
-		t.trackRedemption(msg.Payload.Event.ID, notice)
+		if !redemptionStatusTerminal(msg.Payload.Event.Status) {
+			t.trackRedemption(msg.Payload.Event.ID, notice)
+		}
 
 		return createCMDFunc(notice)
 	case "channel.raid":

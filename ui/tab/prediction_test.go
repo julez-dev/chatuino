@@ -2,6 +2,7 @@ package tab
 
 import (
 	"testing"
+	"time"
 
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/stretchr/testify/require"
@@ -70,11 +71,33 @@ func TestPrediction_Winner(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "No", winner.title)
 
-	_, ok = p.winner("missing")
+	winner, ok = p.winner("missing")
 	require.True(t, ok, "an unknown id falls back to the highest outcome")
 	require.Equal(t, "No", winner.title)
 
 	p.outcomes = nil
 	_, ok = p.winner("")
 	require.False(t, ok)
+}
+
+func TestPrediction_ViewCountdown(t *testing.T) {
+	t.Parallel()
+
+	p := newPrediction(80)
+	p.enabled = true
+	p.title = "Will we win?"
+	p.locksAt = time.Now().Add(90 * time.Second)
+
+	text := StripANSI(p.View())
+	require.Contains(t, text, "(locks in")
+	require.True(t, p.needsCountdown(time.Now()))
+
+	p.locked = true
+	require.False(t, p.needsCountdown(time.Now()))
+	require.Contains(t, StripANSI(p.View()), "(locked)")
+
+	p.locked = false
+	p.locksAt = time.Now().Add(-time.Second)
+	require.False(t, p.needsCountdown(time.Now()))
+	require.Contains(t, StripANSI(p.View()), "(locking...)")
 }

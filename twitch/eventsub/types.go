@@ -73,7 +73,7 @@ type Event struct {
 	EndsAt              time.Time `json:"ends_at"`  // empty if done
 	EndedAt             time.Time `json:"ended_at"` // empty until done
 	WinningOutcomeID    string    `json:"winning_outcome_id"`
-	Status              string    `json:"status"` // completed when done, else empty
+	Status              string    `json:"status"` // poll: completed; prediction: resolved/canceled; redemption: unfulfilled/fulfilled/canceled
 
 	// Channel point redemption related
 	UserInput  string        `json:"user_input"`

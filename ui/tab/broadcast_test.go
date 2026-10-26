@@ -409,6 +409,19 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			},
 		},
 		{
+			name: "stream info, prediction and poll",
+			in:   layoutInputs{height: 24, streamInfo: 2, prediction: 5, poll: 4, composer: 4, status: 1},
+			want: broadcastLayout{
+				height:     24,
+				streamInfo: layoutSpan{top: 0, height: 2},
+				prediction: layoutSpan{top: 2, height: 5},
+				poll:       layoutSpan{top: 7, height: 4},
+				chat:       layoutSpan{top: 11, height: 8},
+				composer:   layoutSpan{top: 19, height: 4},
+				status:     layoutSpan{top: 23, height: 1},
+			},
+		},
+		{
 			name: "anonymous account has no composer",
 			in:   layoutInputs{height: 20, streamInfo: 1, status: 1},
 			want: broadcastLayout{
@@ -496,6 +509,7 @@ func Test_allocateBroadcastLayout_visibleRegionsTileTheScreen(t *testing.T) {
 	inputs := []layoutInputs{
 		{height: 24, streamInfo: 1, composer: 4, status: 1},
 		{height: 24, streamInfo: 2, poll: 4, composer: 4, status: 1},
+		{height: 24, streamInfo: 2, prediction: 5, poll: 4, composer: 4, status: 1},
 		{height: 24, streamInfo: 2, poll: 4, composer: 4, status: 1, inspecting: true},
 		{height: 30, streamInfo: 1, composer: 6, status: 1, inspecting: true},
 		{height: 18, streamInfo: 1, composer: 4, status: 0},
@@ -617,6 +631,23 @@ func Test_Broadcast_ViewMatchesLayoutHeight(t *testing.T) {
 
 		require.True(t, tab.layout.poll.visible())
 		require.GreaterOrEqual(t, tab.layout.streamInfo.height, 1)
+		require.Equal(t, tab.height, lipgloss.Height(tab.View()))
+	})
+
+	t.Run("prediction and poll", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, account)
+		tab.prediction.enabled = true
+		tab.prediction.title = "who wins?"
+		tab.prediction.outcomes = []predictionOutcome{{id: "1", title: "yes", points: 1}}
+		tab.poll.enabled = true
+		tab.poll.title = "best map?"
+		tab.poll.items = []pollItem{{id: "1", title: "dust2", votes: 1}}
+		tab.HandleResize()
+
+		require.True(t, tab.layout.prediction.visible())
+		require.True(t, tab.layout.poll.visible())
 		require.Equal(t, tab.height, lipgloss.Height(tab.View()))
 	})
 
@@ -1776,6 +1807,29 @@ func TestBroadcast_HandleEventSubMessageIgnoresOtherChannels(t *testing.T) {
 	require.False(t, tab.prediction.enabled)
 }
 
+// requestFromCmd unwraps the local-message request from a plain command or a
+// tea.Batch (prediction begin also schedules the countdown tick).
+func requestFromCmd(t *testing.T, cmd tea.Cmd) RequestLocalMessageHandleMessage {
+	t.Helper()
+
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, child := range batch {
+			if child == nil {
+				continue
+			}
+
+			if request, ok := child().(RequestLocalMessageHandleMessage); ok {
+				return request
+			}
+		}
+	}
+
+	request, ok := msg.(RequestLocalMessageHandleMessage)
+	require.True(t, ok)
+	return request
+}
+
 func TestBroadcast_HandlePredictionEvents(t *testing.T) {
 	t.Parallel()
 
@@ -1794,8 +1848,9 @@ func TestBroadcast_HandlePredictionEvents(t *testing.T) {
 	}
 
 	begin := event("channel.prediction.begin", eventsub.Event{
-		ID:    "prediction-1",
-		Title: "Will we win?",
+		ID:      "prediction-1",
+		Title:   "Will we win?",
+		LocksAt: time.Now().Add(time.Minute),
 		Outcomes: []eventsub.Outcome{
 			{ID: "yes", Title: "Yes", ChannelPoints: 500},
 			{ID: "no", Title: "No", ChannelPoints: 200},
@@ -1806,10 +1861,14 @@ func TestBroadcast_HandlePredictionEvents(t *testing.T) {
 	require.NotNil(t, cmd)
 	require.True(t, tab.prediction.enabled)
 	require.False(t, tab.prediction.locked)
+	require.True(t, tab.predictionCountdown)
 	require.True(t, tab.layout.prediction.visible())
 
-	request, ok := cmd().(RequestLocalMessageHandleMessage)
-	require.True(t, ok)
+	_, foreignTick := tab.Update(predictionTickMsg{owner: &prediction{}})
+	require.Nil(t, foreignTick, "ticks from another tab must not affect this prediction")
+	require.True(t, tab.predictionCountdown)
+
+	request := requestFromCmd(t, cmd)
 	notice, ok := request.Message.(*twitchirc.Notice)
 	require.True(t, ok)
 	require.Contains(t, notice.Message, `Prediction "Will we win?" has started`)
@@ -1834,7 +1893,11 @@ func TestBroadcast_HandlePredictionEvents(t *testing.T) {
 	}))
 	require.NotNil(t, lockCmd)
 	require.True(t, tab.prediction.locked)
-	require.Contains(t, lockCmd().(RequestLocalMessageHandleMessage).Message.(*twitchirc.Notice).Message, "is locked")
+	require.Contains(t, requestFromCmd(t, lockCmd).Message.(*twitchirc.Notice).Message, "is locked")
+
+	_, tickCmd := tab.Update(predictionTickMsg{owner: tab.prediction})
+	require.Nil(t, tickCmd, "a locked prediction stops the countdown ticker")
+	require.False(t, tab.predictionCountdown)
 
 	endCmd := tab.handleEventSubMessage(event("channel.prediction.end", eventsub.Event{
 		ID:               "prediction-1",
@@ -1849,7 +1912,7 @@ func TestBroadcast_HandlePredictionEvents(t *testing.T) {
 	require.NotNil(t, endCmd)
 	require.False(t, tab.prediction.enabled)
 	require.False(t, tab.layout.prediction.visible())
-	require.Contains(t, endCmd().(RequestLocalMessageHandleMessage).Message.(*twitchirc.Notice).Message, `"No" won with 900 points`)
+	require.Contains(t, requestFromCmd(t, endCmd).Message.(*twitchirc.Notice).Message, `"No" won with 900 points`)
 }
 
 func TestBroadcast_HandleRedemptionEvents(t *testing.T) {
@@ -1892,4 +1955,32 @@ func TestBroadcast_HandleRedemptionEvents(t *testing.T) {
 	require.Contains(t, text, "[fulfilled]")
 	require.Len(t, tab.chatWindow.entries, 1, "an update must not append a second notice")
 	require.Empty(t, tab.redemptions, "a terminal update stops tracking the redemption")
+}
+
+func TestBroadcast_UntrackedRedemptionsDoNotLeak(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	event := func(subType, status string) eventsub.Message[eventsub.NotificationPayload] {
+		return eventsub.Message[eventsub.NotificationPayload]{
+			Payload: eventsub.NotificationPayload{
+				Subscription: eventsub.Subscription{
+					Type:      subType,
+					Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+				},
+				Event: eventsub.Event{
+					ID:     "redemption-1",
+					Status: status,
+					Reward: eventsub.Reward{Title: "Test Reward", Cost: 500},
+				},
+			},
+		}
+	}
+
+	require.NotNil(t, tab.handleEventSubMessage(event("channel.channel_points_automatic_reward_redemption.add", "")))
+	require.Empty(t, tab.redemptions, "one-shot automatic rewards are not tracked")
+
+	require.NotNil(t, tab.handleEventSubMessage(event("channel.channel_points_custom_reward_redemption.update", "fulfilled")))
+	require.Empty(t, tab.redemptions, "a terminal update without a prior add is not tracked")
 }
