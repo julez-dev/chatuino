@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/ui/tab"
@@ -232,20 +233,128 @@ func (r *Root) clampScreen(text string) string {
 		return ""
 	}
 	if lipgloss.Width(text) > r.width || lipgloss.Height(text) > r.height {
-		return cellBlock(text, r.width, r.height)
+		return strings.Join(blockLines(text, r.width, r.height), "\n")
 	}
 	return text
 }
 
-// cellBlock clips and pads by terminal cells, preserving ANSI/Kitty placeholder
-// attributes. In particular a tab cannot paint into its neighbour's rectangle.
-func cellBlock(text string, width, height int) string {
+// blockLines renders text into exactly height lines of exactly width terminal cells,
+// clipping and padding by cell width so ANSI sequences and Kitty placeholders keep
+// their attributes. Sizing text this way replaced a lipgloss canvas: a canvas
+// allocates a full cell buffer per call, and the tiled layout needs one per pane,
+// divider and heading on every frame.
+func blockLines(text string, width, height int) []string {
+	if width <= 0 || height <= 0 {
+		return nil
+	}
+
+	lines := make([]string, height)
+	blank := strings.Repeat(" ", width)
+	source := strings.Split(text, "\n")
+
+	for i := range lines {
+		if i >= len(source) {
+			// Every row of a block is bounded: a tab cannot paint into its
+			// neighbour's rectangle by returning fewer lines than it was given.
+			lines[i] = blank
+
+			continue
+		}
+
+		lines[i] = fitLine(source[i], width)
+	}
+
+	return lines
+}
+
+// fitLine clips or pads one line to exactly width cells. A wide grapheme that
+// straddles the edge cannot be clipped in half, so the leftover cell is padded: the
+// line has to be exactly as wide as its block or the columns of the screen drift.
+func fitLine(line string, width int) string {
+	measured := lipgloss.Width(line)
+	if measured > width {
+		line = ansi.Truncate(line, width, "")
+		measured = lipgloss.Width(line)
+	}
+
+	if measured < width {
+		line += strings.Repeat(" ", width-measured)
+	}
+
+	return line
+}
+
+// placement is one already sized block of lines at a screen position. Placements of
+// the tiled layout never overlap: panes, headings, dividers, header and footer tile
+// the screen.
+type placement struct {
+	x, y  int
+	lines []string
+}
+
+// composeScreen assembles the placements row by row, filling the gaps between them
+// with spaces. The result is height rows of exactly width cells, built as text: no
+// cell buffer is allocated for the screen.
+func composeScreen(width, height int, placements []placement) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
-	canvas := lipgloss.NewCanvas(width, height)
-	canvas.Compose(lipgloss.NewCompositor(lipgloss.NewLayer(text)))
-	return canvas.Render()
+
+	type segment struct {
+		x    int
+		text string
+	}
+
+	rows := make([][]segment, height)
+	for _, p := range placements {
+		for i, line := range p.lines {
+			y := p.y + i
+			if y < 0 || y >= height || p.x >= width || line == "" {
+				continue
+			}
+
+			rows[y] = append(rows[y], segment{p.x, line})
+		}
+	}
+
+	blank := strings.Repeat(" ", width)
+	var out strings.Builder
+	out.Grow(height * (width + 1))
+
+	for y, segments := range rows {
+		if y > 0 {
+			out.WriteByte('\n')
+		}
+
+		if len(segments) == 0 {
+			out.WriteString(blank)
+
+			continue
+		}
+
+		slices.SortFunc(segments, func(a, b segment) int { return a.x - b.x })
+
+		filled := 0
+		for _, s := range segments {
+			if s.x > filled {
+				out.WriteString(strings.Repeat(" ", s.x-filled))
+			}
+
+			text := s.text
+			if s.x+lipgloss.Width(text) > width {
+				text = ansi.Truncate(text, width-s.x, "")
+			}
+
+			out.WriteString(text)
+			filled = s.x + lipgloss.Width(text)
+		}
+
+		if filled < width {
+			out.WriteString(strings.Repeat(" ", width-filled))
+		}
+	}
+
+	return out.String()
 }
 
 func (r *Root) paneFooter(plan panePlan) string {
@@ -468,11 +577,11 @@ func (r *Root) renderWorkspace() string {
 		return ""
 	}
 	plan := r.planPanes()
-	layers := make([]*lipgloss.Layer, 0, len(plan.panes)*2+len(plan.dividers)+2)
+	placements := make([]placement, 0, len(plan.panes)*2+len(plan.dividers)+2)
 	if r.settings.VerticalTabList {
-		layers = append(layers, lipgloss.NewLayer(cellBlock(r.header.View(r.visibleRows()), plan.bounds.X, max(0, r.height-1))))
+		placements = append(placements, placement{0, 0, blockLines(r.header.View(r.visibleRows()), plan.bounds.X, max(0, r.height-1))})
 	} else {
-		layers = append(layers, lipgloss.NewLayer(cellBlock(r.header.View(r.visibleRows()), r.width, plan.bounds.Y)))
+		placements = append(placements, placement{0, 0, blockLines(r.header.View(r.visibleRows()), r.width, plan.bounds.Y)})
 	}
 	for _, divider := range plan.dividers {
 		text := strings.Repeat("─", divider.Width)
@@ -480,7 +589,7 @@ func (r *Root) renderWorkspace() string {
 			text = strings.Repeat("│\n", divider.Height)
 		}
 		text = lipgloss.NewStyle().Foreground(lipgloss.Color(r.theme.DimmedTextColor)).Render(text)
-		layers = append(layers, lipgloss.NewLayer(cellBlock(text, divider.Width, divider.Height)).X(plan.bounds.X+divider.X).Y(plan.bounds.Y+divider.Y))
+		placements = append(placements, placement{plan.bounds.X + divider.X, plan.bounds.Y + divider.Y, blockLines(text, divider.Width, divider.Height)})
 	}
 	for _, pane := range plan.panes {
 		t := r.tabByID(pane.tab)
@@ -501,14 +610,13 @@ func (r *Root) renderWorkspace() string {
 				label += " (" + t.Identity() + ")"
 			}
 			heading := lipgloss.NewStyle().Bold(pane.tab == r.activeID()).Foreground(lipgloss.Color(color)).Render(label)
-			layers = append(layers, lipgloss.NewLayer(cellBlock(heading, pane.frame.Width, 1)).X(plan.bounds.X+pane.frame.X).Y(plan.bounds.Y+pane.frame.Y))
+			placements = append(placements, placement{plan.bounds.X + pane.frame.X, plan.bounds.Y + pane.frame.Y, blockLines(heading, pane.frame.Width, 1)})
 		}
-		layers = append(layers, lipgloss.NewLayer(cellBlock(t.ViewWithoutStatusBar(), pane.content.Width, pane.content.Height)).X(plan.bounds.X+pane.content.X).Y(plan.bounds.Y+pane.content.Y))
+		placements = append(placements, placement{plan.bounds.X + pane.content.X, plan.bounds.Y + pane.content.Y, blockLines(t.ViewWithoutStatusBar(), pane.content.Width, pane.content.Height)})
 	}
-	layers = append(layers, lipgloss.NewLayer(cellBlock(r.paneFooter(plan), r.width, 1)).Y(r.height-1))
-	canvas := lipgloss.NewCanvas(r.width, r.height)
-	canvas.Compose(lipgloss.NewCompositor(layers...))
-	return canvas.Render()
+	placements = append(placements, placement{0, r.height - 1, blockLines(r.paneFooter(plan), r.width, 1)})
+
+	return composeScreen(r.width, r.height, placements)
 }
 
 func paneDirection(msg tea.KeyPressMsg, bindings [4]key.Binding) (workspace.Direction, bool) {

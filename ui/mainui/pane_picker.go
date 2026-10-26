@@ -7,6 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/nav"
+	"strings"
 )
 
 type paneItem struct{ id, label string }
@@ -58,7 +59,7 @@ func (p *panePicker) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 func (p *panePicker) View() string {
 	content := "Choose a tab for the new pane\n\n" + p.list.View() + "\n" +
 		p.keymap.Confirm.Help().Key + ": select • " + p.keymap.Escape.Help().Key + ": cancel"
-	return cellBlock(lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Render(content), p.width, p.height)
+	return strings.Join(blockLines(lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Render(content), p.width, p.height), "\n")
 }
 
 func (p *panePicker) Route() string            { return panePickerRoute }
