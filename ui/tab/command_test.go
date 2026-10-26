@@ -2,11 +2,16 @@ package tab
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/julez-dev/chatuino/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,7 +125,7 @@ func (f *fakeModerationClient) BanUser(ctx context.Context, broadcasterID string
 func runModerationCommand(t *testing.T, client *fakeModerationClient, name string, args ...string) string {
 	t.Helper()
 
-	cmd := handleCommand(name, args, "channel-id", "channel", "account-id", client)
+	cmd := handleCommand("tab-id", name, args, "channel-id", "channel", "account-id", client)
 	require.NotNil(t, cmd, "the command must produce a notice")
 
 	msg, ok := cmd().(ChatEventMessage)
@@ -256,4 +261,500 @@ func TestHandleCommand_BanStaysPermanent(t *testing.T) {
 	require.Len(t, client.banned, 1)
 	require.Zero(t, client.banned[0].DurationInSeconds, "a ban carries no duration")
 	require.Equal(t, "spam and hate", client.banned[0].Reason)
+}
+
+// fakeCommandClient covers the moderation surface the new commands use. The
+// embedded interface keeps the fixture small: a method a test does not exercise
+// would panic if the command suddenly called it.
+type fakeCommandClient struct {
+	ModerationAPI
+
+	users map[string]twitchapi.UserData
+
+	settingsUpdate twitchapi.ChatSettingsUpdateData
+	settingsCalls  int
+	settingsErr    error
+
+	moderators     []twitchapi.ChatRoleUser
+	vips           []twitchapi.ChatRoleUser
+	addedModerator string
+	removedMod     string
+	addedVIP       string
+	removedVIP     string
+
+	warnedUser   string
+	warnedReason string
+	warnErr      error
+
+	raidFrom string
+	raidTo   string
+	raidErr  error
+	canceled bool
+
+	shoutoutFrom string
+	shoutoutTo   string
+	shoutoutMod  string
+	shoutoutErr  error
+
+	automodAction string
+	automodMsgID  string
+	automodErr    error
+
+	snoozeResp twitchapi.AdSnoozeData
+	snoozeErr  error
+}
+
+func (f *fakeCommandClient) GetUsers(_ context.Context, logins []string, _ []string) (twitchapi.UserResponse, error) {
+	users := make([]twitchapi.UserData, 0, len(logins))
+	for _, login := range logins {
+		if user, ok := f.users[login]; ok {
+			users = append(users, user)
+		}
+	}
+
+	return twitchapi.UserResponse{Data: users}, nil
+}
+
+func (f *fakeCommandClient) UpdateChatSettings(_ context.Context, broadcasterID string, _ string, data twitchapi.ChatSettingsUpdateData) (twitchapi.GetChatSettingsResponse, error) {
+	f.settingsCalls++
+	f.settingsUpdate = data
+
+	if f.settingsErr != nil {
+		return twitchapi.GetChatSettingsResponse{}, f.settingsErr
+	}
+
+	return twitchapi.GetChatSettingsResponse{Data: []twitchapi.ChatSettingData{{BroadcasterID: broadcasterID}}}, nil
+}
+
+func (f *fakeCommandClient) GetModerators(context.Context, string, []string) ([]twitchapi.ChatRoleUser, error) {
+	return f.moderators, nil
+}
+
+func (f *fakeCommandClient) AddChannelModerator(_ context.Context, _ string, userID string) error {
+	f.addedModerator = userID
+	return nil
+}
+
+func (f *fakeCommandClient) RemoveChannelModerator(_ context.Context, _ string, userID string) error {
+	f.removedMod = userID
+	return nil
+}
+
+func (f *fakeCommandClient) GetVIPs(context.Context, string, []string) ([]twitchapi.ChatRoleUser, error) {
+	return f.vips, nil
+}
+
+func (f *fakeCommandClient) AddChannelVIP(_ context.Context, _ string, userID string) error {
+	f.addedVIP = userID
+	return nil
+}
+
+func (f *fakeCommandClient) RemoveChannelVIP(_ context.Context, _ string, userID string) error {
+	f.removedVIP = userID
+	return nil
+}
+
+func (f *fakeCommandClient) WarnChatUser(_ context.Context, _ string, _ string, userID string, reason string) error {
+	f.warnedUser = userID
+	f.warnedReason = reason
+	return f.warnErr
+}
+
+func (f *fakeCommandClient) StartRaid(_ context.Context, from string, to string) (twitchapi.RaidData, error) {
+	f.raidFrom = from
+	f.raidTo = to
+	return twitchapi.RaidData{}, f.raidErr
+}
+
+func (f *fakeCommandClient) CancelRaid(context.Context, string) error {
+	f.canceled = true
+	return f.raidErr
+}
+
+func (f *fakeCommandClient) SendShoutout(_ context.Context, from string, to string, moderator string) error {
+	f.shoutoutFrom = from
+	f.shoutoutTo = to
+	f.shoutoutMod = moderator
+	return f.shoutoutErr
+}
+
+func (f *fakeCommandClient) ManageAutoModMessage(_ context.Context, _ string, messageID string, action string) error {
+	f.automodMsgID = messageID
+	f.automodAction = action
+	return f.automodErr
+}
+
+func (f *fakeCommandClient) SnoozeNextAd(context.Context, string) (twitchapi.AdSnoozeData, error) {
+	return f.snoozeResp, f.snoozeErr
+}
+
+func newFakeCommandClient() *fakeCommandClient {
+	return &fakeCommandClient{
+		users: map[string]twitchapi.UserData{
+			"alice": {ID: "alice-id", Login: "alice", DisplayName: "Alice"},
+			"bob":   {ID: "bob-id", Login: "bob", DisplayName: "Bob"},
+		},
+		moderators: []twitchapi.ChatRoleUser{
+			{UserID: "alice-id", UserLogin: "alice", UserName: "Alice"},
+			{UserID: "bob-id", UserLogin: "bob", UserName: "Bob"},
+		},
+		vips: []twitchapi.ChatRoleUser{
+			{UserID: "alice-id", UserLogin: "alice", UserName: "Alice"},
+		},
+	}
+}
+
+func runCommandMessages(t *testing.T, client ModerationAPI, name string, args ...string) []tea.Msg {
+	t.Helper()
+
+	cmd := handleCommand("tab-id", name, args, "channel-id", "channel", "account-id", client)
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		msgs := make([]tea.Msg, 0, len(batch))
+		for _, child := range batch {
+			if child == nil {
+				continue
+			}
+
+			msgs = append(msgs, child())
+		}
+
+		return msgs
+	}
+
+	return []tea.Msg{msg}
+}
+
+func noticeText(t *testing.T, msg tea.Msg) string {
+	t.Helper()
+
+	chatEvent, ok := msg.(ChatEventMessage)
+	require.True(t, ok)
+
+	notice, ok := chatEvent.Message.(*twitchirc.Notice)
+	require.True(t, ok)
+
+	return notice.Message
+}
+
+func settingsUpdateFrom(t *testing.T, msgs []tea.Msg) (chatSettingsUpdatedMessage, bool) {
+	t.Helper()
+
+	for _, msg := range msgs {
+		envelope, ok := msg.(nav.Envelope)
+		if !ok {
+			continue
+		}
+
+		if update, ok := envelope.Msg.(chatSettingsUpdatedMessage); ok {
+			return update, true
+		}
+	}
+
+	return chatSettingsUpdatedMessage{}, false
+}
+
+func TestHandleCommand_ChatSettings(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name         string
+		command      string
+		args         []string
+		wantSlow     *bool
+		wantSlowWait *int
+		wantFollow   *bool
+		wantFollowIn *int
+		wantSub      *bool
+		wantEmote    *bool
+		wantUnique   *bool
+		wantNotice   string
+	}{
+		{name: "slow default", command: "slow", args: []string{""}, wantSlow: ptrBool(true), wantNotice: "Slow mode enabled"},
+		{name: "slow with seconds", command: "slow", args: []string{"10"}, wantSlow: ptrBool(true), wantSlowWait: ptrInt(10), wantNotice: "10s"},
+		{name: "slow with combined duration", command: "slow", args: []string{"1m30s"}, wantSlow: ptrBool(true), wantSlowWait: ptrInt(90), wantNotice: "1m30s"},
+		{name: "slow off", command: "slowoff", args: []string{""}, wantSlow: ptrBool(false), wantNotice: "disabled"},
+		{name: "followers default", command: "followers", args: []string{""}, wantFollow: ptrBool(true), wantNotice: "Followers-only mode enabled"},
+		{name: "followers bare number is minutes", command: "followers", args: []string{"10"}, wantFollow: ptrBool(true), wantFollowIn: ptrInt(10)},
+		{name: "followers zero is allowed", command: "followers", args: []string{"0m"}, wantFollow: ptrBool(true), wantFollowIn: ptrInt(0)},
+		{name: "followers off", command: "followersoff", args: []string{""}, wantFollow: ptrBool(false)},
+		{name: "subscribers", command: "subscribers", args: []string{""}, wantSub: ptrBool(true)},
+		{name: "subscribers off", command: "subscribersoff", args: []string{""}, wantSub: ptrBool(false)},
+		{name: "emote only", command: "emoteonly", args: []string{""}, wantEmote: ptrBool(true)},
+		{name: "emote only off", command: "emoteonlyoff", args: []string{""}, wantEmote: ptrBool(false)},
+		{name: "unique chat", command: "uniquechat", args: []string{""}, wantUnique: ptrBool(true)},
+		{name: "unique chat off", command: "uniquechatoff", args: []string{""}, wantUnique: ptrBool(false)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newFakeCommandClient()
+			msgs := runCommandMessages(t, client, tt.command, tt.args...)
+
+			require.Equal(t, 1, client.settingsCalls)
+			require.Equal(t, tt.wantSlow, client.settingsUpdate.SlowMode)
+			require.Equal(t, tt.wantSlowWait, client.settingsUpdate.SlowModeWaitTime)
+			require.Equal(t, tt.wantFollow, client.settingsUpdate.FollowerMode)
+			require.Equal(t, tt.wantFollowIn, client.settingsUpdate.FollowerModeDuration)
+			require.Equal(t, tt.wantSub, client.settingsUpdate.SubscriberMode)
+			require.Equal(t, tt.wantEmote, client.settingsUpdate.EmoteMode)
+			require.Equal(t, tt.wantUnique, client.settingsUpdate.UniqueChatMode)
+
+			if tt.wantNotice != "" {
+				require.Contains(t, joinNotices(t, msgs), tt.wantNotice)
+			}
+
+			update, ok := settingsUpdateFrom(t, msgs)
+			require.True(t, ok, "a successful write updates the tab's status bar")
+			require.Equal(t, "channel-id", update.settings.BroadcasterID)
+		})
+	}
+}
+
+func joinNotices(t *testing.T, msgs []tea.Msg) string {
+	t.Helper()
+
+	var text string
+	for _, msg := range msgs {
+		if _, ok := msg.(ChatEventMessage); ok {
+			text += noticeText(t, msg) + "\n"
+		}
+	}
+
+	return text
+}
+
+func ptrBool(value bool) *bool { return &value }
+func ptrInt(value int) *int    { return &value }
+
+func TestHandleCommand_ChatSettingsRejectsBadDuration(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		command string
+		arg     string
+		want    string
+	}{
+		{command: "slow", arg: "2", want: "at least 3 seconds"},
+		{command: "slow", arg: "3m", want: "maximum"},
+		{command: "slow", arg: "nonsense", want: "expected something like"},
+		{command: "followers", arg: "90s", want: "whole number of minutes"},
+		{command: "followers", arg: "91d", want: "maximum"},
+	} {
+		t.Run(tt.command+" "+tt.arg, func(t *testing.T) {
+			t.Parallel()
+
+			client := newFakeCommandClient()
+			msgs := runCommandMessages(t, client, tt.command, tt.arg)
+			require.Zero(t, client.settingsCalls, "a rejected duration sends nothing")
+			require.Contains(t, joinNotices(t, msgs), tt.want)
+		})
+	}
+}
+
+func TestHandleCommand_ChatSettingsAPIError(t *testing.T) {
+	t.Parallel()
+
+	client := newFakeCommandClient()
+	client.settingsErr = twitchapi.APIError{Status: 401, Message: "missing scope"}
+
+	msgs := runCommandMessages(t, client, "slow", "10")
+	require.Contains(t, joinNotices(t, msgs), "Unauthorized")
+	_, ok := settingsUpdateFrom(t, msgs)
+	require.False(t, ok, "a failed write must not claim the status bar changed")
+}
+
+func TestHandleCommand_RoleCommands(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		command string
+		want    string
+		check   func(*testing.T, *fakeCommandClient)
+	}{
+		{"mod", "now a moderator", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.addedModerator) }},
+		{"unmod", "no longer a moderator", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.removedMod) }},
+		{"vip", "now a VIP", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.addedVIP) }},
+		{"unvip", "no longer a VIP", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.removedVIP) }},
+	} {
+		t.Run(tt.command, func(t *testing.T) {
+			t.Parallel()
+
+			client := newFakeCommandClient()
+			msgs := runCommandMessages(t, client, tt.command, "alice")
+			require.Contains(t, joinNotices(t, msgs), tt.want)
+			tt.check(t, client)
+		})
+	}
+
+	t.Run("mods list", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "mods")
+		require.Contains(t, joinNotices(t, msgs), "Moderators (2): Alice, Bob")
+	})
+
+	t.Run("vips list", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "vips")
+		require.Contains(t, joinNotices(t, msgs), "VIPs (1): Alice")
+	})
+
+	t.Run("missing user", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "mod")
+		require.Contains(t, joinNotices(t, msgs), "Expected Usage: /mod <username>")
+	})
+
+	t.Run("unknown user", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "warn", "nobody")
+		require.Contains(t, joinNotices(t, msgs), "can not be found")
+	})
+}
+
+func TestHandleCommand_Warn(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name       string
+		args       []string
+		wantReason string
+	}{
+		{name: "reason is joined", args: []string{"alice", "spam", "and", "hate"}, wantReason: "spam and hate"},
+		{name: "reason is optional", args: []string{"alice"}, wantReason: "No reason provided"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newFakeCommandClient()
+			msgs := runCommandMessages(t, client, "warn", tt.args...)
+			require.Equal(t, "alice-id", client.warnedUser)
+			require.Equal(t, tt.wantReason, client.warnedReason)
+			require.Contains(t, joinNotices(t, msgs), tt.wantReason)
+		})
+	}
+
+	t.Run("api error is a notice", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		client.warnErr = twitchapi.APIError{Status: 409, Message: "warning is being updated"}
+		msgs := runCommandMessages(t, client, "warn", "alice", "spam")
+		require.Contains(t, joinNotices(t, msgs), "conflict")
+	})
+}
+
+func TestHandleCommand_RaidAndShoutout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("raid resolves the target", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "raid", "bob")
+		require.Equal(t, "channel-id", client.raidFrom)
+		require.Equal(t, "bob-id", client.raidTo)
+		require.Contains(t, joinNotices(t, msgs), "Raid started towards Bob")
+	})
+
+	t.Run("raid to self is refused", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		client.users["channel"] = twitchapi.UserData{ID: "channel-id", Login: "channel", DisplayName: "Me"}
+		msgs := runCommandMessages(t, client, "raid", "channel")
+		require.Empty(t, client.raidTo)
+		require.Contains(t, joinNotices(t, msgs), "cannot raid itself")
+	})
+
+	t.Run("unraid cancels", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "unraid")
+		require.True(t, client.canceled)
+		require.Contains(t, joinNotices(t, msgs), "canceled")
+	})
+
+	t.Run("shoutout", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "shoutout", "bob")
+		require.Equal(t, "channel-id", client.shoutoutFrom)
+		require.Equal(t, "bob-id", client.shoutoutTo)
+		require.Equal(t, "account-id", client.shoutoutMod)
+		require.Contains(t, joinNotices(t, msgs), "Sent a shoutout to Bob")
+	})
+
+	t.Run("shoutout rate limit is surfaced", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		client.shoutoutErr = twitchapi.APIError{Status: 429, Message: "too many shoutouts"}
+		msgs := runCommandMessages(t, client, "shoutout", "bob")
+		require.Contains(t, joinNotices(t, msgs), "Rate limited")
+	})
+}
+
+func TestHandleCommand_AutoModAndSnooze(t *testing.T) {
+	t.Parallel()
+
+	t.Run("approve", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "approve", "msg-1")
+		require.Equal(t, "msg-1", client.automodMsgID)
+		require.Equal(t, "ALLOW", client.automodAction)
+		require.Contains(t, joinNotices(t, msgs), "approved")
+	})
+
+	t.Run("deny", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "deny", "msg-1")
+		require.Equal(t, "DENY", client.automodAction)
+		require.Contains(t, joinNotices(t, msgs), "denied")
+	})
+
+	t.Run("missing message id", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		msgs := runCommandMessages(t, client, "approve")
+		require.Contains(t, joinNotices(t, msgs), "Expected Usage: /approve <message_id>")
+	})
+
+	t.Run("snooze", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		client.snoozeResp = twitchapi.AdSnoozeData{NextAdAt: "2026-10-26T21:00:00Z"}
+		msgs := runCommandMessages(t, client, "snooze")
+		require.Contains(t, joinNotices(t, msgs), "snoozed to")
+	})
+
+	t.Run("snooze error", func(t *testing.T) {
+		t.Parallel()
+		client := newFakeCommandClient()
+		client.snoozeErr = errors.New("no snoozes left")
+		msgs := runCommandMessages(t, client, "snooze")
+		require.Contains(t, joinNotices(t, msgs), "no snoozes left")
+	})
+}
+
+func TestModeratorSuggestionsIncludeNewCommands(t *testing.T) {
+	t.Parallel()
+
+	joined := strings.Join(moderatorSuggestionTexts(), "\n")
+	for _, command := range []string{
+		"/slow", "/slowoff", "/followers", "/followersoff", "/subscribers", "/subscribersoff",
+		"/emoteonly", "/emoteonlyoff", "/uniquechat", "/uniquechatoff", "/clear",
+		"/mod ", "/unmod ", "/mods", "/vip ", "/unvip ", "/vips",
+		"/warn ", "/raid ", "/unraid", "/shoutout ", "/approve ", "/deny ", "/snooze",
+	} {
+		require.Contains(t, joined, command)
+	}
+}
+
+func moderatorSuggestionTexts() []string {
+	return command.ModeratorSuggestions[:]
 }

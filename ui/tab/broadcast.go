@@ -111,6 +111,9 @@ type Broadcast struct {
 	// rewrites the existing chat notice instead of adding a second one.
 	redemptions map[string]*twitchirc.Notice
 
+	// automodHeld tracks AutoMod notices by message ID for the same reason.
+	automodHeld map[string]*twitchirc.Notice
+
 	// predictionCountdown keeps at most one one-second ticker alive while a
 	// prediction has a future lock time.
 	predictionCountdown bool
@@ -568,6 +571,11 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		return t, predictionTickCmd(t.prediction)
 	case ChatEventMessage: // delegate message event to chat window
 		return t, t.handleChatEvent(msg)
+	case chatSettingsUpdatedMessage:
+		if t.channelDataLoaded && t.statusInfo != nil {
+			t.statusInfo.ApplySettings(msg.settings)
+		}
+		return t, nil
 	}
 
 	// while the channel data is loading, only the spinner is animated
@@ -728,6 +736,7 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 		"channel.channel_points_custom_reward_redemption.add", "channel.channel_points_custom_reward_redemption.update",
 		"channel.channel_points_automatic_reward_redemption.add",
 		"channel.ad_break.begin",
+		"channel.chat_settings.update",
 	} {
 		subType := subType // capture for closure
 		cmds = append(cmds, func() tea.Msg {
@@ -763,6 +772,45 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 		}, eventSubAPI)
 		return nil
 	})
+
+	// Chat settings events identify the moderator with user_id, while the
+	// moderation events below identify them with moderator_user_id.
+	cmds = append(cmds, func() tea.Msg {
+		t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+			Type:    "channel.chat_settings.update",
+			Version: "1",
+			Condition: map[string]string{
+				"broadcaster_user_id": channelID,
+				"user_id":             accountID,
+			},
+		}, eventSubAPI)
+		return nil
+	})
+
+	for _, sub := range [...]struct {
+		typeName string
+		version  string
+	}{
+		{"channel.warning.send", "1"},
+		{"channel.warning.acknowledge", "1"},
+		{"channel.shoutout.create", "1"},
+		{"channel.shoutout.receive", "1"},
+		{"automod.message.hold", "2"},
+		{"automod.message.update", "2"},
+	} {
+		sub := sub
+		cmds = append(cmds, func() tea.Msg {
+			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+				Type:    sub.typeName,
+				Version: sub.version,
+				Condition: map[string]string{
+					"broadcaster_user_id": channelID,
+					"moderator_user_id":   accountID,
+				},
+			}, eventSubAPI)
+			return nil
+		})
+	}
 
 	return cmds
 }
@@ -1447,6 +1495,17 @@ func (t *Broadcast) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 
+	// Type the approve/deny command for the selected AutoMod notice.
+	if key.Matches(msg, t.keymap.QuickApprove) && !searching && t.state.isViewing() {
+		t.handleAutoModShortcut("approve")
+		return true, nil
+	}
+
+	if key.Matches(msg, t.keymap.QuickDeny) && !searching && t.state.isViewing() {
+		t.handleAutoModShortcut("deny")
+		return true, nil
+	}
+
 	// Copy selected message to message input
 	if key.Matches(msg, t.keymap.CopyMessage) && !searching && t.state.isViewing() {
 		t.handleCopyMessage()
@@ -1668,6 +1727,38 @@ func (t *Broadcast) handleTimeoutShortcut() {
 	t.HandleResize() // Recalculate layout after setting timeout command
 }
 
+// handleAutoModShortcut fills the composer with the approve or deny command for
+// the selected AutoMod notice. Only messages still tracked as held are eligible:
+// an already approved, denied or expired notice has nothing left to action.
+func (t *Broadcast) handleAutoModShortcut(action string) {
+	if t.account.IsAnonymous {
+		return
+	}
+
+	entry, ok := t.cursorEntry()
+	if !ok {
+		return
+	}
+
+	notice, ok := entry.Event.Message.(*twitchirc.Notice)
+	if !ok {
+		return
+	}
+
+	messageID := string(notice.MsgID)
+	if _, held := t.automodHeld[messageID]; !held {
+		return
+	}
+
+	if accepted, _ := t.transit(eventCompose); !accepted {
+		return
+	}
+
+	t.clearReplyTarget()
+	t.input.SetValue("/" + action + " " + messageID)
+	t.HandleResize()
+}
+
 // activeChatWindow returns the chat window that owns the selection, or nil when
 // the tab shows none.
 func (t *Broadcast) activeChatWindow() *chatWindow {
@@ -1699,12 +1790,10 @@ func (t *Broadcast) cursorEntry() (*chatEntry, bool) {
 		return nil, false
 	}
 
-	t.chatWindow.Blur()
-
-	if t.userInspect != nil {
-		t.userInspect.chatWindow.Blur()
-	}
-
+	// Focus stays with the chat window until a caller commits to an action that
+	// moves it (transit to the composer, inspect, ...). Blurring here would leave
+	// the tab in view mode with no keyboard owner whenever a shortcut rejects the
+	// selected message, so arrow keys would stop working until insert and escape.
 	return entry, true
 }
 
@@ -2131,7 +2220,7 @@ func (t *Broadcast) dispatchSlashCommand(name string, args []string) tea.Cmd {
 		return t.localNoticeCmd("This account cannot use moderation commands")
 	}
 
-	return handleCommand(name, args, t.channelID, t.channelLogin, t.account.ID, client)
+	return handleCommand(t.id, name, args, t.channelID, t.channelLogin, t.account.ID, client)
 }
 
 // applyDuplicateBypass appends an invisible character when input repeats the
@@ -2847,6 +2936,88 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 				Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
 			},
 		)
+	case "channel.chat_settings.update":
+		settings := chatstate.SettingsFromUpdate(msg.Payload.Event)
+		if t.chatSettings != nil {
+			t.chatSettings.Put(t.channelID, settings)
+		}
+		if t.statusInfo != nil {
+			t.statusInfo.ApplySettings(settings)
+		}
+
+		return nil
+	case "channel.warning.send":
+		moderator := eventDisplayName(msg.Payload.Event.ModeratorUserName, msg.Payload.Event.ModeratorUserLogin)
+		user := eventDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("%s warned %s: %s", moderator, user, msg.Payload.Event.Reason),
+			},
+		)
+	case "channel.warning.acknowledge":
+		user := eventDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("%s acknowledged the warning", user),
+			},
+		)
+	case "channel.shoutout.create":
+		target := eventDisplayName(msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.ToBroadcasterUserLogin)
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("Sent a shoutout to %s with %d viewers", target, msg.Payload.Event.ViewerCount),
+			},
+		)
+	case "channel.shoutout.receive":
+		from := eventDisplayName(msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.FromBroadcasterUserLogin)
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("%s sent this channel a shoutout with %d viewers", from, msg.Payload.Event.ViewerCount),
+			},
+		)
+	case "automod.message.hold":
+		notice := t.autoModNotice(msg.Payload.Event)
+
+		if !automodStatusTerminal(msg.Payload.Event.Status) {
+			t.trackAutoMod(msg.Payload.Event.MessageID, notice)
+		}
+
+		return createCMDFunc(notice)
+	case "automod.message.update":
+		notice := t.autoModNotice(msg.Payload.Event)
+
+		if existing, ok := t.automodHeld[msg.Payload.Event.MessageID]; ok {
+			existing.Message = notice.Message
+			t.chatWindow.updateNotice(msg.Payload.Event.MessageID, notice.Message)
+
+			if automodStatusTerminal(msg.Payload.Event.Status) {
+				delete(t.automodHeld, msg.Payload.Event.MessageID)
+			}
+
+			return nil
+		}
+
+		if !automodStatusTerminal(msg.Payload.Event.Status) {
+			t.trackAutoMod(msg.Payload.Event.MessageID, notice)
+		}
+
+		return createCMDFunc(notice)
 	case "channel.ad_break.begin":
 		var chatMsg string
 
@@ -2868,4 +3039,64 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 	}
 
 	return nil
+}
+
+func eventDisplayName(name string, login string) string {
+	if name != "" {
+		return name
+	}
+
+	if login != "" {
+		return login
+	}
+
+	return "someone"
+}
+
+func (t *Broadcast) trackAutoMod(id string, notice *twitchirc.Notice) {
+	if t.automodHeld == nil {
+		t.automodHeld = make(map[string]*twitchirc.Notice)
+	}
+
+	t.automodHeld[id] = notice
+}
+
+func (t *Broadcast) autoModNotice(event eventsub.Event) *twitchirc.Notice {
+	user := eventDisplayName(event.UserName, event.UserLogin)
+
+	reason := event.Reason
+	if event.Category != "" {
+		reason = event.Category
+	}
+
+	details := ""
+	if reason != "" {
+		details = fmt.Sprintf(" (%s", reason)
+		if event.Level > 0 {
+			details += fmt.Sprintf(", level %d", event.Level)
+		}
+		details += ")"
+	}
+
+	status := ""
+	if event.Status != "" {
+		status = fmt.Sprintf(" [%s]", event.Status)
+	}
+
+	message := strings.TrimSpace(event.RewardText.Text)
+	if message != "" {
+		message = ": " + message
+	}
+
+	return &twitchirc.Notice{
+		FakeTimestamp:   time.Now(),
+		ChannelUserName: t.channelLogin,
+		MsgID:           twitchirc.MsgID(event.MessageID),
+		Message: fmt.Sprintf("AutoMod held a message from %s%s%s%s [id: %s] - /approve %s or /deny %s",
+			user, status, details, message, event.MessageID, event.MessageID, event.MessageID),
+	}
+}
+
+func automodStatusTerminal(status string) bool {
+	return status == "approved" || status == "denied" || status == "expired"
 }

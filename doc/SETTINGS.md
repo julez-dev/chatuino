@@ -110,6 +110,8 @@ Bindings are additive: every action accepts all keys listed for it.
 | Copy message to clipboard | `Y`, `alt+y` |
 | Reply | `alt+r`, `r` |
 | Quick timeout | `alt+t` |
+| Approve selected AutoMod message | `alt+a` |
+| Deny selected AutoMod message | `alt+d` |
 | Send and keep typing | `alt+enter`, `ctrl+enter` |
 | Dump screen / chat | `ctrl+alt+d`, `ctrl+alt+c` |
 

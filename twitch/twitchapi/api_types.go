@@ -145,6 +145,96 @@ type (
 		NonModeratorChatDelay         bool   `json:"non_moderator_chat_delay"`
 		NonModeratorChatDelayDuration int    `json:"non_moderator_chat_delay_duration"` // in seconds
 	}
+
+	// ChatSettingsUpdateData is the PATCH body of Update Chat Settings. Every field
+	// is optional: nil means "leave this setting alone", which is why the fields are
+	// pointers instead of zero values. A false boolean is a real update.
+	ChatSettingsUpdateData struct {
+		SlowMode                      *bool `json:"slow_mode,omitempty"`
+		SlowModeWaitTime              *int  `json:"slow_mode_wait_time,omitempty"`
+		FollowerMode                  *bool `json:"follower_mode,omitempty"`
+		FollowerModeDuration          *int  `json:"follower_mode_duration,omitempty"`
+		SubscriberMode                *bool `json:"subscriber_mode,omitempty"`
+		EmoteMode                     *bool `json:"emote_mode,omitempty"`
+		UniqueChatMode                *bool `json:"unique_chat_mode,omitempty"`
+		NonModeratorChatDelay         *bool `json:"non_moderator_chat_delay,omitempty"`
+		NonModeratorChatDelayDuration *int  `json:"non_moderator_chat_delay_duration,omitempty"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#get-moderators
+// https://dev.twitch.tv/docs/api/reference/#get-vips
+type (
+	//easyjson:json
+	GetModeratorsResponse struct {
+		Data       []ChatRoleUser `json:"data"`
+		Pagination Pagination     `json:"pagination"`
+	}
+
+	//easyjson:json
+	GetVIPsResponse struct {
+		Data       []ChatRoleUser `json:"data"`
+		Pagination Pagination     `json:"pagination"`
+	}
+
+	//easyjson:json
+	ChatRoleUser struct {
+		UserID    string `json:"user_id"`
+		UserLogin string `json:"user_login"`
+		UserName  string `json:"user_name"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#warn-chat-user
+type (
+	//easyjson:json
+	WarnChatUserRequest struct {
+		Data WarnChatUserData `json:"data"`
+	}
+
+	//easyjson:json
+	WarnChatUserData struct {
+		UserID string `json:"user_id"`
+		Reason string `json:"reason"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#start-a-raid
+type (
+	//easyjson:json
+	StartRaidResponse struct {
+		Data []RaidData `json:"data"`
+	}
+
+	//easyjson:json
+	RaidData struct {
+		CreatedAt time.Time `json:"created_at"`
+		IsMature  bool      `json:"is_mature"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#manage-held-automod-messages
+type (
+	//easyjson:json
+	ManageAutoModMessageRequest struct {
+		UserID string `json:"user_id"`
+		MsgID  string `json:"msg_id"`
+		Action string `json:"action"`
+	}
+)
+
+// https://dev.twitch.tv/docs/api/reference/#snooze-next-ad
+type (
+	//easyjson:json
+	SnoozeNextAdResponse struct {
+		Data []AdSnoozeData `json:"data"`
+	}
+
+	//easyjson:json
+	AdSnoozeData struct {
+		NextAdAt        string `json:"next_ad_at"`
+		SnoozeRefreshAt string `json:"snooze_refresh_at"`
+	}
 )
 
 // https://dev.twitch.tv/docs/api/reference/#ban-user

@@ -159,6 +159,22 @@ func (s *streamStatus) ApplyRoomState(state *twitchirc.RoomState) {
 	s.fallbackSeq++
 }
 
+// ApplySettings replaces the rendered settings with a complete state, either from
+// a chat settings write that this tab made or from a channel.chat_settings.update
+// event. Unlike ROOMSTATE the state is complete, so it is stored as-is.
+func (s *streamStatus) ApplySettings(settings twitchapi.ChatSettingData) {
+	s.settings = settings
+	s.err = nil
+	s.isDataFetched = true
+	s.fallbackSeq++
+
+	if s.chatSettings != nil {
+		s.chatSettings.Put(s.channelID, settings)
+	}
+}
+
+// scheduleFallback arms the fallback request for a channel that has not reported
+// its room state yet.
 // scheduleFallback arms the fallback request for a channel that has not reported
 // its room state yet.
 func (s *streamStatus) scheduleFallback() tea.Cmd {

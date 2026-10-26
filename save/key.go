@@ -78,6 +78,8 @@ type KeyMap struct {
 	PageDown        key.Binding `yaml:"page_down"`
 	DumpChat        key.Binding `yaml:"dump_chat"`
 	QuickTimeout    key.Binding `yaml:"quick_timeout"`
+	QuickApprove    key.Binding `yaml:"quick_approve"`
+	QuickDeny       key.Binding `yaml:"quick_deny"`
 	CopyMessage     key.Binding `yaml:"copy_message"`
 	CopyToClipboard key.Binding `yaml:"copy_to_clipboard"`
 	ReplyMessage    key.Binding `yaml:"reply_message"`
@@ -265,6 +267,14 @@ func BuildDefaultKeyMap() KeyMap {
 		QuickTimeout: key.NewBinding(
 			key.WithKeys("alt+t"),
 			key.WithHelp("alt+t", "quick timeout"),
+		),
+		QuickApprove: key.NewBinding(
+			key.WithKeys("alt+a"),
+			key.WithHelp("alt+a", "approve selected AutoMod message"),
+		),
+		QuickDeny: key.NewBinding(
+			key.WithKeys("alt+d"),
+			key.WithHelp("alt+d", "deny selected AutoMod message"),
 		),
 		DumpChat: key.NewBinding(
 			key.WithKeys("ctrl+alt+c"),

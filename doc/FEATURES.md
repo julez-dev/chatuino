@@ -116,7 +116,13 @@ Commands like `/ban`, `/unban`, and `/timeout` are also suggested.
 
 ## Moderation Commands
 
-Moderators can use `/timeout`, `/ban`, `/unban`, `/announcement`, `/marker` and `/delete_all_messages` from the message input.
+Moderators can use `/timeout`, `/ban`, `/unban`, `/announcement`, `/marker`, `/delete_all_messages` and `/clear` from the message input.
+
+Chat settings can be changed from the same input: `/slow [duration]`, `/slowoff`, `/followers [duration]`, `/followersoff`, `/subscribers`, `/subscribersoff`, `/emoteonly`, `/emoteonlyoff`, `/uniquechat` and `/uniquechatoff`. `/slow 10` means ten seconds, `/followers 10m` means ten minutes, and leaving the duration out uses Twitch's default. The status bar updates as soon as Twitch confirms the change.
+
+Moderators and VIPs are managed with `/mod`, `/unmod`, `/mods`, `/vip`, `/unvip` and `/vips`. Warnings use `/warn <user> [reason]`. Raids use `/raid <channel>` and `/unraid`, shoutouts use `/shoutout <channel>`, and the next automatic ad can be pushed back with `/snooze`.
+
+Held AutoMod messages appear as chat notices with their message ID; approve or deny them with `/approve <message_id>` and `/deny <message_id>`, or select the notice and press `alt+a` / `alt+d` to have the command typed into the composer. Warnings, shoutouts and AutoMod status changes are also rendered in chat.
 
 `/timeout` takes its duration the way Twitch's own chat does, so it does not need to be converted to seconds first:
 

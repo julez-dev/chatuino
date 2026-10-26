@@ -558,6 +558,203 @@ func (a *API) GetChatSettings(ctx context.Context, broadcasterID string, moderat
 	return resp, nil
 }
 
+func (a *API) UpdateChatSettings(ctx context.Context, broadcasterID string, moderatorID string, data ChatSettingsUpdateData) (GetChatSettingsResponse, error) {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", moderatorID)
+
+	endpoint := fmt.Sprintf("/chat/settings?%s", values.Encode())
+
+	body, err := json.Marshal(data)
+	if err != nil {
+		return GetChatSettingsResponse{}, err
+	}
+
+	resp, err := doAuthenticatedUserRequest[GetChatSettingsResponse](ctx, a, http.MethodPatch, endpoint, body)
+	if err != nil {
+		return GetChatSettingsResponse{}, err
+	}
+
+	return resp, nil
+}
+
+// GetModerators lists the channel's moderators. userIDs optionally filters the
+// result to the given users, which is what /mods uses to answer "is this user a
+// mod?" without downloading the whole list first.
+func (a *API) GetModerators(ctx context.Context, broadcasterID string, userIDs []string) ([]ChatRoleUser, error) {
+	return a.getChatRoleUsers(ctx, "/moderation/moderators", broadcasterID, userIDs)
+}
+
+func (a *API) AddChannelModerator(ctx context.Context, broadcasterID string, userID string) error {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("user_id", userID)
+
+	endpoint := fmt.Sprintf("/moderation/moderators?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, endpoint, nil)
+	return err
+}
+
+func (a *API) RemoveChannelModerator(ctx context.Context, broadcasterID string, userID string) error {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("user_id", userID)
+
+	endpoint := fmt.Sprintf("/moderation/moderators?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, endpoint, nil)
+	return err
+}
+
+func (a *API) GetVIPs(ctx context.Context, broadcasterID string, userIDs []string) ([]ChatRoleUser, error) {
+	return a.getChatRoleUsers(ctx, "/channels/vips", broadcasterID, userIDs)
+}
+
+func (a *API) getChatRoleUsers(ctx context.Context, path string, broadcasterID string, userIDs []string) ([]ChatRoleUser, error) {
+	users := []ChatRoleUser{}
+	var after string
+
+	for {
+		values := url.Values{}
+		values.Add("broadcaster_id", broadcasterID)
+		values.Add("first", "100")
+		if after != "" {
+			values.Add("after", after)
+		}
+		for _, id := range userIDs {
+			values.Add("user_id", id)
+		}
+
+		endpoint := fmt.Sprintf("%s?%s", path, values.Encode())
+
+		resp, err := doAuthenticatedUserRequest[GetModeratorsResponse](ctx, a, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		users = append(users, resp.Data...)
+
+		if resp.Pagination.Cursor == "" {
+			return users, nil
+		}
+
+		after = resp.Pagination.Cursor
+	}
+}
+
+func (a *API) AddChannelVIP(ctx context.Context, broadcasterID string, userID string) error {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("user_id", userID)
+
+	endpoint := fmt.Sprintf("/channels/vips?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, endpoint, nil)
+	return err
+}
+
+func (a *API) RemoveChannelVIP(ctx context.Context, broadcasterID string, userID string) error {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("user_id", userID)
+
+	endpoint := fmt.Sprintf("/channels/vips?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, endpoint, nil)
+	return err
+}
+
+func (a *API) WarnChatUser(ctx context.Context, broadcasterID string, moderatorID string, userID string, reason string) error {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+	values.Add("moderator_id", moderatorID)
+
+	endpoint := fmt.Sprintf("/moderation/warnings?%s", values.Encode())
+
+	body, err := json.Marshal(WarnChatUserRequest{Data: WarnChatUserData{UserID: userID, Reason: reason}})
+	if err != nil {
+		return err
+	}
+
+	_, err = doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, endpoint, body)
+	return err
+}
+
+func (a *API) StartRaid(ctx context.Context, fromBroadcasterID string, toBroadcasterID string) (RaidData, error) {
+	values := url.Values{}
+	values.Add("from_broadcaster_id", fromBroadcasterID)
+	values.Add("to_broadcaster_id", toBroadcasterID)
+
+	endpoint := fmt.Sprintf("/raids?%s", values.Encode())
+
+	resp, err := doAuthenticatedUserRequest[StartRaidResponse](ctx, a, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return RaidData{}, err
+	}
+
+	if len(resp.Data) == 0 {
+		return RaidData{}, nil
+	}
+
+	return resp.Data[0], nil
+}
+
+func (a *API) CancelRaid(ctx context.Context, broadcasterID string) error {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+
+	endpoint := fmt.Sprintf("/raids?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodDelete, endpoint, nil)
+	return err
+}
+
+func (a *API) SendShoutout(ctx context.Context, fromBroadcasterID string, toBroadcasterID string, moderatorID string) error {
+	values := url.Values{}
+	values.Add("from_broadcaster_id", fromBroadcasterID)
+	values.Add("to_broadcaster_id", toBroadcasterID)
+	values.Add("moderator_id", moderatorID)
+
+	endpoint := fmt.Sprintf("/chat/shoutouts?%s", values.Encode())
+
+	_, err := doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, endpoint, nil)
+	return err
+}
+
+func (a *API) ManageAutoModMessage(ctx context.Context, userID string, messageID string, action string) error {
+	body, err := json.Marshal(ManageAutoModMessageRequest{
+		UserID: userID,
+		MsgID:  messageID,
+		Action: action,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	_, err = doAuthenticatedUserRequest[any](ctx, a, http.MethodPost, "/moderation/automod/message", body)
+	return err
+}
+
+func (a *API) SnoozeNextAd(ctx context.Context, broadcasterID string) (AdSnoozeData, error) {
+	values := url.Values{}
+	values.Add("broadcaster_id", broadcasterID)
+
+	endpoint := fmt.Sprintf("/channels/ads/schedule/snooze?%s", values.Encode())
+
+	resp, err := doAuthenticatedUserRequest[SnoozeNextAdResponse](ctx, a, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return AdSnoozeData{}, err
+	}
+
+	if len(resp.Data) == 0 {
+		return AdSnoozeData{}, nil
+	}
+
+	return resp.Data[0], nil
+}
+
 func (a *API) SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req CreateChatAnnouncementRequest) error {
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)

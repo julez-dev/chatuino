@@ -67,6 +67,19 @@ type ModerationAPI interface {
 	DeleteMessage(ctx context.Context, broadcasterID string, moderatorID string, messageID string) error
 	SendChatAnnouncement(ctx context.Context, broadcasterID string, moderatorID string, req twitchapi.CreateChatAnnouncementRequest) error
 	CreateStreamMarker(ctx context.Context, req twitchapi.CreateStreamMarkerRequest) (twitchapi.StreamMarker, error)
+	UpdateChatSettings(ctx context.Context, broadcasterID string, moderatorID string, data twitchapi.ChatSettingsUpdateData) (twitchapi.GetChatSettingsResponse, error)
+	GetModerators(ctx context.Context, broadcasterID string, userIDs []string) ([]twitchapi.ChatRoleUser, error)
+	AddChannelModerator(ctx context.Context, broadcasterID string, userID string) error
+	RemoveChannelModerator(ctx context.Context, broadcasterID string, userID string) error
+	GetVIPs(ctx context.Context, broadcasterID string, userIDs []string) ([]twitchapi.ChatRoleUser, error)
+	AddChannelVIP(ctx context.Context, broadcasterID string, userID string) error
+	RemoveChannelVIP(ctx context.Context, broadcasterID string, userID string) error
+	WarnChatUser(ctx context.Context, broadcasterID string, moderatorID string, userID string, reason string) error
+	StartRaid(ctx context.Context, fromBroadcasterID string, toBroadcasterID string) (twitchapi.RaidData, error)
+	CancelRaid(ctx context.Context, broadcasterID string) error
+	SendShoutout(ctx context.Context, fromBroadcasterID string, toBroadcasterID string, moderatorID string) error
+	ManageAutoModMessage(ctx context.Context, userID string, messageID string, action string) error
+	SnoozeNextAd(ctx context.Context, broadcasterID string) (twitchapi.AdSnoozeData, error)
 }
 
 // FollowedChannelsAPI lists the channels an account follows.
