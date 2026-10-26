@@ -1732,9 +1732,7 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 		// The new-message badge covers the tail of a chat row: a click there means
 		// "show me the new messages", not "select the message underneath it".
-		if t.chatWindow.NewMessageBadgeHit(row, x) {
-			t.chatWindow.jumpToNewest()
-
+		if t.chatWindow.handleNewMessageBadgeClick(row, x) {
 			return nil
 		}
 
@@ -1769,6 +1767,11 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 			}
 
 			row := y - chat.top
+
+			if t.userInspect.chatWindow.handleNewMessageBadgeClick(row, x) {
+				return nil
+			}
+
 			line := t.userInspect.chatWindow.viewportRenderStart() + row
 			_, entry := t.userInspect.chatWindow.entryAtLine(line)
 			double := t.registerClick(entry, line)

@@ -902,13 +902,7 @@ func (c *chatWindow) handleMessage(msg ChatEventMessage) tea.Cmd {
 	c.invalidateFilteredEntries()
 
 	c.updatePort()
-
-	// A message is only in view when the viewport reaches its last line. If it arrived
-	// below the fold, it is counted and the badge appears; updatePort clears the
-	// counter again as soon as the user is caught up with the tail.
-	if entry.Position.CursorEnd >= c.lineEnd && c.settings.Chat.NewMessageIndicator {
-		c.newMessages++
-	}
+	c.countNewMessage(entry)
 
 	if wasLatestMessage {
 		c.moveToBottom()

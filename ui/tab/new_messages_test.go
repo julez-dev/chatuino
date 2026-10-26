@@ -12,7 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const newMessageBadgeText = "↓ 1 new message"
+// singularBadgeLabel is what the badge shows for exactly one missed message.
+const singularBadgeLabel = "↓ 1 new message"
 
 // scrolledUpChatWindow returns a window that is filled to the tail and then paged up
 // twice, so the tail is out of view and arriving messages are missed rather than
@@ -54,7 +55,7 @@ func TestChatWindow_NewMessageBadgeCountsMissedMessages(t *testing.T) {
 	require.NotContains(t, strings.Join(viewRows(t, c), "\n"), "new message", "nothing was missed yet")
 
 	addPrivateMessage(t, c, "missed-0", "first missed message")
-	require.Contains(t, strings.Join(viewRows(t, c), "\n"), "↓ 1 new message")
+	require.Contains(t, strings.Join(viewRows(t, c), "\n"), singularBadgeLabel)
 	require.False(t, c.atTail(), "the viewport stays where the user put it")
 
 	addPrivateMessage(t, c, "missed-1", "second missed message")
@@ -100,7 +101,7 @@ func TestChatWindow_NewMessageBadgeCountsBelowAFullViewport(t *testing.T) {
 
 	require.Equal(t, 1, c.newMessages, "the message is not in view, so it counts")
 	require.False(t, c.atTail())
-	require.Contains(t, strings.Join(viewRows(t, c), "\n"), newMessageBadgeText)
+	require.Contains(t, strings.Join(viewRows(t, c), "\n"), singularBadgeLabel)
 }
 
 func TestChatWindow_NewMessageBadgeClearsAtTail(t *testing.T) {
@@ -133,7 +134,7 @@ func TestChatWindow_NewMessageBadgeClearsAtTail(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := scrolledUpChatWindow(t, 60, 6, save.BuildDefaultSettings())
 			addPrivateMessage(t, c, "missed", "missed message")
-			require.Contains(t, strings.Join(viewRows(t, c), "\n"), newMessageBadgeText)
+			require.Contains(t, strings.Join(viewRows(t, c), "\n"), singularBadgeLabel)
 
 			tt.back(c)
 
@@ -169,14 +170,14 @@ func TestChatWindow_NewMessageBadgePlacement(t *testing.T) {
 
 	badgeRow := -1
 	for i, row := range rows {
-		if strings.Contains(ansi.Strip(row), newMessageBadgeText) {
+		if strings.Contains(ansi.Strip(row), singularBadgeLabel) {
 			require.Equal(t, -1, badgeRow, "the badge is drawn once")
 			badgeRow = i
 		}
 	}
 
 	require.Equal(t, c.height-1, badgeRow, "the badge sits on the bottom row")
-	require.True(t, strings.HasSuffix(ansi.Strip(rows[badgeRow]), newMessageBadgeText), "flush right, one column to spare")
+	require.True(t, strings.HasSuffix(ansi.Strip(rows[badgeRow]), singularBadgeLabel), "flush right, one column to spare")
 	require.Equal(t, c.width-1, lipgloss.Width(rows[badgeRow]), "the badge row stops one column short of the pane edge")
 }
 
@@ -188,7 +189,7 @@ func TestChatWindow_NewMessageBadgeTooNarrow(t *testing.T) {
 	addPrivateMessage(t, c, "missed", "missed message")
 
 	require.NotContains(t, strings.Join(viewRows(t, c), "\n"), "new message")
-	require.False(t, c.NewMessageBadgeHit(c.height-1, 1), "no badge, no hit area")
+	require.False(t, c.newMessageBadgeHit(c.height-1, 1), "no badge, no hit area")
 }
 
 // TestChatWindow_NewMessageBadgeSkipsGraphicEmoteRows covers graphic emotes: the badge
@@ -231,9 +232,9 @@ func TestChatWindow_NewMessageBadgeSkipsGraphicEmoteRows(t *testing.T) {
 			require.Equal(t, c.height-1-tt.wantFromEnd, row, "the badge steps over every image row")
 
 			rows := viewRows(t, c)
-			require.Contains(t, rows[row], newMessageBadgeText)
+			require.Contains(t, rows[row], singularBadgeLabel)
 			for i := row + 1; i < c.height; i++ {
-				require.NotContains(t, rows[i], newMessageBadgeText, "row %d belongs to the image", i)
+				require.NotContains(t, rows[i], singularBadgeLabel, "row %d belongs to the image", i)
 			}
 		})
 	}
@@ -261,10 +262,10 @@ func TestChatWindow_NewMessageBadgeWithGraphicsDisabled(t *testing.T) {
 	row, _, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
 	require.True(t, ok)
 	require.Equal(t, c.height-1, row, "nothing to step over, the badge uses the bottom row")
-	require.Contains(t, viewRows(t, c)[c.height-1], newMessageBadgeText)
+	require.Contains(t, viewRows(t, c)[c.height-1], singularBadgeLabel)
 }
 
-func TestChatWindow_NewMessageBadgeHit(t *testing.T) {
+func TestChatWindow_NewMessageBadgeHitArea(t *testing.T) {
 	t.Parallel()
 
 	c := scrolledUpChatWindow(t, 60, 6, save.BuildDefaultSettings())
@@ -275,13 +276,13 @@ func TestChatWindow_NewMessageBadgeHit(t *testing.T) {
 	row, col, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
 	require.True(t, ok)
 
-	require.True(t, c.NewMessageBadgeHit(row, col), "the first badge cell is a hit")
-	require.True(t, c.NewMessageBadgeHit(row, col+width-1), "the last badge cell is a hit")
-	require.False(t, c.NewMessageBadgeHit(row, col-1), "the cell in front of the badge is a miss")
-	require.False(t, c.NewMessageBadgeHit(row-1, col), "the row above the badge is a miss")
-	require.False(t, c.NewMessageBadgeHit(row, col+width), "the column after the badge is a miss")
+	require.True(t, c.newMessageBadgeHit(row, col), "the first badge cell is a hit")
+	require.True(t, c.newMessageBadgeHit(row, col+width-1), "the last badge cell is a hit")
+	require.False(t, c.newMessageBadgeHit(row, col-1), "the cell in front of the badge is a miss")
+	require.False(t, c.newMessageBadgeHit(row-1, col), "the row above the badge is a miss")
+	require.False(t, c.newMessageBadgeHit(row, col+width), "the column after the badge is a miss")
 
 	c.jumpToNewest()
-	require.False(t, c.NewMessageBadgeHit(row, col), "the hit area disappears with the badge")
+	require.False(t, c.newMessageBadgeHit(row, col), "the hit area disappears with the badge")
 	require.True(t, c.atTail())
 }

@@ -37,9 +37,27 @@ func (c *chatWindow) newMessageBadge() (string, int) {
 	return badge, lipgloss.Width(badge)
 }
 
+// newMessageIndicatorEnabled reports whether this window counts and shows new
+// messages. The setting is read in one place so counting and drawing cannot drift
+// apart.
+func (c *chatWindow) newMessageIndicatorEnabled() bool {
+	return c.settings.Chat.NewMessageIndicator
+}
+
 // newMessageBadgeVisible reports whether this window shows the badge at all.
 func (c *chatWindow) newMessageBadgeVisible() bool {
-	return c.newMessages > 0 && c.settings.Chat.NewMessageIndicator
+	return c.newMessages > 0 && c.newMessageIndicatorEnabled()
+}
+
+// countNewMessage records a message that ended up outside the viewport. A message is
+// only in view when the viewport reaches its last rendered line, so a buffer that
+// exactly fills the viewport still reports messages that landed below the fold.
+func (c *chatWindow) countNewMessage(entry *chatEntry) {
+	if entry.Position.CursorEnd < c.lineEnd || !c.newMessageIndicatorEnabled() {
+		return
+	}
+
+	c.newMessages++
 }
 
 // newMessageBadgeSpan locates a badge of the given width in the view, where
@@ -104,10 +122,22 @@ func (c *chatWindow) drawNewMessageBadge(view []string, renderStart, height int)
 	view[row] = prefix + ansi.ResetStyle + badge
 }
 
-// NewMessageBadgeHit reports whether a click on the chat view, relative to its
-// top-left cell, lands on the badge. The badge then means "show me the new
-// messages" rather than "select the message underneath it".
-func (c *chatWindow) NewMessageBadgeHit(row, col int) bool {
+// handleNewMessageBadgeClick catches up with the chat when a click on the chat view,
+// relative to its top-left cell, lands on the badge, and reports whether the click was
+// consumed. It lives here so every tab wires its chat clicks the same way.
+func (c *chatWindow) handleNewMessageBadgeClick(row, col int) bool {
+	if !c.newMessageBadgeHit(row, col) {
+		return false
+	}
+
+	c.jumpToNewest()
+
+	return true
+}
+
+// newMessageBadgeHit reports whether the given cell is covered by the badge. The badge
+// then means "show me the new messages" rather than "select the message underneath it".
+func (c *chatWindow) newMessageBadgeHit(row, col int) bool {
 	if c.state == searchChatWindowState || !c.newMessageBadgeVisible() {
 		return false
 	}

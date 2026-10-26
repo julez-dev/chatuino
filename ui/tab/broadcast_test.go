@@ -853,6 +853,52 @@ func Test_Broadcast_MouseClickNewMessageBadgeJumpsToTheNewestMessage(t *testing.
 	require.Zero(t, tab.chatWindow.newMessages)
 }
 
+// Test_Broadcast_MouseClickUserInspectNewMessageBadge pins that the inspect chat
+// behaves like the main chat: the badge catches up with the history instead of
+// selecting the message underneath it.
+func Test_Broadcast_MouseClickUserInspectNewMessageBadge(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+	addTestMessages(t, tab.chatWindow, 5)
+	tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID,
+		tab.settings, tab.theme, tab.keymap, tab.client.API, tab.messageLogger, tab.emoteReplacer, tab.badgeReplacer)
+
+	tab.state = userInspectMode
+	tab.HandleResize()
+
+	history := tab.userInspect.chatWindow
+
+	for i := range 40 {
+		addPrivateMessage(t, history, fmt.Sprintf("msg-%d", i), fmt.Sprintf("message %d", i))
+	}
+
+	tab.HandleResize()
+
+	for range 3 {
+		history.pageUp()
+	}
+
+	addPrivateMessage(t, history, "missed", "missed while scrolled up")
+
+	_, badgeWidth := history.newMessageBadge()
+
+	row, col, ok := history.newMessageBadgeSpan(history.viewportRenderStart(), history.height, badgeWidth)
+	require.True(t, ok, "the inspect history shows the badge")
+
+	newest := history.getNewestEntry()
+	require.NotNil(t, newest)
+	require.False(t, newest.Selected)
+
+	y := tab.inspectChatSpan().top + row
+	cmd := tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: col, Y: y}, col, y)
+
+	require.Nil(t, cmd)
+	require.True(t, newest.Selected, "the click caught up with the inspect history")
+	require.Zero(t, history.newMessages)
+	require.Equal(t, userInspectMode, tab.state, "catching up must not leave inspect mode")
+}
+
 // Test_Broadcast_MouseClickComposer checks the composer hit box, including after
 // the composer grows and the chat window shrinks.
 func Test_Broadcast_MouseClickComposer(t *testing.T) {

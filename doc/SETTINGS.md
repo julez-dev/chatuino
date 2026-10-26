@@ -30,7 +30,7 @@ chat:
   graphic_scale: 2 # Height of graphic emotes/badges in terminal rows (1-4). Lines containing images take up this many rows; Default: 1
   disable_badges: false # Hide badges entirely; Default: false
   smooth_scroll: true # Animate chat scrolling when new messages arrive; Default: false
-  new_message_indicator: true # Show a badge counting messages that arrive while you are scrolled up; Default: true
+  new_message_indicator: true # Show a badge counting messages that arrive while you are not caught up with the newest message; Default: true
   disable_emote_tooltip: false # Don't show the emote name when hovering a graphic emote with the mouse (needs mouse: true); Default: false
   time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
 custom_commands:
