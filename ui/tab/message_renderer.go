@@ -132,7 +132,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 
 		body := msg.Message
 		if isReply {
-			body = stripReplyMention(body, ctx)
+			body = stripReplyMention(body, ctx.ParentName, ctx.ParentLogin)
 		}
 
 		r.setUserColorModifier(body, &event.DisplayModifier)
@@ -142,7 +142,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 			return lines
 		}
 
-		return append([]string{r.replyContextRow(ctx)}, lines...)
+		return append([]string{r.replyContextRow(ctx, event.DisplayModifier)}, lines...)
 	case *twitchirc.Notice:
 		title := "Notice"
 		if event.IsFakeEvent {

@@ -22,6 +22,11 @@ type replyContext struct {
 	Snippet string
 }
 
+const (
+	replyMarker = "↩ "
+	replySep    = ": "
+)
+
 // replyContextFor returns the quoted parent of a reply. It returns false for messages
 // that are not replies and when the setting hides the reference, so rendering and click
 // handling agree on whether a context row exists.
@@ -51,38 +56,32 @@ func (r *messageRenderer) replyContextFor(msg *twitchirc.PrivateMessage) (replyC
 
 // stripReplyMention removes the "@parent " that Twitch's own client writes into the text
 // of a reply, so the reference and the body do not name the same user twice. Only an
-// exact match of the parent's name followed by a space is dropped; any other mention,
-// and a name that is merely a prefix of the mentioned one, is left alone.
-func stripReplyMention(body string, ctx replyContext) string {
-	for _, name := range []string{ctx.ParentName, ctx.ParentLogin} {
-		mention := "@" + name
-		// Logins are ASCII and a display name only ever appears here as the very bytes we
-		// are comparing, so slicing by byte length cannot split a rune.
-		if len(body) <= len(mention) || !strings.EqualFold(body[:len(mention)], mention) {
+// exact match of the parent's display name or login, followed by a space, is dropped;
+// any other mention, and a name that is merely a prefix of the mentioned one, stays.
+func stripReplyMention(body, parentName, parentLogin string) string {
+	bodyRunes := []rune(body)
+
+	for _, name := range []string{parentName, parentLogin} {
+		mention := []rune("@" + name)
+		if name == "" || len(bodyRunes) <= len(mention) {
 			continue
 		}
 
-		rest := body[len(mention):]
+		// Compare runes, not bytes: case folding can map runes of different byte lengths
+		// onto each other, so a byte prefix could split one in half.
+		if !strings.EqualFold(string(bodyRunes[:len(mention)]), string(mention)) {
+			continue
+		}
+
+		rest := bodyRunes[len(mention):]
 		if rest[0] != ' ' && rest[0] != '\t' {
 			continue
 		}
 
-		return strings.TrimLeft(rest, " \t")
+		return strings.TrimLeft(string(rest), " \t")
 	}
 
 	return body
-}
-
-// handleChatClick resolves the controls that sit on top of the chat rows and reports
-// whether the click was consumed by one of them: the new-message badge, then a reply
-// reference. Every tab that shows a chat buffer routes its clicks through here, so the
-// controls behave the same everywhere.
-func (c *chatWindow) handleChatClick(row, col int) bool {
-	if c.handleNewMessageBadgeClick(row, col) {
-		return true
-	}
-
-	return c.handleReplyReferenceClick(c.viewportRenderStart()+row, col)
 }
 
 // handleReplyReferenceClick selects the parent message when the click lands on a reply's
@@ -120,26 +119,42 @@ func (c *chatWindow) handleReplyReferenceClick(line, col int) bool {
 	return false
 }
 
-// replyContextRow renders the quoted parent as one row above the reply. The row starts
-// in the message's name column and the snippet is cut to what the pane can still show,
-// so the reference reads as an annotation of the message below it.
-func (r *messageRenderer) replyContextRow(ctx replyContext) string {
-	const (
-		marker = "↩ "
-		sep    = ": "
-	)
-
-	// Marks replace the first two cells, so the reference keeps its column: with the
-	// selection indicator the row is shifted by exactly the cells the marker frees.
+// replyContextRow renders the quoted parent as one row above the reply. The row starts in
+// the message's name column, and name and quote share the width the pane has left, so a
+// long display name cannot push the reference past the pane edge.
+func (r *messageRenderer) replyContextRow(ctx replyContext, modifier MessageContentModifier) string {
 	indent := strings.Repeat(" ", r.timePaddingWidth)
+	budget := r.width - r.indicatorWidth - r.timePaddingWidth - lipgloss.Width(replyMarker) - lipgloss.Width(replySep)
 
-	name := r.replyStyle.Render(ctx.ParentName)
-	if render, ok := r.palette.Lookup(strings.ToLower(ctx.ParentLogin)); ok {
-		name = render(ctx.ParentName)
+	name := truncateToWidth(ctx.ParentName, min(lipgloss.Width(ctx.ParentName), budget))
+	snippet := truncateToWidth(ctx.Snippet, max(0, budget-lipgloss.Width(name)))
+
+	// A struck or italic reply carries the attribute into its quote as well: a clean
+	// reference above a struck message reads like a rendering fault. The parent's color
+	// is dropped in that case, since a per-user color cannot carry the attribute.
+	if modifier.Strikethrough || modifier.Italic {
+		// StrikethroughSpaces(false) matches how the message body is struck: the gap in
+		// "carol: text" keeps its color instead of being lined through.
+		style := r.dimmedStyle.
+			Strikethrough(modifier.Strikethrough).
+			StrikethroughSpaces(false).
+			Italic(modifier.Italic)
+
+		// The indent stays unstyled: the selection indicator replaces the two leading
+		// spaces, and a row that starts with an escape sequence would shift by two cells.
+		return indent + style.Render(replyMarker+name+replySep+snippet)
 	}
 
-	labelWidth := r.timePaddingWidth + lipgloss.Width(marker) + lipgloss.Width(name) + lipgloss.Width(sep)
-	snippet := truncateToWidth(ctx.Snippet, r.width-r.indicatorWidth-labelWidth)
+	if render, ok := r.palette.Lookup(strings.ToLower(ctx.ParentLogin)); ok {
+		name = render(name)
+	} else {
+		// The parent is not in the palette yet: the accent marks it as a reference.
+		name = r.replyStyle.Render(name)
+	}
 
-	return indent + r.dimmedStyle.Render(marker) + name + r.dimmedStyle.Render(sep+snippet)
+	if snippet == "" {
+		return indent + r.dimmedStyle.Render(replyMarker) + name
+	}
+
+	return indent + r.dimmedStyle.Render(replyMarker) + name + r.dimmedStyle.Render(replySep+snippet)
 }

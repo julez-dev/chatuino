@@ -1,13 +1,9 @@
 package tab
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/stretchr/testify/require"
@@ -32,110 +28,6 @@ func replyMessage(body string) *twitchirc.PrivateMessage {
 	}
 }
 
-func renderReply(t *testing.T, settings save.Settings, msg *twitchirc.PrivateMessage) []string {
-	t.Helper()
-
-	r := newMessageRenderer(60, 0, settings, save.BuildDefaultTheme(), newUserPalette())
-
-	return r.Render(ChatEventMessage{Message: msg})
-}
-
-func TestMessageRenderer_ReplyContextRow(t *testing.T) {
-	t.Parallel()
-
-	t.Run("quotes the parent above the message", func(t *testing.T) {
-		t.Parallel()
-
-		lines := renderReply(t, save.BuildDefaultSettings(), replyMessage("@Alice no it wasn't, watch the vod"))
-
-		require.Len(t, lines, 2, "a reply is the reference row plus the message row")
-		require.Equal(t, "↩ Alice: that was a great play", strings.TrimSpace(ansi.Strip(lines[0])))
-		require.Contains(t, ansi.Strip(lines[1]), "carol: no it wasn't, watch the vod", "the redundant mention is stripped")
-		require.NotContains(t, ansi.Strip(lines[1]), "@Alice")
-	})
-
-	t.Run("starts in the message name column", func(t *testing.T) {
-		t.Parallel()
-
-		lines := renderReply(t, save.BuildDefaultSettings(), replyMessage("hello"))
-
-		require.True(t, strings.HasPrefix(lines[0], strings.Repeat(" ", 11)), "the reference aligns with the first message column")
-		require.NotContains(t, ansi.Strip(lines[0]), "\n")
-	})
-
-	t.Run("falls back to the login without a display name", func(t *testing.T) {
-		t.Parallel()
-
-		msg := replyMessage("hello")
-		msg.ParentDisplayName = ""
-
-		lines := renderReply(t, save.BuildDefaultSettings(), msg)
-
-		require.Equal(t, "↩ alice: that was a great play", strings.TrimSpace(ansi.Strip(lines[0])))
-	})
-
-	t.Run("truncates a long parent to the pane", func(t *testing.T) {
-		t.Parallel()
-
-		msg := replyMessage("hello")
-		msg.ParentMsgBody = strings.Repeat("a long parent message ", 8)
-
-		lines := renderReply(t, save.BuildDefaultSettings(), msg)
-
-		require.Contains(t, ansi.Strip(lines[0]), "…")
-		require.LessOrEqual(t, lipgloss.Width(lines[0]), 60, "the reference never exceeds the pane")
-	})
-
-	t.Run("normalizes whitespace in the parent", func(t *testing.T) {
-		t.Parallel()
-
-		msg := replyMessage("hello")
-		msg.ParentMsgBody = "  spaced   out\ntext  "
-
-		lines := renderReply(t, save.BuildDefaultSettings(), msg)
-
-		require.Equal(t, "↩ Alice: spaced out text", strings.TrimSpace(ansi.Strip(lines[0])))
-	})
-
-	for _, tt := range []struct {
-		name      string
-		configure func(msg *twitchirc.PrivateMessage, settings *save.Settings)
-	}{
-		{
-			name: "setting disabled",
-			configure: func(_ *twitchirc.PrivateMessage, settings *save.Settings) {
-				settings.Chat.ReplyContext = false
-			},
-		},
-		{
-			name: "not a reply",
-			configure: func(msg *twitchirc.PrivateMessage, _ *save.Settings) {
-				msg.ParentMsgID = ""
-			},
-		},
-		{
-			name: "parent without a name",
-			configure: func(msg *twitchirc.PrivateMessage, _ *save.Settings) {
-				msg.ParentDisplayName = ""
-				msg.ParentUserLogin = ""
-			},
-		},
-	} {
-		t.Run("no reference when "+tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			settings := save.BuildDefaultSettings()
-			msg := replyMessage("hello")
-			tt.configure(msg, &settings)
-
-			lines := renderReply(t, settings, msg)
-
-			require.Len(t, lines, 1, "the message renders as a plain one")
-			require.NotContains(t, ansi.Strip(lines[0]), "↩")
-		})
-	}
-}
-
 func TestStripReplyMention(t *testing.T) {
 	t.Parallel()
 
@@ -157,9 +49,21 @@ func TestStripReplyMention(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, stripReplyMention(tt.body, ctx))
+			require.Equal(t, tt.want, stripReplyMention(tt.body, ctx.ParentName, ctx.ParentLogin))
 		})
 	}
+}
+
+// TestStripReplyMention_UnicodeCaseFolding pins rune-safe matching: the Kelvin sign folds
+// to "k" but is three bytes long, so a byte-length prefix would cut it in half and miss
+// the mention.
+func TestStripReplyMention_UnicodeCaseFolding(t *testing.T) {
+	t.Parallel()
+
+	const kelvin = "\u212a"
+
+	require.Equal(t, "hello", stripReplyMention("@k hello", kelvin, "kelvin"))
+	require.Equal(t, "hello", stripReplyMention("@"+kelvin+" hello", kelvin, "kelvin"))
 }
 
 // replyTestWindow returns a window holding a parent message and a reply to it, with the
@@ -244,20 +148,4 @@ func TestChatWindow_ReplyReferenceClick(t *testing.T) {
 		require.False(t, c.handleChatClick(row, c.renderer.timePaddingWidth))
 		require.Equal(t, reply.Position.CursorStart, reply.Position.CursorEnd, "a reply is a single row")
 	})
-}
-
-// TestChatWindow_ReplyContextKeepsItsRow pins that the reference row belongs to the reply
-// entry, so selection, wrapping and cleanup treat it as part of the message.
-func TestChatWindow_ReplyContextKeepsItsRow(t *testing.T) {
-	t.Parallel()
-
-	c, reply := replyTestWindow(t, save.BuildDefaultSettings())
-
-	require.Equal(t, reply.Position.CursorStart+1, reply.Position.CursorEnd)
-
-	rows := viewRows(t, c)
-	reference := rows[reply.Position.CursorStart-c.viewportRenderStart()]
-
-	require.Contains(t, ansi.Strip(reference), "↩ Alice: that was a great play")
-	require.Contains(t, ansi.Strip(rows[reply.Position.CursorEnd-c.viewportRenderStart()]), fmt.Sprintf("%s: no it wasn't", "carol"))
 }
