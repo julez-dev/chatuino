@@ -512,10 +512,6 @@ func (q *unbanRequestQueue) View() string {
 	}
 
 	if q.Resolving() {
-		if _, ok := q.selectedRequest(); !ok {
-			q.cancelResolution()
-			return q.listView()
-		}
 		return q.resolutionView()
 	}
 
@@ -584,9 +580,8 @@ func (q *unbanRequestQueue) listView() string {
 }
 
 func (q *unbanRequestQueue) resolutionView() string {
-	request, ok := q.requestByID(q.resolveID)
+	request, ok := q.selectedRequest()
 	if !ok {
-		q.cancelResolution()
 		return q.listView()
 	}
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.DimmedTextColor))

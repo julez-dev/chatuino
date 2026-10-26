@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// moderator:manage:unban_requests is sufficient for the unban queue: Twitch's
+// Get/Resolve Unban Requests endpoints and both unban EventSub topics accept
+// either moderator:read:unban_requests or moderator:manage:unban_requests.
 var scopes = [...]string{
 	"chat:read", "chat:edit", "channel:moderate", "moderator:read:chat_settings", "moderation:read", "user:read:chat", "moderator:manage:banned_users",
 	"moderator:manage:unban_requests", "user:read:follows", "channel:manage:polls", "channel:read:ads", "moderator:read:followers", "clips:edit", "moderator:manage:announcements",

@@ -623,9 +623,20 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			return t, nil
 		}
 
+		var cmds []tea.Cmd
 		var cmd tea.Cmd
 		t.unbanRequests, cmd = t.unbanRequests.Update(msg)
-		return t, cmd
+		cmds = append(cmds, cmd)
+
+		// The modal replaces the content area but must not starve the status bar
+		// and other child-only timers/messages of their updates.
+		switch msg.(type) {
+		case tea.KeyPressMsg, tea.PasteMsg:
+		default:
+			cmds = append(cmds, t.updateChildren(msg))
+		}
+
+		return t, tea.Batch(cmds...)
 	}
 
 	if t.focused {

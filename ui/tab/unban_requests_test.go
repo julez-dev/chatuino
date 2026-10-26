@@ -294,6 +294,26 @@ func TestBroadcast_UnbanRequestQueueEscapeCancelsResolutionBeforeClosing(t *test
 	require.Equal(t, inChatWindow, tab.state)
 }
 
+func TestBroadcast_UnbanRequestQueueStillUpdatesChildComponents(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeModerationClient()
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "chan-id", DisplayName: "me"})
+	tab.isUserMod = true
+	tab.client.Moderation = api
+	tab.statusInfo.api = &settingsAPI{}
+	tab.state = unbanRequestMode
+	tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, api, tab.width, tab.height, tab.theme, tab.keymap)
+	tab.HandleResize()
+
+	_, cmd := tab.Update(settingsFetchFallbackMessage{
+		target: tab.id,
+		seq:    tab.statusInfo.fallbackSeq,
+	})
+
+	require.NotNil(t, cmd, "the modal must not swallow the status bar's settings fallback")
+}
+
 func TestBroadcast_UnbanRequestQueueAppliesLiveEvents(t *testing.T) {
 	t.Parallel()
 
