@@ -191,22 +191,77 @@ func TestChatWindow_NewMessageBadgeTooNarrow(t *testing.T) {
 	require.False(t, c.NewMessageBadgeHit(c.height-1, 1), "no badge, no hit area")
 }
 
+// TestChatWindow_NewMessageBadgeSkipsGraphicEmoteRows covers graphic emotes: the badge
+// never draws into a kitty placeholder, however many rows the image spans.
 func TestChatWindow_NewMessageBadgeSkipsGraphicEmoteRows(t *testing.T) {
 	t.Parallel()
 
-	c := scrolledUpChatWindow(t, 60, 6, save.BuildDefaultSettings())
-	addPrivateMessage(t, c, "missed", strings.Repeat("padding ", 6))
+	for _, tt := range []struct {
+		name        string
+		imageRows   int
+		wantFromEnd int // rows above the bottom edge the badge is expected on
+	}{
+		{name: "single row image", imageRows: 1, wantFromEnd: 1},
+		{name: "two row image", imageRows: 2, wantFromEnd: 2},
+		{name: "tallest image", imageRows: 4, wantFromEnd: 4},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// An image placeholder under the badge's columns owns those cells.
-	image := strings.Repeat(" ", 44) + "\x1b[38;2;0;0;7m" + strings.Repeat("\U0010EEEE", 4) + "\x1b[39m"
-	require.NotEmpty(t, kittyimg.PlaceholderSpans(image), "the fixture must look like an image to the window")
+			c := scrolledUpChatWindow(t, 60, 6, save.BuildDefaultSettings())
+			addPrivateMessage(t, c, "missed", strings.Repeat("padding ", 6))
 
-	bottom := c.viewportRenderStart() + c.height - 1
-	c.lines[bottom] = image
+			// The renderer repeats image placeholders into the rows above the text row,
+			// so an image of graphic_scale n occupies n rows and all of them own their cells.
+			image := strings.Repeat(" ", 44) + "\x1b[38;2;0;0;7m" + strings.Repeat("\U0010EEEE", 4) + "\x1b[39m"
+			require.NotEmpty(t, kittyimg.PlaceholderSpans(image), "the fixture must look like an image to the window")
 
-	rows := viewRows(t, c)
-	require.Contains(t, rows[c.height-2], newMessageBadgeText, "the badge steps over the image row")
-	require.NotContains(t, rows[c.height-1], newMessageBadgeText)
+			bottom := c.viewportRenderStart() + c.height - 1
+			c.lines[bottom] = image
+
+			above := kittyimg.PlaceholderRowsAbove(image, tt.imageRows)
+			for i, row := range above {
+				c.lines[bottom-len(above)+i] = row
+			}
+
+			_, width := c.newMessageBadge()
+
+			row, _, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
+			require.True(t, ok)
+			require.Equal(t, c.height-1-tt.wantFromEnd, row, "the badge steps over every image row")
+
+			rows := viewRows(t, c)
+			require.Contains(t, rows[row], newMessageBadgeText)
+			for i := row + 1; i < c.height; i++ {
+				require.NotContains(t, rows[i], newMessageBadgeText, "row %d belongs to the image", i)
+			}
+		})
+	}
+}
+
+// TestChatWindow_NewMessageBadgeWithGraphicsDisabled pins that the badge does not depend
+// on graphic emotes: without image cells, the bottom row is always free to use.
+func TestChatWindow_NewMessageBadgeWithGraphicsDisabled(t *testing.T) {
+	t.Parallel()
+
+	settings := save.BuildDefaultSettings()
+	settings.Chat.GraphicEmotes = false
+	settings.Chat.GraphicBadges = false
+	settings.Chat.GraphicScale = 3
+
+	c := scrolledUpChatWindow(t, 60, 6, settings)
+	addPrivateMessage(t, c, "missed", "arrived while scrolled up")
+
+	for i, line := range c.lines {
+		require.Empty(t, kittyimg.PlaceholderSpans(line), "line %d must not contain image cells", i)
+	}
+
+	_, width := c.newMessageBadge()
+
+	row, _, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
+	require.True(t, ok)
+	require.Equal(t, c.height-1, row, "nothing to step over, the badge uses the bottom row")
+	require.Contains(t, viewRows(t, c)[c.height-1], newMessageBadgeText)
 }
 
 func TestChatWindow_NewMessageBadgeHit(t *testing.T) {
