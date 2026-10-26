@@ -815,6 +815,44 @@ func Test_Broadcast_MouseClickChatReachesTheMessageUnderTheCursor(t *testing.T) 
 	}
 }
 
+// Test_Broadcast_MouseClickNewMessageBadgeJumpsToTheNewestMessage verifies that the
+// badge behaves like a control: clicking it catches up with the chat instead of
+// selecting the message underneath it.
+func Test_Broadcast_MouseClickNewMessageBadgeJumpsToTheNewestMessage(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	for i := range 40 {
+		addPrivateMessage(t, tab.chatWindow, fmt.Sprintf("msg-%d", i), fmt.Sprintf("message %d", i))
+	}
+
+	tab.HandleResize()
+
+	for range 3 {
+		tab.chatWindow.pageUp()
+	}
+
+	addPrivateMessage(t, tab.chatWindow, "missed", "missed while scrolled up")
+
+	_, badgeWidth := tab.chatWindow.newMessageBadge()
+
+	row, col, ok := tab.chatWindow.newMessageBadgeSpan(tab.chatWindow.viewportRenderStart(), tab.chatWindow.height, badgeWidth)
+	require.True(t, ok, "the badge is visible")
+
+	newest := tab.chatWindow.getNewestEntry()
+	require.NotNil(t, newest)
+	require.False(t, newest.Selected)
+
+	y := tab.layout.chat.top + row
+	cmd := tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: col, Y: y}, col, y)
+
+	require.Nil(t, cmd)
+	require.True(t, newest.Selected, "the click caught up with the chat")
+	require.True(t, tab.chatWindow.caughtUp())
+	require.Zero(t, tab.chatWindow.newMessages)
+}
+
 // Test_Broadcast_MouseClickComposer checks the composer hit box, including after
 // the composer grows and the chat window shrinks.
 func Test_Broadcast_MouseClickComposer(t *testing.T) {

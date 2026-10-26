@@ -1728,9 +1728,19 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 	// Main chat window: select the clicked message.
 	if t.layout.chat.contains(y) {
+		row := y - t.layout.chat.top
+
+		// The new-message badge covers the tail of a chat row: a click there means
+		// "show me the new messages", not "select the message underneath it".
+		if t.chatWindow.NewMessageBadgeHit(row, x) {
+			t.chatWindow.jumpToNewest()
+
+			return nil
+		}
+
 		// Resolve the absolute line before any layout change, then leave
 		// insert/inspect mode so subsequent shortcuts act on the main chat.
-		line := t.chatWindow.viewportRenderStart() + (y - t.layout.chat.top)
+		line := t.chatWindow.viewportRenderStart() + row
 		_, entry := t.chatWindow.entryAtLine(line)
 		double := t.registerClick(entry, line)
 

@@ -126,6 +126,12 @@ type chatWindow struct {
 
 	// indicator marks the selected message in the viewport
 	indicator string
+
+	// newMessages counts the messages that arrived while the viewport was not at
+	// the tail. It feeds the badge that tells the user chat kept going.
+	newMessages int
+	// newMessageStyle renders that badge.
+	newMessageStyle lipgloss.Style
 }
 
 func newChatWindow(width, height int, settings save.Settings, theme save.Theme, keymap save.KeyMap) *chatWindow {
@@ -141,17 +147,25 @@ func newChatWindow(width, height int, settings save.Settings, theme save.Theme, 
 
 	indicator := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatIndicatorColor)).Background(lipgloss.Color(theme.ChatIndicatorColor)).Render(">")
 
+	// The badge is a solid accent block like the selection indicator, with the
+	// theme's dark surface as text color so the accent stays readable.
+	newMessageStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(theme.ListBackgroundColor)).
+		Background(lipgloss.Color(theme.ChatIndicatorColor))
+
 	palette := newUserPalette()
 
 	return &chatWindow{
-		settings:    settings,
-		keymap:      keymap,
-		width:       width,
-		height:      height,
-		searchInput: input,
-		renderer:    newMessageRenderer(width, lipgloss.Width(indicator), settings, theme, palette),
-		palette:     palette,
-		indicator:   indicator,
+		settings:        settings,
+		keymap:          keymap,
+		width:           width,
+		height:          height,
+		searchInput:     input,
+		renderer:        newMessageRenderer(width, lipgloss.Width(indicator), settings, theme, palette),
+		palette:         palette,
+		indicator:       indicator,
+		newMessageStyle: newMessageStyle,
 	}
 }
 
@@ -354,6 +368,10 @@ func (c *chatWindow) View() string {
 	lines := c.visibleBuf[:height]
 	for i := len(src); i < height; i++ {
 		lines[i] = ""
+	}
+
+	if c.state == viewChatWindowState {
+		c.drawNewMessageBadge(lines, renderStart, height)
 	}
 
 	if c.state == searchChatWindowState {
@@ -885,6 +903,13 @@ func (c *chatWindow) handleMessage(msg ChatEventMessage) tea.Cmd {
 
 	c.updatePort()
 
+	// A message is only in view when the viewport reaches its last line. If it arrived
+	// below the fold, it is counted and the badge appears; updatePort clears the
+	// counter again as soon as the user is caught up with the tail.
+	if entry.Position.CursorEnd >= c.lineEnd && c.settings.Chat.NewMessageIndicator {
+		c.newMessages++
+	}
+
 	if wasLatestMessage {
 		c.moveToBottom()
 		if c.settings.Chat.SmoothScroll {
@@ -991,7 +1016,37 @@ func (c *chatWindow) clipboardText(entry *chatEntry) string {
 	return ""
 }
 
+// updatePort recomputes the viewport and clears the missed-message counter once the
+// user is caught up again. Both belong together: every path that moves the viewport
+// (keys, mouse, new messages, search, resize) ends up here.
 func (c *chatWindow) updatePort() {
+	c.calculateViewport()
+
+	if c.caughtUp() {
+		c.newMessages = 0
+	}
+}
+
+// atTail reports whether the viewport's last row is the newest line.
+func (c *chatWindow) atTail() bool {
+	return c.lineEnd >= len(c.lines)
+}
+
+// caughtUp reports whether nothing in the chat is waiting to be seen: the viewport
+// shows the newest line, or the newest message is selected even though a wrapped line
+// of it stays below the viewport.
+func (c *chatWindow) caughtUp() bool {
+	if c.atTail() {
+		return true
+	}
+
+	newest := c.getNewestEntry()
+
+	return newest != nil && newest.Selected
+}
+
+// calculateViewport moves lineStart/lineEnd so that the cursor stays visible.
+func (c *chatWindow) calculateViewport() {
 	height := c.height
 	if c.state == searchChatWindowState {
 		height--
