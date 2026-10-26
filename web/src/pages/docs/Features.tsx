@@ -338,34 +338,57 @@ export default function Features() {
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
             /delete_all_messages
           </code>{" "}
-          and <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/clear</code>{" "}
+          and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/clear</code>{" "}
           from the message input.
         </p>
         <p class="mb-4 text-nord4">
           Chat settings can be changed from the same input with{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/slow</code>,{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/followers</code>,{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/subscribers</code>,{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/emoteonly</code> and{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/uniquechat</code>{" "}
-          (each with an <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">off</code>{" "}
-          variant). The status bar updates as soon as Twitch confirms the change.
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /followers
+          </code>
+          ,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /subscribers
+          </code>
+          ,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /emoteonly
+          </code>{" "}
+          and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /uniquechat
+          </code>{" "}
+          (each with an{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">off</code>{" "}
+          variant). The status bar updates as soon as Twitch confirms the
+          change.
         </p>
         <p class="mb-4 text-nord4">
-          Roles use <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/mod</code>,{" "}
+          Roles use{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/mod</code>,{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/unmod</code>,{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/mods</code>,{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/vip</code>,{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/unvip</code> and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/unvip</code>{" "}
+          and{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/vips</code>.{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/warn</code>,{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/raid</code>,{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/unraid</code>,{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/shoutout</code> and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/unraid</code>
+          ,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /shoutout
+          </code>{" "}
+          and{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/snooze</code>{" "}
-          cover the remaining moderator actions. Held AutoMod messages appear in chat
-          and are approved or denied with{" "}
-          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/approve</code> and{" "}
+          cover the remaining moderator actions. Held AutoMod messages appear in
+          chat and are approved or denied with{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /approve
+          </code>{" "}
+          and{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/deny</code>.
         </p>
         <p class="mb-4 text-nord4">
