@@ -401,19 +401,24 @@ export default function Features() {
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
             /unbanrequests
           </code>{" "}
-          to open the pending unban request queue for the current channel. Each
-          entry shows the user, request text, status and when it was created.
+          to open the unban request queue for the current channel. Each entry
+          shows the user, request text, status and when it was created.
         </p>
         <p class="mb-4 text-nord4">
-          Use <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">j</code>/
+          Use <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">h</code>/
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">l</code> or
+          the left/right arrow keys to switch between pending, approved, denied,
+          acknowledged, canceled and all requests. Resolved requests also show
+          the moderator and optional resolution text. Use{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">j</code>/
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">k</code> or
-          the arrow keys to select a request,{" "}
+          the up/down arrow keys to select a request,{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">a</code> to
           approve it, and{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">d</code> to
-          deny it. Approving or denying opens a resolution input where you can
-          optionally add a message for the user; press Enter to submit or Escape
-          to cancel. Press{" "}
+          deny it. Only pending requests can be approved or denied. Approving or
+          denying opens a resolution input where you can optionally add a
+          message for the user; press Enter to submit or Escape to cancel. Press{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">r</code> to
           refresh and Escape again to close.
         </p>

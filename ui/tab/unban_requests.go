@@ -22,6 +22,8 @@ const (
 	unbanRequestTextRows = 4
 )
 
+var unbanRequestFilters = []string{"pending", "approved", "denied", "acknowledged", "canceled", "all"}
+
 type openUnbanRequestsMessage struct{}
 
 type unbanRequestsLoadedMessage struct {
@@ -52,7 +54,11 @@ type unbanRequestQueue struct {
 	broadcasterID string
 	moderatorID   string
 
-	requests []twitchapi.UnbanRequest
+	requests []twitchapi.UnbanRequest // every fetched request, across all statuses
+	visible  []twitchapi.UnbanRequest // requests matching filter
+	filter   string
+	filterAt int
+
 	selected int
 	offset   int
 
@@ -91,6 +97,7 @@ func newUnbanRequestQueue(
 		api:           api,
 		broadcasterID: broadcasterID,
 		moderatorID:   moderatorID,
+		filter:        "pending",
 		loading:       true,
 		input:         ti,
 	}
@@ -134,15 +141,6 @@ func (q *unbanRequestQueue) fetchCmd() tea.Cmd {
 		defer cancel()
 
 		requests, err := api.FetchUnbanRequests(ctx, broadcasterID, moderatorID)
-		if err == nil {
-			pending := make([]twitchapi.UnbanRequest, 0, len(requests))
-			for _, request := range requests {
-				if request.Status == "pending" {
-					pending = append(pending, request)
-				}
-			}
-			requests = pending
-		}
 
 		return unbanRequestsLoadedMessage{owner: id, requests: requests, err: err}
 	}
@@ -186,8 +184,20 @@ func (q *unbanRequestQueue) Update(msg tea.Msg) (*unbanRequestQueue, tea.Cmd) {
 		}
 
 		q.err = nil
-		q.notice = fmt.Sprintf("Request from %s was %s", preferredDisplayName(msg.request.UserName, msg.request.UserLogin), msg.status)
-		q.removeRequest(msg.requestID)
+		request, ok := q.requestByID(msg.requestID)
+		if !ok {
+			request = msg.request
+		}
+		request.ID = msg.requestID
+		request.Status = msg.status
+		if msg.request.ResolutionText != "" {
+			request.ResolutionText = msg.request.ResolutionText
+		}
+		if !msg.request.ResolvedAt.IsZero() {
+			request.ResolvedAt = msg.request.ResolvedAt
+		}
+		q.notice = fmt.Sprintf("Request from %s was %s", preferredDisplayName(request.UserName, request.UserLogin), msg.status)
+		q.upsertRequest(request)
 		q.cancelResolution()
 		return q, nil
 	case tea.KeyPressMsg:
@@ -226,6 +236,10 @@ func (q *unbanRequestQueue) updateKey(msg tea.KeyPressMsg) (*unbanRequestQueue, 
 		q.move(-1)
 	case key.Matches(msg, q.keymap.Down):
 		q.move(1)
+	case msg.Text == "h" || msg.Code == tea.KeyLeft:
+		q.cycleFilter(-1)
+	case msg.Text == "l" || msg.Code == tea.KeyRight:
+		q.cycleFilter(1)
 	case msg.Text == "a":
 		q.startResolution("approved")
 	case msg.Text == "d":
@@ -238,21 +252,38 @@ func (q *unbanRequestQueue) updateKey(msg tea.KeyPressMsg) (*unbanRequestQueue, 
 }
 
 func (q *unbanRequestQueue) move(delta int) {
-	if len(q.requests) == 0 {
+	if len(q.visible) == 0 {
 		q.selected = 0
 		return
 	}
 
-	q.selected = clamp(q.selected+delta, 0, len(q.requests)-1)
+	q.selected = clamp(q.selected+delta, 0, len(q.visible)-1)
+}
+
+func (q *unbanRequestQueue) cycleFilter(delta int) {
+	q.setFilter(unbanRequestFilters[(q.filterAt+delta+len(unbanRequestFilters))%len(unbanRequestFilters)])
+}
+
+func (q *unbanRequestQueue) setFilter(filter string) {
+	q.filter = filter
+	q.filterAt = max(0, slicesIndex(unbanRequestFilters, filter))
+	q.selected = 0
+	q.offset = 0
+	q.rebuildVisible()
 }
 
 func (q *unbanRequestQueue) startResolution(status string) {
-	if len(q.requests) == 0 || q.selected < 0 || q.selected >= len(q.requests) {
+	request, ok := q.selectedRequest()
+	if !ok {
+		return
+	}
+	if request.Status != "pending" {
+		q.notice = "Only pending requests can be approved or denied"
 		return
 	}
 
 	q.resolveStatus = status
-	q.resolveID = q.requests[q.selected].ID
+	q.resolveID = request.ID
 	q.err = nil
 	q.notice = ""
 	q.input.Reset()
@@ -302,13 +333,24 @@ func (q *unbanRequestQueue) setRequests(requests []twitchapi.UnbanRequest) {
 		return q.requests[i].CreatedAt.After(q.requests[j].CreatedAt)
 	})
 
-	if len(q.requests) == 0 {
+	q.rebuildVisible()
+}
+
+func (q *unbanRequestQueue) rebuildVisible() {
+	q.visible = q.visible[:0]
+	for _, request := range q.requests {
+		if q.filter == "all" || request.Status == q.filter {
+			q.visible = append(q.visible, request)
+		}
+	}
+
+	if len(q.visible) == 0 {
 		q.selected = 0
 		q.offset = 0
 		return
 	}
 
-	q.selected = clamp(q.selected, 0, len(q.requests)-1)
+	q.selected = clamp(q.selected, 0, len(q.visible)-1)
 	q.restoreResolutionSelection()
 }
 
@@ -317,14 +359,15 @@ func (q *unbanRequestQueue) restoreResolutionSelection() {
 		return
 	}
 
-	for i, request := range q.requests {
+	for i, request := range q.visible {
 		if request.ID == q.resolveID {
 			q.selected = i
 			return
 		}
 	}
 
-	// The selected request disappeared while its resolution input was open.
+	// The selected request disappeared from this filter while its resolution
+	// input was open, so there is nothing left to submit against.
 	q.cancelResolution()
 }
 
@@ -338,21 +381,27 @@ func (q *unbanRequestQueue) requestByID(id string) (twitchapi.UnbanRequest, bool
 	return twitchapi.UnbanRequest{}, false
 }
 
-func (q *unbanRequestQueue) removeRequest(id string) {
+func (q *unbanRequestQueue) selectedRequest() (twitchapi.UnbanRequest, bool) {
+	if q.selected < 0 || q.selected >= len(q.visible) {
+		return twitchapi.UnbanRequest{}, false
+	}
+
+	return q.visible[q.selected], true
+}
+
+func (q *unbanRequestQueue) upsertRequest(updated twitchapi.UnbanRequest) {
 	for i, request := range q.requests {
-		if request.ID != id {
+		if request.ID != updated.ID {
 			continue
 		}
 
-		q.requests = append(q.requests[:i], q.requests[i+1:]...)
-		if len(q.requests) == 0 {
-			q.selected = 0
-			q.offset = 0
-		} else {
-			q.selected = clamp(q.selected, 0, len(q.requests)-1)
-		}
+		q.requests[i] = updated
+		q.rebuildVisible()
 		return
 	}
+
+	q.requests = append(q.requests, updated)
+	q.rebuildVisible()
 }
 
 // applyEvent folds a live EventSub notification into the queue. Creation events
@@ -384,8 +433,29 @@ func (q *unbanRequestQueue) applyEvent(msg eventsub.Message[eventsub.Notificatio
 		if q.resolveID == event.ID {
 			q.cancelResolution()
 		}
-		q.removeRequest(event.ID)
-		q.notice = fmt.Sprintf("Unban request %s was %s", event.ID, event.Status)
+
+		request, ok := q.requestByID(event.ID)
+		if !ok {
+			request = twitchapi.UnbanRequest{
+				ID:              event.ID,
+				BroadcasterID:   event.BroadcasterUserID,
+				BroadcasterName: event.BroadcasterUserName,
+				UserID:          event.UserID,
+				UserLogin:       event.UserLogin,
+				UserName:        event.UserName,
+			}
+		}
+		request.Status = event.Status
+		request.ResolutionText = event.ResolutionText
+		request.ModeratorID = event.ModeratorID
+		request.ModeratorLogin = event.ModeratorLogin
+		request.ModeratorName = event.ModeratorName
+		q.upsertRequest(request)
+		if ok {
+			q.notice = fmt.Sprintf("Unban request from %s was %s", preferredDisplayName(request.UserName, request.UserLogin), event.Status)
+		} else {
+			q.notice = fmt.Sprintf("Unban request %s was %s", event.ID, event.Status)
+		}
 	}
 }
 
@@ -395,7 +465,7 @@ func (q *unbanRequestQueue) View() string {
 	}
 
 	if q.Resolving() {
-		if len(q.requests) == 0 || q.selected >= len(q.requests) {
+		if _, ok := q.selectedRequest(); !ok {
 			q.cancelResolution()
 			return q.listView()
 		}
@@ -411,7 +481,10 @@ func (q *unbanRequestQueue) listView() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.DimmedTextColor))
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.ChatErrorColor))
 
-	header := []string{titleStyle.Render(fmt.Sprintf("Unban requests (%d pending)", len(q.requests)))}
+	header := []string{
+		titleStyle.Render("Unban requests"),
+		q.filterLine(selectedStyle, dimStyle),
+	}
 	switch {
 	case q.err != nil:
 		header = append(header, errorStyle.Render(q.err.Error()))
@@ -419,14 +492,26 @@ func (q *unbanRequestQueue) listView() string {
 		header = append(header, q.notice)
 	case q.loading:
 		header = append(header, dimStyle.Render("Refreshing..."))
+	case len(q.visible) == 0:
+		if q.filter == "all" {
+			header = append(header, dimStyle.Render("No unban requests."))
+		} else {
+			header = append(header, dimStyle.Render(fmt.Sprintf("No %s unban requests.", strings.ToLower(unbanStatusLabel(q.filter)))))
+		}
 	default:
-		header = append(header, dimStyle.Render("Pending requests for this channel"))
+		label := strings.ToLower(unbanStatusLabel(q.filter))
+		noun := "requests"
+		if len(q.visible) == 1 {
+			noun = "request"
+		}
+		if q.filter == "all" {
+			header = append(header, dimStyle.Render(fmt.Sprintf("Showing all %d %s", len(q.visible), noun)))
+		} else {
+			header = append(header, dimStyle.Render(fmt.Sprintf("Showing %d %s %s", len(q.visible), label, noun)))
+		}
 	}
 
-	footer := []string{dimStyle.Render("j/k select · a approve · d deny · r refresh · esc close")}
-	if len(q.requests) == 0 && !q.loading && q.err == nil {
-		header = append(header, "", dimStyle.Render("No pending unban requests."))
-	}
+	footer := []string{dimStyle.Render("h/l filter · j/k select · a approve · d deny · r refresh · esc close")}
 
 	bodyHeight := max(0, q.height-len(header)-len(footer))
 	lines, starts := q.listLines(selectedStyle, dimStyle)
@@ -485,12 +570,56 @@ func (q *unbanRequestQueue) resolutionView() string {
 	return fitLines(out, q.width, q.height)
 }
 
+func (q *unbanRequestQueue) filterLine(selectedStyle, dimStyle lipgloss.Style) string {
+	counts := make(map[string]int, len(unbanRequestFilters))
+	for _, request := range q.requests {
+		counts[request.Status]++
+	}
+
+	parts := make([]string, 0, len(unbanRequestFilters))
+	for i, filter := range unbanRequestFilters {
+		label := unbanStatusLabel(filter)
+		if filter == "all" {
+			label = fmt.Sprintf("All %d", len(q.requests))
+		} else {
+			label = fmt.Sprintf("%s %d", label, counts[filter])
+		}
+
+		text := "[" + label + "]"
+		if i == q.filterAt {
+			parts = append(parts, selectedStyle.Render(text))
+		} else {
+			parts = append(parts, dimStyle.Render(text))
+		}
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func unbanStatusLabel(status string) string {
+	if status == "" || status == "all" {
+		return "all"
+	}
+
+	return strings.ToUpper(status[:1]) + status[1:]
+}
+
+func slicesIndex(values []string, target string) int {
+	for i, value := range values {
+		if value == target {
+			return i
+		}
+	}
+
+	return 0
+}
+
 func (q *unbanRequestQueue) listLines(selectedStyle, dimStyle lipgloss.Style) ([]string, []int) {
-	lines := make([]string, 0, len(q.requests)*3)
-	starts := make([]int, 0, len(q.requests))
+	lines := make([]string, 0, len(q.visible)*3)
+	starts := make([]int, 0, len(q.visible))
 	bodyWidth := max(1, q.width-4)
 
-	for i, request := range q.requests {
+	for i, request := range q.visible {
 		starts = append(starts, len(lines))
 
 		prefix := "  "
@@ -515,7 +644,28 @@ func (q *unbanRequestQueue) listLines(selectedStyle, dimStyle lipgloss.Style) ([
 			lines = append(lines, "    "+dimStyle.Render(textLine))
 		}
 
-		if i != len(q.requests)-1 {
+		if request.Status != "pending" {
+			meta := "Resolved"
+			if request.ModeratorName != "" || request.ModeratorLogin != "" {
+				meta += " by " + preferredDisplayName(request.ModeratorName, request.ModeratorLogin)
+			}
+			if !request.ResolvedAt.IsZero() {
+				meta += " " + unbanRequestAge(request.ResolvedAt)
+			}
+			if strings.TrimSpace(request.ResolutionText) != "" {
+				meta += ": " + request.ResolutionText
+			}
+
+			metaLines := strings.Split(wordwrap.String(meta, bodyWidth), "\n")
+			if len(metaLines) > 2 {
+				metaLines = append(metaLines[:1], "…")
+			}
+			for _, metaLine := range metaLines {
+				lines = append(lines, "    "+dimStyle.Render(metaLine))
+			}
+		}
+
+		if i != len(q.visible)-1 {
 			lines = append(lines, "")
 		}
 	}

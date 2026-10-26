@@ -28,7 +28,7 @@ func updateUnbanQueue(t *testing.T, q *unbanRequestQueue, msg tea.Msg) (*unbanRe
 	return updated, cmd
 }
 
-func TestUnbanRequestQueue_LoadsOnlyPendingRequests(t *testing.T) {
+func TestUnbanRequestQueue_LoadsAllStatusesAndDefaultsToPending(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
@@ -52,14 +52,50 @@ func TestUnbanRequestQueue_LoadsOnlyPendingRequests(t *testing.T) {
 
 	require.False(t, q.loading)
 	require.NoError(t, q.err)
-	require.Len(t, q.requests, 1)
-	require.Equal(t, "pending-1", q.requests[0].ID)
+	require.Len(t, q.requests, 2, "all statuses stay in the model")
+	require.Len(t, q.visible, 1, "the default filter is pending")
+	require.Equal(t, "pending-1", q.visible[0].ID)
 
 	view := q.View()
-	require.Contains(t, view, "Unban requests (1 pending)")
+	require.Contains(t, view, "Unban requests")
+	require.Contains(t, view, "[Pending 1]")
+	require.Contains(t, view, "[Approved 1]")
 	require.Contains(t, view, "Alice")
-	require.Contains(t, view, "pending")
 	require.Contains(t, view, "I was banned by mistake")
+
+	q.setFilter("approved")
+	require.Len(t, q.visible, 1)
+	require.Equal(t, "approved-1", q.visible[0].ID)
+	require.Contains(t, q.View(), "already resolved")
+}
+
+func TestUnbanRequestQueue_FilterCyclingAndResolvedRequestActions(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	api := newFakeModerationClient()
+	api.unbanRequests = []twitchapi.UnbanRequest{
+		{ID: "pending-1", UserLogin: "alice", UserName: "Alice", Text: "let me in", Status: "pending", CreatedAt: now},
+		{ID: "approved-1", UserLogin: "bob", UserName: "Bob", Text: "thanks", Status: "approved", CreatedAt: now.Add(-time.Minute),
+			ResolutionText: "apology accepted", ModeratorName: "Mod", ResolvedAt: now},
+	}
+
+	q := newTestUnbanQueue(t, api)
+	q, _ = updateUnbanQueue(t, q, q.Init()())
+
+	q, _ = updateUnbanQueue(t, q, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	require.Equal(t, "approved", q.filter)
+	require.Equal(t, "approved-1", q.visible[0].ID)
+	require.Contains(t, q.View(), "apology accepted")
+	require.Contains(t, q.View(), "Resolved by Mod")
+
+	q, _ = updateUnbanQueue(t, q, tea.KeyPressMsg{Code: 'a', Text: "a"})
+	require.False(t, q.Resolving(), "resolved requests are not actionable")
+	require.Contains(t, q.notice, "Only pending requests")
+
+	q, _ = updateUnbanQueue(t, q, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	require.Equal(t, "pending", q.filter)
+	require.Equal(t, "pending-1", q.visible[0].ID)
 }
 
 func TestUnbanRequestQueue_LoadErrorKeepsCurrentQueue(t *testing.T) {
@@ -104,13 +140,19 @@ func TestUnbanRequestQueue_ApproveRemovesRequestAndPassesResolutionText(t *testi
 
 	q, _ = updateUnbanQueue(t, q, cmd())
 
-	require.Empty(t, q.requests)
+	require.Empty(t, q.visible, "the pending filter no longer shows the resolved request")
+	require.Len(t, q.requests, 1)
+	require.Equal(t, "approved", q.requests[0].Status)
 	require.False(t, q.Resolving())
 	require.Equal(t, "pending-1", api.resolvedID)
 	require.Equal(t, "approved", api.resolvedStatus)
 	require.Equal(t, "apology accepted", api.resolutionText)
-	require.Contains(t, q.View(), "No pending unban requests")
+	require.Contains(t, q.View(), "[Pending 0]")
 	require.Contains(t, q.notice, "Alice was approved")
+
+	q.setFilter("approved")
+	require.Len(t, q.visible, 1)
+	require.Contains(t, q.View(), "apology accepted")
 }
 
 func TestUnbanRequestQueue_DenyErrorKeepsRequestAndResolutionInput(t *testing.T) {
@@ -256,6 +298,7 @@ func TestBroadcast_UnbanRequestQueueAppliesLiveEvents(t *testing.T) {
 	}
 	require.Nil(t, tab.handleEventSubMessage(create))
 	require.Len(t, tab.unbanRequests.requests, 2)
+	require.Len(t, tab.unbanRequests.visible, 2)
 	require.Contains(t, tab.unbanRequests.View(), "second chance please")
 
 	resolve := eventsub.Message[eventsub.NotificationPayload]{
@@ -268,8 +311,13 @@ func TestBroadcast_UnbanRequestQueueAppliesLiveEvents(t *testing.T) {
 		},
 	}
 	require.Nil(t, tab.handleEventSubMessage(resolve))
-	require.Len(t, tab.unbanRequests.requests, 1)
-	require.Equal(t, "pending-1", tab.unbanRequests.requests[0].ID)
+	require.Len(t, tab.unbanRequests.requests, 2, "resolved requests stay available in the history filters")
+	require.Len(t, tab.unbanRequests.visible, 1)
+	require.Equal(t, "pending-1", tab.unbanRequests.visible[0].ID)
+
+	tab.unbanRequests.setFilter("approved")
+	require.Len(t, tab.unbanRequests.visible, 1)
+	require.Equal(t, "pending-2", tab.unbanRequests.visible[0].ID)
 }
 
 func TestUnbanRequestQueue_ViewFitsAllocatedRows(t *testing.T) {
