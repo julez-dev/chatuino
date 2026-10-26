@@ -10,6 +10,7 @@ import (
 	"net/mail"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -122,7 +123,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 			&cli.StringFlag{
 				Name:  "profiling-host",
 				Usage: "Host of the profiling http server",
-				Value: "0.0.0.0:6060",
+				Value: "127.0.0.1:6060",
 			},
 			&cli.BoolFlag{
 				Name:  "log",
@@ -468,7 +469,20 @@ func beforeAction(ctx context.Context, command *cli.Command) (context.Context, e
 	return ctx, nil
 }
 
+// blockProfileThreshold is how long a goroutine has to wait before the runtime
+// reports the wait. Anything shorter is noise in a chat client, where the interesting
+// waits are network and preparation queue handoffs.
+const blockProfileThreshold = time.Millisecond * 10
+
+// runProfilingServer starts the pprof endpoints on the default mux. The block and
+// mutex profiles are disabled by the runtime until they are asked for, so a collector
+// is only registered here: a normal run does not pay for it.
 func runProfilingServer(ctx context.Context, logger zerolog.Logger, host string) {
+	runtime.SetBlockProfileRate(int(blockProfileThreshold))
+	// Every mutex, not a sample: the caches and the event queue are held rarely and
+	// briefly, and a sampled view would hide exactly the one long hold that matters.
+	runtime.SetMutexProfileFraction(1)
+
 	srv := &http.Server{
 		Addr: host,
 	}

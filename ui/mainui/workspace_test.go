@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/ui/workspace"
@@ -670,4 +672,173 @@ func TestWorkspace_ControlsNavigateSwapResizeZoomAndFallback(t *testing.T) {
 	require.Contains(t, root.View().Content, "BODY alpha")
 	require.Contains(t, root.View().Content, "BODY beta")
 	require.Contains(t, root.View().Content, "BODY gamma")
+}
+
+// canvasScreen is the canvas based composition the tiled layout used before it built
+// the screen as text. It stays here as the reference the text composition is measured
+// and compared against.
+func canvasScreen(width, height int, placements []placement) string {
+	layers := make([]*lipgloss.Layer, 0, len(placements))
+	for _, p := range placements {
+		layers = append(layers, lipgloss.NewLayer(strings.Join(p.lines, "\n")).X(p.x).Y(p.y))
+	}
+
+	canvas := lipgloss.NewCanvas(width, height)
+	canvas.Compose(lipgloss.NewCompositor(layers...))
+
+	return canvas.Render()
+}
+
+// normalizeBlock removes the differences the canvas renderer introduces on its own:
+// it trims trailing spaces per line and drops trailing blank lines.
+func normalizeBlock(text string) string {
+	lines := strings.Split(text, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " ")
+	}
+
+	return strings.TrimRight(strings.Join(lines, "\n"), "\n")
+}
+
+func TestBlockLines_FitsTextToCells(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pads short lines to the block width", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, []string{"ab   ", "     "}, blockLines("ab", 5, 2))
+	})
+
+	t.Run("clips lines that do not fit", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, []string{"abcd"}, blockLines("abcdef", 4, 1))
+	})
+
+	t.Run("clips and drops rows that do not fit", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, []string{"one", "two"}, blockLines("one\ntwo\nthree", 3, 2))
+	})
+
+	t.Run("keeps ANSI attributes while clipping", func(t *testing.T) {
+		t.Parallel()
+
+		lines := blockLines("\x1b[31mabcdef\x1b[0m", 3, 1)
+		require.Len(t, lines, 1)
+		require.Equal(t, 3, lipgloss.Width(lines[0]))
+		require.Contains(t, lines[0], "\x1b[31m")
+		require.Contains(t, lines[0], "abc")
+		require.NotContains(t, lines[0], "d")
+	})
+
+	t.Run("measures wide graphemes by cell width", func(t *testing.T) {
+		t.Parallel()
+
+		// Each of these is two cells wide, so only two fit into five cells.
+		lines := blockLines("日本語", 5, 1)
+		require.Equal(t, 5, lipgloss.Width(lines[0]))
+		require.Contains(t, lines[0], "日本")
+		require.NotContains(t, lines[0], "語")
+	})
+
+	t.Run("no size means no block", func(t *testing.T) {
+		t.Parallel()
+
+		require.Nil(t, blockLines("text", 0, 3))
+		require.Nil(t, blockLines("text", 3, 0))
+	})
+}
+
+func TestComposeScreen_PlacesBlocksInOrder(t *testing.T) {
+	t.Parallel()
+
+	blockA := blockLines("aaaa\nbbbb", 4, 2)
+	blockB := blockLines("cccc", 4, 1)
+
+	got := composeScreen(9, 3, []placement{
+		{5, 0, blockB}, // right block first: composition must follow position, not order
+		{0, 0, blockA},
+	})
+
+	require.Equal(t, "aaaa cccc\nbbbb     \n         ", got)
+	require.Equal(t, 9, lipgloss.Width(got), "every row is exactly as wide as the screen")
+	require.Equal(t, 3, lipgloss.Height(got), "the screen keeps its height even when rows are empty")
+}
+
+func TestComposeScreen_ClipsBlocksToTheScreen(t *testing.T) {
+	t.Parallel()
+
+	got := composeScreen(4, 2, []placement{
+		{2, 0, blockLines("abcd", 4, 1)},
+		{0, 1, blockLines("efgh", 4, 1)},
+	})
+
+	require.Equal(t, "  ab\nefgh", got)
+}
+
+func TestComposeScreen_MatchesTheCanvasComposition(t *testing.T) {
+	t.Parallel()
+
+	styled := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ff0000")).Render
+	placements := []placement{
+		{0, 0, blockLines(styled("header"), 30, 1)},
+		{0, 1, blockLines("pane one\nsecond line", 14, 3)},
+		{15, 1, blockLines("pane two\n\x1b[34mblue line\x1b[0m", 15, 3)},
+		{0, 4, blockLines("footer", 30, 1)},
+	}
+
+	got := normalizeBlock(composeScreen(30, 5, placements))
+	want := normalizeBlock(canvasScreen(30, 5, placements))
+
+	// The canvas renders SGR sequences in its own normalized form, so the screens are
+	// compared by what the terminal shows: the same text at the same cells.
+	require.Equal(t, ansi.Strip(want), ansi.Strip(got), "text composition must not change what the screen looks like")
+	require.Contains(t, got, "\x1b[", "styles survive composition")
+}
+
+func BenchmarkComposeScreen_TiledFourPanes(b *testing.B) {
+	placements := benchmarkPanes()
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = composeScreen(200, 50, placements)
+	}
+}
+
+func BenchmarkCanvasScreen_TiledFourPanes(b *testing.B) {
+	placements := benchmarkPanes()
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		_ = canvasScreen(200, 50, placements)
+	}
+}
+
+// benchmarkPanes builds a four pane tiled screen: header, three dividers, four
+// headings and four panes of real chat length.
+func benchmarkPanes() []placement {
+	placements := make([]placement, 0, 12)
+	placements = append(placements, placement{0, 0, blockLines(strings.Repeat("tab ", 20), 200, 1)})
+
+	for _, x := range []int{99, 149, 50} {
+		placements = append(placements, placement{x, 1, blockLines(strings.Repeat("│\n", 47), 1, 47)})
+	}
+
+	body := strings.Join([]string{
+		"user: some chat message that is about as long as a real one",
+		"user: another message with an emote EMO",
+		"user: short",
+	}, "\n")
+
+	for _, pane := range []struct{ x, y, w, h int }{
+		{0, 1, 99, 24}, {100, 1, 99, 24}, {0, 26, 49, 22}, {50, 26, 149, 22},
+	} {
+		placements = append(placements, placement{pane.x, pane.y, blockLines("> channel", pane.w, 1)})
+		placements = append(placements, placement{pane.x, pane.y + 1, blockLines(strings.Repeat(body+"\n", 8), pane.w, pane.h-1)})
+	}
+
+	return placements
 }
