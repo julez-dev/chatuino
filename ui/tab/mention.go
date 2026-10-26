@@ -228,7 +228,7 @@ func (m *mentionTab) ChannelID() string {
 
 func (m *mentionTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	if msg.Button == tea.MouseLeft {
-		if m.chatWindow.handleNewMessageBadgeClick(y, x) {
+		if m.chatWindow.handleChatClick(y, x) {
 			return nil
 		}
 

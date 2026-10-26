@@ -1730,9 +1730,8 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	if t.layout.chat.contains(y) {
 		row := y - t.layout.chat.top
 
-		// The new-message badge covers the tail of a chat row: a click there means
-		// "show me the new messages", not "select the message underneath it".
-		if t.chatWindow.handleNewMessageBadgeClick(row, x) {
+		// Controls on top of the rows: the new-message badge and a reply's reference.
+		if t.chatWindow.handleChatClick(row, x) {
 			return nil
 		}
 
@@ -1768,7 +1767,7 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 			row := y - chat.top
 
-			if t.userInspect.chatWindow.handleNewMessageBadgeClick(row, x) {
+			if t.userInspect.chatWindow.handleChatClick(row, x) {
 				return nil
 			}
 

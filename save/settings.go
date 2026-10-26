@@ -41,6 +41,7 @@ type ChatSettings struct {
 	SmoothScroll               bool   `yaml:"smooth_scroll"`
 	DisableEmoteTooltip        bool   `yaml:"disable_emote_tooltip"`    // don't show the emote name when hovering a graphic emote with the mouse
 	NewMessageIndicator        bool   `yaml:"new_message_indicator"`    // show a badge when messages arrive while scrolled up; default: true
+	ReplyContext               bool   `yaml:"reply_context"`            // quote the message a reply answers above it; default: true
 	TimeFormat                 string `yaml:"time_format"`              // Go time format string, default: "15:04:05"
 	UserInspectTimeFormat      string `yaml:"user_inspect_time_format"` // Go time format string, default: "2006-01-02 15:04:05"
 }
@@ -72,6 +73,7 @@ func BuildDefaultSettings() Settings {
 			TimeFormat:            "15:04:05",
 			UserInspectTimeFormat: "2006-01-02 15:04:05",
 			NewMessageIndicator:   true,
+			ReplyContext:          true,
 		},
 	}
 }

@@ -44,7 +44,7 @@ Aliases: `msg:` for `content:`, `from:` for `user:`.
 
 Enable insert mode (for writing messages/commands) with `i` or Enter, and exit with Escape. Press Enter to send a message, or Alt+Enter to send while keeping the text in the input.
 A simple duplication bypass is included when your message matches the last message.
-Copy a message to your input by pressing `y` or Alt+C on the message. Copy the selected message to the system clipboard with `Y` or Alt+Y (uses OSC 52, which also works over SSH if the terminal allows it). Reply with `r` or Alt+R.
+Copy a message to your input by pressing `y` or Alt+C on the message. Copy the selected message to the system clipboard with `Y` or Alt+Y (uses OSC 52, which also works over SSH if the terminal allows it). Reply with `r` or Alt+R. Replies show the message they answer above them, attributed to its author (`↩ alice: that was a great play`) with the text cut to the pane; click the reference to jump to the parent when it is still in the buffer. Twitch's own `@name` prefix is dropped from the reply text, since the reference already names the author. Turn the reference off with `chat.reply_context`.
 
 Press `g`, `t`, or Home to jump to the top of the buffer and `G`, `b`, or End to jump to the bottom. Scroll a page with PgUp/Ctrl+U or PgDn/Ctrl+D.
 While you are not caught up with the newest message, a `↓ 3 new messages` badge at the bottom of the chat counts what arrived in the meantime; click it, or press `G`/`b`/End, to jump to the newest message. Panes and inspect windows use the same chat buffer, so the badge behaves the same in all of them.
