@@ -59,6 +59,7 @@ chat:
   graphic_badges: true # Display badges as images instead of text; Default: false
   disable_badges: false # Hide badges entirely; Default: false
   smooth_scroll: true # Animate chat scrolling when new messages arrive; Default: false
+  disable_emote_tooltip: false # Don't show the emote name when hovering a graphic emote with the mouse (needs mouse: true); Default: false
   time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
 custom_commands:
   # Custom commands are available as command suggestions

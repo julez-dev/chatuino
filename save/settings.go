@@ -39,6 +39,7 @@ type ChatSettings struct {
 	DisableBadges              bool   `yaml:"disable_badges"`
 	DisablePaddingWrappedLines bool   `yaml:"disable_padding_wrapped_lines"`
 	SmoothScroll               bool   `yaml:"smooth_scroll"`
+	DisableEmoteTooltip        bool   `yaml:"disable_emote_tooltip"`    // don't show the emote name when hovering a graphic emote with the mouse
 	TimeFormat                 string `yaml:"time_format"`              // Go time format string, default: "15:04:05"
 	UserInspectTimeFormat      string `yaml:"user_inspect_time_format"` // Go time format string, default: "2006-01-02 15:04:05"
 }

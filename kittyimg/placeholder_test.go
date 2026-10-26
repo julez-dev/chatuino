@@ -111,3 +111,20 @@ func TestDisplayManager_ApplyLayout(t *testing.T) {
 	NewDisplayManager(nil, 10, 20, DisplayOptions{Rows: 10}).applyLayout(&clamped)
 	require.Equal(t, MaxRows, clamped.Rows)
 }
+
+func TestPlaceholderSpans(t *testing.T) {
+	line := "  hi \x1b[38;2;0;0;5m" + "\U0010EEEE\U0010EEEE" + "\x1b[39m x \x1b[38;2;0;1;2m\U0010EEEE\x1b[39m"
+
+	spans := PlaceholderSpans(line)
+
+	require.Equal(t, []PlaceholderSpan{
+		{Col: 5, Width: 2, ID: 5},
+		{Col: 10, Width: 1, ID: 0x102},
+	}, spans)
+
+	id, ok := PlaceholderID(line)
+	require.True(t, ok)
+	require.Equal(t, int32(5), id)
+
+	require.Nil(t, PlaceholderSpans("plain"))
+}

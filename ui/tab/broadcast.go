@@ -112,6 +112,11 @@ type Broadcast struct {
 	lastMessageSent           string
 	lastMessageSentAt         time.Time
 
+	// last mouse position over this tab (tab-local), used for the emote tooltip
+	hoverActive bool
+	hoverX      int
+	hoverY      int
+
 	// double-click tracking for chat messages
 	lastClickEntry *chatEntry
 	lastClickAt    time.Time
@@ -867,13 +872,13 @@ func (t *Broadcast) updateChildren(msg tea.Msg) tea.Cmd {
 
 // View renders the tab including the status bar.
 func (t *Broadcast) View() string {
-	return t.render(true)
+	return t.withEmoteTooltip(t.render(true))
 }
 
 // ViewWithoutStatusBar returns the body for a pane or vertical tab-list view;
 // Root renders the focused tab's status bar at full terminal width.
 func (t *Broadcast) ViewWithoutStatusBar() string {
-	return t.render(false)
+	return t.withEmoteTooltip(t.render(false))
 }
 
 // render is the single rendering path of a broadcast tab. Region placement comes
@@ -1759,6 +1764,68 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	}
 
 	return nil
+}
+
+// HandleMouseMotion records the pointer position (tab-local) for the emote tooltip.
+func (t *Broadcast) HandleMouseMotion(x, y int) {
+	t.hoverActive, t.hoverX, t.hoverY = true, x, y
+}
+
+// HandleMouseLeave clears the emote tooltip.
+func (t *Broadcast) HandleMouseLeave() {
+	t.hoverActive = false
+}
+
+// hoveredEmote returns the name of the graphic emote under the pointer.
+func (t *Broadcast) hoveredEmote() (string, bool) {
+	if !t.hoverActive || t.settings.Chat.DisableEmoteTooltip || !t.settings.Chat.GraphicEmotes ||
+		!t.channelDataLoaded || t.err != nil || t.state == emoteOverviewMode {
+		return "", false
+	}
+
+	if t.layout.chat.contains(t.hoverY) {
+		return t.chatWindow.emoteNameAt(t.hoverY-t.layout.chat.top, t.hoverX)
+	}
+
+	if t.state.isInspecting() && t.layout.userInspect.visible() && t.userInspect != nil {
+		if chat := t.inspectChatSpan(); chat.contains(t.hoverY) {
+			return t.userInspect.chatWindow.emoteNameAt(t.hoverY-chat.top, t.hoverX)
+		}
+	}
+
+	return "", false
+}
+
+// withEmoteTooltip overlays the hovered emote's name next to the pointer.
+func (t *Broadcast) withEmoteTooltip(view string) string {
+	name, ok := t.hoveredEmote()
+	if !ok {
+		return view
+	}
+
+	tip := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(t.theme.ListFontColor)).
+		Background(lipgloss.Color(t.theme.ListBackgroundColor)).
+		Bold(true).
+		Padding(0, 1).
+		Render(name)
+
+	width, height := lipgloss.Width(view), lipgloss.Height(view)
+	tipWidth := lipgloss.Width(tip)
+
+	x := max(0, min(t.hoverX+1, width-tipWidth))
+	y := t.hoverY + 1
+	if y >= height { // no room below, show above the pointer
+		y = max(0, t.hoverY-1)
+	}
+
+	canvas := lipgloss.NewCanvas(width, height)
+	canvas.Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(view),
+		lipgloss.NewLayer(tip).X(x).Y(y).Z(1),
+	))
+
+	return canvas.Render()
 }
 
 func (t *Broadcast) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
