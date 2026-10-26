@@ -434,9 +434,14 @@ func (t *Broadcast) SetLocalSubOnly(v bool) { t.isLocalSub = v }
 // IsComposing reports whether a text input inside the tab is capturing printable
 // keys. The shell asks this to decide whether a key press is text or a command.
 func (t *Broadcast) IsComposing() bool {
-	// The unban queue is a modal: while it is open every key belongs to it, so
-	// tab-navigation keys must be forwarded instead of switching tabs.
-	return t.state.isComposing() || t.state == unbanRequestMode
+	// While the unban resolution input is active it captures printable keys and
+	// Tab, like the composer. The browsing queue does not, so normal tab
+	// navigation keeps working with the modal open.
+	if t.state == unbanRequestMode && t.unbanRequests != nil {
+		return t.unbanRequests.Resolving()
+	}
+
+	return t.state.isComposing()
 }
 
 func (t *Broadcast) IsSearching() bool {

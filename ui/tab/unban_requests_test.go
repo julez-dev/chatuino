@@ -203,6 +203,27 @@ func TestBroadcast_UnbanRequestQueueRejectsAnonymousAndCommandForNonModerators(t
 	require.Equal(t, inChatWindow, nonMod.state)
 }
 
+func TestBroadcast_UnbanRequestQueueTabNavigationDependsOnResolutionInput(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeModerationClient()
+	api.unbanRequests = []twitchapi.UnbanRequest{{
+		ID: "pending-1", UserLogin: "alice", UserName: "Alice", Status: "pending", CreatedAt: time.Now(),
+	}}
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "chan-id", DisplayName: "me"})
+	tab.isUserMod = true
+	tab.client.Moderation = api
+	tab.state = unbanRequestMode
+	tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, api, tab.width, tab.height, tab.theme, tab.keymap)
+	tab.unbanRequests.setRequests(api.unbanRequests)
+
+	require.False(t, tab.IsComposing(), "browsing the queue must leave Tab available for tab navigation")
+
+	tab.unbanRequests.startResolution("approved")
+	require.True(t, tab.IsComposing(), "the resolution input captures text and Tab")
+}
+
 func TestBroadcast_UnbanRequestQueueAppliesLiveEvents(t *testing.T) {
 	t.Parallel()
 
