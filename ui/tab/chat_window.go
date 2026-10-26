@@ -31,6 +31,13 @@ const (
 	smoothScrollInterval   = time.Second / smoothScrollFPS
 	smoothScrollLerpFactor = 0.08 // per-frame interpolation factor
 	smoothScrollSnap       = 0.2  // snap when within this many lines of target
+
+	// smoothScrollMaxFrames bounds one follow animation. Chat keeps arriving while
+	// the window scrolls, and every frame re-renders the whole layout, so an
+	// exponential approach that needs dozens of frames never settles at real message
+	// rates: it re-arms from the newest message and keeps the 60Hz tick alive. Snap
+	// to the target instead after this many frames.
+	smoothScrollMaxFrames = 8
 )
 
 // smoothScrollTick drives the viewport scroll animation.
@@ -87,6 +94,8 @@ type chatWindow struct {
 	// Smooth scroll: smoothLineStart interpolates toward lineStart.
 	smoothLineStart float64
 	animating       bool
+	// animatingFrames counts the frames the current animation has run.
+	animatingFrames int
 
 	// Entries keep track which actual original message is behind a single row.
 	// A single message can span multiple lines so this is needed to resolve a message based on a line
@@ -174,12 +183,13 @@ func (c *chatWindow) Update(msg tea.Msg) (*chatWindow, tea.Cmd) {
 			return c, nil
 		}
 
+		c.animatingFrames++
+
 		target := float64(c.lineStart)
 		diff := target - c.smoothLineStart
 
-		if math.Abs(diff) < smoothScrollSnap {
-			c.smoothLineStart = target
-			c.animating = false
+		if math.Abs(diff) < smoothScrollSnap || c.animatingFrames >= smoothScrollMaxFrames {
+			c.snapScroll()
 			return c, nil
 		}
 
@@ -433,7 +443,10 @@ func (c *chatWindow) startAnimating() tea.Cmd {
 	if c.animating {
 		return nil
 	}
+
 	c.animating = true
+	c.animatingFrames = 0
+
 	return c.smoothScrollTickCmd()
 }
 
@@ -441,6 +454,7 @@ func (c *chatWindow) startAnimating() tea.Cmd {
 func (c *chatWindow) snapScroll() {
 	c.smoothLineStart = float64(c.lineStart)
 	c.animating = false
+	c.animatingFrames = 0
 }
 
 func (c *chatWindow) debugDumpChat() {

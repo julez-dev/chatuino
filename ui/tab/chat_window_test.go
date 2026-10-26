@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/stretchr/testify/require"
@@ -377,4 +379,86 @@ func TestChatWindow_EmoteNameAt(t *testing.T) {
 
 	_, ok = c.emoteNameAt(-1, 5)
 	require.False(t, ok)
+}
+
+// TestChatWindow_SmoothScrollFollowIsBounded pins the frame budget of the follow
+// animation. Every frame re-renders the whole layout and chat keeps arriving while
+// the window scrolls, so an animation that needs dozens of frames to converge never
+// settles at real message rates: it is re-armed by the next message and the 60Hz
+// tick runs for as long as the channel is active.
+func TestChatWindow_SmoothScrollFollowIsBounded(t *testing.T) {
+	t.Parallel()
+
+	// frameBudget is asserted as a literal so the test keeps catching a raise of the
+	// constant: one follow animation may not cost more than a fifth of a second of
+	// rendering.
+	const frameBudget = 12
+
+	newAnimating := func(t *testing.T) *chatWindow {
+		t.Helper()
+
+		c := newTestChatWindow(t, 10, 40)
+		c.settings.Chat.SmoothScroll = true
+		require.NotNil(t, c.startAnimating())
+
+		return c
+	}
+
+	// follow moves the window the way a message arriving at the bottom does.
+	follow := func(c *chatWindow) {
+		c.lineStart++
+		c.updatePort()
+		_ = c.startAnimating()
+	}
+
+	t.Run("a single follow stops within the frame budget", func(t *testing.T) {
+		t.Parallel()
+
+		c := newAnimating(t)
+
+		frames := 0
+		for {
+			var cmd tea.Cmd
+			c, cmd = c.Update(smoothScrollTick{owner: c})
+			frames++
+
+			require.Less(t, frames, frameBudget*4, "the follow animation must terminate")
+
+			if cmd == nil {
+				break
+			}
+		}
+
+		require.LessOrEqual(t, frames, frameBudget)
+		require.Equal(t, float64(c.lineStart), c.smoothLineStart, "the animation snaps onto the target")
+	})
+
+	t.Run("a moving chat cannot keep the loop alive", func(t *testing.T) {
+		t.Parallel()
+
+		c := newAnimating(t)
+
+		const (
+			messages         = 30
+			framesPerMessage = 20 // 330ms at 60fps, the rate of a mid-sized channel
+		)
+
+		frames := 0
+		for range messages {
+			follow(c)
+
+			for range framesPerMessage {
+				var cmd tea.Cmd
+				c, cmd = c.Update(smoothScrollTick{owner: c})
+				frames++
+
+				if cmd == nil {
+					break
+				}
+			}
+		}
+
+		require.LessOrEqual(t, frames, messages*frameBudget,
+			"each message may only animate for the frame budget")
+	})
 }
