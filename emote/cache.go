@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/ffz"
@@ -22,6 +23,11 @@ import (
 )
 
 var ErrPartialFetch = errors.New("emote data could only be partially fetched")
+
+// emoteProviderTimeout bounds one third-party provider during a channel refresh.
+// Without it, one slow provider holds the whole refresh until the caller's
+// deadline and the emotes of the providers that did answer are thrown away.
+const emoteProviderTimeout = 5 * time.Second
 
 type TwitchEmoteFetcher interface {
 	GetGlobalEmotes(context.Context) (twitchapi.EmoteResponse, error)
@@ -82,8 +88,23 @@ func NewCache(logger zerolog.Logger, twitchEmotes TwitchEmoteFetcher, sevenTVEmo
 	}
 }
 
-// RefreshLocal refreshes the local emote cache for a specific channel.
-// When a 3rd party API fails, the cache will still be refreshed but a ErrPartialFetch will be returned.
+// notFoundError is implemented by the third-party API errors. A channel without
+// emotes on a provider answers 404, which is a normal result rather than a failure.
+type notFoundError interface {
+	IsNotFound() bool
+}
+
+// isNotFound reports whether a provider answered "this channel has no emotes here".
+func isNotFound(err error) bool {
+	var notFound notFoundError
+
+	return errors.As(err, &notFound) && notFound.IsNotFound()
+}
+
+// RefreshLocal refreshes the local emote cache for a specific channel. A failing or
+// slow 3rd party API costs only its own emotes: the rest is cached and an
+// ErrPartialFetch is returned. Nothing is cached when the refresh as a whole ran out
+// of time before any provider answered.
 func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -112,6 +133,9 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		group, ctx := errgroup.WithContext(ctx)
 
 		group.Go(func() error {
+			ctx, cancel := context.WithTimeout(ctx, emoteProviderTimeout)
+			defer cancel()
+
 			resp, err := s.twitchEmotes.GetChannelEmotes(ctx, channelID)
 			if err != nil {
 				return err
@@ -123,9 +147,17 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		})
 
 		group.Go(func() error {
+			ctx, cancel := context.WithTimeout(ctx, emoteProviderTimeout)
+			defer cancel()
+
 			resp, err := s.sevenTVEmotes.GetChannelEmotes(ctx, channelID)
+			if isNotFound(err) {
+				// The channel simply has no emotes on this provider.
+				return nil
+			}
+
 			if err != nil {
-				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch 7TV emotes")
+				s.logger.Warn().Str("channel_id", channelID).Err(err).Msg("could not fetch 7TV emotes")
 				errSevenTV = fmt.Errorf("could not fetch 7TV emotes: %w", err)
 				return nil
 			}
@@ -136,9 +168,17 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		})
 
 		group.Go(func() error {
+			ctx, cancel := context.WithTimeout(ctx, emoteProviderTimeout)
+			defer cancel()
+
 			resp, err := s.bttvEmotes.GetChannelEmotes(ctx, channelID)
+			if isNotFound(err) {
+				// The channel simply has no emotes on this provider.
+				return nil
+			}
+
 			if err != nil {
-				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch BTTV emotes")
+				s.logger.Warn().Str("channel_id", channelID).Err(err).Msg("could not fetch BTTV emotes")
 				errBTTV = fmt.Errorf("could not fetch BTTV emotes: %w", err)
 				return nil
 			}
@@ -149,9 +189,17 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		})
 
 		group.Go(func() error {
+			ctx, cancel := context.WithTimeout(ctx, emoteProviderTimeout)
+			defer cancel()
+
 			resp, err := s.ffzEmotes.GetChannelEmotes(ctx, channelID)
+			if isNotFound(err) {
+				// The channel simply has no emotes on this provider.
+				return nil
+			}
+
 			if err != nil {
-				s.logger.Error().Str("channel_id", channelID).Err(err).Msg("could not fetch FFZ emotes")
+				s.logger.Warn().Str("channel_id", channelID).Err(err).Msg("could not fetch FFZ emotes")
 				errFFZ = fmt.Errorf("could not fetch FFZ emotes: %w", err)
 				return nil
 			}
@@ -238,12 +286,21 @@ func (s *Cache) RefreshLocal(ctx context.Context, channelID string) error {
 		return emoteSet, nil
 	})
 
-	if err != nil && !errors.Is(err, ErrPartialFetch) {
+	switch {
+	case err == nil, errors.Is(err, ErrPartialFetch):
+		// Somebody answered, so what they returned is worth keeping.
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		// Nothing arrived in time, so there is nothing to cache. Emote data is
+		// cosmetic: report the timeout as a partial fetch so a tab degrades to
+		// missing emotes instead of rendering an error over the whole chat.
+		return fmt.Errorf("%w: %w", ErrPartialFetch, err)
+	default:
 		return err
 	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
+
 	s.channelsFetched[channelID] = struct{}{}
 	s.channel[channelID] = set
 

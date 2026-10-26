@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -24,6 +25,17 @@ import (
 type startupUsers interface {
 	GetUsers(ctx context.Context, logins []string, ids []string) (twitchapi.UserResponse, error)
 }
+
+// startupChatSettings is the Twitch API surface the loader needs to warm the
+// chat-settings cache of the restored channels.
+type startupChatSettings interface {
+	GetChatSettings(ctx context.Context, broadcasterID string, moderatorID string) (twitchapi.GetChatSettingsResponse, error)
+}
+
+// chatSettingsFetchLimit bounds how many chat-settings requests the startup
+// prefetch keeps in flight. The endpoint takes one broadcaster per request, so a
+// workspace full of tabs would otherwise burst its whole channel list at once.
+const chatSettingsFetchLimit = 6
 
 // startupEmotes is the emote-cache surface the loader fills.
 type startupEmotes interface {
@@ -49,6 +61,7 @@ type startupLoader struct {
 	badgeCache      startupBadges
 	appStateManager AppStateManager
 	channelHistory  ChannelHistory
+	chatSettings    *chatstate.Cache
 	initialState    *save.AppState
 }
 
@@ -61,6 +74,7 @@ func newStartupLoader(root *Root) *startupLoader {
 		badgeCache:      root.badgeCache,
 		appStateManager: root.appStateManager,
 		channelHistory:  root.channelHistory,
+		chatSettings:    root.chatSettings,
 		initialState:    root.initialState,
 	}
 }
@@ -100,7 +114,8 @@ func (l *startupLoader) load() persistedDataLoadedMessage {
 	l.refreshGlobalAssets(ctx, group)
 	l.fetchUserEmotes(ctx, group)
 
-	ttvUsers := l.fetchTabUsers(ctx, group, state)
+	users := l.fetchTabUsers(ctx, group, state)
+	l.prefetchChatSettings(ctx, group, state, users)
 
 	var channelSuggestions []string
 	group.Go(func() error {
@@ -112,7 +127,7 @@ func (l *startupLoader) load() persistedDataLoadedMessage {
 
 	return persistedDataLoadedMessage{
 		state:              state,
-		ttvUsers:           ttvUsers,
+		ttvUsers:           users.byLogin,
 		channelSuggestions: channelSuggestions,
 		err:                err,
 	}
@@ -185,11 +200,22 @@ func (l *startupLoader) fetchUserEmotes(ctx context.Context, group *errgroup.Gro
 	}
 }
 
+// tabUsers is the startup user lookup: the channels of the restored tabs, plus the
+// signal that the map is complete. Only one goroutine fills the map, so it may only
+// be read after ready is closed.
+type tabUsers struct {
+	byLogin map[string]twitchapi.UserData
+	ready   <-chan struct{}
+}
+
 // fetchTabUsers looks up the channels of all restored broadcast tabs in one call,
 // which saves one request per tab. A failure here is fatal for the session: Root
-// cannot restore tabs without knowing their channel IDs.
-func (l *startupLoader) fetchTabUsers(ctx context.Context, group *errgroup.Group, state save.AppState) map[string]twitchapi.UserData {
+// cannot restore tabs without knowing their channel IDs. The lookup runs in the
+// background, so a caller that needs the channel IDs (the chat-settings prefetch)
+// waits on ready instead of blocking the rest of the startup.
+func (l *startupLoader) fetchTabUsers(ctx context.Context, group *errgroup.Group, state save.AppState) tabUsers {
 	users := make(map[string]twitchapi.UserData, len(state.Tabs))
+	ready := make(chan struct{})
 
 	loginsUnique := make(map[string]struct{}, len(state.Tabs))
 	for _, spec := range state.Tabs {
@@ -203,10 +229,14 @@ func (l *startupLoader) fetchTabUsers(ctx context.Context, group *errgroup.Group
 	logins := slices.Collect(maps.Keys(loginsUnique))
 
 	if len(logins) == 0 || l.serverAPI == nil {
-		return users
+		close(ready)
+
+		return tabUsers{byLogin: users, ready: ready}
 	}
 
 	group.Go(func() error {
+		defer close(ready)
+
 		resp, err := l.serverAPI.GetUsers(ctx, logins, nil)
 		if err != nil {
 			log.Logger.Error().Err(err).Msg("could not fetch users for tabs")
@@ -221,7 +251,116 @@ func (l *startupLoader) fetchTabUsers(ctx context.Context, group *errgroup.Group
 		return nil
 	})
 
-	return users
+	return tabUsers{byLogin: users, ready: ready}
+}
+
+// prefetchChatSettings warms the chat-settings cache of every restored channel.
+// Get Chat Settings accepts one broadcaster, so this is still one request per
+// channel, but only for the unique channels of a session and bounded in
+// concurrency. The tabs then render the status bar from the cache instead of each
+// requesting its own channel, and failures are best effort: the tab falls back to
+// fetching on demand.
+func (l *startupLoader) prefetchChatSettings(ctx context.Context, group *errgroup.Group, state save.AppState, users tabUsers) {
+	fetcher := l.chatSettingsFetcher()
+	if l.chatSettings == nil || fetcher == nil {
+		return
+	}
+
+	group.Go(func() error {
+		select {
+		case <-users.ready:
+		case <-ctx.Done():
+			return nil
+		}
+
+		channelIDs := make([]string, 0, len(state.Tabs))
+		seen := make(map[string]struct{}, len(state.Tabs))
+		for _, spec := range state.Tabs {
+			if spec.Kind != int(tab.BroadcastKind) {
+				continue
+			}
+
+			id := users.byLogin[spec.Channel].ID
+			if id == "" {
+				continue
+			}
+
+			if _, dup := seen[id]; dup {
+				continue
+			}
+
+			if _, cached := l.chatSettings.Get(id); cached {
+				continue
+			}
+
+			seen[id] = struct{}{}
+			channelIDs = append(channelIDs, id)
+		}
+
+		if len(channelIDs) == 0 {
+			return nil
+		}
+
+		// Errors are logged per channel: one unavailable channel must not keep the
+		// settings of the others out of the cache, so the group only bounds how many
+		// requests are in flight.
+		var fetches errgroup.Group
+		fetches.SetLimit(chatSettingsFetchLimit)
+
+		for _, channelID := range channelIDs {
+			fetches.Go(func() error {
+				// One slow channel must not hold up the restore of every tab.
+				callCtx, cancel := context.WithTimeout(ctx, time.Second*5)
+				defer cancel()
+
+				if _, err := l.chatSettings.Fetch(callCtx, channelID, chatSettingsCall(fetcher, channelID)); err != nil {
+					log.Logger.Warn().Err(err).Str("channel_id", channelID).Msg("could not prefetch chat settings")
+				}
+
+				return nil
+			})
+		}
+
+		fetches.Wait()
+
+		return nil
+	})
+}
+
+// chatSettingsFetcher returns a client that can read chat settings. A signed-in
+// account's own client is preferred because it talks to Twitch directly; the
+// server proxy is the fallback for anonymous sessions.
+func (l *startupLoader) chatSettingsFetcher() startupChatSettings {
+	for _, account := range l.accounts {
+		if account.IsAnonymous {
+			continue
+		}
+
+		if fetcher, ok := l.clients[account.ID].API.(startupChatSettings); ok {
+			return fetcher
+		}
+	}
+
+	fetcher, _ := l.serverAPI.(startupChatSettings)
+
+	return fetcher
+}
+
+// chatSettingsCall adapts one client call to the cache's fetcher shape.
+func chatSettingsCall(fetcher startupChatSettings, channelID string) chatstate.Fetcher {
+	return func(ctx context.Context) (twitchapi.ChatSettingData, error) {
+		resp, err := fetcher.GetChatSettings(ctx, channelID, "")
+		if err != nil {
+			return twitchapi.ChatSettingData{}, err
+		}
+
+		settings, err := chatstate.SettingsFromResponse(resp)
+		if err != nil {
+			return twitchapi.ChatSettingData{}, fmt.Errorf("%w: %s", err, channelID)
+		}
+
+		return settings, nil
+	}
 }
 
 // loadChannelSuggestions seeds the /join autocomplete with history plus the

@@ -58,6 +58,7 @@ type fakePreparationServer struct {
 	mu        sync.Mutex
 	users     map[string]twitchapi.UserData
 	userCalls int
+	linkCalls int
 	linkErr   error
 	linkDelay time.Duration
 	linkResp  server.CheckLinkResponse
@@ -80,18 +81,27 @@ func (f *fakePreparationServer) GetUsers(_ context.Context, _ []string, ids []st
 }
 
 func (f *fakePreparationServer) CheckLink(ctx context.Context, _ string) (server.CheckLinkResponse, error) {
-	if f.linkDelay > 0 {
+	f.mu.Lock()
+	f.linkCalls++
+	delay, resp, err := f.linkDelay, f.linkResp, f.linkErr
+	f.mu.Unlock()
+
+	if delay > 0 {
 		select {
-		case <-time.After(f.linkDelay):
+		case <-time.After(delay):
 		case <-ctx.Done():
 			return server.CheckLinkResponse{}, ctx.Err()
 		}
 	}
 
+	return resp, err
+}
+
+func (f *fakePreparationServer) linkCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return f.linkResp, f.linkErr
+	return f.linkCalls
 }
 
 func (f *fakePreparationServer) calls() int {
@@ -113,14 +123,17 @@ func newTestPreparer(t *testing.T) (*chatEventPreparer, *fakePreparationServer, 
 
 	ctx, cancel := context.WithCancel(t.Context())
 	prep := &chatEventPreparer{
-		ctx:        ctx,
-		cancel:     cancel,
-		settings:   save.BuildDefaultSettings(),
-		emoteCache: emotes,
-		badgeCache: badges,
-		server:     server,
-		userNames:  &sync.Map{},
-		timeout:    time.Second,
+		ctx:         ctx,
+		cancel:      cancel,
+		settings:    save.BuildDefaultSettings(),
+		emoteCache:  emotes,
+		badgeCache:  badges,
+		server:      server,
+		userNames:   &sync.Map{},
+		timeout:     time.Second,
+		links:       newLinkAnnotations(linkCheckTTL),
+		linkTimeout: linkCheckTimeout,
+		linkBudget:  linkCheckBudget,
 	}
 	t.Cleanup(prep.close)
 	return prep, server, emotes, badges
@@ -149,6 +162,52 @@ func TestChatEventPreparer_LinkAnnotation(t *testing.T) {
 
 		require.NotContains(t, event.DisplayModifier.WordReplacements, "https://example.com")
 		require.Equal(t, "see https://example.com now", event.Message.(*twitchirc.PrivateMessage).Message)
+	})
+
+	t.Run("restored history is not link checked", func(t *testing.T) {
+		t.Parallel()
+
+		prep, server, _, _ := newTestPreparer(t)
+
+		event := prep.prepare(prepareRequest{
+			isFake: true,
+			ircer:  privateMessage("see https://example.com now"),
+		})
+
+		require.NotContains(t, event.DisplayModifier.WordReplacements, "https://example.com")
+		require.Zero(t, server.linkCallCount(), "history must not cost a round-trip per link at startup")
+	})
+
+	t.Run("a repeated url is annotated from the cache", func(t *testing.T) {
+		t.Parallel()
+
+		prep, server, _, _ := newTestPreparer(t)
+
+		first := prep.prepare(prepareRequest{ircer: privateMessage("see https://example.com now")})
+		second := prep.prepare(prepareRequest{ircer: privateMessage("https://example.com again")})
+
+		require.Equal(t, "https://example.com [OK, text/html]", first.DisplayModifier.WordReplacements["https://example.com"])
+		require.Equal(t, "https://example.com [OK, text/html]", second.DisplayModifier.WordReplacements["https://example.com"])
+		require.Equal(t, 1, server.linkCallCount(), "the same url is checked once per TTL")
+	})
+
+	t.Run("a check that times out is not cached", func(t *testing.T) {
+		t.Parallel()
+
+		prep, server, _, _ := newTestPreparer(t)
+		prep.linkTimeout = 20 * time.Millisecond
+		server.linkDelay = 2 * time.Second
+
+		start := time.Now()
+		event := prep.prepare(prepareRequest{ircer: privateMessage("see https://example.com now")})
+		elapsed := time.Since(start)
+
+		require.Less(t, elapsed, time.Second, "one slow link is bounded by its own timeout")
+		require.NotContains(t, event.DisplayModifier.WordReplacements, "https://example.com")
+
+		// The failure is not remembered, so the next message retries.
+		prep.prepare(prepareRequest{ircer: privateMessage("https://example.com again")})
+		require.Equal(t, 2, server.linkCallCount())
 	})
 
 	t.Run("a slow check is bounded by the preparation timeout", func(t *testing.T) {
@@ -334,4 +393,72 @@ func TestChatEventPreparer_DeadlineCoversEveryReplacement(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEventQueue_EvictsHistoryBeforeDroppingLiveChat covers the restore burst:
+// several tabs queue their history at once and fill the queue. A live message must
+// still get in, at the cost of the oldest queued history event.
+func TestEventQueue_EvictsHistoryBeforeDroppingLiveChat(t *testing.T) {
+	t.Parallel()
+
+	q := newEventQueue(2)
+
+	_, ok := q.add("acc", "tab-1", privateMessage("history-1"), true)
+	require.True(t, ok)
+	secondHistory, ok := q.add("acc", "tab-1", privateMessage("history-2"), true)
+	require.True(t, ok)
+
+	live, ok := q.add("acc", "", privateMessage("live"), false)
+	require.True(t, ok, "live chat is admitted by evicting history")
+
+	// Arrival order survives the eviction: the oldest history event is the one
+	// that made room, the newer one still precedes the live message.
+	inFlight, ok := q.start()
+	require.True(t, ok)
+	require.Equal(t, secondHistory.seq, inFlight.seq)
+	require.True(t, q.finish(inFlight.seq))
+
+	next, ok := q.start()
+	require.True(t, ok)
+	require.Equal(t, live.seq, next.seq)
+
+	t.Run("nothing to evict rejects instead of reordering", func(t *testing.T) {
+		t.Parallel()
+
+		onlyLive := newEventQueue(1)
+		_, ok := onlyLive.add("acc", "", privateMessage("live-1"), false)
+		require.True(t, ok)
+
+		_, ok = onlyLive.add("acc", "tab-1", privateMessage("history"), true)
+		require.False(t, ok, "a history event never displaces live chat")
+
+		_, ok = onlyLive.add("acc", "", privateMessage("live-2"), false)
+		require.False(t, ok, "the queue stays bounded")
+	})
+}
+
+// TestLinkAnnotations_TTLCountsFromInsertion pins the cache policy: reading an
+// annotation must not extend its life, otherwise a link that stays popular would
+// never be re-checked and would keep showing a stale verdict forever.
+func TestLinkAnnotations_TTLCountsFromInsertion(t *testing.T) {
+	t.Parallel()
+
+	links := newLinkAnnotations(30 * time.Millisecond)
+	t.Cleanup(links.stop)
+
+	links.put("https://example.com", "200, text/html")
+
+	annotation, ok := links.get("https://example.com")
+	require.True(t, ok)
+	require.Equal(t, "200, text/html", annotation)
+
+	// Keep hitting the entry for longer than its TTL.
+	deadline := time.Now().Add(120 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		links.get("https://example.com")
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	_, ok = links.get("https://example.com")
+	require.False(t, ok, "an annotation expires even when it is read repeatedly")
 }

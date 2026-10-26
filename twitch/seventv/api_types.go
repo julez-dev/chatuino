@@ -1,6 +1,9 @@
 package seventv
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
 type APIError struct {
 	StatusCode int    `json:"status_code"`
@@ -11,6 +14,12 @@ type APIError struct {
 
 func (a APIError) Error() string {
 	return fmt.Sprintf("%s (%d): %s (errcode: %d)", a.Status, a.StatusCode, a.ErrorText, a.ErrorCode)
+}
+
+// IsNotFound reports a channel that has no emotes on this provider. That is a
+// normal answer, not a failure.
+func (a APIError) IsNotFound() bool {
+	return a.StatusCode == http.StatusNotFound
 }
 
 type (

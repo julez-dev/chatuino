@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -20,6 +22,26 @@ import (
 // preparationTimeout bounds one chat event's enrichment. The queue processes one
 // event at a time, so a stuck link check must not stall live chat forever.
 const preparationTimeout = 15 * time.Second
+
+const (
+	// linkCheckTimeout bounds one link check. A target that does not answer in time
+	// loses its annotation for this message; the next one retries.
+	linkCheckTimeout = 2 * time.Second
+
+	// linkCheckBudget bounds all link checks of one message together, so a message
+	// full of slow links cannot hold up the pipeline either.
+	linkCheckBudget = 4 * time.Second
+
+	// linkCheckTTL is how long a successful annotation is reused. Chat repeats the
+	// same links (a streamer's socials, the clip of the moment), and every repeat
+	// would otherwise cost a round-trip through the chatuino server.
+	linkCheckTTL = 10 * time.Minute
+
+	// linkAnnotationMaxEntries bounds the cache. Annotations are a latency
+	// optimisation, not state, so the least recently used entries are dropped when
+	// it grows past this.
+	linkAnnotationMaxEntries = 1024
+)
 
 // preparationServer is the part of the chatuino server the preparer uses.
 type preparationServer interface {
@@ -82,6 +104,9 @@ type chatEventPreparer struct {
 	server        preparationServer
 	userNames     *sync.Map
 	timeout       time.Duration
+	links         *linkAnnotations
+	linkTimeout   time.Duration
+	linkBudget    time.Duration
 }
 
 func newChatEventPreparer(ctx context.Context, root *Root) *chatEventPreparer {
@@ -97,6 +122,9 @@ func newChatEventPreparer(ctx context.Context, root *Root) *chatEventPreparer {
 		server:        root.serverAPI,
 		userNames:     root.userIDDisplayName,
 		timeout:       preparationTimeout,
+		links:         newLinkAnnotations(linkCheckTTL),
+		linkTimeout:   linkCheckTimeout,
+		linkBudget:    linkCheckBudget,
 	}
 }
 
@@ -108,6 +136,7 @@ func (p *chatEventPreparer) close() {
 	p.cancel()
 	p.mu.Unlock()
 	p.work.Wait()
+	p.links.stop()
 }
 
 // prepare enriches one event. Network failures are logged and the event is still
@@ -287,47 +316,127 @@ func (p *chatEventPreparer) prepare(req prepareRequest) tab.ChatEventMessage {
 		replaceCommand += p
 	}
 
-	if p.settings.Security.CheckLinks && len(message) > 0 && p.server != nil {
-		// Key link annotations on the whole space-delimited token so they match
-		// exactly in applyWordReplacements (same contract as emotes). The URL is
-		// annotated in place, preserving any surrounding punctuation in the token.
-		for _, token := range strings.Split(message, " ") {
-			annotated := token
-			for _, u := range tab.ExtractValidURLs(token) {
-				resp, err := p.server.CheckLink(ctx, u)
-				if err != nil {
-					log.Logger.Info().Err(err).Str("url", u).Msg("failed to check link")
-					continue
-				}
-
-				parts := []string{http.StatusText(resp.RemoteStatusCode)}
-
-				if resp.RemoteContentType != "" {
-					before, _, _ := strings.Cut(resp.RemoteContentType, ";")
-					parts = append(parts, before)
-				}
-
-				for _, visited := range resp.VisitedURLs {
-					d, err := url.QueryUnescape(visited)
-					if err != nil {
-						log.Logger.Info().Err(err).Str("url", visited).Msg("failed to unescape url")
-						continue
-					}
-					parts = append(parts, d)
-				}
-
-				annotated = strings.Replace(annotated, u, fmt.Sprintf("%s [%s]", u, strings.Join(parts, ", ")), 1)
-			}
-
-			if annotated != token {
-				event.DisplayModifier.WordReplacements[token] = annotated
-			}
-		}
+	// Restored history is prepared in bulk at startup and repeats the same URLs, so
+	// checking it costs a round-trip per link without telling the user anything new
+	// about live chat. Live messages are still annotated, from the cache when the
+	// URL was seen before.
+	if !req.isFake && p.settings.Security.CheckLinks && len(message) > 0 && p.server != nil {
+		p.annotateLinks(ctx, &event, message)
 	}
 
 	event.PrepareCommand = replaceCommand
 	return event
 }
+
+// annotateLinks renders the "[status, content type, redirects]" annotation after
+// every URL of a live message.
+func (p *chatEventPreparer) annotateLinks(ctx context.Context, event *tab.ChatEventMessage, message string) {
+	ctx, cancel := context.WithTimeout(ctx, p.linkBudget)
+	defer cancel()
+
+	// Key link annotations on the whole space-delimited token so they match
+	// exactly in applyWordReplacements (same contract as emotes). The URL is
+	// annotated in place, preserving any surrounding punctuation in the token.
+	for _, token := range strings.Split(message, " ") {
+		annotated := token
+		for _, u := range tab.ExtractValidURLs(token) {
+			annotation, ok := p.links.get(u)
+			if !ok {
+				annotation, ok = p.checkLink(ctx, u)
+				if !ok {
+					continue
+				}
+			}
+
+			annotated = strings.Replace(annotated, u, fmt.Sprintf("%s [%s]", u, annotation), 1)
+		}
+
+		if annotated != token {
+			event.DisplayModifier.WordReplacements[token] = annotated
+		}
+	}
+}
+
+// checkLink asks the server about one URL and caches the annotation it produces. A
+// check that fails or runs out of time stays uncached, so a later message retries
+// it instead of showing a stale verdict.
+func (p *chatEventPreparer) checkLink(ctx context.Context, target string) (string, bool) {
+	ctx, cancel := context.WithTimeout(ctx, p.linkTimeout)
+	defer cancel()
+
+	resp, err := p.server.CheckLink(ctx, target)
+	if err != nil {
+		log.Logger.Info().Err(err).Str("url", target).Msg("failed to check link")
+		return "", false
+	}
+
+	parts := []string{http.StatusText(resp.RemoteStatusCode)}
+
+	if resp.RemoteContentType != "" {
+		before, _, _ := strings.Cut(resp.RemoteContentType, ";")
+		parts = append(parts, before)
+	}
+
+	for _, visited := range resp.VisitedURLs {
+		d, err := url.QueryUnescape(visited)
+		if err != nil {
+			log.Logger.Info().Err(err).Str("url", visited).Msg("failed to unescape url")
+			continue
+		}
+
+		parts = append(parts, d)
+	}
+
+	annotation := strings.Join(parts, ", ")
+	p.links.put(target, annotation)
+
+	return annotation, true
+}
+
+// linkAnnotations caches the annotation chat renders after a URL, keyed by the URL
+// a message contains. Chat repeats the same links (a streamer's socials, the clip of
+// the moment), and every repeat would otherwise cost a round-trip through the
+// chatuino server.
+type linkAnnotations struct {
+	entries *ttlcache.Cache[string, string]
+}
+
+func newLinkAnnotations(ttl time.Duration) *linkAnnotations {
+	entries := ttlcache.New(
+		ttlcache.WithTTL[string, string](ttl),
+		ttlcache.WithCapacity[string, string](linkAnnotationMaxEntries),
+		// The TTL counts from when the annotation was stored: a cache hit must not
+		// keep a stale verdict alive just because the link stays popular.
+		ttlcache.WithDisableTouchOnHit[string, string](),
+	)
+
+	go entries.Start()
+
+	return &linkAnnotations{entries: entries}
+}
+
+// stop ends the cache's expiry janitor. It is safe to call more than once.
+func (c *linkAnnotations) stop() { c.entries.Stop() }
+
+// get returns the cached annotation of a URL when one was stored and is fresh.
+func (c *linkAnnotations) get(target string) (string, bool) {
+	item := c.entries.Get(target)
+	if item == nil {
+		return "", false
+	}
+
+	return item.Value(), true
+}
+
+func (c *linkAnnotations) put(target, text string) {
+	c.entries.Set(target, text, ttlcache.DefaultTTL)
+}
+
+// eventQueueCapacity bounds the enrichment backlog. Restoring a session queues a
+// history batch per tab in one burst, so the bound has to cover a workspace full
+// of tabs on top of live traffic. When the backlog still grows past it, history is
+// evicted before live chat is dropped.
+const eventQueueCapacity = 4096
 
 // eventQueue serializes chat-event preparation for Root.
 //
@@ -337,8 +446,10 @@ func (p *chatEventPreparer) prepare(req prepareRequest) tab.ChatEventMessage {
 // same request to route content. Duplicate/stale handoffs are ignored.
 //
 // The queue is bounded. When it is full (chat is arriving faster than enrichment
-// completes), the new event is dropped and logged instead of growing memory
-// without bound; previously queued and in-flight events keep their order.
+// completes), the oldest queued history event is evicted to make room, because
+// restored history is cosmetic while live chat is not. An event is only dropped
+// once no history is left to evict; previously queued and in-flight events keep
+// their order either way.
 type eventQueue struct {
 	capacity int
 	inFlight uint64
@@ -351,9 +462,10 @@ func newEventQueue(capacity int) eventQueue {
 	return eventQueue{capacity: capacity, pending: make([]prepareRequest, 0, capacity)}
 }
 
-// add appends a request in arrival order. It reports false when the queue is full.
+// add appends a request in arrival order. It reports false only when the queue is
+// full and holds nothing evictable.
 func (q *eventQueue) add(accountID, tabID string, ircer twitchirc.IRCer, isFake bool) (prepareRequest, bool) {
-	if len(q.pending) >= q.capacity {
+	if len(q.pending) >= q.capacity && !q.evictOldestHistory() {
 		return prepareRequest{}, false
 	}
 
@@ -369,6 +481,22 @@ func (q *eventQueue) add(accountID, tabID string, ircer twitchirc.IRCer, isFake 
 	q.pending = append(q.pending, req)
 
 	return req, true
+}
+
+// evictOldestHistory removes the oldest queued history event and reports whether
+// it found one. Dropping the oldest keeps what remains in arrival order.
+func (q *eventQueue) evictOldestHistory() bool {
+	for i := range q.pending {
+		if !q.pending[i].isFake {
+			continue
+		}
+
+		q.pending = slices.Delete(q.pending, i, i+1)
+
+		return true
+	}
+
+	return false
 }
 
 // start pops the next request when no preparation is running.

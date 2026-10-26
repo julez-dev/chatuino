@@ -2,6 +2,7 @@ package tab
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -9,9 +10,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,7 +95,7 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 func newTestTab(id string, width, height int, account save.Account, channel string) *Broadcast {
 	return NewBroadcast(id, width, height, account, channel,
 		save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap(),
-		ClientCapabilities{}, nil, nil, nil, nil, nil, nil, nil)
+		ClientCapabilities{}, nil, nil, nil, nil, nil, nil, nil, chatstate.NewCache())
 }
 
 func newFSMTestTab(t *testing.T, anonymous bool) *Broadcast {
@@ -1250,7 +1254,7 @@ func newLoadedReplyTab(t *testing.T) (*Broadcast, *fakeUserClient) {
 	tab.channelID = "channel-id"
 	tab.channelLogin = "channel"
 	tab.channelDataLoaded = true
-	tab.statusInfo = newStreamStatus(tab.width, tab.height, tab, tab.account.ID, tab.channelID, tab.theme, tab.client.API)
+	tab.statusInfo = newStreamStatus(tab.width, tab.height, tab, tab.account.ID, tab.channelID, tab.theme, tab.client.API, tab.chatSettings)
 	tab.streamInfo = newStreamInfo(tab.channelID, client, tab.width)
 	tab.poll = newPoll(tab.width)
 	tab.HandleResize()
@@ -1465,4 +1469,45 @@ func TestBroadcastTab_RegisterClick(t *testing.T) {
 	tab.lastClickEntry = entry
 	tab.lastClickAt = time.Now().Add(-doubleClickWindow - time.Millisecond)
 	require.False(t, tab.registerClick(entry, 0), "clicks outside the time window are not a double-click")
+}
+
+// TestBroadcast_EmoteRefreshFailureKeepsTabUsable covers a failed emote/badge
+// refresh (provider error, 404 or timeout): emotes are cosmetic, so the tab keeps
+// rendering its chat. Before, the error was joined into the tab's error state, which
+// replaced the whole chat with the message and disabled input.
+func TestBroadcast_EmoteRefreshFailureKeepsTabUsable(t *testing.T) {
+	t.Parallel()
+
+	refreshErr := errors.New("could not refresh emote cache: emote data could only be partially fetched")
+
+	t.Run("automatic refresh stays silent", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newFSMTestTab(t, false)
+		tab.emoteCache = emote.NewCache(zerolog.Nop(), nil, nil, nil, nil)
+
+		// A tab refresh runs on every open; a slow third-party provider is not news.
+		_, cmd := tab.Update(emoteSetRefreshedMessage{err: refreshErr})
+
+		require.Nil(t, tab.err, "a cosmetic refresh failure is not a tab error")
+		require.Nil(t, cmd, "no notice for the automatic refresh")
+
+		require.NotContains(t, StripANSI(tab.View()), "could not refresh emote cache")
+	})
+
+	t.Run("manual refresh reports back", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newFSMTestTab(t, false)
+		tab.emoteCache = emote.NewCache(zerolog.Nop(), nil, nil, nil, nil)
+
+		_, cmd := tab.Update(emoteSetRefreshedMessage{err: refreshErr, manually: true})
+
+		require.Nil(t, tab.err)
+		require.NotNil(t, cmd, "the user asked for it, so the failure is reported")
+
+		msg, ok := cmd().(RequestLocalMessageHandleMessage)
+		require.True(t, ok)
+		require.Contains(t, msg.Message.(*twitchirc.Notice).Message, "Could not refresh emotes")
+	})
 }

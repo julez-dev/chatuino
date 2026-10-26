@@ -345,3 +345,95 @@ func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
 		require.True(t, ok)
 	})
 }
+
+// TestRefreshLocal_FailuresArePartial keeps emote data cosmetic: a provider that
+// answers with an error, and a refresh that runs out of time, must both be reported
+// as a partial fetch so a tab degrades instead of showing an error for its chat.
+func TestRefreshLocal_FailuresArePartial(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing channel emotes are not a failure", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{{ID: "ttv", Name: "TwitchEmote"}},
+		}, nil)
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
+		// A channel without BTTV/FFZ emotes answers with 404, which is normal.
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(bttv.UserResponse{}, bttv.APIError{StatusCode: 404})
+		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(nil, ffz.APIError{StatusCode: 404})
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
+
+		err := store.RefreshLocal(t.Context(), "no-emotes-channel")
+		require.NoError(t, err, "a provider without emotes for the channel is not a partial fetch")
+
+		_, ok := store.GetAllForChannel("no-emotes-channel").GetByText("TwitchEmote")
+		require.True(t, ok)
+	})
+
+	t.Run("provider error keeps the other providers", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(twitchapi.EmoteResponse{
+			Data: []twitchapi.EmoteData{{ID: "ttv", Name: "TwitchEmote"}},
+		}, nil)
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(bttv.UserResponse{}, bttv.APIError{StatusCode: 500})
+		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(nil, nil)
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
+
+		err := store.RefreshLocal(t.Context(), "partial-channel")
+		require.ErrorIs(t, err, emote.ErrPartialFetch)
+
+		_, ok := store.GetAllForChannel("partial-channel").GetByText("TwitchEmote")
+		require.True(t, ok, "the providers that answered are still cached")
+	})
+
+	t.Run("a refresh that ran out of time is partial and caches nothing", func(t *testing.T) {
+		t.Parallel()
+
+		ttv := mocks.NewMockTwitchEmoteFetcher(t)
+		seven := mocks.NewMockSevenTVEmoteFetcher(t)
+		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
+		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+
+		// The authoritative provider never answers, so the refresh as a whole fails.
+		// Whatever the others returned in the meantime was never confirmed, so it must
+		// not be cached under this channel: the next open retries the whole thing.
+		ttvHangs := func(ctx context.Context, _ string) (twitchapi.EmoteResponse, error) {
+			<-ctx.Done()
+
+			return twitchapi.EmoteResponse{}, ctx.Err()
+		}
+		ttv.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(ttvHangs, nil)
+		seven.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
+		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(bttv.UserResponse{
+			ChannelEmotes: []bttv.Emote{{ID: "bttv", Code: "BttvEmote"}},
+		}, nil)
+		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(nil, nil)
+
+		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+		defer cancel()
+
+		err := store.RefreshLocal(ctx, "slow-channel")
+		require.ErrorIs(t, err, emote.ErrPartialFetch, "a timed out refresh must not read as a fatal error")
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+
+		_, ok := store.GetAllForChannel("slow-channel").GetByText("BttvEmote")
+		require.False(t, ok, "a refresh that never finished caches nothing")
+	})
+}

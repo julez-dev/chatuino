@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/julez-dev/chatuino/badge"
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
@@ -143,6 +144,7 @@ type Broadcast struct {
 	emoteReplacer  EmoteReplacer
 	badgeCache     *badge.Cache
 	badgeReplacer  BadgeReplacer
+	chatSettings   *chatstate.Cache // room settings shared with the other tabs of a channel
 
 	modFetcher ModStatusFetcher
 
@@ -178,6 +180,7 @@ func NewBroadcast(
 	emoteReplacer EmoteReplacer,
 	badgeCache *badge.Cache,
 	badgeReplacer BadgeReplacer,
+	chatSettings *chatstate.Cache,
 ) *Broadcast {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[string, struct{}](time.Second * 10),
@@ -203,6 +206,7 @@ func NewBroadcast(
 		emoteReplacer:  emoteReplacer,
 		badgeCache:     badgeCache,
 		badgeReplacer:  badgeReplacer,
+		chatSettings:   chatSettings,
 		modFetcher:     ivr.NewAPI(http.DefaultClient),
 		spinner:        spinner.New(spinner.WithSpinner(LoadingSpinner)),
 
@@ -313,7 +317,9 @@ func (t *Broadcast) InitWithUserData(userData twitchapi.UserData) tea.Cmd {
 	return cmd
 }
 
-func (t *Broadcast) refreshEmotes(login, channelID string, manually bool) tea.Cmd {
+// refreshEmotes loads the channel's emote and badge sets. The errors it reports are
+// cosmetic: the tab keeps running without the affected sets.
+func (t *Broadcast) refreshEmotes(channelID string, manually bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
@@ -322,7 +328,7 @@ func (t *Broadcast) refreshEmotes(login, channelID string, manually bool) tea.Cm
 
 		group.Go(func() error {
 			if err := t.emoteCache.RefreshLocal(ctx, channelID); err != nil {
-				return fmt.Errorf("could not refresh emote cache for %s (%s): %w", login, channelID, err)
+				return fmt.Errorf("could not refresh emote cache: %w", err)
 			}
 
 			return nil
@@ -330,7 +336,7 @@ func (t *Broadcast) refreshEmotes(login, channelID string, manually bool) tea.Cm
 
 		group.Go(func() error {
 			if err := t.badgeCache.RefreshChannel(ctx, channelID); err != nil {
-				return fmt.Errorf("could not refresh badge cache for %s (%s): %w", login, channelID, err)
+				return fmt.Errorf("could not refresh badge cache: %w", err)
 			}
 
 			return nil
@@ -595,7 +601,7 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 		t.pendingChannelSuggestions = nil
 	}
 
-	t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.theme, t.client.API)
+	t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.theme, t.client.API, t.chatSettings)
 
 	// set chat suggestions if non-anonymous user
 	if !t.account.IsAnonymous {
@@ -657,7 +663,7 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 		return nil
 	})
 
-	cmds = append(cmds, t.refreshEmotes(msg.channelLogin, msg.channelID, false))
+	cmds = append(cmds, t.refreshEmotes(msg.channelID, false))
 	cmds = append(cmds, t.subscribeChannelEventCmds(msg.channelID)...)
 
 	t.HandleResize()
@@ -723,13 +729,13 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 
 // handleEmoteSetRefreshed reacts to a finished emote refresh by recomputing the
 // input suggestions from the user's and the channel's emote sets.
+//
+// Emote and badge data is cosmetic: a failed refresh costs the affected emotes and
+// suggestions, never the tab. The error state would replace the whole tab with the
+// message, so failures are logged. Only a refresh the user asked for is reported
+// back, because that one is an answer to their action.
 func (t *Broadcast) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea.Cmd {
 	if t.account.IsAnonymous {
-		return nil
-	}
-
-	if msg.err != nil && !errors.Is(msg.err, emote.ErrPartialFetch) {
-		t.err = errors.Join(t.err, msg.err)
 		return nil
 	}
 
@@ -741,9 +747,17 @@ func (t *Broadcast) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea.Cm
 
 	t.input.SetSuggestions(emoteSuggestions(userEmoteSet, channelEmoteSet))
 
-	// notify user if not all emotes could be fetched
-	if errors.Is(msg.err, emote.ErrPartialFetch) {
-		return t.localNoticeCmd(msg.err.Error())
+	if msg.err != nil {
+		// A tab refresh happens on every open, and a slow or unavailable third-party
+		// provider is nothing the user can act on: log it instead of filling chat
+		// with notices about missing emotes.
+		if !msg.manually {
+			log.Info().Err(msg.err).Str("channel", t.channelLogin).Msg("could not refresh emotes")
+
+			return nil
+		}
+
+		return t.localNoticeCmd("Could not refresh emotes: " + msg.err.Error())
 	}
 
 	if msg.manually {
@@ -813,9 +827,10 @@ func (t *Broadcast) handleChatEvent(msg ChatEventMessage) tea.Cmd {
 	t.chatWindow, cmd = t.chatWindow.Update(msg)
 	cmds = append(cmds, cmd)
 
-	// if room state update, update status info
-	if _, ok := msg.Message.(*twitchirc.RoomState); ok {
-		cmds = append(cmds, t.statusInfo.Init()) // resend init command
+	// A ROOMSTATE message carries the settings the status bar renders, so the tab
+	// applies it instead of requesting /chat/settings again.
+	if state, ok := msg.Message.(*twitchirc.RoomState); ok {
+		t.statusInfo.ApplyRoomState(state)
 	}
 
 	if t.state == userInspectMode {
@@ -1664,7 +1679,7 @@ func (t *Broadcast) handleManualRefreshEmotes() tea.Cmd {
 
 	t.emoteCache.RemoveEmoteSetForChannel(t.channelID)
 
-	return t.refreshEmotes(t.channelLogin, t.channelID, true)
+	return t.refreshEmotes(t.channelID, true)
 }
 
 // Mouse interaction.
