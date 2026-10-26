@@ -899,6 +899,86 @@ func Test_Broadcast_MouseClickUserInspectNewMessageBadge(t *testing.T) {
 	require.Equal(t, userInspectMode, tab.state, "catching up must not leave inspect mode")
 }
 
+// addReplyToChat appends a reply to Alice's most recent message and returns its entry.
+func addReplyToChat(t *testing.T, c *chatWindow, parent *chatEntry, id, body string) *chatEntry {
+	t.Helper()
+
+	parentMsg := parent.Event.Message.(*twitchirc.PrivateMessage)
+
+	c.handleMessage(ChatEventMessage{Message: &twitchirc.PrivateMessage{
+		ID:                id,
+		DisplayName:       "carol",
+		LoginName:         "carol",
+		Color:             "#a3be8c",
+		Message:           body,
+		TMISentTS:         replyTestTime,
+		ParentMsgID:       parentMsg.ID,
+		ParentUserLogin:   parentMsg.LoginName,
+		ParentDisplayName: parentMsg.DisplayName,
+		ParentMsgBody:     parentMsg.Message,
+	}})
+
+	entries := c.activeEntries()
+	require.NotEmpty(t, entries)
+
+	return entries[len(entries)-1]
+}
+
+// Test_Broadcast_MouseClickReplyReferenceJumpsToTheParent verifies that clicking a reply's
+// reference row selects the message it answers, while the reply's own rows still select
+// the reply.
+func Test_Broadcast_MouseClickReplyReferenceJumpsToTheParent(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	parent := addPrivateMessage(t, tab.chatWindow, "parent-1", "that was a great play")
+	reply := addReplyToChat(t, tab.chatWindow, parent, "reply-1", "@Alice no it wasn't")
+
+	tab.HandleResize()
+
+	referenceRow := tab.layout.chat.top + reply.Position.CursorStart - tab.chatWindow.viewportRenderStart()
+	_ = tab.HandleMouseClick(leftClick(referenceRow), tab.chatWindow.renderer.timePaddingWidth, referenceRow)
+
+	require.Equal(t, parent.Position.CursorStart, selectedCursor(t, tab.chatWindow), "the reference jumped to the parent")
+
+	// The reply's message row still selects the reply itself.
+	messageRow := tab.layout.chat.top + reply.Position.CursorEnd - tab.chatWindow.viewportRenderStart()
+	_ = tab.HandleMouseClick(leftClick(messageRow), tab.chatWindow.renderer.timePaddingWidth+2, messageRow)
+
+	require.Equal(t, reply.Position.CursorStart, selectedCursor(t, tab.chatWindow))
+}
+
+// Test_Broadcast_MouseClickUserInspectReplyReference pins that the inspect history gets
+// the same reply behaviour as the main chat.
+func Test_Broadcast_MouseClickUserInspectReplyReference(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+	addTestMessages(t, tab.chatWindow, 5)
+	tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID,
+		tab.settings, tab.theme, tab.keymap, tab.client.API, tab.messageLogger, tab.emoteReplacer, tab.badgeReplacer)
+
+	tab.state = userInspectMode
+	tab.HandleResize()
+
+	history := tab.userInspect.chatWindow
+
+	parent := addPrivateMessage(t, history, "parent-1", "that was a great play")
+	reply := addReplyToChat(t, history, parent, "reply-1", "@Alice no it wasn't")
+
+	tab.HandleResize()
+
+	chat := tab.inspectChatSpan()
+	require.True(t, chat.visible())
+
+	y := chat.top + reply.Position.CursorStart - history.viewportRenderStart()
+	_ = tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: history.renderer.timePaddingWidth, Y: y}, history.renderer.timePaddingWidth, y)
+
+	require.Equal(t, parent.Position.CursorStart, selectedCursor(t, history))
+	require.Equal(t, userInspectMode, tab.state, "jumping to a parent must not leave inspect mode")
+}
+
 // Test_Broadcast_MouseClickComposer checks the composer hit box, including after
 // the composer grows and the chat window shrinks.
 func Test_Broadcast_MouseClickComposer(t *testing.T) {

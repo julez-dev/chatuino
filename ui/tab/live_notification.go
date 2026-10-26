@@ -180,7 +180,7 @@ func (l *liveNotificationTab) ChannelID() string {
 
 func (l *liveNotificationTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	if msg.Button == tea.MouseLeft {
-		if l.chatWindow.handleNewMessageBadgeClick(y, x) {
+		if l.chatWindow.handleChatClick(y, x) {
 			return nil
 		}
 

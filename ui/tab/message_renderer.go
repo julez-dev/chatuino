@@ -40,6 +40,8 @@ type messageRenderer struct {
 	clearChatAlertStyle lipgloss.Style
 	errorAlertStyle     lipgloss.Style
 	dimmedStyle         lipgloss.Style
+	// replyStyle marks a reply reference and names a parent whose color is unknown.
+	replyStyle lipgloss.Style
 
 	// pre-created styles for message modifiers (strikethrough, italic, both)
 	strikethroughStyle       lipgloss.Style
@@ -64,6 +66,7 @@ func newMessageRenderer(
 		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatClearChatColor)).Bold(true),
 		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatErrorColor)).Bold(true),
 		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
+		replyStyle:          lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatIndicatorColor)),
 
 		strikethroughStyle:       lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false),
 		italicStyle:              lipgloss.NewStyle().Italic(true),
@@ -125,8 +128,21 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 		}
 		prefix := strings.Join(parts, " ")
 
-		r.setUserColorModifier(msg.Message, &event.DisplayModifier)
-		return r.wrapMessage(prefix, msg.Message, event.DisplayModifier)
+		ctx, isReply := r.replyContextFor(msg)
+
+		body := msg.Message
+		if isReply {
+			body = stripReplyMention(body, ctx.ParentName, ctx.ParentLogin)
+		}
+
+		r.setUserColorModifier(body, &event.DisplayModifier)
+
+		lines := r.wrapMessage(prefix, body, event.DisplayModifier)
+		if !isReply {
+			return lines
+		}
+
+		return append([]string{r.replyContextRow(ctx, event.DisplayModifier)}, lines...)
 	case *twitchirc.Notice:
 		title := "Notice"
 		if event.IsFakeEvent {

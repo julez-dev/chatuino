@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,14 @@ import (
 func newTestRenderer(t *testing.T, width int) *messageRenderer {
 	t.Helper()
 
-	return newMessageRenderer(width, lipgloss.Width("> "), save.BuildDefaultSettings(), save.BuildDefaultTheme(), newUserPalette())
+	return newTestRendererWith(t, width, save.BuildDefaultSettings())
+}
+
+// newTestRendererWith is newTestRenderer for a renderer that needs non-default settings.
+func newTestRendererWith(t *testing.T, width int, settings save.Settings) *messageRenderer {
+	t.Helper()
+
+	return newMessageRenderer(width, lipgloss.Width("> "), settings, save.BuildDefaultTheme(), newUserPalette())
 }
 
 // testChatError is an error that can travel as a chat event, mirroring the shell's
@@ -376,5 +384,149 @@ func Test_messageRenderer_UniformStyleIsAppliedPerWrappedLine(t *testing.T) {
 
 	for _, line := range lines[1:] {
 		require.Equal(t, indent, strings.Index(line, "\x1b"), "the indentation itself is never styled")
+	}
+}
+
+// renderReplyEvent renders one event and hands back the renderer, so a test can assert
+// against the same width budget the renderer itself used.
+func renderReplyEvent(t *testing.T, settings save.Settings, event ChatEventMessage) (*messageRenderer, []string) {
+	t.Helper()
+
+	r := newTestRendererWith(t, 60, settings)
+
+	return r, r.Render(event)
+}
+
+func renderReply(t *testing.T, settings save.Settings, msg *twitchirc.PrivateMessage) []string {
+	t.Helper()
+
+	_, lines := renderReplyEvent(t, settings, ChatEventMessage{Message: msg})
+
+	return lines
+}
+
+func TestMessageRenderer_ReplyContextRow(t *testing.T) {
+	t.Parallel()
+
+	t.Run("quotes the parent above the message", func(t *testing.T) {
+		t.Parallel()
+
+		lines := renderReply(t, save.BuildDefaultSettings(), replyMessage("@Alice no it wasn't, watch the vod"))
+
+		require.Len(t, lines, 2, "a reply is the reference row plus the message row")
+		require.Equal(t, "↩ Alice: that was a great play", strings.TrimSpace(ansi.Strip(lines[0])))
+		require.Contains(t, ansi.Strip(lines[1]), "carol: no it wasn't, watch the vod", "the redundant mention is stripped")
+		require.NotContains(t, ansi.Strip(lines[1]), "@Alice")
+	})
+
+	t.Run("starts in the message name column", func(t *testing.T) {
+		t.Parallel()
+
+		lines := renderReply(t, save.BuildDefaultSettings(), replyMessage("hello"))
+
+		require.True(t, strings.HasPrefix(lines[0], strings.Repeat(" ", 11)), "the reference aligns with the first message column")
+		require.NotContains(t, ansi.Strip(lines[0]), "\n")
+	})
+
+	t.Run("falls back to the login without a display name", func(t *testing.T) {
+		t.Parallel()
+
+		msg := replyMessage("hello")
+		msg.ParentDisplayName = ""
+
+		lines := renderReply(t, save.BuildDefaultSettings(), msg)
+
+		require.Equal(t, "↩ alice: that was a great play", strings.TrimSpace(ansi.Strip(lines[0])))
+	})
+
+	t.Run("truncates a long parent to the pane", func(t *testing.T) {
+		t.Parallel()
+
+		msg := replyMessage("hello")
+		msg.ParentMsgBody = strings.Repeat("a long parent message ", 8)
+
+		lines := renderReply(t, save.BuildDefaultSettings(), msg)
+
+		require.Contains(t, ansi.Strip(lines[0]), "…")
+		require.LessOrEqual(t, lipgloss.Width(lines[0]), 60, "the reference never exceeds the pane")
+	})
+
+	t.Run("normalizes whitespace in the parent", func(t *testing.T) {
+		t.Parallel()
+
+		msg := replyMessage("hello")
+		msg.ParentMsgBody = "  spaced   out\ntext  "
+
+		lines := renderReply(t, save.BuildDefaultSettings(), msg)
+
+		require.Equal(t, "↩ Alice: spaced out text", strings.TrimSpace(ansi.Strip(lines[0])))
+	})
+
+	t.Run("a long parent name cannot overflow the pane", func(t *testing.T) {
+		t.Parallel()
+
+		msg := replyMessage("hello")
+		msg.ParentDisplayName = strings.Repeat("LongName", 10)
+
+		r, lines := renderReplyEvent(t, save.BuildDefaultSettings(), ChatEventMessage{Message: msg})
+
+		require.LessOrEqual(t, lipgloss.Width(lines[0]), 60-r.indicatorWidth, "the whole reference stays inside the pane")
+		require.Contains(t, ansi.Strip(lines[0]), "…", "the name is cut, not the row")
+		require.NotContains(t, ansi.Strip(lines[0]), ": ", "no dangling separator when no room is left for the quote")
+	})
+
+	t.Run("a struck reply strikes its quote", func(t *testing.T) {
+		t.Parallel()
+
+		msg := replyMessage("hello")
+
+		_, plainLines := renderReplyEvent(t, save.BuildDefaultSettings(), ChatEventMessage{Message: msg})
+		_, struckLines := renderReplyEvent(t, save.BuildDefaultSettings(), ChatEventMessage{
+			Message:         msg,
+			DisplayModifier: MessageContentModifier{Strikethrough: true},
+		})
+
+		require.Equal(t, ansi.Strip(plainLines[0]), ansi.Strip(struckLines[0]), "the reference reads the same")
+		require.NotEqual(t, plainLines[0], struckLines[0], "but carries the attribute")
+		require.Contains(t, struckLines[0], ";9m", "the row carries the strikethrough attribute")
+		require.True(t, strings.HasPrefix(struckLines[0], "  "), "the indent stays unstyled, so the selection indicator keeps its columns")
+	})
+
+	for _, tt := range []struct {
+		name      string
+		configure func(msg *twitchirc.PrivateMessage, settings *save.Settings)
+	}{
+		{
+			name: "setting disabled",
+			configure: func(_ *twitchirc.PrivateMessage, settings *save.Settings) {
+				settings.Chat.ReplyContext = false
+			},
+		},
+		{
+			name: "not a reply",
+			configure: func(msg *twitchirc.PrivateMessage, _ *save.Settings) {
+				msg.ParentMsgID = ""
+			},
+		},
+		{
+			name: "parent without a name",
+			configure: func(msg *twitchirc.PrivateMessage, _ *save.Settings) {
+				msg.ParentDisplayName = ""
+				msg.ParentUserLogin = ""
+			},
+		},
+	} {
+		t.Run("no reference when "+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			settings := save.BuildDefaultSettings()
+			msg := replyMessage("hello")
+			tt.configure(msg, &settings)
+
+			lines := renderReply(t, settings, msg)
+
+			require.Len(t, lines, 1, "the message renders as a plain one")
+			require.NotContains(t, ansi.Strip(lines[0]), "↩")
+		})
 	}
 }

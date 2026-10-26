@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -461,4 +462,20 @@ func TestChatWindow_SmoothScrollFollowIsBounded(t *testing.T) {
 		require.LessOrEqual(t, frames, messages*frameBudget,
 			"each message may only animate for the frame budget")
 	})
+}
+
+// TestChatWindow_ReplyContextKeepsItsRow pins that the reference row belongs to the reply
+// entry, so selection, wrapping and cleanup treat it as part of the message.
+func TestChatWindow_ReplyContextKeepsItsRow(t *testing.T) {
+	t.Parallel()
+
+	c, reply := replyTestWindow(t, save.BuildDefaultSettings())
+
+	require.Equal(t, reply.Position.CursorStart+1, reply.Position.CursorEnd)
+
+	rows := viewRows(t, c)
+	reference := rows[reply.Position.CursorStart-c.viewportRenderStart()]
+
+	require.Contains(t, ansi.Strip(reference), "↩ Alice: that was a great play")
+	require.Contains(t, ansi.Strip(rows[reply.Position.CursorEnd-c.viewportRenderStart()]), fmt.Sprintf("%s: no it wasn't", "carol"))
 }

@@ -389,6 +389,22 @@ func (c *chatWindow) View() string {
 	return strings.Join(lines, "\n")
 }
 
+// handleChatClick resolves the controls that sit on top of the chat rows and reports
+// whether the click was consumed by one of them: the new-message badge, then a reply
+// reference. Every tab that shows a chat buffer routes its clicks through here, so the
+// controls behave the same everywhere.
+//
+// Consuming a click does not change modes: catching up with the chat or jumping to a
+// parent message is navigation, so the composer keeps focus and the cursor stays in the
+// input, unlike a click on a message row.
+func (c *chatWindow) handleChatClick(row, col int) bool {
+	if c.handleNewMessageBadgeClick(row, col) {
+		return true
+	}
+
+	return c.handleReplyReferenceClick(c.viewportRenderStart()+row, col)
+}
+
 // applyIndicatorToVisible applies the selection indicator to a copy of visible
 // lines. Uses the selected entry (via binary search) or falls back to the
 // bottom-most visible entry when the selected entry is outside the rendered range.

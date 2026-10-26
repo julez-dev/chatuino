@@ -31,6 +31,7 @@ chat:
   disable_badges: false # Hide badges entirely; Default: false
   smooth_scroll: true # Animate chat scrolling when new messages arrive; Default: false
   new_message_indicator: true # Show a badge counting messages that arrive while you are not caught up with the newest message; Default: true
+  reply_context: true # Quote the message a reply answers above the reply, dropping Twitch's own @name from the reply text; Default: true
   disable_emote_tooltip: false # Don't show the emote name when hovering a graphic emote with the mouse (needs mouse: true); Default: false
   time_format: "15:04:05" # Go time format for message timestamps; Default: "15:04:05"
 custom_commands:
