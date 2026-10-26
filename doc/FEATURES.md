@@ -47,6 +47,7 @@ A simple duplication bypass is included when your message matches the last messa
 Copy a message to your input by pressing `y` or Alt+C on the message. Copy the selected message to the system clipboard with `Y` or Alt+Y (uses OSC 52, which also works over SSH if the terminal allows it). Reply with `r` or Alt+R.
 
 Press `g`, `t`, or Home to jump to the top of the buffer and `G`, `b`, or End to jump to the bottom. Scroll a page with PgUp/Ctrl+U or PgDn/Ctrl+D.
+While you are not caught up with the newest message, a `↓ 3 new messages` badge at the bottom of the chat counts what arrived in the meantime; click it, or press `G`/`b`/End, to jump to the newest message. Panes and inspect windows use the same chat buffer, so the badge behaves the same in all of them.
 
 Switch tabs with Tab/`]`/Ctrl+N and Shift+Tab/`[`.
 
