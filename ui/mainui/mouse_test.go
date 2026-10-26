@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/ui/tab"
@@ -49,7 +50,7 @@ func newTestRoot(t *testing.T, accounts []save.Account, clients map[string]tab.C
 func newTestTab(id string, width, height int, account save.Account, channel string) *tab.Broadcast {
 	return tab.NewBroadcast(id, width, height, account, channel,
 		save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap(),
-		tab.ClientCapabilities{}, nil, nil, nil, nil, nil, nil, nil)
+		tab.ClientCapabilities{}, nil, nil, nil, nil, nil, nil, nil, chatstate.NewCache())
 }
 
 // headerRows builds the registry projection the headers render. active is the

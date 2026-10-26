@@ -17,6 +17,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"github.com/julez-dev/chatuino/badge"
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -129,6 +130,10 @@ type Root struct {
 	appStateManager     AppStateManager
 	channelHistory      ChannelHistory
 
+	// chatSettings is owned by the shell: the startup loader fills it before the
+	// tabs restore, and every tab of a channel renders from it.
+	chatSettings *chatstate.Cache
+
 	// message logger
 	messageLoggerChan chan<- *twitchirc.PrivateMessage
 
@@ -207,6 +212,7 @@ func NewUI(
 		badgeCache:          badgeCache,
 		emoteReplacer:       emoteReplacer,
 		badgeReplacer:       badgeReplacer,
+		chatSettings:        chatstate.NewCache(),
 		imageDisplayManager: imageDisplayManager,
 		recentMessages:      recentMessages,
 		messageLogger:       messageLogger,
@@ -226,7 +232,7 @@ func NewUI(
 		header: header,
 
 		messageLoggerChan: messageLoggerChan,
-		events:            newEventQueue(512),
+		events:            newEventQueue(eventQueueCapacity),
 	}
 
 	r.tabs = nav.NewRegistry(r.tabRow)
@@ -725,7 +731,8 @@ func (r *Root) createTab(account save.Account, channel string, kind tab.TabKind)
 			r.settings, r.theme, r.keymap,
 			r.clients[account.ID], r.pool,
 			r.recentMessages, r.messageLogger,
-			r.emoteCache, r.emoteReplacer, r.badgeCache, r.badgeReplacer)
+			r.emoteCache, r.emoteReplacer, r.badgeCache, r.badgeReplacer,
+			r.chatSettings)
 		nTab.SetUpdateAvailable(r.latestVersion())
 		return nTab, nil
 	case tab.MentionKind:
@@ -954,6 +961,7 @@ func (r *Root) addChatEvent(accountID, tabID string, ircer twitchirc.IRCer, isFa
 		log.Logger.Warn().
 			Int("pending", r.events.len()).
 			Str("account_id", accountID).
+			Bool("history", isFake).
 			Msg("chat event dropped: preparation queue is full")
 
 		return prepareRequest{}, false

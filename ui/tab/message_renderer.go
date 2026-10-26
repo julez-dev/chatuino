@@ -100,7 +100,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 	case error:
 		prefix := "  " + strings.Repeat(" ", r.timeFormatWidth) + " [" + r.errorAlertStyle.Render("Error") + "]: "
 		text := strings.ReplaceAll(msg.Error(), "\n", "")
-		return r.wordwrapMessage(prefix, r.formatMessageText(text, event.DisplayModifier))
+		return r.wrapMessage(prefix, text, event.DisplayModifier)
 	case *twitchirc.PrivateMessage:
 		userRenderFunc := r.palette.Renderer(msg.LoginName, msg.Color)
 
@@ -126,7 +126,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 		prefix := strings.Join(parts, " ")
 
 		r.setUserColorModifier(msg.Message, &event.DisplayModifier)
-		return r.wordwrapMessage(prefix, r.formatMessageText(msg.Message, event.DisplayModifier))
+		return r.wrapMessage(prefix, msg.Message, event.DisplayModifier)
 	case *twitchirc.Notice:
 		title := "Notice"
 		if event.IsFakeEvent {
@@ -138,7 +138,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 		event.DisplayModifier.Italic = true
 		r.setUserColorModifier(msg.Message, &event.DisplayModifier)
 
-		return r.wordwrapMessage(prefix, r.formatMessageText(msg.Message, event.DisplayModifier))
+		return r.wrapMessage(prefix, msg.Message, event.DisplayModifier)
 	case *twitchirc.ClearMessage:
 		prefix := r.buildAlertPrefix(msg.TMISentTS, "Clear Message", r.clearChatAlertStyle)
 		prefix += "A message from "
@@ -146,12 +146,12 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 
 		r.setUserColorModifier(text, &event.DisplayModifier)
 
-		return r.wordwrapMessage(prefix, r.formatMessageText(text, event.DisplayModifier))
+		return r.wrapMessage(prefix, text, event.DisplayModifier)
 	case *twitchirc.ClearChat:
 		prefix := r.buildAlertPrefix(msg.TMISentTS, "Clear Chat", r.clearChatAlertStyle)
 
 		if msg.TargetUserID == nil {
-			return r.wordwrapMessage(prefix, r.formatMessageText("Clear chat prevented by Chatuino. Chat restored.", event.DisplayModifier))
+			return r.wrapMessage(prefix, "Clear chat prevented by Chatuino. Chat restored.", event.DisplayModifier)
 		}
 
 		text := *msg.UserName
@@ -164,7 +164,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 
 		r.setUserColorModifier(text, &event.DisplayModifier)
 
-		return r.wordwrapMessage(prefix, r.formatMessageText(text, event.DisplayModifier))
+		return r.wrapMessage(prefix, text, event.DisplayModifier)
 	case *twitchirc.SubMessage:
 		prefix := r.buildAlertPrefix(msg.TMISentTS, "Sub Alert", r.subAlertStyle)
 
@@ -189,7 +189,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 
 		r.setUserColorModifier(text, &event.DisplayModifier)
 
-		return r.wordwrapMessage(prefix, r.formatMessageText(text, event.DisplayModifier))
+		return r.wrapMessage(prefix, text, event.DisplayModifier)
 	case *twitchirc.SubGiftMessage:
 		prefix := r.buildAlertPrefix(msg.TMISentTS, "Sub Gift Alert", r.subAlertStyle)
 
@@ -204,7 +204,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 
 		r.setUserColorModifier(text, &event.DisplayModifier)
 
-		return r.wordwrapMessage(prefix, r.formatMessageText(text, event.DisplayModifier))
+		return r.wrapMessage(prefix, text, event.DisplayModifier)
 	case *twitchirc.AnnouncementMessage:
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(msg.ParamColor.RGBHex())).Bold(true)
 		prefix := "  " + r.timeFormatFunc(msg.TMISentTS) + " [" + style.Render("Announcement") + "] "
@@ -217,7 +217,7 @@ func (r *messageRenderer) Render(event ChatEventMessage) []string {
 
 		r.setUserColorModifier(text, &event.DisplayModifier)
 
-		return r.wordwrapMessage(prefix, r.formatMessageText(text, event.DisplayModifier))
+		return r.wrapMessage(prefix, text, event.DisplayModifier)
 	}
 
 	return []string{}
@@ -229,16 +229,32 @@ func (r *messageRenderer) buildAlertPrefix(timestamp time.Time, label string, st
 	return "  " + r.dimmedStyle.Render(r.timeFormatFunc(timestamp)) + " [" + style.Render(label) + "]: "
 }
 
-// formatMessageText applies word replacements and color processing to message content.
-func (r *messageRenderer) formatMessageText(content string, modifier MessageContentModifier) string {
+// wrapMessage formats one message body and wraps it into terminal rows.
+//
+// Replacements are applied before wrapping because they change the text length.
+// The uniform (strikethrough/italic) style is applied after wrapping, per line:
+// wrapping a styled string can put a line break between a style's start sequence
+// and the character it belongs to, which leaks the attribute into the next line and
+// drew a strike-through across the padding of wrapped links.
+func (r *messageRenderer) wrapMessage(prefix, content string, modifier MessageContentModifier) []string {
+	body, style := r.formatMessageText(content, modifier)
+
+	return r.wordwrapMessage(prefix, body, style)
+}
+
+// formatMessageText applies word replacements to the message body and returns the
+// style the renderer covers the whole body with, if the event is displayed with
+// one. A styled body is returned unstyled: the caller applies the style per wrapped
+// line.
+func (r *messageRenderer) formatMessageText(content string, modifier MessageContentModifier) (string, *lipgloss.Style) {
 	if modifier.Strikethrough && modifier.Italic {
-		return r.strikethroughItalicStyle.Render(content)
+		return content, &r.strikethroughItalicStyle
 	}
 	if modifier.Strikethrough {
-		return r.strikethroughStyle.Render(content)
+		return content, &r.strikethroughStyle
 	}
 	if modifier.Italic {
-		return r.italicStyle.Render(content)
+		return content, &r.italicStyle
 	}
 
 	content = r.applyWordReplacements(content, modifier.WordReplacements)
@@ -246,7 +262,8 @@ func (r *messageRenderer) formatMessageText(content string, modifier MessageCont
 	if modifier.MessageSuffix != "" {
 		content += modifier.MessageSuffix
 	}
-	return content
+
+	return content, nil
 }
 
 // applyWordReplacements applies word replacements from the display modifier to the given content.
@@ -303,7 +320,7 @@ func (r *messageRenderer) setUserColorModifier(content string, modifier *Message
 	}
 }
 
-func (r *messageRenderer) wordwrapMessage(prefix, content string) []string {
+func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipgloss.Style) []string {
 	// Strip duplicate-bypass rune (U+E0000) used to bypass Twitch spam detection.
 	// Guard with ContainsRune to avoid allocating when the rune isn't present (vast majority of messages).
 	if strings.ContainsRune(content, duplicateBypass) {
@@ -330,18 +347,29 @@ func (r *messageRenderer) wordwrapMessage(prefix, content string) []string {
 	splits := strings.Split(wrappedText, "\n")
 
 	lines := make([]string, 0, len(splits))
-	lines = append(lines, prefix+splits[0]) // first line is prefix + content at index 0
+	lines = append(lines, prefix+styledBody(style, splits[0])) // first line is prefix + content at index 0
 
 	// if there are more lines, add prefixPadding spaces to the beginning of the line
 	for _, line := range splits[1:] {
+		indent := strings.Repeat(" ", prefixWidth)
 		if r.settings.Chat.DisablePaddingWrappedLines {
-			lines = append(lines, strings.Repeat(" ", r.timePaddingWidth)+line)
-		} else {
-			lines = append(lines, strings.Repeat(" ", prefixWidth)+line)
+			indent = strings.Repeat(" ", r.timePaddingWidth)
 		}
+
+		lines = append(lines, indent+styledBody(style, line))
 	}
 
 	return expandGraphicRows(lines, graphicRows(r.settings))
+}
+
+// styledBody applies a uniform event style to one wrapped line of the body. The
+// prefix (timestamp, badges, name) and the wrapped-line indentation stay unstyled.
+func styledBody(style *lipgloss.Style, body string) string {
+	if style == nil || body == "" {
+		return body
+	}
+
+	return style.Render(body)
 }
 
 // formatBadgeReplacement renders the badge set for a message prefix. Text mode

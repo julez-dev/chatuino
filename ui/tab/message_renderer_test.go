@@ -341,3 +341,40 @@ func Test_messageRenderer_DoesNotMutateEventData(t *testing.T) {
 	require.Equal(t, WordReplacement{"Kappa": "[k]"}, replacements,
 		"rendering must not write the derived user colors into the event's map")
 }
+
+// Test_messageRenderer_UniformStyleIsAppliedPerWrappedLine covers a deleted message
+// that wraps on a long link: the strike-through must cover every wrapped line
+// without spilling into the next one, where it drew a line across the indentation.
+func Test_messageRenderer_UniformStyleIsAppliedPerWrappedLine(t *testing.T) {
+	t.Parallel()
+
+	r := newTestRenderer(t, 80)
+	event := ChatEventMessage{Message: &twitchirc.PrivateMessage{
+		RoomID:          "room-1",
+		ChannelUserName: "chan",
+		DisplayName:     "xTom_AFGx",
+		LoginName:       "xtom_afgx",
+		Message:         "Heiko geht richtig ab https://www.tiktok.com/@offstreamde/video/77007159974999297302?is_from_webapp=1&sender_device=pc",
+		TMISentTS:       time.Date(2026, 3, 4, 18, 1, 6, 0, time.Local),
+	}}
+	event.DisplayModifier.Strikethrough = true
+
+	lines := r.Render(event)
+	require.Len(t, lines, 3)
+
+	bodies := strings.Split(plain(lines), "\n")
+	require.Contains(t, bodies[0], "xTom_AFGx: Heiko geht richtig ab")
+	require.True(t, strings.HasPrefix(bodies[1], "                      https://"), "wrapped lines keep their indent")
+
+	indent := len(bodies[1]) - len(strings.TrimLeft(bodies[1], " "))
+	require.NotZero(t, indent)
+
+	for i, line := range lines {
+		require.Contains(t, line, "\x1b[9m", "line %d carries the strike-through", i)
+		require.False(t, strings.HasSuffix(line, "\x1b[9m"), "line %d leaves the strike-through open", i)
+	}
+
+	for _, line := range lines[1:] {
+		require.Equal(t, indent, strings.Index(line, "\x1b"), "the indentation itself is never styled")
+	}
+}

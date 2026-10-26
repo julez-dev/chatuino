@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
@@ -43,6 +44,11 @@ type fakeStartupUsers struct {
 	logins  [][]string
 	byLogin map[string]twitchapi.UserData
 	err     error
+
+	// chat settings served by the server proxy
+	settings     map[string]twitchapi.ChatSettingData
+	settingsErrs error
+	settingsIDs  []string
 }
 
 func (f *fakeStartupUsers) GetUsers(_ context.Context, logins []string, _ []string) (twitchapi.UserResponse, error) {
@@ -64,11 +70,67 @@ func (f *fakeStartupUsers) GetUsers(_ context.Context, logins []string, _ []stri
 	return resp, nil
 }
 
+func (f *fakeStartupUsers) GetChatSettings(_ context.Context, broadcasterID string, _ string) (twitchapi.GetChatSettingsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.settingsIDs = append(f.settingsIDs, broadcasterID)
+
+	if f.settingsErrs != nil {
+		return twitchapi.GetChatSettingsResponse{}, f.settingsErrs
+	}
+
+	settings, ok := f.settings[broadcasterID]
+	if !ok {
+		settings = twitchapi.ChatSettingData{BroadcasterID: broadcasterID}
+	}
+
+	return twitchapi.GetChatSettingsResponse{Data: []twitchapi.ChatSettingData{settings}}, nil
+}
+
 func (f *fakeStartupUsers) calls() [][]string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	return append([][]string(nil), f.logins...)
+}
+
+func (f *fakeStartupUsers) settingsCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.settingsIDs...)
+}
+
+// fakeStartupChatClient is an account client that only records the chat-settings
+// requests, which is all the prefetch needs from it.
+type fakeStartupChatClient struct {
+	mu  sync.Mutex
+	ids []string
+}
+
+func (f *fakeStartupChatClient) GetUsers(context.Context, []string, []string) (twitchapi.UserResponse, error) {
+	return twitchapi.UserResponse{}, nil
+}
+
+func (f *fakeStartupChatClient) GetStreamInfo(context.Context, []string) (twitchapi.GetStreamsResponse, error) {
+	return twitchapi.GetStreamsResponse{}, nil
+}
+
+func (f *fakeStartupChatClient) GetChatSettings(_ context.Context, broadcasterID string, _ string) (twitchapi.GetChatSettingsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.ids = append(f.ids, broadcasterID)
+
+	return twitchapi.GetChatSettingsResponse{Data: []twitchapi.ChatSettingData{{BroadcasterID: broadcasterID, EmoteMode: true}}}, nil
+}
+
+func (f *fakeStartupChatClient) settingsCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]string(nil), f.ids...)
 }
 
 type fakeStartupEmotes struct {
@@ -156,8 +218,9 @@ func newStartupTestLoader() *startupLoader {
 			"alpha": {ID: "alpha-id", Login: "alpha", DisplayName: "Alpha"},
 			"beta":  {ID: "beta-id", Login: "beta", DisplayName: "Beta"},
 		}},
-		emoteCache: &fakeStartupEmotes{},
-		badgeCache: &fakeStartupBadges{},
+		emoteCache:   &fakeStartupEmotes{},
+		badgeCache:   &fakeStartupBadges{},
+		chatSettings: chatstate.NewCache(),
 	}
 }
 
@@ -329,4 +392,85 @@ func TestStartupLoader_NoServerAPISkipsLookup(t *testing.T) {
 
 	require.NoError(t, msg.err)
 	require.Empty(t, msg.ttvUsers)
+}
+
+// TestStartupLoader_PrefetchesChatSettingsOncePerChannel covers the startup warm
+// up of the status bars: Get Chat Settings takes one broadcaster per request, so
+// the loader asks for every unique restored channel exactly once, and the tabs
+// then render from the cache.
+func TestStartupLoader_PrefetchesChatSettingsOncePerChannel(t *testing.T) {
+	t.Parallel()
+
+	state := save.AppState{Tabs: []save.TabState{
+		{Channel: "alpha", IdentityID: "acc-1", Kind: int(tab.BroadcastKind)},
+		{Channel: "alpha", IdentityID: "acc-2", Kind: int(tab.BroadcastKind), IsFocused: true},
+		{Channel: "beta", IdentityID: "acc-1", Kind: int(tab.BroadcastKind)},
+		{Channel: "unknown", IdentityID: "acc-1", Kind: int(tab.BroadcastKind)},
+	}}
+
+	loader := newStartupTestLoader()
+	loader.appStateManager = &fakeAppStateManager{state: state}
+
+	users := loader.serverAPI.(*fakeStartupUsers)
+	users.settings = map[string]twitchapi.ChatSettingData{
+		"alpha-id": {BroadcasterID: "alpha-id", SlowMode: true, SlowModeWaitTime: 10},
+		"beta-id":  {BroadcasterID: "beta-id", FollowerMode: true, FollowerModeDuration: 30},
+	}
+
+	msg := loader.load()
+
+	require.NoError(t, msg.err)
+	require.ElementsMatch(t, []string{"alpha-id", "beta-id"}, users.settingsCalls(),
+		"two tabs of one channel share a request, unknown channels are skipped")
+
+	alpha, ok := loader.chatSettings.Get("alpha-id")
+	require.True(t, ok)
+	require.True(t, alpha.SlowMode)
+	require.Equal(t, 10, alpha.SlowModeWaitTime)
+
+	beta, ok := loader.chatSettings.Get("beta-id")
+	require.True(t, ok)
+	require.True(t, beta.FollowerMode)
+}
+
+// TestStartupLoader_ChatSettingsPrefetchFailures keeps a failing prefetch
+// best-effort: the session still restores and the tab fetches on demand.
+func TestStartupLoader_ChatSettingsPrefetchFailures(t *testing.T) {
+	t.Parallel()
+
+	loader := newStartupTestLoader()
+	loader.appStateManager = &fakeAppStateManager{state: save.AppState{Tabs: []save.TabState{
+		{Channel: "alpha", IdentityID: "acc-1", Kind: int(tab.BroadcastKind)},
+	}}}
+	loader.serverAPI.(*fakeStartupUsers).settingsErrs = errors.New("settings down")
+
+	msg := loader.load()
+
+	require.NoError(t, msg.err, "chat settings are not required to start")
+
+	_, ok := loader.chatSettings.Get("alpha-id")
+	require.False(t, ok)
+}
+
+// TestStartupLoader_ChatSettingsUsesAccountClient prefers the signed-in account's
+// own client over the server proxy, matching the path a tab takes.
+func TestStartupLoader_ChatSettingsUsesAccountClient(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeStartupChatClient{}
+	loader := newStartupTestLoader()
+	loader.appStateManager = &fakeAppStateManager{state: save.AppState{Tabs: []save.TabState{
+		{Channel: "alpha", IdentityID: "acc-1", Kind: int(tab.BroadcastKind)},
+	}}}
+	loader.clients = map[string]tab.ClientCapabilities{"acc-1": {API: client}}
+
+	msg := loader.load()
+
+	require.NoError(t, msg.err)
+	require.Equal(t, []string{"alpha-id"}, client.settingsCalls())
+	require.Empty(t, loader.serverAPI.(*fakeStartupUsers).settingsCalls(), "the proxy is not used when an account client exists")
+
+	settings, ok := loader.chatSettings.Get("alpha-id")
+	require.True(t, ok)
+	require.True(t, settings.EmoteMode)
 }

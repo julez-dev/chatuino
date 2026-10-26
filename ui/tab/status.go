@@ -9,8 +9,10 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
+	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 // humanizeDuration converts a duration to a human-readable string like "5 minutes" or "1 day 2 hours"
@@ -71,12 +73,33 @@ type setSteamStatusDataMessage struct {
 	settings twitchapi.ChatSettingData
 }
 
+// settingsFetchFallbackMessage asks the status bar to request the settings it is
+// still missing, because no ROOMSTATE arrived for the channel.
+type settingsFetchFallbackMessage struct {
+	target string
+	seq    int
+}
+
+// settingsFetchDelay is how long a tab waits for the channel's ROOMSTATE before
+// falling back to the REST endpoint. Twitch sends ROOMSTATE with the join, so the
+// wait is normally never used: the fallback only covers a channel whose room
+// state never arrived.
+const settingsFetchDelay = 3 * time.Second
+
 type streamStatus struct {
 	width, height int
 	accountID     string
 	channelID     string
 	tab           *Broadcast
 	api           APIClient
+
+	// chatSettings is shared with every other tab of the channel, so a channel is
+	// fetched at most once.
+	chatSettings *chatstate.Cache
+
+	// fallbackSeq invalidates a scheduled fallback: applying a ROOMSTATE bumps it,
+	// which makes the pending fetch a no-op.
+	fallbackSeq int
 
 	spinner spinner.Model
 
@@ -91,15 +114,16 @@ type streamStatus struct {
 	rightAlignStyle lipgloss.Style // right-aligned layout; Width set at render time
 }
 
-func newStreamStatus(width, height int, tab *Broadcast, accountID, channelID string, theme save.Theme, api APIClient) *streamStatus {
+func newStreamStatus(width, height int, tab *Broadcast, accountID, channelID string, theme save.Theme, api APIClient, chatSettings *chatstate.Cache) *streamStatus {
 	return &streamStatus{
-		api:       api,
-		tab:       tab,
-		accountID: accountID,
-		width:     width,
-		height:    height,
-		channelID: channelID,
-		spinner:   spinner.New(spinner.WithSpinner(LoadingSpinner)),
+		api:          api,
+		chatSettings: chatSettings,
+		tab:          tab,
+		accountID:    accountID,
+		width:        width,
+		height:       height,
+		channelID:    channelID,
+		spinner:      spinner.New(spinner.WithSpinner(LoadingSpinner)),
 
 		maxWidthStyle:   lipgloss.NewStyle(), // Width set at render time
 		statusHighlight: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.StatusColor)),
@@ -108,36 +132,90 @@ func newStreamStatus(width, height int, tab *Broadcast, accountID, channelID str
 	}
 }
 
+// Init renders the status bar from what is already known. The startup loader
+// fetches the settings of every restored channel, and ROOMSTATE carries them for
+// every later join, so a request is only made when neither happened.
 func (s *streamStatus) Init() tea.Cmd {
-	return tea.Batch(s.spinner.Tick, func() tea.Msg {
+	if settings, ok := s.chatSettings.Get(s.channelID); ok {
+		s.settings = settings
+		s.err = nil
+		s.isDataFetched = true
+
+		return nil
+	}
+
+	return tea.Batch(s.spinner.Tick, s.scheduleFallback())
+}
+
+// ApplyRoomState updates the status bar from the ROOMSTATE received on join.
+// ROOMSTATE already carries every setting this bar renders, so the tab does not
+// re-request them over REST.
+func (s *streamStatus) ApplyRoomState(state *twitchirc.RoomState) {
+	s.settings = s.chatSettings.ApplyRoomState(s.channelID, state)
+	s.err = nil
+	s.isDataFetched = true
+
+	// A pending fallback would only repeat what this message just told us.
+	s.fallbackSeq++
+}
+
+// scheduleFallback arms the fallback request for a channel that has not reported
+// its room state yet.
+func (s *streamStatus) scheduleFallback() tea.Cmd {
+	s.fallbackSeq++
+
+	seq, target := s.fallbackSeq, s.tab.id
+
+	return tea.Tick(settingsFetchDelay, func(time.Time) tea.Msg {
+		return settingsFetchFallbackMessage{target: target, seq: seq}
+	})
+}
+
+// fetchSettings requests the channel's settings through the cache, so tabs that
+// show the same channel (or the startup prefetch) share one request.
+func (s *streamStatus) fetchSettings() tea.Cmd {
+	if s.api == nil {
+		return nil
+	}
+
+	api, cache := s.api, s.chatSettings
+	target, channelID, login := s.tab.id, s.channelID, s.tab.channelLogin
+
+	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 		defer cancel()
 
-		settingsResp, err := s.api.GetChatSettings(ctx, s.channelID, "")
-		if err != nil {
-			return setSteamStatusDataMessage{
-				target: s.tab.id,
-				err:    err,
+		settings, err := cache.Fetch(ctx, channelID, func(ctx context.Context) (twitchapi.ChatSettingData, error) {
+			resp, err := api.GetChatSettings(ctx, channelID, "")
+			if err != nil {
+				return twitchapi.ChatSettingData{}, err
 			}
-		}
 
-		if len(settingsResp.Data) == 0 {
-			return setSteamStatusDataMessage{
-				target: s.tab.id,
-				err:    fmt.Errorf("no chat status settings found for channel: %s", s.tab.channelLogin),
+			settings, err := chatstate.SettingsFromResponse(resp)
+			if err != nil {
+				return twitchapi.ChatSettingData{}, fmt.Errorf("%w: %s", err, login)
 			}
-		}
+
+			return settings, nil
+		})
 
 		return setSteamStatusDataMessage{
-			target:   s.tab.id,
-			settings: settingsResp.Data[0],
+			target:   target,
+			settings: settings,
 			err:      err,
 		}
-	})
+	}
 }
 
 func (s *streamStatus) Update(msg tea.Msg) (*streamStatus, tea.Cmd) {
 	switch msg := msg.(type) {
+	case settingsFetchFallbackMessage:
+		if msg.target != s.tab.id || msg.seq != s.fallbackSeq || s.isDataFetched {
+			// Another tab's fallback, a superseded one, or a ROOMSTATE made it moot.
+			return s, nil
+		}
+
+		return s, s.fetchSettings()
 	case setSteamStatusDataMessage:
 		if msg.target != s.tab.id {
 			return s, nil
