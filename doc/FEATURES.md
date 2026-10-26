@@ -126,7 +126,7 @@ Held AutoMod messages appear as chat notices with their message ID; approve or d
 
 ### Unban Request Queue
 
-Press `alt+u` or run `/unban_requests` to open the pending unban request queue for the current channel. Each entry shows the user, request text, status and when it was created.
+Press `alt+u` or run `/unbanrequests` to open the pending unban request queue for the current channel. Each entry shows the user, request text, status and when it was created.
 
 Use `j`/`k` or the arrow keys to select a request, `a` to approve it, and `d` to deny it. Approving or denying opens a resolution input where you can optionally add a message for the user; press Enter to submit or Escape to cancel. Press `r` to refresh the queue and Escape again to close it.
 

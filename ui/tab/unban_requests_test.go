@@ -196,7 +196,7 @@ func TestBroadcast_UnbanRequestQueueRejectsAnonymousAndCommandForNonModerators(t
 	require.Contains(t, msg.Message.(*twitchirc.Notice).Message, "only available to moderators")
 
 	nonMod := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
-	cmd = nonMod.dispatchSlashCommand("unban_requests", nil)
+	cmd = nonMod.dispatchSlashCommand("unbanrequests", nil)
 	require.NotNil(t, cmd)
 	notice := noticeText(t, cmd())
 	require.Contains(t, notice, "not available since you are not a moderator")
@@ -293,7 +293,7 @@ func TestUnbanRequestQueue_ViewFitsAllocatedRows(t *testing.T) {
 func TestHandleCommand_UnbanRequestsOpensQueue(t *testing.T) {
 	t.Parallel()
 
-	cmd := handleCommand("tab-id", "unban_requests", nil, "channel-id", "channel", "account-id", newFakeModerationClient())
+	cmd := handleCommand("tab-id", "unbanrequests", nil, "channel-id", "channel", "account-id", newFakeModerationClient())
 	require.NotNil(t, cmd)
 	require.NotPanics(t, func() { _ = cmd() })
 }

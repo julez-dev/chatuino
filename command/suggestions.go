@@ -40,7 +40,7 @@ var ModeratorSuggestions = [...]string{
 	"/approve <message_id>",
 	"/deny <message_id>",
 	"/snooze",
-	"/unban_requests",
+	"/unbanrequests",
 }
 
 var CommandSuggestions = [...]string{

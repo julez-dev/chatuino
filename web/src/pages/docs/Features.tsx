@@ -399,7 +399,7 @@ export default function Features() {
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">alt+u</code>{" "}
           or run{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
-            /unban_requests
+            /unbanrequests
           </code>{" "}
           to open the pending unban request queue for the current channel. Each
           entry shows the user, request text, status and when it was created.
