@@ -114,6 +114,21 @@ Chatuino provides auto-completion for channel names when joining new chats, user
 
 Commands like `/ban`, `/unban`, and `/timeout` are also suggested.
 
+## Moderation Commands
+
+Moderators can use `/timeout`, `/ban`, `/unban`, `/announcement`, `/marker` and `/delete_all_messages` from the message input.
+
+`/timeout` takes its duration the way Twitch's own chat does, so it does not need to be converted to seconds first:
+
+- `/timeout alice 10m spam` - ten minutes
+- `/timeout alice 1h30m spam` - combined units of `s`, `m`, `h`, `d` and `w`
+- `/timeout alice 600 leftovers from web chat` - a bare number is seconds
+- `/timeout alice spam without a duration` - refuses instead of guessing; the duration is positional
+- `/timeout alice 10m spam and hate` - everything after the duration is the reason
+- `/timeout alice` - ten minutes, the same default Twitch uses
+
+The API caps a timeout at two weeks, so anything longer is rejected before a request is sent. `/ban` stays permanent: it never sends a duration.
+
 Accept the highlighted suggestion with Tab, Ctrl+Space, or the right arrow. In the join modal, Tab moves between fields, so the channel input also accepts Space (channel names cannot contain spaces).
 
 ![Auto-complete](screenshot/auto-completions.png)

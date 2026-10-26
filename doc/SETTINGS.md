@@ -192,7 +192,7 @@ custom_commands:
     replacement: "CurrentTime: {{ .CurrentTime }}; CurrentDateTime: {{ .CurrentDateTime }}; BroadcastID: {{ .BroadcastID }}; BroadcastName: {{ .BroadcastName }}; SelectedDisplayName: {{ .SelectedDisplayName }}; SelectedUserID: {{ .SelectedUserID }}; Message: {{ .SelectedMessageContent }} "
     # You can even create custom mod commands/shortcuts
   - trigger: "/custom-spam-timeout"
-    replacement: "/timeout {{ .SelectedDisplayName }} 10 Please stop spamming."
+    replacement: "/timeout {{ .SelectedDisplayName }} 10m Please stop spamming."
 ```
 
 All features of [Go's templating engine](https://pkg.go.dev/text/template) are available.

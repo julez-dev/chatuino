@@ -316,6 +316,53 @@ export default function Features() {
           </code>{" "}
           are also suggested.
         </p>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="mb-4 text-xl font-semibold text-nord4">
+          Moderation Commands
+        </h2>
+        <p class="mb-4 text-nord4">
+          Moderators can use{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /timeout
+          </code>
+          , <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/ban</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/unban</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /announcement
+          </code>
+          ,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/marker</code>{" "}
+          and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /delete_all_messages
+          </code>{" "}
+          from the message input.
+        </p>
+        <p class="mb-4 text-nord4">
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /timeout
+          </code>{" "}
+          takes its duration the way Twitch's own chat does, so it never has to
+          be converted to seconds first:{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">10m</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">1h30m</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">2d</code> or{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">1w</code>,
+          with <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">s</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">m</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">h</code>,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">d</code> and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">w</code>{" "}
+          combinable. A bare number still means seconds, everything after the
+          duration is the reason, and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /timeout alice
+          </code>{" "}
+          defaults to ten minutes. The API caps a timeout at two weeks, so
+          anything longer is rejected before a request is sent.
+        </p>
         <div class="grid gap-4 md:grid-cols-2">
           <div class="overflow-hidden rounded-lg border border-nord2">
             <PreviewImage
