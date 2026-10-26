@@ -9,6 +9,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
 	github.com/adrg/xdg v0.5.3
+	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/cli/browser v1.3.0
 	github.com/coder/websocket v1.8.15
 	github.com/dustin/go-humanize v1.1.0
@@ -44,7 +45,6 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
-	github.com/charmbracelet/x/ansi v0.11.9 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
