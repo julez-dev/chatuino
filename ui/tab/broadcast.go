@@ -106,7 +106,11 @@ type Broadcast struct {
 	isUserMod          bool
 	isModStatusAssumed bool // true when mod fetch failed; don't show "Mod" in status
 	focused            bool
-	updateAvailable    string // newer version to advertise, empty when up to date
+
+	// redemptions tracks notices that can still change status, so an update
+	// rewrites the existing chat notice instead of adding a second one.
+	redemptions     map[string]*twitchirc.Notice
+	updateAvailable string // newer version to advertise, empty when up to date
 
 	channelDataLoaded         bool
 	pendingChannelSuggestions []string
@@ -153,6 +157,7 @@ type Broadcast struct {
 
 	// components
 	streamInfo    *streamInfo
+	prediction    *prediction
 	poll          *poll
 	chatWindow    *chatWindow
 	userInspect   *userInspect
@@ -585,6 +590,7 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 	t.channelLogin = msg.channelLogin
 	t.channelID = msg.channelID
 	t.streamInfo = newStreamInfo(msg.channelID, t.client.API, t.width)
+	t.prediction = newPrediction(t.width)
 	t.poll = newPoll(t.width)
 	t.chatWindow = newChatWindow(t.width, t.height, t.settings, t.theme, t.keymap)
 
@@ -672,7 +678,7 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 }
 
 // subscribeChannelEventCmds returns the commands that subscribe to the channel's
-// EventSub events (polls, raids, ad breaks).
+// EventSub events (polls, predictions, channel point redemptions, raids, ad breaks).
 //
 // Subscriptions are only created
 //   - if authenticated user
@@ -688,7 +694,13 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	var cmds []tea.Cmd
 	accountID := t.account.ID
 
-	for _, subType := range [...]string{"channel.poll.begin", "channel.poll.progress", "channel.poll.end", "channel.ad_break.begin"} {
+	for _, subType := range [...]string{
+		"channel.poll.begin", "channel.poll.progress", "channel.poll.end",
+		"channel.prediction.begin", "channel.prediction.progress", "channel.prediction.lock", "channel.prediction.end",
+		"channel.channel_points_custom_reward_redemption.add", "channel.channel_points_custom_reward_redemption.update",
+		"channel.channel_points_automatic_reward_redemption.add",
+		"channel.ad_break.begin",
+	} {
 		subType := subType // capture for closure
 		cmds = append(cmds, func() tea.Msg {
 			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
@@ -931,6 +943,10 @@ func (t *Broadcast) render(includeStatus bool) string {
 	// the chat does not jump when the info appears.
 	blocks = append(blocks, t.streamInfo.View())
 
+	if t.layout.prediction.visible() {
+		blocks = append(blocks, t.prediction.View())
+	}
+
 	if t.layout.poll.visible() {
 		blocks = append(blocks, t.poll.View())
 	}
@@ -992,6 +1008,7 @@ func (t *Broadcast) HandleResize() {
 	in := layoutInputs{
 		height:        t.height,
 		streamInfo:    lipgloss.Height(t.streamInfo.View()),
+		prediction:    viewHeight(t.prediction.View()),
 		poll:          viewHeight(t.poll.View()),
 		status:        viewHeight(statusView),
 		inspecting:    t.state.isInspecting(),
@@ -1026,6 +1043,7 @@ func (t *Broadcast) applyWidths() {
 
 	t.streamInfo.width = t.width
 	t.streamInfo.cachedDirty = true
+	t.prediction.setWidth(t.width)
 	t.poll.setWidth(t.width)
 
 	// Set the input width before measuring, so its height reflects wrapping at
@@ -1064,6 +1082,7 @@ type broadcastLayout struct {
 	height int
 
 	streamInfo    layoutSpan
+	prediction    layoutSpan
 	poll          layoutSpan
 	chat          layoutSpan
 	userInspect   layoutSpan
@@ -1078,6 +1097,7 @@ type broadcastLayout struct {
 type layoutInputs struct {
 	height        int
 	streamInfo    int // rows the stream info slot occupies; at least 1
+	prediction    int // rows the prediction occupies; 0 when absent
 	poll          int // rows the poll occupies; 0 when absent
 	composer      int // rows the composer occupies; 0 when absent
 	status        int // rows the status bar occupies inside the tab; 0 when absent
@@ -1103,14 +1123,17 @@ func allocateBroadcastLayout(in layoutInputs) broadcastLayout {
 	l.streamInfo = layoutSpan{top: 0, height: max(1, in.streamInfo)}
 	top := l.streamInfo.height
 
+	l.prediction = layoutSpan{top: top, height: in.prediction}
+	top += in.prediction
+
 	l.poll = layoutSpan{top: top, height: in.poll}
 	top += in.poll
 
 	var chatHeight int
 	if in.inspecting {
-		chatHeight = (in.height - l.streamInfo.height - in.poll - in.status) / 2
+		chatHeight = (in.height - l.streamInfo.height - in.prediction - in.poll - in.status) / 2
 	} else {
-		chatHeight = in.height - l.streamInfo.height - in.poll - in.composer - in.status
+		chatHeight = in.height - l.streamInfo.height - in.prediction - in.poll - in.composer - in.status
 	}
 
 	chatHeight = max(0, chatHeight)
@@ -1119,7 +1142,7 @@ func allocateBroadcastLayout(in layoutInputs) broadcastLayout {
 	top += chatHeight
 
 	if in.inspecting {
-		inspectHeight := in.height - l.streamInfo.height - in.poll - chatHeight - in.status - in.composer
+		inspectHeight := in.height - l.streamInfo.height - in.prediction - in.poll - chatHeight - in.status - in.composer
 
 		l.userInspect = layoutSpan{top: top, height: max(0, inspectHeight)}
 		top += l.userInspect.height
@@ -2662,6 +2685,108 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 				Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
 			},
 		)
+	case "channel.prediction.begin":
+		t.prediction.setPredictionData(msg)
+		t.prediction.enabled = true
+		t.prediction.locked = false
+		t.HandleResize()
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("Prediction %q has started!", msg.Payload.Event.Title),
+			},
+		)
+	case "channel.prediction.progress":
+		heightBefore := viewHeight(t.prediction.View())
+		t.prediction.setPredictionData(msg)
+		t.prediction.enabled = true
+
+		if viewHeight(t.prediction.View()) != heightBefore {
+			t.HandleResize()
+		}
+	case "channel.prediction.lock":
+		t.prediction.setPredictionData(msg)
+		t.prediction.enabled = true
+		t.prediction.locked = true
+		t.HandleResize()
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("Prediction %q is locked!", msg.Payload.Event.Title),
+			},
+		)
+	case "channel.prediction.end":
+		t.prediction.setPredictionData(msg)
+		t.prediction.enabled = false
+		t.HandleResize()
+
+		if msg.Payload.Event.Status == "canceled" {
+			return createCMDFunc(
+				&twitchirc.Notice{
+					FakeTimestamp:   time.Now(),
+					ChannelUserName: t.channelLogin,
+					MsgID:           twitchirc.MsgID(uuid.NewString()),
+					Message:         fmt.Sprintf("Prediction %q was canceled!", msg.Payload.Event.Title),
+				},
+			)
+		}
+
+		winner, ok := t.prediction.winner(msg.Payload.Event.WinningOutcomeID)
+		if !ok {
+			return createCMDFunc(
+				&twitchirc.Notice{
+					FakeTimestamp:   time.Now(),
+					ChannelUserName: t.channelLogin,
+					MsgID:           twitchirc.MsgID(uuid.NewString()),
+					Message:         fmt.Sprintf("Prediction %q has ended!", msg.Payload.Event.Title),
+				},
+			)
+		}
+
+		return createCMDFunc(
+			&twitchirc.Notice{
+				FakeTimestamp:   time.Now(),
+				ChannelUserName: t.channelLogin,
+				MsgID:           twitchirc.MsgID(uuid.NewString()),
+				Message:         fmt.Sprintf("Prediction %q has ended, %q won with %d points!", msg.Payload.Event.Title, winner.title, winner.points),
+			},
+		)
+	case "channel.channel_points_custom_reward_redemption.add", "channel.channel_points_automatic_reward_redemption.add":
+		notice := t.redemptionNotice(msg.Payload.Event)
+
+		// Only custom rewards can be updated later. Automatic rewards are
+		// one-shot events, so tracking them would leak an entry per redemption.
+		if msg.Payload.Subscription.Type == "channel.channel_points_custom_reward_redemption.add" &&
+			!redemptionStatusTerminal(msg.Payload.Event.Status) {
+			t.trackRedemption(msg.Payload.Event.ID, notice)
+		}
+
+		return createCMDFunc(notice)
+	case "channel.channel_points_custom_reward_redemption.update":
+		notice := t.redemptionNotice(msg.Payload.Event)
+
+		if existing, ok := t.redemptions[msg.Payload.Event.ID]; ok {
+			existing.Message = notice.Message
+			t.chatWindow.updateNotice(msg.Payload.Event.ID, notice.Message)
+
+			if redemptionStatusTerminal(msg.Payload.Event.Status) {
+				delete(t.redemptions, msg.Payload.Event.ID)
+			}
+
+			return nil
+		}
+
+		// The add event may have happened before this tab subscribed. Show the
+		// current state rather than dropping the update.
+		t.trackRedemption(msg.Payload.Event.ID, notice)
+
+		return createCMDFunc(notice)
 	case "channel.raid":
 		// broadcaster raided another channel
 		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {

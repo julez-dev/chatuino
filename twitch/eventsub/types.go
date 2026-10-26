@@ -52,6 +52,7 @@ type Subscription struct {
 }
 
 type Event struct {
+	ID                   string    `json:"id"`
 	UserID               string    `json:"user_id"`
 	UserLogin            string    `json:"user_login"`
 	UserName             string    `json:"user_name"`
@@ -60,15 +61,25 @@ type Event struct {
 	BroadcasterUserName  string    `json:"broadcaster_user_name"`
 	FollowedAt           time.Time `json:"followed_at"`
 
-	// Poll releated
+	// Poll and prediction related
 	Title               string    `json:"title"`
 	Choices             []Choice  `json:"choices"`
+	Outcomes            []Outcome `json:"outcomes"`
 	BitsVoting          Voting    `json:"bits_voting"`
 	ChannelPointsVoting Voting    `json:"channel_points_voting"`
 	StartedAt           time.Time `json:"started_at"`
+	LocksAt             time.Time `json:"locks_at"`
+	LockedAt            time.Time `json:"locked_at"`
 	EndsAt              time.Time `json:"ends_at"`  // empty if done
 	EndedAt             time.Time `json:"ended_at"` // empty until done
-	Status              string    `json:"status"`   // completed when done, else empty
+	WinningOutcomeID    string    `json:"winning_outcome_id"`
+	Status              string    `json:"status"` // completed when done, else empty
+
+	// Channel point redemption related
+	UserInput  string        `json:"user_input"`
+	Reward     Reward        `json:"reward"`
+	RewardText RewardMessage `json:"message"` // automatic rewards use message instead of user_input
+	RedeemedAt time.Time     `json:"redeemed_at"`
 
 	// Raid related
 	FromBroadcasterUserID    string `json:"from_broadcaster_user_id"`
@@ -101,4 +112,23 @@ type Choice struct {
 	BitsVotes          int    `json:"bits_votes"`
 	ChannelPointsVotes int    `json:"channel_points_votes"`
 	Votes              int    `json:"votes"`
+}
+
+type Outcome struct {
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Color         string `json:"color"`
+	Users         int    `json:"users"`
+	ChannelPoints int    `json:"channel_points"`
+}
+
+type Reward struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Prompt string `json:"prompt"`
+	Cost   int    `json:"cost"`
+}
+
+type RewardMessage struct {
+	Text string `json:"text"`
 }
