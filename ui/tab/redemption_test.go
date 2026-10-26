@@ -37,9 +37,9 @@ func TestRedemptionText(t *testing.T) {
 		{
 			name: "automatic reward uses the message text",
 			event: eventsub.Event{
-				UserLogin:  "alice",
-				RewardText: eventsub.RewardMessage{Text: "sparkles"},
-				Reward:     eventsub.Reward{Title: "Message Effect", Cost: 200},
+				UserLogin: "alice",
+				Message:   eventsub.MessageContent{Text: "sparkles"},
+				Reward:    eventsub.Reward{Title: "Message Effect", Cost: 200},
 			},
 			want: `alice redeemed "Message Effect" (200 points): sparkles`,
 		},

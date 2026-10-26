@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/julez-dev/chatuino/chatstate"
+	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/stretchr/testify/require"
@@ -206,4 +207,30 @@ func TestMerge_OnlyAppliesSentTags(t *testing.T) {
 		known := twitchapi.ChatSettingData{BroadcasterID: "chan-id", SlowMode: true}
 		require.Equal(t, known, applyRoomState(known, nil))
 	})
+}
+
+// TestSettingsFromUpdate maps channel.chat_settings.update onto the same shape the
+// status bar and the REST prefetch use, so one event can replace a full GET.
+func TestSettingsFromUpdate(t *testing.T) {
+	t.Parallel()
+
+	settings := chatstate.SettingsFromUpdate(eventsub.Event{
+		BroadcasterUserID:    "chan-id",
+		SlowMode:             ptr(true),
+		SlowModeWaitTime:     ptr(30),
+		FollowerMode:         ptr(true),
+		FollowerModeDuration: ptr(10),
+		SubscriberMode:       ptr(false),
+		EmoteMode:            ptr(true),
+		UniqueChatMode:       ptr(false),
+	})
+
+	require.Equal(t, twitchapi.ChatSettingData{
+		BroadcasterID:        "chan-id",
+		SlowMode:             true,
+		SlowModeWaitTime:     30,
+		FollowerMode:         true,
+		FollowerModeDuration: 10,
+		EmoteMode:            true,
+	}, settings)
 }

@@ -16,6 +16,7 @@ import (
 
 	"resenje.org/singleflight"
 
+	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
@@ -33,6 +34,37 @@ func SettingsFromResponse(resp twitchapi.GetChatSettingsResponse) (twitchapi.Cha
 	}
 
 	return resp.Data[0], nil
+}
+
+// SettingsFromUpdate converts a channel.chat_settings.update event into the
+// settings shape the cache and the status bar use. The event always carries the
+// complete state, so no merge with older settings is needed.
+func SettingsFromUpdate(event eventsub.Event) twitchapi.ChatSettingData {
+	settings := twitchapi.ChatSettingData{BroadcasterID: event.BroadcasterUserID}
+
+	if event.SlowMode != nil {
+		settings.SlowMode = *event.SlowMode
+	}
+	if event.SlowModeWaitTime != nil {
+		settings.SlowModeWaitTime = *event.SlowModeWaitTime
+	}
+	if event.FollowerMode != nil {
+		settings.FollowerMode = *event.FollowerMode
+	}
+	if event.FollowerModeDuration != nil {
+		settings.FollowerModeDuration = *event.FollowerModeDuration
+	}
+	if event.SubscriberMode != nil {
+		settings.SubscriberMode = *event.SubscriberMode
+	}
+	if event.EmoteMode != nil {
+		settings.EmoteMode = *event.EmoteMode
+	}
+	if event.UniqueChatMode != nil {
+		settings.UniqueChatMode = *event.UniqueChatMode
+	}
+
+	return settings
 }
 
 // Fetcher loads the complete chat settings of one broadcaster.

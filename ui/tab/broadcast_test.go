@@ -1294,6 +1294,54 @@ func Test_parseSlashCommand(t *testing.T) {
 	}
 }
 
+// TestBroadcast_ModeratorCommandsRequireMod extends the existing permission gate to
+// the newly added chat-setting, role, warning, raid, shoutout and AutoMod commands.
+func TestBroadcast_ModeratorCommandsRequireMod(t *testing.T) {
+	t.Parallel()
+
+	for _, command := range []struct {
+		name string
+		args []string
+	}{
+		{"slow", []string{"10"}},
+		{"slowoff", []string{""}},
+		{"followers", []string{"10m"}},
+		{"subscribers", []string{""}},
+		{"emoteonly", []string{""}},
+		{"uniquechat", []string{""}},
+		{"clear", []string{""}},
+		{"mod", []string{"alice"}},
+		{"unmod", []string{"alice"}},
+		{"mods", []string{""}},
+		{"vip", []string{"alice"}},
+		{"unvip", []string{"alice"}},
+		{"vips", []string{""}},
+		{"warn", []string{"alice", "spam"}},
+		{"raid", []string{"other"}},
+		{"unraid", []string{""}},
+		{"shoutout", []string{"other"}},
+		{"approve", []string{"msg-1"}},
+		{"deny", []string{"msg-1"}},
+		{"snooze", []string{""}},
+	} {
+		t.Run(command.name, func(t *testing.T) {
+			t.Parallel()
+
+			tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+			tab.isUserMod = false
+
+			cmd := tab.dispatchSlashCommand(command.name, command.args)
+			require.NotNil(t, cmd)
+
+			msg, ok := cmd().(ChatEventMessage)
+			require.True(t, ok)
+			notice, ok := msg.Message.(*twitchirc.Notice)
+			require.True(t, ok)
+			require.Contains(t, notice.Message, "not a moderator")
+		})
+	}
+}
+
 func Test_applyDuplicateBypass(t *testing.T) {
 	t.Parallel()
 
@@ -1776,7 +1824,47 @@ func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
 		"channel.channel_points_custom_reward_redemption.add",
 		"channel.channel_points_custom_reward_redemption.update",
 		"channel.channel_points_automatic_reward_redemption.add",
+		"channel.chat_settings.update",
+		"channel.warning.send",
+		"channel.warning.acknowledge",
+		"channel.shoutout.create",
+		"channel.shoutout.receive",
+		"automod.message.hold",
+		"automod.message.update",
 	})
+
+	counts := make(map[string]int, len(pool.subscriptions))
+	for _, subscription := range pool.subscriptions {
+		counts[subscription.Type]++
+	}
+
+	for _, expected := range []struct {
+		typeName  string
+		version   string
+		condition map[string]string
+	}{
+		{"channel.chat_settings.update", "1", map[string]string{"broadcaster_user_id": "chan-id", "user_id": "chan-id"}},
+		{"channel.warning.send", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.warning.acknowledge", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.shoutout.create", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.shoutout.receive", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"automod.message.hold", "2", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"automod.message.update", "2", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+	} {
+		matched := false
+		for _, subscription := range pool.subscriptions {
+			if subscription.Type != expected.typeName {
+				continue
+			}
+
+			matched = true
+			require.Equal(t, expected.version, subscription.Version, expected.typeName)
+			require.Equal(t, expected.condition, subscription.Condition, expected.typeName)
+		}
+
+		require.True(t, matched, "missing subscription %s", expected.typeName)
+		require.Equal(t, 1, counts[expected.typeName], "duplicate subscription %s", expected.typeName)
+	}
 }
 
 func TestBroadcast_SubscribeChannelEventCmdsRequiresOwnChannel(t *testing.T) {
@@ -1983,4 +2071,225 @@ func TestBroadcast_UntrackedRedemptionsDoNotLeak(t *testing.T) {
 
 	require.NotNil(t, tab.handleEventSubMessage(event("channel.channel_points_custom_reward_redemption.update", "fulfilled")))
 	require.Empty(t, tab.redemptions, "a terminal update without a prior add is not tracked")
+}
+
+func TestBroadcast_HandleModerationEventSubMessages(t *testing.T) {
+	t.Parallel()
+
+	message := func(subType string, event eventsub.Event) eventsub.Message[eventsub.NotificationPayload] {
+		return eventsub.Message[eventsub.NotificationPayload]{
+			Payload: eventsub.NotificationPayload{
+				Subscription: eventsub.Subscription{
+					Type:      subType,
+					Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+				},
+				Event: event,
+			},
+		}
+	}
+
+	t.Run("warning send", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+		cmd := tab.handleEventSubMessage(message("channel.warning.send", eventsub.Event{
+			ModeratorUserName: "Mod",
+			UserName:          "Alice",
+			Reason:            "spam",
+		}))
+
+		require.Contains(t, requestFromCmd(t, cmd).Message.(*twitchirc.Notice).Message, "Mod warned Alice: spam")
+	})
+
+	t.Run("warning acknowledge", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+		cmd := tab.handleEventSubMessage(message("channel.warning.acknowledge", eventsub.Event{UserName: "Alice"}))
+
+		require.Contains(t, requestFromCmd(t, cmd).Message.(*twitchirc.Notice).Message, "Alice acknowledged")
+	})
+
+	t.Run("shoutout create", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+		cmd := tab.handleEventSubMessage(message("channel.shoutout.create", eventsub.Event{
+			ToBroadcasterUserName: "Bob",
+			ViewerCount:           42,
+		}))
+
+		require.Contains(t, requestFromCmd(t, cmd).Message.(*twitchirc.Notice).Message, "Sent a shoutout to Bob with 42 viewers")
+	})
+
+	t.Run("shoutout receive", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+		cmd := tab.handleEventSubMessage(message("channel.shoutout.receive", eventsub.Event{
+			FromBroadcasterUserName: "Bob",
+			ViewerCount:             12,
+		}))
+
+		require.Contains(t, requestFromCmd(t, cmd).Message.(*twitchirc.Notice).Message, "Bob sent this channel a shoutout with 12 viewers")
+	})
+}
+
+func TestBroadcast_HandleAutoModEvents(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	event := func(subType string, event eventsub.Event) eventsub.Message[eventsub.NotificationPayload] {
+		return eventsub.Message[eventsub.NotificationPayload]{
+			Payload: eventsub.NotificationPayload{
+				Subscription: eventsub.Subscription{
+					Type:      subType,
+					Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+				},
+				Event: event,
+			},
+		}
+	}
+
+	held := eventsub.Event{
+		MessageID: "msg-1",
+		UserName:  "BadUser",
+		Reason:    "automod",
+		Category:  "aggressive",
+		Level:     2,
+		Message:   eventsub.MessageContent{Text: "a bad message"},
+	}
+
+	cmd := tab.handleEventSubMessage(event("automod.message.hold", held))
+	require.NotNil(t, cmd)
+
+	notice := requestFromCmd(t, cmd).Message.(*twitchirc.Notice)
+	require.Contains(t, notice.Message, "AutoMod held a message from BadUser")
+	require.Contains(t, notice.Message, "a bad message")
+	require.Contains(t, notice.Message, "/approve msg-1")
+	require.Len(t, tab.automodHeld, 1)
+
+	tab.chatWindow.handleMessage(ChatEventMessage{Message: notice})
+
+	require.Nil(t, tab.handleEventSubMessage(event("automod.message.update", eventsub.Event{
+		MessageID: "msg-1",
+		UserName:  "BadUser",
+		Status:    "approved",
+		Reason:    "automod",
+		Message:   eventsub.MessageContent{Text: "a bad message"},
+	})))
+
+	require.Empty(t, tab.automodHeld, "a terminal update stops tracking the message")
+	require.Contains(t, plain(tab.chatWindow.lines), "[approved]")
+	require.Len(t, tab.chatWindow.entries, 1, "the update rewrites the existing notice")
+}
+
+func TestBroadcast_ChatSettingsEventUpdatesStatus(t *testing.T) {
+	t.Parallel()
+
+	cache := chatstate.NewCache()
+	tab := newStatusTestTab(&settingsAPI{}, cache)
+
+	cmd := tab.handleEventSubMessage(eventsub.Message[eventsub.NotificationPayload]{
+		Payload: eventsub.NotificationPayload{
+			Subscription: eventsub.Subscription{
+				Type:      "channel.chat_settings.update",
+				Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+			},
+			Event: eventsub.Event{
+				BroadcasterUserID:    "chan-id",
+				SlowMode:             boolValue(true),
+				SlowModeWaitTime:     intValue(30),
+				FollowerMode:         boolValue(true),
+				FollowerModeDuration: intValue(10),
+				SubscriberMode:       boolValue(true),
+			},
+		},
+	})
+
+	require.Nil(t, cmd)
+	require.True(t, tab.statusInfo.settings.SlowMode)
+	require.True(t, tab.statusInfo.settings.SubscriberMode)
+	require.Contains(t, tab.statusInfo.View(), "Slow Mode")
+	require.Contains(t, tab.statusInfo.View(), "Sub Only")
+
+	cached, ok := cache.Get("chan-id")
+	require.True(t, ok)
+	require.True(t, cached.FollowerMode)
+	require.Equal(t, 10, cached.FollowerModeDuration)
+}
+
+// TestBroadcast_AutoModShortcutTypesCommand covers the quick approve/deny keys:
+// a held AutoMod notice becomes a ready-to-send command, while other notices and
+// terminal AutoMod messages are ignored.
+func TestBroadcast_AutoModShortcutTypesCommand(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name   string
+		key    tea.KeyPressMsg
+		action string
+	}{
+		{name: "approve", key: tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt}, action: "approve"},
+		{name: "deny", key: tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt}, action: "deny"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+			notice := &twitchirc.Notice{MsgID: "msg-1", Message: "AutoMod held a message"}
+			tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: notice})
+			tab.automodHeld = map[string]*twitchirc.Notice{"msg-1": notice}
+
+			handled, cmd := tab.handleKeyPress(tt.key)
+			require.True(t, handled)
+			require.Nil(t, cmd)
+			require.Equal(t, insertMode, tab.state)
+			require.Equal(t, "/"+tt.action+" msg-1", tab.input.RawValue())
+		})
+	}
+
+	t.Run("ordinary notice is ignored without losing chat focus", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+		tab.Focus()
+		tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
+			MsgID:   "notice-1",
+			Message: "just a notice",
+		}})
+		tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
+			MsgID:   "notice-2",
+			Message: "another notice",
+		}})
+		tab.chatWindow.selectEntry(tab.chatWindow.entries[0])
+
+		handled, _ := tab.handleKeyPress(tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt})
+		require.True(t, handled)
+		require.Equal(t, inChatWindow, tab.state)
+		require.Empty(t, tab.input.RawValue())
+		require.True(t, tab.chatWindow.Focused(), "a rejected shortcut must not blur the chat and strand keyboard navigation")
+
+		before := tab.chatWindow.cursor
+		_, _ = tab.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+		require.NotEqual(t, before, tab.chatWindow.cursor, "arrow-key navigation keeps working after the rejected shortcut")
+	})
+
+	t.Run("finished AutoMod notice is ignored without losing chat focus", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+		tab.Focus()
+		tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
+			MsgID:   "msg-1",
+			Message: "AutoMod held a message [approved]",
+		}})
+
+		handled, _ := tab.handleKeyPress(tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt})
+		require.True(t, handled)
+		require.Equal(t, inChatWindow, tab.state)
+		require.Empty(t, tab.input.RawValue())
+		require.True(t, tab.chatWindow.Focused(), "an already-finished AutoMod notice must keep chat focus")
+	})
 }

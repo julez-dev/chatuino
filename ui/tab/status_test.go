@@ -251,3 +251,32 @@ func TestStreamStatus_RoomStateFromChatEvent(t *testing.T) {
 func fallbackAfter(status *streamStatus) settingsFetchFallbackMessage {
 	return settingsFetchFallbackMessage{target: status.tab.id, seq: status.fallbackSeq}
 }
+
+// TestStreamStatus_ApplySettingsKeepsCacheInSync covers a chat-settings write made
+// through Chatuino: the tab updates its bar immediately and other tabs of the same
+// channel read the new state from the shared cache.
+func TestStreamStatus_ApplySettingsKeepsCacheInSync(t *testing.T) {
+	t.Parallel()
+
+	cache := chatstate.NewCache()
+	api := &settingsAPI{}
+	tab := newStatusTestTab(api, cache)
+
+	tab.Update(chatSettingsUpdatedMessage{settings: twitchapi.ChatSettingData{
+		BroadcasterID:        "chan-id",
+		SlowMode:             true,
+		SlowModeWaitTime:     30,
+		FollowerMode:         true,
+		FollowerModeDuration: 10,
+	}})
+
+	require.True(t, tab.statusInfo.isDataFetched)
+	require.True(t, tab.statusInfo.settings.SlowMode)
+	require.Contains(t, tab.statusInfo.View(), "Slow Mode")
+	require.Contains(t, tab.statusInfo.View(), "Follow Only")
+
+	cached, ok := cache.Get("chan-id")
+	require.True(t, ok, "the shared cache learned the new settings")
+	require.Equal(t, tab.statusInfo.settings, cached)
+	require.Equal(t, 0, api.requestCount(), "an applied write does not need another GET")
+}

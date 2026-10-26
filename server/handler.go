@@ -19,6 +19,9 @@ var scopes = [...]string{
 	"moderator:manage:unban_requests", "user:read:follows", "channel:manage:polls", "channel:read:ads", "moderator:read:followers", "clips:edit", "moderator:manage:announcements",
 	"channel:manage:broadcast", "user:read:emotes", "moderator:manage:chat_messages", "user:write:chat",
 	"channel:read:predictions", "channel:read:redemptions",
+	"moderator:manage:chat_settings", "channel:manage:moderators", "channel:read:vips", "channel:manage:vips",
+	"moderator:manage:warnings", "channel:manage:raids", "moderator:manage:shoutouts", "moderator:manage:automod",
+	"channel:manage:ads",
 }
 
 type tokenPair struct {

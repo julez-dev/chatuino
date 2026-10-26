@@ -12,11 +12,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
+	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/nav"
 )
 
-func handleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI) tea.Cmd {
+func handleCommand(tabID string, name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI) tea.Cmd {
 	noticeCommandFunc := func(msg string) tea.Cmd {
 		return func() tea.Msg {
 			return ChatEventMessage{
@@ -46,9 +48,423 @@ func handleCommand(name string, args []string, channelID string, channel string,
 		return handleAnnouncement(args, channel, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "marker":
 		return handleMarker(args, channelID, channel, userAccountID, ttv, noticeCommandFunc)
+	case "slow", "slowoff", "followers", "followersoff", "subscribers", "subscribersoff", "emoteonly", "emoteonlyoff", "uniquechat", "uniquechatoff":
+		return handleChatSetting(name, args, tabID, channelID, userAccountID, ttv, noticeCommandFunc)
+	case "clear":
+		return handleDeleteMessages("delete_all_messages", nil, channel, channelID, userAccountID, ttv, noticeCommandFunc)
+	case "mod", "unmod", "mods", "vip", "unvip", "vips":
+		return handleRoleCommand(name, args, channelID, ttv, noticeCommandFunc)
+	case "warn":
+		return handleWarn(args, channelID, userAccountID, ttv, noticeCommandFunc)
+	case "raid", "unraid":
+		return handleRaid(name, args, channelID, ttv, noticeCommandFunc)
+	case "shoutout":
+		return handleShoutout(args, channelID, userAccountID, ttv, noticeCommandFunc)
+	case "approve", "deny":
+		return handleAutoModAction(name, args, userAccountID, ttv, noticeCommandFunc)
+	case "snooze":
+		return handleSnooze(channelID, ttv, noticeCommandFunc)
 	}
 
 	return nil
+}
+
+// chatSettingsUpdatedMessage carries the settings returned by a successful write
+// back to the tab that made it, so its status bar and the shared cache update
+// without waiting for the matching EventSub event.
+type chatSettingsUpdatedMessage struct {
+	settings twitchapi.ChatSettingData
+}
+
+func settingsUpdatedCmd(tabID string, settings twitchapi.ChatSettingData) tea.Cmd {
+	if tabID == "" {
+		return nil
+	}
+
+	return nav.To(tabID, chatSettingsUpdatedMessage{settings: settings})
+}
+
+// firstArg returns the first non-empty argument. parseSlashCommand reports a
+// command without arguments as args == [""] and repeated spaces leave empty
+// tokens behind, so positional handlers go through this instead of args[0].
+func firstArg(args []string) string {
+	for _, arg := range args {
+		if trimmed := strings.TrimSpace(arg); trimmed != "" {
+			return trimmed
+		}
+	}
+
+	return ""
+}
+
+// argsFrom returns the whitespace-normalised arguments starting at index.
+func argsFrom(args []string, index int) string {
+	if index >= len(args) {
+		return ""
+	}
+
+	parts := make([]string, 0, len(args)-index)
+	for _, arg := range args[index:] {
+		if arg != "" {
+			parts = append(parts, arg)
+		}
+	}
+
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+func boolValue(value bool) *bool { return &value }
+
+func intValue(value int) *int { return &value }
+
+// findUser resolves a login through Helix and returns a ready-to-show error
+// message when the user does not exist.
+func findUser(ctx context.Context, ttv ModerationAPI, login string) (twitchapi.UserData, string) {
+	users, err := ttv.GetUsers(ctx, []string{login}, nil)
+	if err != nil {
+		return twitchapi.UserData{}, fmt.Sprintf("Error while fetching user ID %s: %s", login, err.Error())
+	}
+
+	if len(users.Data) < 1 {
+		return twitchapi.UserData{}, fmt.Sprintf("User %s can not be found", login)
+	}
+
+	return users.Data[0], ""
+}
+
+func describeAPIError(err error, action string) string {
+	var apiErr twitchapi.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.Status {
+		case http.StatusBadRequest:
+			return fmt.Sprintf("%s request invalid: %s", action, apiErr.Message)
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return fmt.Sprintf("Unauthorized to %s: %s", action, apiErr.Message)
+		case http.StatusNotFound:
+			return fmt.Sprintf("%s target not found: %s", action, apiErr.Message)
+		case http.StatusConflict:
+			return fmt.Sprintf("Could not %s because of a conflict: %s", action, apiErr.Message)
+		case http.StatusTooManyRequests:
+			return fmt.Sprintf("Rate limited while trying to %s: %s", action, apiErr.Message)
+		default:
+			return fmt.Sprintf("Failed to %s: %s", action, apiErr.Message)
+		}
+	}
+
+	return fmt.Sprintf("Failed to %s: %s", action, err.Error())
+}
+
+func handleChatSetting(name string, args []string, tabID string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	data := twitchapi.ChatSettingsUpdateData{}
+	success := ""
+
+	switch name {
+	case "slow":
+		duration, err := parseSlowModeDuration(firstArg(args))
+		if err != nil {
+			return noticeFunc("Invalid duration: " + err.Error())
+		}
+
+		data.SlowMode = boolValue(true)
+		if firstArg(args) != "" {
+			data.SlowModeWaitTime = intValue(int(duration / time.Second))
+		}
+		success = "Slow mode enabled"
+		if data.SlowModeWaitTime != nil {
+			success = fmt.Sprintf("Slow mode enabled: %s", formatTimeoutDuration(duration))
+		}
+	case "slowoff":
+		data.SlowMode = boolValue(false)
+		success = "Slow mode disabled"
+	case "followers":
+		duration, err := parseFollowerModeDuration(firstArg(args))
+		if err != nil {
+			return noticeFunc("Invalid duration: " + err.Error())
+		}
+
+		data.FollowerMode = boolValue(true)
+		if firstArg(args) != "" {
+			data.FollowerModeDuration = intValue(int(duration / time.Minute))
+		}
+		success = "Followers-only mode enabled"
+		if data.FollowerModeDuration != nil {
+			success = fmt.Sprintf("Followers-only mode enabled: %s", humanizeDuration(duration))
+		}
+	case "followersoff":
+		data.FollowerMode = boolValue(false)
+		success = "Followers-only mode disabled"
+	case "subscribers":
+		data.SubscriberMode = boolValue(true)
+		success = "Subscribers-only mode enabled"
+	case "subscribersoff":
+		data.SubscriberMode = boolValue(false)
+		success = "Subscribers-only mode disabled"
+	case "emoteonly":
+		data.EmoteMode = boolValue(true)
+		success = "Emote-only mode enabled"
+	case "emoteonlyoff":
+		data.EmoteMode = boolValue(false)
+		success = "Emote-only mode disabled"
+	case "uniquechat":
+		data.UniqueChatMode = boolValue(true)
+		success = "Unique chat enabled"
+	case "uniquechatoff":
+		data.UniqueChatMode = boolValue(false)
+		success = "Unique chat disabled"
+	default:
+		return noticeFunc("Unknown chat setting command")
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		resp, err := ttv.UpdateChatSettings(ctx, channelID, userAccountID, data)
+		if err != nil {
+			return noticeFunc(describeAPIError(err, "update chat settings"))()
+		}
+
+		settings, err := chatstate.SettingsFromResponse(resp)
+		if err != nil {
+			return noticeFunc(fmt.Sprintf("Chat settings were updated but could not be read back: %s", err))()
+		}
+
+		cmds := []tea.Cmd{noticeFunc(success)}
+		if publish := settingsUpdatedCmd(tabID, settings); publish != nil {
+			cmds = append(cmds, publish)
+		}
+
+		return tea.Batch(cmds...)()
+	}
+}
+
+func handleRoleCommand(name string, args []string, channelID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	isList := name == "mods" || name == "vips"
+
+	if !isList && firstArg(args) == "" {
+		return noticeFunc(fmt.Sprintf("Expected Usage: /%s <username>", name))
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		switch name {
+		case "mods", "vips":
+			var (
+				users []twitchapi.ChatRoleUser
+				err   error
+				label string
+			)
+
+			if name == "mods" {
+				label = "Moderators"
+				users, err = ttv.GetModerators(ctx, channelID, nil)
+			} else {
+				label = "VIPs"
+				users, err = ttv.GetVIPs(ctx, channelID, nil)
+			}
+
+			if err != nil {
+				return noticeFunc(describeAPIError(err, "list "+label))()
+			}
+
+			if len(users) == 0 {
+				return noticeFunc(fmt.Sprintf("This channel has no %s.", strings.ToLower(label)))()
+			}
+
+			names := make([]string, 0, len(users))
+			for _, user := range users {
+				names = append(names, preferredDisplayName(user.UserName, user.UserLogin))
+			}
+
+			return noticeFunc(fmt.Sprintf("%s (%d): %s", label, len(names), strings.Join(names, ", ")))()
+		}
+
+		user, notice := findUser(ctx, ttv, firstArg(args))
+		if notice != "" {
+			return noticeFunc(notice)()
+		}
+
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
+
+		var (
+			err     error
+			success string
+		)
+
+		switch name {
+		case "mod":
+			err = ttv.AddChannelModerator(ctx, channelID, user.ID)
+			success = fmt.Sprintf("User %s is now a moderator", displayName)
+		case "unmod":
+			err = ttv.RemoveChannelModerator(ctx, channelID, user.ID)
+			success = fmt.Sprintf("User %s is no longer a moderator", displayName)
+		case "vip":
+			err = ttv.AddChannelVIP(ctx, channelID, user.ID)
+			success = fmt.Sprintf("User %s is now a VIP", displayName)
+		case "unvip":
+			err = ttv.RemoveChannelVIP(ctx, channelID, user.ID)
+			success = fmt.Sprintf("User %s is no longer a VIP", displayName)
+		}
+
+		if err != nil {
+			return noticeFunc(describeAPIError(err, name))()
+		}
+
+		return noticeFunc(success)()
+	}
+}
+
+func handleWarn(args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	username := firstArg(args)
+	if username == "" {
+		return noticeFunc("Expected Usage: /warn <username> [reason]")
+	}
+
+	reason := argsFrom(args, 1)
+	if reason == "" {
+		reason = "No reason provided"
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		user, notice := findUser(ctx, ttv, username)
+		if notice != "" {
+			return noticeFunc(notice)()
+		}
+
+		if err := ttv.WarnChatUser(ctx, channelID, userAccountID, user.ID, reason); err != nil {
+			return noticeFunc(describeAPIError(err, "warn user"))()
+		}
+
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
+
+		return noticeFunc(fmt.Sprintf("User %s has been warned because: %s", displayName, reason))()
+	}
+}
+
+func handleRaid(name string, args []string, channelID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	if name == "unraid" {
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := ttv.CancelRaid(ctx, channelID); err != nil {
+				return noticeFunc(describeAPIError(err, "cancel raid"))()
+			}
+
+			return noticeFunc("The pending raid has been canceled")()
+		}
+	}
+
+	target := firstArg(args)
+	if target == "" {
+		return noticeFunc("Expected Usage: /raid <channel>")
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		user, notice := findUser(ctx, ttv, target)
+		if notice != "" {
+			return noticeFunc(notice)()
+		}
+
+		if user.ID == channelID {
+			return noticeFunc("A channel cannot raid itself")()
+		}
+
+		if _, err := ttv.StartRaid(ctx, channelID, user.ID); err != nil {
+			return noticeFunc(describeAPIError(err, "start raid"))()
+		}
+
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
+
+		return noticeFunc(fmt.Sprintf("Raid started towards %s; it begins once the broadcaster confirms", displayName))()
+	}
+}
+
+func handleShoutout(args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	target := firstArg(args)
+	if target == "" {
+		return noticeFunc("Expected Usage: /shoutout <channel>")
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		user, notice := findUser(ctx, ttv, target)
+		if notice != "" {
+			return noticeFunc(notice)()
+		}
+
+		if err := ttv.SendShoutout(ctx, channelID, user.ID, userAccountID); err != nil {
+			return noticeFunc(describeAPIError(err, "send shoutout"))()
+		}
+
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
+
+		return noticeFunc(fmt.Sprintf("Sent a shoutout to %s", displayName))()
+	}
+}
+
+func handleAutoModAction(name string, args []string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	messageID := firstArg(args)
+	if messageID == "" {
+		return noticeFunc(fmt.Sprintf("Expected Usage: /%s <message_id>", name))
+	}
+
+	action := "ALLOW"
+	if name == "deny" {
+		action = "DENY"
+	}
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := ttv.ManageAutoModMessage(ctx, userAccountID, messageID, action); err != nil {
+			return noticeFunc(describeAPIError(err, "manage AutoMod message"))()
+		}
+
+		if action == "ALLOW" {
+			return noticeFunc(fmt.Sprintf("AutoMod message %s approved", messageID))()
+		}
+
+		return noticeFunc(fmt.Sprintf("AutoMod message %s denied", messageID))()
+	}
+}
+
+func handleSnooze(channelID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		resp, err := ttv.SnoozeNextAd(ctx, channelID)
+		if err != nil {
+			return noticeFunc(describeAPIError(err, "snooze the next ad"))()
+		}
+
+		if resp.NextAdAt == "" {
+			return noticeFunc("The next ad has been snoozed")()
+		}
+
+		return noticeFunc(fmt.Sprintf("The next ad has been snoozed to %s", formatAPITime(resp.NextAdAt)))()
+	}
+}
+
+func formatAPITime(value string) string {
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return value
+	}
+
+	return parsed.Local().Format("02.01.2006 15:04:05")
 }
 
 // argAt reads an optional argument, so callers do not have to pad their args slice.
@@ -185,15 +601,65 @@ func handleUnban(args []string, channel string, channelID string, userAccountID 
 const (
 	timeoutDefault = 10 * time.Minute
 	timeoutMaximum = 2 * 7 * 24 * time.Hour
+
+	slowModeMinimum = 3 * time.Second
+	slowModeMaximum = 120 * time.Second
+
+	followerModeMaximum = 90 * 24 * time.Hour // 129600 minutes, Twitch's 3-month cap
 )
 
 // parseTimeoutDuration turns a typed duration into the value the API wants. An empty input
 // yields the default, which is also what Twitch's own chat does when no duration is given.
 func parseTimeoutDuration(input string) (time.Duration, error) {
-	raw := strings.ToLower(strings.TrimSpace(input))
-	if raw == "" {
+	if strings.TrimSpace(input) == "" {
 		return timeoutDefault, nil
 	}
+
+	return parseDuration(input, time.Second, timeoutMaximum, "2 weeks (2w)", false)
+}
+
+func parseSlowModeDuration(input string) (time.Duration, error) {
+	if strings.TrimSpace(input) == "" {
+		return 0, nil
+	}
+
+	// Twitch's slow-mode granularity is whole seconds: "/slow 10" means 10 seconds.
+	duration, err := parseDuration(input, time.Second, slowModeMaximum, "120 seconds", false)
+	if err != nil {
+		return 0, err
+	}
+
+	if duration < slowModeMinimum {
+		return 0, fmt.Errorf("must be at least 3 seconds")
+	}
+
+	return duration, nil
+}
+
+func parseFollowerModeDuration(input string) (time.Duration, error) {
+	if strings.TrimSpace(input) == "" {
+		return 0, nil
+	}
+
+	// Followers-only is configured in minutes; a bare number therefore means minutes,
+	// unlike a timeout where a bare number is seconds.
+	duration, err := parseDuration(input, time.Minute, followerModeMaximum, "3 months", true)
+	if err != nil {
+		return 0, err
+	}
+
+	if duration%time.Minute != 0 {
+		return 0, fmt.Errorf("must be a whole number of minutes")
+	}
+
+	return duration, nil
+}
+
+// parseDuration reads the friendly, combinable syntax Twitch chat uses ("1h30m").
+// defaultUnit decides what a segment without a unit means, which differs per
+// setting, and allowZero permits "0m" for followers-only.
+func parseDuration(input string, defaultUnit time.Duration, maximum time.Duration, maximumLabel string, allowZero bool) (time.Duration, error) {
+	raw := strings.ToLower(strings.TrimSpace(input))
 
 	var total time.Duration
 
@@ -204,21 +670,22 @@ func parseTimeoutDuration(input string) (time.Duration, error) {
 		}
 
 		if start == i {
-			return 0, timeoutSyntaxError(input)
+			return 0, durationSyntaxError(input)
 		}
 
 		value, err := strconv.Atoi(raw[start:i])
 		if err != nil {
-			return 0, timeoutSyntaxError(input)
+			return 0, durationSyntaxError(input)
 		}
 
-		// The unit is optional on the last segment, where it means seconds: "/timeout x 600"
-		// keeps working for anyone who still counts in seconds.
-		unit := time.Second
+		// The unit is optional on the last segment, where it uses the caller's default:
+		// "/timeout x 600" keeps working for anyone who still counts in seconds.
+		unit := defaultUnit
 
 		if i < len(raw) {
 			switch raw[i] {
 			case 's':
+				unit = time.Second
 			case 'm':
 				unit = time.Minute
 			case 'h':
@@ -228,7 +695,7 @@ func parseTimeoutDuration(input string) (time.Duration, error) {
 			case 'w':
 				unit = 7 * 24 * time.Hour
 			default:
-				return 0, timeoutSyntaxError(input)
+				return 0, durationSyntaxError(input)
 			}
 
 			i++
@@ -236,17 +703,17 @@ func parseTimeoutDuration(input string) (time.Duration, error) {
 
 		// Compare before multiplying: a large enough number overflows time.Duration, and
 		// anything above the maximum is rejected anyway.
-		if value > int(timeoutMaximum/unit) {
-			return 0, timeoutMaximumError(input)
+		if value > int(maximum/unit) {
+			return 0, durationMaximumError(input, maximumLabel)
 		}
 
 		total += time.Duration(value) * unit
-		if total > timeoutMaximum {
-			return 0, timeoutMaximumError(input)
+		if total > maximum {
+			return 0, durationMaximumError(input, maximumLabel)
 		}
 	}
 
-	if total <= 0 {
+	if total < 0 || (!allowZero && total == 0) {
 		return 0, fmt.Errorf("must be greater than zero, got %s", strings.TrimSpace(input))
 	}
 
@@ -255,12 +722,12 @@ func parseTimeoutDuration(input string) (time.Duration, error) {
 
 // The errors stay lowercase and free of a sentence frame, so the notice decides how they
 // are shown and the API layer could reuse them unchanged.
-func timeoutSyntaxError(input string) error {
+func durationSyntaxError(input string) error {
 	return fmt.Errorf("could not parse %s, expected something like 90s, 10m, 1h30m, 2d or 1w", strings.TrimSpace(input))
 }
 
-func timeoutMaximumError(input string) error {
-	return fmt.Errorf("%s is longer than the maximum of 2 weeks (2w)", strings.TrimSpace(input))
+func durationMaximumError(input string, maximumLabel string) error {
+	return fmt.Errorf("%s is longer than the maximum of %s", strings.TrimSpace(input), maximumLabel)
 }
 
 // formatTimeoutDuration renders a duration the way a mod types it, so the confirmation

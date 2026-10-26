@@ -43,6 +43,8 @@ func TestBuildDefaultKeyMap_IncludesVimAndModernAliases(t *testing.T) {
 	require.Contains(t, keyMap.CopyMessage.Keys(), "y")
 	require.Contains(t, keyMap.CopyToClipboard.Keys(), "Y")
 	require.Contains(t, keyMap.ReplyMessage.Keys(), "r")
+	require.Contains(t, keyMap.QuickApprove.Keys(), "alt+a")
+	require.Contains(t, keyMap.QuickDeny.Keys(), "alt+d")
 	require.Contains(t, keyMap.InspectMode.Keys(), "u")
 	require.Contains(t, keyMap.SearchMode.Keys(), "ctrl+f")
 	require.Contains(t, keyMap.Next.Keys(), "]")

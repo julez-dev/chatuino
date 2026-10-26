@@ -1,6 +1,7 @@
 package eventsub
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -76,10 +77,10 @@ type Event struct {
 	Status              string    `json:"status"` // poll: completed; prediction: resolved/canceled; redemption: unfulfilled/fulfilled/canceled
 
 	// Channel point redemption related
-	UserInput  string        `json:"user_input"`
-	Reward     Reward        `json:"reward"`
-	RewardText RewardMessage `json:"message"` // automatic rewards use message instead of user_input
-	RedeemedAt time.Time     `json:"redeemed_at"`
+	UserInput  string         `json:"user_input"`
+	Reward     Reward         `json:"reward"`
+	Message    MessageContent `json:"message"` // redemption text or AutoMod message
+	RedeemedAt time.Time      `json:"redeemed_at"`
 
 	// Raid related
 	FromBroadcasterUserID    string `json:"from_broadcaster_user_id"`
@@ -99,6 +100,29 @@ type Event struct {
 	RequesterUserID    string `json:"requester_user_id"`
 	RequesterUserLogin string `json:"requester_user_login"`
 	RequesterUserName  string `json:"requester_user_name"`
+
+	// Chat settings related. The booleans are pointers because a chat settings
+	// event sends all of them, while the same Event struct is used by events that
+	// do not mention these fields at all.
+	EmoteMode            *bool `json:"emote_mode"`
+	FollowerMode         *bool `json:"follower_mode"`
+	FollowerModeDuration *int  `json:"follower_mode_duration_minutes"`
+	SlowMode             *bool `json:"slow_mode"`
+	SlowModeWaitTime     *int  `json:"slow_mode_wait_time_seconds"`
+	SubscriberMode       *bool `json:"subscriber_mode"`
+	UniqueChatMode       *bool `json:"unique_chat_mode"`
+
+	// Warning and AutoMod related
+	ModeratorUserID    string `json:"moderator_user_id"`
+	ModeratorUserLogin string `json:"moderator_user_login"`
+	ModeratorUserName  string `json:"moderator_user_name"`
+	MessageID          string `json:"message_id"`
+	Reason             string `json:"reason"`
+	Category           string `json:"category"`
+	Level              int    `json:"level"`
+
+	// Shoutout related
+	ViewerCount int `json:"viewer_count"`
 }
 
 type Voting struct {
@@ -129,6 +153,18 @@ type Reward struct {
 	Cost   int    `json:"cost"`
 }
 
-type RewardMessage struct {
+type MessageContent struct {
 	Text string `json:"text"`
+}
+
+// UnmarshalJSON accepts both shapes Twitch uses for an event's message field:
+// redemptions send an object ({"text": "..."}) while some AutoMod versions send
+// a bare string. Decoding one shape into the other used to fail the whole event.
+func (m *MessageContent) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		return json.Unmarshal(data, &m.Text)
+	}
+
+	type messageContent MessageContent
+	return json.Unmarshal(data, (*messageContent)(m))
 }

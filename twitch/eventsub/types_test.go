@@ -139,5 +139,83 @@ func TestMessage_AutomaticRedemptionPayload(t *testing.T) {
 	var msg Message[NotificationPayload]
 	require.NoError(t, json.Unmarshal([]byte(raw), &msg))
 
-	require.Equal(t, "sparkles", msg.Payload.Event.RewardText.Text)
+	require.Equal(t, "sparkles", msg.Payload.Event.Message.Text)
+}
+
+// TestMessage_AutoModPayload covers both message shapes Twitch uses: AutoMod v1
+// sends a string, v2 sends an object, and neither may break the event.
+func TestMessage_AutoModPayload(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		message string
+	}{
+		{name: "auto mod v1 string", message: `"This is a bad message"`},
+		{name: "auto mod v2 object", message: `{"text": "This is a bad message"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := `{
+				"payload": {
+					"subscription": {
+						"type": "automod.message.hold",
+						"version": "2",
+						"condition": {"broadcaster_user_id": "123", "moderator_user_id": "456"}
+					},
+					"event": {
+						"broadcaster_user_id": "123",
+						"user_id": "789",
+						"user_login": "baduser",
+						"user_name": "BadUser",
+						"message_id": "msg-1",
+						"message": ` + tt.message + `,
+						"reason": "automod",
+						"held_at": "2026-01-02T03:04:05Z"
+					}
+				}
+			}`
+
+			var msg Message[NotificationPayload]
+			require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+
+			event := msg.Payload.Event
+			require.Equal(t, "msg-1", event.MessageID)
+			require.Equal(t, "BadUser", event.UserName)
+			require.Equal(t, "automod", event.Reason)
+			require.Equal(t, "This is a bad message", event.Message.Text)
+		})
+	}
+}
+
+// TestMessage_ShoutoutAndChatSettingsPayload pins the fields the UI handlers read.
+func TestMessage_ShoutoutAndChatSettingsPayload(t *testing.T) {
+	parallel := []string{
+		`{"payload":{"subscription":{"type":"channel.chat_settings.update","condition":{"broadcaster_user_id":"123"}},"event":{"broadcaster_user_id":"123","emote_mode":true,"follower_mode":false,"follower_mode_duration_minutes":null,"slow_mode":true,"slow_mode_wait_time_seconds":10,"subscriber_mode":false,"unique_chat_mode":true}}}`,
+		`{"payload":{"subscription":{"type":"channel.shoutout.create","condition":{"broadcaster_user_id":"123"}},"event":{"to_broadcaster_user_name":"Bob","viewer_count":42}}}`,
+		`{"payload":{"subscription":{"type":"channel.warning.send","condition":{"broadcaster_user_id":"123"}},"event":{"moderator_user_name":"Mod","user_name":"Alice","reason":"spam"}}}`,
+	}
+
+	for _, raw := range parallel {
+		var msg Message[NotificationPayload]
+		require.NoError(t, json.Unmarshal([]byte(raw), &msg))
+
+		event := msg.Payload.Event
+		switch msg.Payload.Subscription.Type {
+		case "channel.chat_settings.update":
+			require.NotNil(t, event.SlowMode)
+			require.True(t, *event.SlowMode)
+			require.Equal(t, 10, *event.SlowModeWaitTime)
+			require.True(t, *event.EmoteMode)
+			require.True(t, *event.UniqueChatMode)
+		case "channel.shoutout.create":
+			require.Equal(t, "Bob", event.ToBroadcasterUserName)
+			require.Equal(t, 42, event.ViewerCount)
+		case "channel.warning.send":
+			require.Equal(t, "Mod", event.ModeratorUserName)
+			require.Equal(t, "Alice", event.UserName)
+			require.Equal(t, "spam", event.Reason)
+		}
+	}
 }

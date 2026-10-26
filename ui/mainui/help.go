@@ -99,6 +99,8 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.PageDown,
 				keymap.DumpChat,
 				keymap.QuickTimeout,
+				keymap.QuickApprove,
+				keymap.QuickDeny,
 				keymap.CopyMessage,
 				keymap.CopyToClipboard,
 				keymap.SearchMode,
