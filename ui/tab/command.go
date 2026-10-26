@@ -53,17 +53,17 @@ func handleCommand(tabID string, name string, args []string, channelID string, c
 	case "clear":
 		return handleDeleteMessages("delete_all_messages", nil, channel, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "mod", "unmod", "mods", "vip", "unvip", "vips":
-		return handleRoleCommand(name, args, channelID, userAccountID, ttv, noticeCommandFunc)
+		return handleRoleCommand(name, args, channelID, ttv, noticeCommandFunc)
 	case "warn":
 		return handleWarn(args, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "raid", "unraid":
-		return handleRaid(name, args, channelID, userAccountID, ttv, noticeCommandFunc)
+		return handleRaid(name, args, channelID, ttv, noticeCommandFunc)
 	case "shoutout":
 		return handleShoutout(args, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "approve", "deny":
 		return handleAutoModAction(name, args, userAccountID, ttv, noticeCommandFunc)
 	case "snooze":
-		return handleSnooze(channelID, userAccountID, ttv, noticeCommandFunc)
+		return handleSnooze(channelID, ttv, noticeCommandFunc)
 	}
 
 	return nil
@@ -238,7 +238,7 @@ func handleChatSetting(name string, args []string, tabID string, channelID strin
 	}
 }
 
-func handleRoleCommand(name string, args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleRoleCommand(name string, args []string, channelID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	isList := name == "mods" || name == "vips"
 
 	if !isList && firstArg(args) == "" {
@@ -275,11 +275,7 @@ func handleRoleCommand(name string, args []string, channelID string, userAccount
 
 			names := make([]string, 0, len(users))
 			for _, user := range users {
-				name := user.UserName
-				if name == "" {
-					name = user.UserLogin
-				}
-				names = append(names, name)
+				names = append(names, preferredDisplayName(user.UserName, user.UserLogin))
 			}
 
 			return noticeFunc(fmt.Sprintf("%s (%d): %s", label, len(names), strings.Join(names, ", ")))()
@@ -350,7 +346,7 @@ func handleWarn(args []string, channelID string, userAccountID string, ttv Moder
 	}
 }
 
-func handleRaid(name string, args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleRaid(name string, args []string, channelID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	if name == "unraid" {
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -444,7 +440,7 @@ func handleAutoModAction(name string, args []string, userAccountID string, ttv M
 	}
 }
 
-func handleSnooze(channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleSnooze(channelID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -606,7 +602,6 @@ const (
 	timeoutDefault = 10 * time.Minute
 	timeoutMaximum = 2 * 7 * 24 * time.Hour
 
-	slowModeDefault = 30 * time.Second
 	slowModeMinimum = 3 * time.Second
 	slowModeMaximum = 120 * time.Second
 
@@ -625,7 +620,7 @@ func parseTimeoutDuration(input string) (time.Duration, error) {
 
 func parseSlowModeDuration(input string) (time.Duration, error) {
 	if strings.TrimSpace(input) == "" {
-		return slowModeDefault, nil
+		return 0, nil
 	}
 
 	// Twitch's slow-mode granularity is whole seconds: "/slow 10" means 10 seconds.

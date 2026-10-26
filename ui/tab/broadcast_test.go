@@ -1833,6 +1833,11 @@ func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
 		"automod.message.update",
 	})
 
+	counts := make(map[string]int, len(pool.subscriptions))
+	for _, subscription := range pool.subscriptions {
+		counts[subscription.Type]++
+	}
+
 	for _, expected := range []struct {
 		typeName  string
 		version   string
@@ -1858,6 +1863,7 @@ func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
 		}
 
 		require.True(t, matched, "missing subscription %s", expected.typeName)
+		require.Equal(t, 1, counts[expected.typeName], "duplicate subscription %s", expected.typeName)
 	}
 }
 

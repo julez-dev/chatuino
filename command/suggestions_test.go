@@ -1,7 +1,6 @@
 package command
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,13 +9,13 @@ import (
 func TestModeratorSuggestionsIncludeNewCommands(t *testing.T) {
 	t.Parallel()
 
-	joined := strings.Join(ModeratorSuggestions[:], "\n")
-	for _, command := range []string{
-		"/slow", "/slowoff", "/followers", "/followersoff", "/subscribers", "/subscribersoff",
-		"/emoteonly", "/emoteonlyoff", "/uniquechat", "/uniquechatoff", "/clear",
-		"/mod ", "/unmod ", "/mods", "/vip ", "/unvip ", "/vips",
-		"/warn ", "/raid ", "/unraid", "/shoutout ", "/approve ", "/deny ", "/snooze",
+	for _, suggestion := range []string{
+		"/slow [duration like 30s]", "/slowoff", "/followers [duration like 10m]", "/followersoff",
+		"/subscribers", "/subscribersoff", "/emoteonly", "/emoteonlyoff", "/uniquechat", "/uniquechatoff", "/clear",
+		"/mod <user>", "/unmod <user>", "/mods", "/vip <user>", "/unvip <user>", "/vips",
+		"/warn <user> [reason]", "/raid <channel>", "/unraid", "/shoutout <channel>",
+		"/approve <message_id>", "/deny <message_id>", "/snooze",
 	} {
-		require.Contains(t, joined, command)
+		require.Contains(t, ModeratorSuggestions[:], suggestion)
 	}
 }

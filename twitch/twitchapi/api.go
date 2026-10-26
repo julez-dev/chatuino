@@ -579,8 +579,8 @@ func (a *API) UpdateChatSettings(ctx context.Context, broadcasterID string, mode
 }
 
 // GetModerators lists the channel's moderators. userIDs optionally filters the
-// result to the given users, which is what /mods uses to answer "is this user a
-// mod?" without downloading the whole list first.
+// result to the given users, so callers can resolve specific roles without
+// downloading every page.
 func (a *API) GetModerators(ctx context.Context, broadcasterID string, userIDs []string) ([]ChatRoleUser, error) {
 	return a.getChatRoleUsers(ctx, "/moderation/moderators", broadcasterID, userIDs)
 }

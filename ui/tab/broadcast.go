@@ -572,8 +572,10 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 	case ChatEventMessage: // delegate message event to chat window
 		return t, t.handleChatEvent(msg)
 	case chatSettingsUpdatedMessage:
-		if t.channelDataLoaded && t.statusInfo != nil {
+		if t.statusInfo != nil {
 			t.statusInfo.ApplySettings(msg.settings)
+		} else if t.chatSettings != nil {
+			t.chatSettings.Put(t.channelID, msg.settings)
 		}
 		return t, nil
 	}
