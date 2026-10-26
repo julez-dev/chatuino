@@ -101,6 +101,7 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.QuickTimeout,
 				keymap.QuickApprove,
 				keymap.QuickDeny,
+				keymap.UnbanRequests,
 				keymap.CopyMessage,
 				keymap.CopyToClipboard,
 				keymap.SearchMode,

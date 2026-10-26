@@ -64,6 +64,8 @@ func handleCommand(tabID string, name string, args []string, channelID string, c
 		return handleAutoModAction(name, args, userAccountID, ttv, noticeCommandFunc)
 	case "snooze":
 		return handleSnooze(channelID, ttv, noticeCommandFunc)
+	case "unbanrequests":
+		return nav.To(tabID, openUnbanRequestsMessage{})
 	}
 
 	return nil

@@ -30,6 +30,7 @@ var fsmModes = []broadcastTabState{
 	userInspectMode,
 	userInspectInsertMode,
 	emoteOverviewMode,
+	unbanRequestMode,
 }
 
 // fsmEvents is every input that may move the tab.
@@ -39,6 +40,7 @@ var fsmEvents = []tabEvent{
 	eventCancel,
 	eventInspect,
 	eventEmoteOverview,
+	eventUnbanRequests,
 	eventLeaveInspect,
 }
 
@@ -57,6 +59,7 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 		eventCancel:        {allowed: false, to: inChatWindow},
 		eventInspect:       {allowed: true, to: userInspectMode},
 		eventEmoteOverview: {allowed: true, to: emoteOverviewMode},
+		eventUnbanRequests: {allowed: true, to: unbanRequestMode},
 		eventLeaveInspect:  {allowed: false, to: inChatWindow},
 	},
 	insertMode: {
@@ -65,6 +68,7 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 		eventCancel:        {allowed: true, to: inChatWindow},
 		eventInspect:       {allowed: true, to: userInspectMode},
 		eventEmoteOverview: {allowed: true, to: emoteOverviewMode},
+		eventUnbanRequests: {allowed: false, to: insertMode},
 		eventLeaveInspect:  {allowed: false, to: insertMode},
 	},
 	userInspectMode: {
@@ -73,6 +77,7 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 		eventCancel:        {allowed: true, to: inChatWindow},
 		eventInspect:       {allowed: true, to: userInspectMode},
 		eventEmoteOverview: {allowed: true, to: emoteOverviewMode},
+		eventUnbanRequests: {allowed: false, to: userInspectMode},
 		eventLeaveInspect:  {allowed: true, to: inChatWindow},
 	},
 	userInspectInsertMode: {
@@ -81,6 +86,7 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 		eventCancel:        {allowed: true, to: userInspectMode},
 		eventInspect:       {allowed: true, to: userInspectMode},
 		eventEmoteOverview: {allowed: true, to: emoteOverviewMode},
+		eventUnbanRequests: {allowed: false, to: userInspectInsertMode},
 		eventLeaveInspect:  {allowed: true, to: inChatWindow},
 	},
 	emoteOverviewMode: {
@@ -89,7 +95,17 @@ var fsmExpectations = map[broadcastTabState]map[tabEvent]expectation{
 		eventCancel:        {allowed: true, to: inChatWindow},
 		eventInspect:       {allowed: false, to: emoteOverviewMode},
 		eventEmoteOverview: {allowed: false, to: emoteOverviewMode},
+		eventUnbanRequests: {allowed: false, to: emoteOverviewMode},
 		eventLeaveInspect:  {allowed: false, to: emoteOverviewMode},
+	},
+	unbanRequestMode: {
+		eventCompose:       {allowed: false, to: unbanRequestMode},
+		eventSend:          {allowed: false, to: unbanRequestMode},
+		eventCancel:        {allowed: true, to: inChatWindow},
+		eventInspect:       {allowed: false, to: unbanRequestMode},
+		eventEmoteOverview: {allowed: false, to: unbanRequestMode},
+		eventUnbanRequests: {allowed: false, to: unbanRequestMode},
+		eventLeaveInspect:  {allowed: false, to: unbanRequestMode},
 	},
 }
 
@@ -145,6 +161,11 @@ func enterMode(t *testing.T, tab *Broadcast, mode broadcastTabState) {
 		_, _ = tab.transit(eventCompose)
 	case emoteOverviewMode:
 		_, _ = tab.transit(eventEmoteOverview)
+	case unbanRequestMode:
+		tab.isUserMod = true
+		tab.client.Moderation = newFakeModerationClient()
+		tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, tab.client.Moderation, tab.width, tab.height, tab.theme, tab.keymap)
+		_, _ = tab.transit(eventUnbanRequests)
 	default:
 		t.Fatalf("no setup path for mode %v", mode)
 	}
@@ -167,6 +188,9 @@ func assertTabInvariants(t *testing.T, tab *Broadcast) {
 	case tab.state == emoteOverviewMode:
 		require.False(t, inputFocused, "the composer must not keep the keyboard behind the emote overview")
 		require.False(t, chatFocused, "the chat window must not keep the keyboard behind the emote overview")
+	case tab.state == unbanRequestMode:
+		require.False(t, inputFocused, "the composer must not keep the keyboard behind the unban queue")
+		require.False(t, chatFocused, "the chat window must not keep the keyboard behind the unban queue")
 	case tab.state.isComposing():
 		require.True(t, inputFocused, "composing means the composer owns the keyboard")
 		require.False(t, chatFocused)
@@ -207,6 +231,14 @@ func TestTabTransitions_Matrix(t *testing.T) {
 				if event == eventInspect && fsmExpectations[mode][event].allowed && tab.userInspect == nil {
 					tab.userInspect = newUserInspect(tab.id, tab.width, tab.height, "someone", tab.channelLogin, tab.account.ID,
 						tab.settings, tab.theme, tab.keymap, tab.client.API, tab.messageLogger, tab.emoteReplacer, tab.badgeReplacer)
+				}
+
+				// The queue needs both a mod status and a moderation client, just like
+				// production, so the opening transition is still exercised.
+				if event == eventUnbanRequests && fsmExpectations[mode][event].allowed {
+					tab.isUserMod = true
+					tab.client.Moderation = newFakeModerationClient()
+					tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, tab.client.Moderation, tab.width, tab.height, tab.theme, tab.keymap)
 				}
 
 				applied, _ := tab.transit(event)
@@ -328,6 +360,8 @@ func eventName(event tabEvent) string {
 		return "inspect"
 	case eventEmoteOverview:
 		return "emote-overview"
+	case eventUnbanRequests:
+		return "unban-requests"
 	case eventLeaveInspect:
 		return "leave-inspect"
 	}
@@ -471,6 +505,15 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			},
 		},
 		{
+			name: "unban requests replace the content area",
+			in:   layoutInputs{height: 20, streamInfo: 1, composer: 4, status: 1, unbanRequests: true},
+			want: broadcastLayout{
+				height:        20,
+				unbanRequests: layoutSpan{top: 0, height: 19},
+				status:        layoutSpan{top: 19, height: 1},
+			},
+		},
+		{
 			name: "short terminal clamps to zero instead of going negative",
 			in:   layoutInputs{height: 3, streamInfo: 1, poll: 4, composer: 4, status: 1},
 			want: broadcastLayout{
@@ -492,7 +535,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			got := allocateBroadcastLayout(tt.in)
 			require.Equal(t, tt.want, got)
 
-			for _, span := range []layoutSpan{got.streamInfo, got.prediction, got.poll, got.chat, got.userInspect, got.composer, got.status, got.emoteOverview} {
+			for _, span := range []layoutSpan{got.streamInfo, got.prediction, got.poll, got.chat, got.userInspect, got.composer, got.status, got.emoteOverview, got.unbanRequests} {
 				require.GreaterOrEqual(t, span.top, 0)
 				require.GreaterOrEqual(t, span.height, 0)
 			}
@@ -524,6 +567,8 @@ func Test_allocateBroadcastLayout_visibleRegionsTileTheScreen(t *testing.T) {
 			regions := []layoutSpan{l.streamInfo, l.prediction, l.poll, l.chat, l.userInspect, l.composer, l.status}
 			if in.emoteOverview {
 				regions = []layoutSpan{l.emoteOverview, l.status}
+			} else if in.unbanRequests {
+				regions = []layoutSpan{l.unbanRequests, l.status}
 			}
 
 			next := 0
@@ -701,6 +746,19 @@ func Test_Broadcast_ViewMatchesLayoutHeight(t *testing.T) {
 		tab.HandleResize()
 
 		require.True(t, tab.layout.emoteOverview.visible())
+		require.False(t, tab.layout.chat.visible())
+		require.Equal(t, tab.height, lipgloss.Height(tab.View()))
+	})
+
+	t.Run("unban requests", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, account)
+		tab.state = unbanRequestMode
+		tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, newFakeModerationClient(), tab.width, tab.height, tab.theme, tab.keymap)
+		tab.HandleResize()
+
+		require.True(t, tab.layout.unbanRequests.visible())
 		require.False(t, tab.layout.chat.visible())
 		require.Equal(t, tab.height, lipgloss.Height(tab.View()))
 	})
@@ -1831,6 +1889,8 @@ func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
 		"channel.shoutout.receive",
 		"automod.message.hold",
 		"automod.message.update",
+		"channel.unban_request.create",
+		"channel.unban_request.resolve",
 	})
 
 	counts := make(map[string]int, len(pool.subscriptions))
@@ -1850,6 +1910,8 @@ func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
 		{"channel.shoutout.receive", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
 		{"automod.message.hold", "2", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
 		{"automod.message.update", "2", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.unban_request.create", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.unban_request.resolve", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
 	} {
 		matched := false
 		for _, subscription := range pool.subscriptions {
@@ -1874,6 +1936,30 @@ func TestBroadcast_SubscribeChannelEventCmdsRequiresOwnChannel(t *testing.T) {
 	tab.client.EventSub = fakeEventSubService{}
 
 	require.Empty(t, tab.subscribeChannelEventCmds("chan-id"))
+}
+
+func TestBroadcast_SubscribeChannelEventCmdsIncludesUnbanRequestsForModerators(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "other", DisplayName: "me"})
+	tab.isUserMod = true
+	tab.client.EventSub = fakeEventSubService{}
+	pool := &capturingPool{}
+	tab.pool = pool
+
+	for _, cmd := range tab.subscribeChannelEventCmds("chan-id") {
+		require.NotNil(t, cmd)
+		_ = cmd()
+	}
+
+	require.Len(t, pool.subscriptions, 2)
+	for _, subscription := range pool.subscriptions {
+		require.Contains(t, []string{"channel.unban_request.create", "channel.unban_request.resolve"}, subscription.Type)
+		require.Equal(t, map[string]string{
+			"broadcaster_user_id": "chan-id",
+			"moderator_user_id":   "other",
+		}, subscription.Condition)
+	}
 }
 
 func TestBroadcast_HandleEventSubMessageIgnoresOtherChannels(t *testing.T) {

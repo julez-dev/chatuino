@@ -391,6 +391,43 @@ export default function Features() {
           and{" "}
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">/deny</code>.
         </p>
+        <h3 class="mb-3 mt-6 text-lg font-semibold text-nord4">
+          Unban Request Queue
+        </h3>
+        <p class="mb-4 text-nord4">
+          Press{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">alt+u</code>{" "}
+          or run{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
+            /unbanrequests
+          </code>{" "}
+          to open the unban request queue for the current channel. Each entry
+          shows the user, request text, status and when it was created.
+        </p>
+        <p class="mb-4 text-nord4">
+          Use <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">h</code>/
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">l</code> or
+          the left/right arrow keys to switch between pending, approved, denied,
+          acknowledged, canceled and all requests. Resolved requests also show
+          the moderator and optional resolution text. Use{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">j</code>/
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">k</code> or
+          the up/down arrow keys to select a request,{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">a</code> to
+          approve it, and{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">d</code> to
+          deny it. Only pending requests can be approved or denied. Approving or
+          denying opens a resolution input where you can optionally add a
+          message for the user; press Enter to submit or Escape to cancel. Press{" "}
+          <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">r</code> to
+          refresh and Escape again to close.
+        </p>
+        <p class="mb-4 text-nord4">
+          The queue listens for new and resolved unban requests, so updates
+          appear without a manual refresh. Failed refreshes or resolutions keep
+          the current queue visible so you can retry. This feature is available
+          to moderators and broadcasters only.
+        </p>
         <p class="mb-4 text-nord4">
           <code class="rounded bg-nord1 px-1.5 py-0.5 text-nord8">
             /timeout

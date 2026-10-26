@@ -189,6 +189,30 @@ func TestMessage_AutoModPayload(t *testing.T) {
 	}
 }
 
+func TestMessage_UnbanRequestPayloads(t *testing.T) {
+	t.Parallel()
+
+	created := `{"payload":{"subscription":{"type":"channel.unban_request.create"},"event":{"id":"request-1","broadcaster_user_id":"123","broadcaster_user_login":"streamer","broadcaster_user_name":"Streamer","user_id":"456","user_login":"alice","user_name":"Alice","text":"I was banned by mistake","created_at":"2026-01-02T03:04:05Z"}}}`
+	resolved := `{"payload":{"subscription":{"type":"channel.unban_request.resolve"},"event":{"id":"request-1","broadcaster_user_id":"123","moderator_id":"789","moderator_login":"mod","moderator_name":"Mod","user_id":"456","user_login":"alice","user_name":"Alice","resolution_text":"apology accepted","status":"approved"}}}`
+
+	var createMsg Message[NotificationPayload]
+	require.NoError(t, json.Unmarshal([]byte(created), &createMsg))
+	createEvent := createMsg.Payload.Event
+	require.Equal(t, "request-1", createEvent.ID)
+	require.Equal(t, "Alice", createEvent.UserName)
+	require.Equal(t, "I was banned by mistake", createEvent.Text)
+	require.Equal(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), createEvent.CreatedAt)
+
+	var resolveMsg Message[NotificationPayload]
+	require.NoError(t, json.Unmarshal([]byte(resolved), &resolveMsg))
+	resolveEvent := resolveMsg.Payload.Event
+	require.Equal(t, "request-1", resolveEvent.ID)
+	require.Equal(t, "approved", resolveEvent.Status)
+	require.Equal(t, "apology accepted", resolveEvent.ResolutionText)
+	require.Equal(t, "789", resolveEvent.ModeratorID)
+	require.Equal(t, "Mod", resolveEvent.ModeratorName)
+}
+
 // TestMessage_ShoutoutAndChatSettingsPayload pins the fields the UI handlers read.
 func TestMessage_ShoutoutAndChatSettingsPayload(t *testing.T) {
 	parallel := []string{

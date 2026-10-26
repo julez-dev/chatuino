@@ -402,18 +402,28 @@ func (a *API) FetchUnbanRequests(ctx context.Context, broadcasterID, moderatorID
 	return requests, nil
 }
 
-func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status string) (UnbanRequest, error) {
+// ResolveBanRequest approves or denies one unban request. resolutionText is
+// optional and limited to 500 characters by Twitch.
+func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID, requestID, status, resolutionText string) (UnbanRequest, error) {
 	values := url.Values{}
 	values.Add("broadcaster_id", broadcasterID)
 	values.Add("moderator_id", moderatorID)
 	values.Add("unban_request_id", requestID)
 	values.Add("status", status)
+	if resolutionText != "" {
+		values.Add("resolution_text", resolutionText)
+	}
 
 	url := fmt.Sprintf("/moderation/unban_requests?%s", values.Encode())
 
 	resp, err := doAuthenticatedUserRequest[GetUnbanRequestsResponse](ctx, a, http.MethodPatch, url, nil)
 	if err != nil {
 		return UnbanRequest{}, err
+	}
+	if len(resp.Data) == 0 {
+		// A 204 means the write succeeded without echoing the request. Return the
+		// state we sent so callers can still update their local queue.
+		return UnbanRequest{ID: requestID, Status: status, ResolutionText: resolutionText}, nil
 	}
 
 	return resp.Data[0], nil

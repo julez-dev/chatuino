@@ -280,6 +280,13 @@ type fakeModerationClient struct {
 
 	snoozeResp twitchapi.AdSnoozeData
 	snoozeErr  error
+
+	unbanRequests  []twitchapi.UnbanRequest
+	unbanFetchErr  error
+	resolvedID     string
+	resolvedStatus string
+	resolutionText string
+	resolveErr     error
 }
 
 func (f *fakeModerationClient) GetUsers(_ context.Context, logins []string, _ []string) (twitchapi.UserResponse, error) {
@@ -369,6 +376,29 @@ func (f *fakeModerationClient) ManageAutoModMessage(_ context.Context, _ string,
 
 func (f *fakeModerationClient) SnoozeNextAd(context.Context, string) (twitchapi.AdSnoozeData, error) {
 	return f.snoozeResp, f.snoozeErr
+}
+
+func (f *fakeModerationClient) FetchUnbanRequests(context.Context, string, string) ([]twitchapi.UnbanRequest, error) {
+	return f.unbanRequests, f.unbanFetchErr
+}
+
+func (f *fakeModerationClient) ResolveBanRequest(_ context.Context, _ string, _ string, requestID string, status string, resolutionText string) (twitchapi.UnbanRequest, error) {
+	f.resolvedID = requestID
+	f.resolvedStatus = status
+	f.resolutionText = resolutionText
+	if f.resolveErr != nil {
+		return twitchapi.UnbanRequest{}, f.resolveErr
+	}
+
+	for _, request := range f.unbanRequests {
+		if request.ID == requestID {
+			request.Status = status
+			request.ResolutionText = resolutionText
+			return request, nil
+		}
+	}
+
+	return twitchapi.UnbanRequest{ID: requestID, Status: status, ResolutionText: resolutionText}, nil
 }
 
 func newFakeModerationClient() *fakeModerationClient {

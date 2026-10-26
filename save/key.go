@@ -80,6 +80,7 @@ type KeyMap struct {
 	QuickTimeout    key.Binding `yaml:"quick_timeout"`
 	QuickApprove    key.Binding `yaml:"quick_approve"`
 	QuickDeny       key.Binding `yaml:"quick_deny"`
+	UnbanRequests   key.Binding `yaml:"unban_requests"`
 	CopyMessage     key.Binding `yaml:"copy_message"`
 	CopyToClipboard key.Binding `yaml:"copy_to_clipboard"`
 	ReplyMessage    key.Binding `yaml:"reply_message"`
@@ -275,6 +276,10 @@ func BuildDefaultKeyMap() KeyMap {
 		QuickDeny: key.NewBinding(
 			key.WithKeys("alt+d"),
 			key.WithHelp("alt+d", "deny selected AutoMod message"),
+		),
+		UnbanRequests: key.NewBinding(
+			key.WithKeys("alt+u"),
+			key.WithHelp("alt+u", "open unban request queue"),
 		),
 		DumpChat: key.NewBinding(
 			key.WithKeys("ctrl+alt+c"),

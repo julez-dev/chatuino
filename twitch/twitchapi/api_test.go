@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/julez-dev/chatuino/save"
@@ -202,3 +203,109 @@ func TestAPI_ModeratorCommandContracts(t *testing.T) {
 
 func boolPointer(value bool) *bool { return &value }
 func intPointer(value int) *int    { return &value }
+
+func TestAPI_UnbanRequestContracts(t *testing.T) {
+	t.Parallel()
+
+	t.Run("fetch pending and resolved pages", func(t *testing.T) {
+		t.Parallel()
+
+		type fetchRequest struct {
+			method, path, broadcasterID, moderatorID, first, status string
+		}
+
+		var (
+			seenMu       sync.Mutex
+			seenRequests []fetchRequest
+		)
+		client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			seenMu.Lock()
+			seenRequests = append(seenRequests, fetchRequest{
+				method:        req.Method,
+				path:          req.URL.Path,
+				broadcasterID: req.URL.Query().Get("broadcaster_id"),
+				moderatorID:   req.URL.Query().Get("moderator_id"),
+				first:         req.URL.Query().Get("first"),
+				status:        req.URL.Query().Get("status"),
+			})
+			seenMu.Unlock()
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"data":[],"pagination":{}}`)),
+			}, nil
+		})}
+
+		api, err := NewAPI("client-id", WithHTTPClient(client), WithUserAuthentication(fakeAccountProvider{}, nil, "account-id"))
+		require.NoError(t, err)
+
+		requests, err := api.FetchUnbanRequests(t.Context(), "channel-id", "account-id")
+		require.NoError(t, err)
+		require.Empty(t, requests)
+
+		seenStatus := map[string]int{}
+		for _, request := range seenRequests {
+			require.Equal(t, http.MethodGet, request.method)
+			require.Equal(t, "/helix/moderation/unban_requests", request.path)
+			require.Equal(t, "channel-id", request.broadcasterID)
+			require.Equal(t, "account-id", request.moderatorID)
+			require.Equal(t, "100", request.first)
+			seenStatus[request.status]++
+		}
+		require.Equal(t, map[string]int{
+			"pending": 1, "approved": 1, "denied": 1, "acknowledged": 1, "canceled": 1,
+		}, seenStatus)
+	})
+
+	t.Run("resolve with optional text", func(t *testing.T) {
+		t.Parallel()
+
+		client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			require.Equal(t, http.MethodPatch, req.Method)
+			require.Equal(t, "/helix/moderation/unban_requests", req.URL.Path)
+			require.Equal(t, "channel-id", req.URL.Query().Get("broadcaster_id"))
+			require.Equal(t, "account-id", req.URL.Query().Get("moderator_id"))
+			require.Equal(t, "request-1", req.URL.Query().Get("unban_request_id"))
+			require.Equal(t, "approved", req.URL.Query().Get("status"))
+			require.Equal(t, "apology accepted", req.URL.Query().Get("resolution_text"))
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"request-1","status":"approved","resolution_text":"apology accepted"}]}`)),
+			}, nil
+		})}
+
+		api, err := NewAPI("client-id", WithHTTPClient(client), WithUserAuthentication(fakeAccountProvider{}, nil, "account-id"))
+		require.NoError(t, err)
+
+		request, err := api.ResolveBanRequest(t.Context(), "channel-id", "account-id", "request-1", "approved", "apology accepted")
+		require.NoError(t, err)
+		require.Equal(t, "request-1", request.ID)
+		require.Equal(t, "apology accepted", request.ResolutionText)
+	})
+
+	t.Run("resolve accepts a 204 without a response body", func(t *testing.T) {
+		t.Parallel()
+
+		client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			require.Equal(t, http.MethodPatch, req.Method)
+			require.Empty(t, req.URL.Query().Get("resolution_text"))
+
+			return &http.Response{
+				StatusCode: http.StatusNoContent,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader("")),
+			}, nil
+		})}
+
+		api, err := NewAPI("client-id", WithHTTPClient(client), WithUserAuthentication(fakeAccountProvider{}, nil, "account-id"))
+		require.NoError(t, err)
+
+		request, err := api.ResolveBanRequest(t.Context(), "channel-id", "account-id", "request-1", "denied", "")
+		require.NoError(t, err)
+		require.Equal(t, "request-1", request.ID)
+		require.Equal(t, "denied", request.Status)
+	})
+}

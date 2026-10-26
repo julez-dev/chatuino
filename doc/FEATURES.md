@@ -124,6 +124,14 @@ Moderators and VIPs are managed with `/mod`, `/unmod`, `/mods`, `/vip`, `/unvip`
 
 Held AutoMod messages appear as chat notices with their message ID; approve or deny them with `/approve <message_id>` and `/deny <message_id>`, or select the notice and press `alt+a` / `alt+d` to have the command typed into the composer. Warnings, shoutouts and AutoMod status changes are also rendered in chat.
 
+### Unban Request Queue
+
+Press `alt+u` or run `/unbanrequests` to open the unban request queue for the current channel. Each entry shows the user, request text, status and when it was created.
+
+Use `h`/`l` or the left/right arrow keys to switch between pending, approved, denied, acknowledged, canceled and all requests. Resolved requests also show the moderator and optional resolution text. Use `j`/`k` or the up/down arrow keys to select a request, `a` to approve it, and `d` to deny it. Only pending requests can be approved or denied. Approving or denying opens a resolution input where you can optionally add a message for the user; press Enter to submit or Escape to cancel. Press `r` to refresh the queue and Escape again to close it.
+
+The queue listens to `channel.unban_request.create` and `channel.unban_request.resolve`, so new requests and resolutions appear without a manual refresh. A failed refresh or resolution keeps the current queue visible so you can retry. The feature is available to moderators and broadcasters only.
+
 `/timeout` takes its duration the way Twitch's own chat does, so it does not need to be converted to seconds first:
 
 - `/timeout alice 10m spam` - ten minutes

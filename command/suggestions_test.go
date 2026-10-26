@@ -14,7 +14,7 @@ func TestModeratorSuggestionsIncludeNewCommands(t *testing.T) {
 		"/subscribers", "/subscribersoff", "/emoteonly", "/emoteonlyoff", "/uniquechat", "/uniquechatoff", "/clear",
 		"/mod <user>", "/unmod <user>", "/mods", "/vip <user>", "/unvip <user>", "/vips",
 		"/warn <user> [reason]", "/raid <channel>", "/unraid", "/shoutout <channel>",
-		"/approve <message_id>", "/deny <message_id>", "/snooze",
+		"/approve <message_id>", "/deny <message_id>", "/snooze", "/unbanrequests",
 	} {
 		require.Contains(t, ModeratorSuggestions[:], suggestion)
 	}

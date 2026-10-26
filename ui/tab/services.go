@@ -80,6 +80,8 @@ type ModerationAPI interface {
 	SendShoutout(ctx context.Context, fromBroadcasterID string, toBroadcasterID string, moderatorID string) error
 	ManageAutoModMessage(ctx context.Context, userID string, messageID string, action string) error
 	SnoozeNextAd(ctx context.Context, broadcasterID string) (twitchapi.AdSnoozeData, error)
+	FetchUnbanRequests(ctx context.Context, broadcasterID string, moderatorID string) ([]twitchapi.UnbanRequest, error)
+	ResolveBanRequest(ctx context.Context, broadcasterID string, moderatorID string, requestID string, status string, resolutionText string) (twitchapi.UnbanRequest, error)
 }
 
 // FollowedChannelsAPI lists the channels an account follows.
