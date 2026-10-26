@@ -480,10 +480,19 @@ func (q *unbanRequestQueue) listView() string {
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ListSelectedColor))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.DimmedTextColor))
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.ChatErrorColor))
+	activePill := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(q.theme.ListBackgroundColor)).
+		Background(lipgloss.Color(q.theme.ListSelectedColor)).
+		Padding(0, 1)
+	inactivePill := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(q.theme.DimmedTextColor)).
+		Padding(0, 1)
 
 	header := []string{
-		titleStyle.Render("Unban requests"),
-		q.filterLine(selectedStyle, dimStyle),
+		titleStyle.Render("Unban Requests") + dimStyle.Render(fmt.Sprintf("  %d total", len(q.requests))),
+		q.filterLine(activePill, inactivePill),
+		dimStyle.Render(strings.Repeat("─", max(1, q.width))),
 	}
 	switch {
 	case q.err != nil:
@@ -511,7 +520,7 @@ func (q *unbanRequestQueue) listView() string {
 		}
 	}
 
-	footer := []string{dimStyle.Render("h/l filter · j/k select · a approve · d deny · r refresh · esc close")}
+	footer := []string{dimStyle.Render("h/l filter  ·  j/k select  ·  a approve  ·  d deny  ·  r refresh  ·  esc close")}
 
 	bodyHeight := max(0, q.height-len(header)-len(footer))
 	lines, starts := q.listLines(selectedStyle, dimStyle)
@@ -533,17 +542,22 @@ func (q *unbanRequestQueue) resolutionView() string {
 		q.cancelResolution()
 		return q.listView()
 	}
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ListLabelColor))
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.DimmedTextColor))
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.ChatErrorColor))
+	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ListSelectedColor))
 
 	action := "Approve"
+	actionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ChatSubAlertColor))
 	if q.resolveStatus == "denied" {
 		action = "Deny"
+		actionStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ChatErrorColor))
 	}
 
+	name := preferredDisplayName(request.UserName, request.UserLogin)
 	out := []string{
-		titleStyle.Render(fmt.Sprintf("%s unban request from %s", action, preferredDisplayName(request.UserName, request.UserLogin))),
+		actionStyle.Render(action) + " unban request from " + nameStyle.Render(name),
+		dimStyle.Render(strings.Repeat("─", max(1, q.width))),
+		dimStyle.Render(fmt.Sprintf("Requested %s", unbanRequestAge(request.CreatedAt))),
 	}
 
 	text := request.Text
@@ -553,24 +567,24 @@ func (q *unbanRequestQueue) resolutionView() string {
 
 	bodyWidth := max(1, q.width-4)
 	for _, line := range strings.Split(wordwrap.String(text, bodyWidth), "\n") {
-		out = append(out, "  "+line)
+		out = append(out, "  "+dimStyle.Render("│ ")+line)
 	}
 
-	out = append(out, "", "Resolution text (optional):", q.input.View())
+	out = append(out, "", dimStyle.Render("Resolution text (optional, 500 characters):"), q.input.View())
 	if q.err != nil {
 		out = append(out, errorStyle.Render(q.err.Error()))
 	}
 
-	help := "enter confirm · esc cancel"
+	help := "enter confirm  ·  esc cancel"
 	if q.submitting {
 		help = "Resolving..."
 	}
-	out = append(out, dimStyle.Render(help))
+	out = append(out, "", dimStyle.Render(help))
 
 	return fitLines(out, q.width, q.height)
 }
 
-func (q *unbanRequestQueue) filterLine(selectedStyle, dimStyle lipgloss.Style) string {
+func (q *unbanRequestQueue) filterLine(activePill, inactivePill lipgloss.Style) string {
 	counts := make(map[string]int, len(unbanRequestFilters))
 	for _, request := range q.requests {
 		counts[request.Status]++
@@ -585,15 +599,29 @@ func (q *unbanRequestQueue) filterLine(selectedStyle, dimStyle lipgloss.Style) s
 			label = fmt.Sprintf("%s %d", label, counts[filter])
 		}
 
-		text := "[" + label + "]"
 		if i == q.filterAt {
-			parts = append(parts, selectedStyle.Render(text))
+			parts = append(parts, activePill.Render(label))
 		} else {
-			parts = append(parts, dimStyle.Render(text))
+			parts = append(parts, inactivePill.Render(label))
 		}
 	}
 
 	return strings.Join(parts, " ")
+}
+
+func (q *unbanRequestQueue) requestStatusStyle(status string) lipgloss.Style {
+	switch status {
+	case "pending":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ChatNoticeAlertColor))
+	case "approved":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ChatSubAlertColor))
+	case "denied":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(q.theme.ChatErrorColor))
+	case "acknowledged":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.ActiveLabelColor))
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(q.theme.DimmedTextColor))
+	}
 }
 
 func unbanStatusLabel(status string) string {
@@ -622,14 +650,14 @@ func (q *unbanRequestQueue) listLines(selectedStyle, dimStyle lipgloss.Style) ([
 	for i, request := range q.visible {
 		starts = append(starts, len(lines))
 
-		prefix := "  "
+		marker := "  "
 		name := preferredDisplayName(request.UserName, request.UserLogin)
-		line := fmt.Sprintf("%s - %s - %s", name, request.Status, unbanRequestAge(request.CreatedAt))
 		if i == q.selected {
-			prefix = "> "
-			line = selectedStyle.Render(line)
+			marker = "▸ "
+			name = selectedStyle.Render(name)
 		}
-		lines = append(lines, prefix+line)
+		status := q.requestStatusStyle(request.Status).Render(unbanStatusLabel(request.Status))
+		lines = append(lines, marker+name+"  "+status+"  "+dimStyle.Render(unbanRequestAge(request.CreatedAt)))
 
 		text := request.Text
 		if strings.TrimSpace(text) == "" {
@@ -661,7 +689,7 @@ func (q *unbanRequestQueue) listLines(selectedStyle, dimStyle lipgloss.Style) ([
 				metaLines = append(metaLines[:1], "…")
 			}
 			for _, metaLine := range metaLines {
-				lines = append(lines, "    "+dimStyle.Render(metaLine))
+				lines = append(lines, "    "+dimStyle.Render("↳ "+metaLine))
 			}
 		}
 

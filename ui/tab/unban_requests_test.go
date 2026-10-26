@@ -57,9 +57,9 @@ func TestUnbanRequestQueue_LoadsAllStatusesAndDefaultsToPending(t *testing.T) {
 	require.Equal(t, "pending-1", q.visible[0].ID)
 
 	view := q.View()
-	require.Contains(t, view, "Unban requests")
-	require.Contains(t, view, "[Pending 1]")
-	require.Contains(t, view, "[Approved 1]")
+	require.Contains(t, view, "Unban Requests")
+	require.Contains(t, view, "Pending 1")
+	require.Contains(t, view, "Approved 1")
 	require.Contains(t, view, "Alice")
 	require.Contains(t, view, "I was banned by mistake")
 
@@ -147,7 +147,7 @@ func TestUnbanRequestQueue_ApproveRemovesRequestAndPassesResolutionText(t *testi
 	require.Equal(t, "pending-1", api.resolvedID)
 	require.Equal(t, "approved", api.resolvedStatus)
 	require.Equal(t, "apology accepted", api.resolutionText)
-	require.Contains(t, q.View(), "[Pending 0]")
+	require.Contains(t, q.View(), "Pending 0")
 	require.Contains(t, q.notice, "Alice was approved")
 
 	q.setFilter("approved")
