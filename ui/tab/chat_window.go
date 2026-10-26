@@ -953,6 +953,26 @@ func (c *chatWindow) handleTimeoutMessage(msg ChatEventMessage) {
 	}
 }
 
+// updateNotice rewrites an existing notice in place and reflows the lines after
+// its text changed. Matching by MsgID lets a redemption update find the notice
+// created by the earlier add event; notices that already left the buffer are
+// simply ignored.
+func (c *chatWindow) updateNotice(id, message string) bool {
+	for _, e := range c.entries {
+		notice, ok := e.Event.Message.(*twitchirc.Notice)
+		if !ok || notice.MsgID != twitchirc.MsgID(id) {
+			continue
+		}
+
+		notice.Message = message
+		c.recalculateLines()
+
+		return true
+	}
+
+	return false
+}
+
 func (c *chatWindow) handleMessageDeletion(msg ChatEventMessage) {
 	if clearMsg, ok := msg.Message.(*twitchirc.ClearMessage); ok {
 		var hasDeleted bool

@@ -479,3 +479,18 @@ func TestChatWindow_ReplyContextKeepsItsRow(t *testing.T) {
 	require.Contains(t, ansi.Strip(reference), "↩ Alice: that was a great play")
 	require.Contains(t, ansi.Strip(rows[reply.Position.CursorEnd-c.viewportRenderStart()]), fmt.Sprintf("%s: no it wasn't", "carol"))
 }
+
+func TestChatWindow_UpdateNotice(t *testing.T) {
+	t.Parallel()
+
+	c := newRenderedChatWindow(t, 80, 10)
+	c.handleMessage(ChatEventMessage{Message: &twitchirc.Notice{
+		MsgID:   "redemption-1",
+		Message: "waiting for fulfilment",
+	}})
+
+	require.True(t, c.updateNotice("redemption-1", "fulfilled"))
+	require.Len(t, c.entries, 1, "updating a notice must not append an entry")
+	require.Contains(t, plain(c.lines), "fulfilled")
+	require.False(t, c.updateNotice("missing", "ignored"))
+}

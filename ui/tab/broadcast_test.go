@@ -13,8 +13,10 @@ import (
 	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/emote"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -386,6 +388,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			want: broadcastLayout{
 				height:     20,
 				streamInfo: layoutSpan{top: 0, height: 1},
+				prediction: layoutSpan{top: 1, height: 0},
 				poll:       layoutSpan{top: 1, height: 0},
 				chat:       layoutSpan{top: 1, height: 14},
 				composer:   layoutSpan{top: 15, height: 4},
@@ -398,10 +401,24 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			want: broadcastLayout{
 				height:     20,
 				streamInfo: layoutSpan{top: 0, height: 2},
+				prediction: layoutSpan{top: 2, height: 0},
 				poll:       layoutSpan{top: 2, height: 5},
 				chat:       layoutSpan{top: 7, height: 8},
 				composer:   layoutSpan{top: 15, height: 4},
 				status:     layoutSpan{top: 19, height: 1},
+			},
+		},
+		{
+			name: "stream info, prediction and poll",
+			in:   layoutInputs{height: 24, streamInfo: 2, prediction: 5, poll: 4, composer: 4, status: 1},
+			want: broadcastLayout{
+				height:     24,
+				streamInfo: layoutSpan{top: 0, height: 2},
+				prediction: layoutSpan{top: 2, height: 5},
+				poll:       layoutSpan{top: 7, height: 4},
+				chat:       layoutSpan{top: 11, height: 8},
+				composer:   layoutSpan{top: 19, height: 4},
+				status:     layoutSpan{top: 23, height: 1},
 			},
 		},
 		{
@@ -410,6 +427,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			want: broadcastLayout{
 				height:     20,
 				streamInfo: layoutSpan{top: 0, height: 1},
+				prediction: layoutSpan{top: 1, height: 0},
 				poll:       layoutSpan{top: 1, height: 0},
 				chat:       layoutSpan{top: 1, height: 18},
 				composer:   layoutSpan{top: 19, height: 0},
@@ -422,6 +440,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			want: broadcastLayout{
 				height:     20,
 				streamInfo: layoutSpan{top: 0, height: 1},
+				prediction: layoutSpan{top: 1, height: 0},
 				poll:       layoutSpan{top: 1, height: 0},
 				chat:       layoutSpan{top: 1, height: 15},
 				composer:   layoutSpan{top: 16, height: 4},
@@ -434,6 +453,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			want: broadcastLayout{
 				height:      20,
 				streamInfo:  layoutSpan{top: 0, height: 1},
+				prediction:  layoutSpan{top: 1, height: 0},
 				poll:        layoutSpan{top: 1, height: 0},
 				chat:        layoutSpan{top: 1, height: 9},
 				userInspect: layoutSpan{top: 10, height: 5},
@@ -456,6 +476,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			want: broadcastLayout{
 				height:     3,
 				streamInfo: layoutSpan{top: 0, height: 1},
+				prediction: layoutSpan{top: 1, height: 0},
 				poll:       layoutSpan{top: 1, height: 4},
 				chat:       layoutSpan{top: 5, height: 0},
 				composer:   layoutSpan{top: 5, height: 4},
@@ -471,7 +492,7 @@ func Test_allocateBroadcastLayout(t *testing.T) {
 			got := allocateBroadcastLayout(tt.in)
 			require.Equal(t, tt.want, got)
 
-			for _, span := range []layoutSpan{got.streamInfo, got.poll, got.chat, got.userInspect, got.composer, got.status, got.emoteOverview} {
+			for _, span := range []layoutSpan{got.streamInfo, got.prediction, got.poll, got.chat, got.userInspect, got.composer, got.status, got.emoteOverview} {
 				require.GreaterOrEqual(t, span.top, 0)
 				require.GreaterOrEqual(t, span.height, 0)
 			}
@@ -488,6 +509,7 @@ func Test_allocateBroadcastLayout_visibleRegionsTileTheScreen(t *testing.T) {
 	inputs := []layoutInputs{
 		{height: 24, streamInfo: 1, composer: 4, status: 1},
 		{height: 24, streamInfo: 2, poll: 4, composer: 4, status: 1},
+		{height: 24, streamInfo: 2, prediction: 5, poll: 4, composer: 4, status: 1},
 		{height: 24, streamInfo: 2, poll: 4, composer: 4, status: 1, inspecting: true},
 		{height: 30, streamInfo: 1, composer: 6, status: 1, inspecting: true},
 		{height: 18, streamInfo: 1, composer: 4, status: 0},
@@ -499,7 +521,7 @@ func Test_allocateBroadcastLayout_visibleRegionsTileTheScreen(t *testing.T) {
 
 			l := allocateBroadcastLayout(in)
 
-			regions := []layoutSpan{l.streamInfo, l.poll, l.chat, l.userInspect, l.composer, l.status}
+			regions := []layoutSpan{l.streamInfo, l.prediction, l.poll, l.chat, l.userInspect, l.composer, l.status}
 			if in.emoteOverview {
 				regions = []layoutSpan{l.emoteOverview, l.status}
 			}
@@ -609,6 +631,23 @@ func Test_Broadcast_ViewMatchesLayoutHeight(t *testing.T) {
 
 		require.True(t, tab.layout.poll.visible())
 		require.GreaterOrEqual(t, tab.layout.streamInfo.height, 1)
+		require.Equal(t, tab.height, lipgloss.Height(tab.View()))
+	})
+
+	t.Run("prediction and poll", func(t *testing.T) {
+		t.Parallel()
+
+		tab := newLoadedLayoutTestTab(t, 80, 24, account)
+		tab.prediction.enabled = true
+		tab.prediction.title = "who wins?"
+		tab.prediction.outcomes = []predictionOutcome{{id: "1", title: "yes", points: 1}}
+		tab.poll.enabled = true
+		tab.poll.title = "best map?"
+		tab.poll.items = []pollItem{{id: "1", title: "dust2", votes: 1}}
+		tab.HandleResize()
+
+		require.True(t, tab.layout.prediction.visible())
+		require.True(t, tab.layout.poll.visible())
 		require.Equal(t, tab.height, lipgloss.Height(tab.View()))
 	})
 
@@ -1420,6 +1459,7 @@ func newLoadedReplyTab(t *testing.T) (*Broadcast, *fakeUserClient) {
 	tab.channelDataLoaded = true
 	tab.statusInfo = newStreamStatus(tab.width, tab.height, tab, tab.account.ID, tab.channelID, tab.theme, tab.client.API, tab.chatSettings)
 	tab.streamInfo = newStreamInfo(tab.channelID, client, tab.width)
+	tab.prediction = newPrediction(tab.width)
 	tab.poll = newPoll(tab.width)
 	tab.HandleResize()
 
@@ -1674,4 +1714,273 @@ func TestBroadcast_EmoteRefreshFailureKeepsTabUsable(t *testing.T) {
 		require.True(t, ok)
 		require.Contains(t, msg.Message.(*twitchirc.Notice).Message, "Could not refresh emotes")
 	})
+}
+
+// capturingPool records the EventSub subscriptions a tab requests. The other
+// connection methods are unused by these tests but required by the port.
+type capturingPool struct {
+	subscriptions []twitchapi.CreateEventSubSubscriptionRequest
+}
+
+func (p *capturingPool) ConnectIRC(string) error { return nil }
+func (p *capturingPool) DisconnectIRC(string)    {}
+func (p *capturingPool) SendIRC(string, twitchirc.IRCer) error {
+	return nil
+}
+func (p *capturingPool) JoinChannel(string, string) error { return nil }
+func (p *capturingPool) SubscribeEventSub(_ string, req twitchapi.CreateEventSubSubscriptionRequest, _ wspool.EventSubService) error {
+	p.subscriptions = append(p.subscriptions, req)
+	return nil
+}
+func (p *capturingPool) Close() error { return nil }
+
+type fakeEventSubService struct{}
+
+func (fakeEventSubService) CreateEventSubSubscription(context.Context, twitchapi.CreateEventSubSubscriptionRequest) (twitchapi.CreateEventSubSubscriptionResponse, error) {
+	return twitchapi.CreateEventSubSubscriptionResponse{}, nil
+}
+
+func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "chan-id", DisplayName: "me"})
+	pool := &capturingPool{}
+	tab.pool = pool
+	tab.client.EventSub = fakeEventSubService{}
+
+	cmds := tab.subscribeChannelEventCmds("chan-id")
+	for _, cmd := range cmds {
+		require.NotNil(t, cmd)
+		_ = cmd()
+	}
+
+	types := make([]string, 0, len(pool.subscriptions))
+	for _, subscription := range pool.subscriptions {
+		types = append(types, subscription.Type)
+
+		if subscription.Type == "channel.raid" {
+			if _, ok := subscription.Condition["to_broadcaster_user_id"]; !ok {
+				require.Equal(t, "chan-id", subscription.Condition["from_broadcaster_user_id"])
+			}
+			continue
+		}
+
+		require.Equal(t, "chan-id", subscription.Condition["broadcaster_user_id"])
+	}
+
+	require.Subset(t, types, []string{
+		"channel.prediction.begin",
+		"channel.prediction.progress",
+		"channel.prediction.lock",
+		"channel.prediction.end",
+		"channel.channel_points_custom_reward_redemption.add",
+		"channel.channel_points_custom_reward_redemption.update",
+		"channel.channel_points_automatic_reward_redemption.add",
+	})
+}
+
+func TestBroadcast_SubscribeChannelEventCmdsRequiresOwnChannel(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "other", DisplayName: "me"})
+	tab.client.EventSub = fakeEventSubService{}
+
+	require.Empty(t, tab.subscribeChannelEventCmds("chan-id"))
+}
+
+func TestBroadcast_HandleEventSubMessageIgnoresOtherChannels(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	msg := eventsub.Message[eventsub.NotificationPayload]{
+		Payload: eventsub.NotificationPayload{
+			Subscription: eventsub.Subscription{
+				Type:      "channel.prediction.begin",
+				Condition: map[string]string{"broadcaster_user_id": "other-id"},
+			},
+			Event: eventsub.Event{Title: "not mine"},
+		},
+	}
+
+	require.Nil(t, tab.handleEventSubMessage(msg))
+	require.False(t, tab.prediction.enabled)
+}
+
+// requestFromCmd unwraps the local-message request from a plain command or a
+// tea.Batch (prediction begin also schedules the countdown tick).
+func requestFromCmd(t *testing.T, cmd tea.Cmd) RequestLocalMessageHandleMessage {
+	t.Helper()
+
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, child := range batch {
+			if child == nil {
+				continue
+			}
+
+			if request, ok := child().(RequestLocalMessageHandleMessage); ok {
+				return request
+			}
+		}
+	}
+
+	request, ok := msg.(RequestLocalMessageHandleMessage)
+	require.True(t, ok)
+	return request
+}
+
+func TestBroadcast_HandlePredictionEvents(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	event := func(subType string, event eventsub.Event) eventsub.Message[eventsub.NotificationPayload] {
+		return eventsub.Message[eventsub.NotificationPayload]{
+			Payload: eventsub.NotificationPayload{
+				Subscription: eventsub.Subscription{
+					Type:      subType,
+					Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+				},
+				Event: event,
+			},
+		}
+	}
+
+	begin := event("channel.prediction.begin", eventsub.Event{
+		ID:      "prediction-1",
+		Title:   "Will we win?",
+		LocksAt: time.Now().Add(time.Minute),
+		Outcomes: []eventsub.Outcome{
+			{ID: "yes", Title: "Yes", ChannelPoints: 500},
+			{ID: "no", Title: "No", ChannelPoints: 200},
+		},
+	})
+
+	cmd := tab.handleEventSubMessage(begin)
+	require.NotNil(t, cmd)
+	require.True(t, tab.prediction.enabled)
+	require.False(t, tab.prediction.locked)
+	require.True(t, tab.predictionCountdown)
+	require.True(t, tab.layout.prediction.visible())
+
+	_, foreignTick := tab.Update(predictionTickMsg{owner: &prediction{}})
+	require.Nil(t, foreignTick, "ticks from another tab must not affect this prediction")
+	require.True(t, tab.predictionCountdown)
+
+	request := requestFromCmd(t, cmd)
+	notice, ok := request.Message.(*twitchirc.Notice)
+	require.True(t, ok)
+	require.Contains(t, notice.Message, `Prediction "Will we win?" has started`)
+
+	require.Nil(t, tab.handleEventSubMessage(event("channel.prediction.progress", eventsub.Event{
+		ID:    "prediction-1",
+		Title: "Will we win?",
+		Outcomes: []eventsub.Outcome{
+			{ID: "yes", Title: "Yes", ChannelPoints: 700},
+			{ID: "no", Title: "No", ChannelPoints: 300},
+		},
+	})))
+	require.InDelta(t, 0.7, tab.prediction.outcomes[0].percent, 0.0001)
+
+	lockCmd := tab.handleEventSubMessage(event("channel.prediction.lock", eventsub.Event{
+		ID:    "prediction-1",
+		Title: "Will we win?",
+		Outcomes: []eventsub.Outcome{
+			{ID: "yes", Title: "Yes", ChannelPoints: 700},
+			{ID: "no", Title: "No", ChannelPoints: 300},
+		},
+	}))
+	require.NotNil(t, lockCmd)
+	require.True(t, tab.prediction.locked)
+	require.Contains(t, requestFromCmd(t, lockCmd).Message.(*twitchirc.Notice).Message, "is locked")
+
+	_, tickCmd := tab.Update(predictionTickMsg{owner: tab.prediction})
+	require.Nil(t, tickCmd, "a locked prediction stops the countdown ticker")
+	require.False(t, tab.predictionCountdown)
+
+	endCmd := tab.handleEventSubMessage(event("channel.prediction.end", eventsub.Event{
+		ID:               "prediction-1",
+		Title:            "Will we win?",
+		Status:           "resolved",
+		WinningOutcomeID: "no",
+		Outcomes: []eventsub.Outcome{
+			{ID: "yes", Title: "Yes", ChannelPoints: 700},
+			{ID: "no", Title: "No", ChannelPoints: 900},
+		},
+	}))
+	require.NotNil(t, endCmd)
+	require.False(t, tab.prediction.enabled)
+	require.False(t, tab.layout.prediction.visible())
+	require.Contains(t, requestFromCmd(t, endCmd).Message.(*twitchirc.Notice).Message, `"No" won with 900 points`)
+}
+
+func TestBroadcast_HandleRedemptionEvents(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	event := func(subType string, status string) eventsub.Message[eventsub.NotificationPayload] {
+		return eventsub.Message[eventsub.NotificationPayload]{
+			Payload: eventsub.NotificationPayload{
+				Subscription: eventsub.Subscription{
+					Type:      subType,
+					Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+				},
+				Event: eventsub.Event{
+					ID:        "redemption-1",
+					UserName:  "Alice",
+					UserInput: "make it purple",
+					Status:    status,
+					Reward:    eventsub.Reward{Title: "Highlight My Message", Cost: 500},
+				},
+			},
+		}
+	}
+
+	addCmd := tab.handleEventSubMessage(event("channel.channel_points_custom_reward_redemption.add", "unfulfilled"))
+	require.NotNil(t, addCmd)
+
+	request, ok := addCmd().(RequestLocalMessageHandleMessage)
+	require.True(t, ok)
+	tab.chatWindow.handleMessage(ChatEventMessage{Message: request.Message})
+
+	require.Contains(t, strings.Join(strings.Fields(plain(tab.chatWindow.lines)), " "), `Alice redeemed "Highlight My Message" (500 points): make it purple`)
+	require.Len(t, tab.chatWindow.entries, 1)
+	require.Len(t, tab.redemptions, 1)
+
+	require.Nil(t, tab.handleEventSubMessage(event("channel.channel_points_custom_reward_redemption.update", "fulfilled")))
+
+	text := plain(tab.chatWindow.lines)
+	require.Contains(t, text, "[fulfilled]")
+	require.Len(t, tab.chatWindow.entries, 1, "an update must not append a second notice")
+	require.Empty(t, tab.redemptions, "a terminal update stops tracking the redemption")
+}
+
+func TestBroadcast_UntrackedRedemptionsDoNotLeak(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
+
+	event := func(subType, status string) eventsub.Message[eventsub.NotificationPayload] {
+		return eventsub.Message[eventsub.NotificationPayload]{
+			Payload: eventsub.NotificationPayload{
+				Subscription: eventsub.Subscription{
+					Type:      subType,
+					Condition: map[string]string{"broadcaster_user_id": "chan-id"},
+				},
+				Event: eventsub.Event{
+					ID:     "redemption-1",
+					Status: status,
+					Reward: eventsub.Reward{Title: "Test Reward", Cost: 500},
+				},
+			},
+		}
+	}
+
+	require.NotNil(t, tab.handleEventSubMessage(event("channel.channel_points_automatic_reward_redemption.add", "")))
+	require.Empty(t, tab.redemptions, "one-shot automatic rewards are not tracked")
+
+	require.NotNil(t, tab.handleEventSubMessage(event("channel.channel_points_custom_reward_redemption.update", "fulfilled")))
+	require.Empty(t, tab.redemptions, "a terminal update without a prior add is not tracked")
 }
