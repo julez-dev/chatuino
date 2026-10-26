@@ -2,7 +2,9 @@ package tab
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -59,8 +61,9 @@ type unbanRequestQueue struct {
 	filter   string
 	filterAt int
 
-	selected int
-	offset   int
+	selected   int
+	selectedID string
+	offset     int
 
 	loading    bool
 	submitting bool
@@ -165,7 +168,7 @@ func (q *unbanRequestQueue) Update(msg tea.Msg) (*unbanRequestQueue, tea.Cmd) {
 		if msg.err != nil {
 			// Keep the last good queue: a failed refresh must not erase what the
 			// moderator was working on.
-			q.err = fmt.Errorf("could not load unban requests: %w", msg.err)
+			q.err = errors.New(describeAPIError(msg.err, "load unban requests"))
 			return q, nil
 		}
 
@@ -179,7 +182,7 @@ func (q *unbanRequestQueue) Update(msg tea.Msg) (*unbanRequestQueue, tea.Cmd) {
 
 		q.submitting = false
 		if msg.err != nil {
-			q.err = fmt.Errorf("could not resolve unban request: %w", msg.err)
+			q.err = errors.New(describeAPIError(msg.err, "resolve unban request"))
 			return q, nil
 		}
 
@@ -236,15 +239,15 @@ func (q *unbanRequestQueue) updateKey(msg tea.KeyPressMsg) (*unbanRequestQueue, 
 		q.move(-1)
 	case key.Matches(msg, q.keymap.Down):
 		q.move(1)
-	case msg.Text == "h" || msg.Code == tea.KeyLeft:
+	case msg.Mod == 0 && (msg.Text == "h" || msg.Code == tea.KeyLeft):
 		q.cycleFilter(-1)
-	case msg.Text == "l" || msg.Code == tea.KeyRight:
+	case msg.Mod == 0 && (msg.Text == "l" || msg.Code == tea.KeyRight):
 		q.cycleFilter(1)
-	case msg.Text == "a":
+	case msg.Mod == 0 && msg.Text == "a":
 		q.startResolution("approved")
-	case msg.Text == "d":
+	case msg.Mod == 0 && msg.Text == "d":
 		q.startResolution("denied")
-	case msg.Text == "r":
+	case msg.Mod == 0 && msg.Text == "r":
 		return q, q.refreshCmd()
 	}
 
@@ -254,10 +257,12 @@ func (q *unbanRequestQueue) updateKey(msg tea.KeyPressMsg) (*unbanRequestQueue, 
 func (q *unbanRequestQueue) move(delta int) {
 	if len(q.visible) == 0 {
 		q.selected = 0
+		q.selectedID = ""
 		return
 	}
 
 	q.selected = clamp(q.selected+delta, 0, len(q.visible)-1)
+	q.selectedID = q.visible[q.selected].ID
 }
 
 func (q *unbanRequestQueue) cycleFilter(delta int) {
@@ -266,8 +271,9 @@ func (q *unbanRequestQueue) cycleFilter(delta int) {
 
 func (q *unbanRequestQueue) setFilter(filter string) {
 	q.filter = filter
-	q.filterAt = max(0, slicesIndex(unbanRequestFilters, filter))
+	q.filterAt = max(0, slices.Index(unbanRequestFilters, filter))
 	q.selected = 0
+	q.selectedID = ""
 	q.offset = 0
 	q.rebuildVisible()
 }
@@ -328,12 +334,40 @@ func (q *unbanRequestQueue) resolveCmd() tea.Cmd {
 }
 
 func (q *unbanRequestQueue) setRequests(requests []twitchapi.UnbanRequest) {
+	requests = dedupeUnbanRequests(requests)
 	q.requests = append(q.requests[:0], requests...)
 	sort.SliceStable(q.requests, func(i, j int) bool {
 		return q.requests[i].CreatedAt.After(q.requests[j].CreatedAt)
 	})
 
 	q.rebuildVisible()
+}
+
+// dedupeUnbanRequests removes the duplicate a status fan-out can produce when a
+// request is resolved between the pending and resolved page requests. A resolved
+// copy wins over a stale pending copy.
+func dedupeUnbanRequests(requests []twitchapi.UnbanRequest) []twitchapi.UnbanRequest {
+	index := make(map[string]int, len(requests))
+	deduped := make([]twitchapi.UnbanRequest, 0, len(requests))
+
+	for _, request := range requests {
+		if request.ID == "" {
+			deduped = append(deduped, request)
+			continue
+		}
+
+		if at, ok := index[request.ID]; ok {
+			if deduped[at].Status == "pending" && request.Status != "pending" {
+				deduped[at] = request
+			}
+			continue
+		}
+
+		index[request.ID] = len(deduped)
+		deduped = append(deduped, request)
+	}
+
+	return deduped
 }
 
 func (q *unbanRequestQueue) rebuildVisible() {
@@ -346,11 +380,23 @@ func (q *unbanRequestQueue) rebuildVisible() {
 
 	if len(q.visible) == 0 {
 		q.selected = 0
+		q.selectedID = ""
 		q.offset = 0
 		return
 	}
 
+	if q.selectedID != "" {
+		for i, request := range q.visible {
+			if request.ID == q.selectedID {
+				q.selected = i
+				q.restoreResolutionSelection()
+				return
+			}
+		}
+	}
+
 	q.selected = clamp(q.selected, 0, len(q.visible)-1)
+	q.selectedID = q.visible[q.selected].ID
 	q.restoreResolutionSelection()
 }
 
@@ -362,6 +408,7 @@ func (q *unbanRequestQueue) restoreResolutionSelection() {
 	for i, request := range q.visible {
 		if request.ID == q.resolveID {
 			q.selected = i
+			q.selectedID = request.ID
 			return
 		}
 	}
@@ -630,16 +677,6 @@ func unbanStatusLabel(status string) string {
 	}
 
 	return strings.ToUpper(status[:1]) + status[1:]
-}
-
-func slicesIndex(values []string, target string) int {
-	for i, value := range values {
-		if value == target {
-			return i
-		}
-	}
-
-	return 0
 }
 
 func (q *unbanRequestQueue) listLines(selectedStyle, dimStyle lipgloss.Style) ([]string, []int) {

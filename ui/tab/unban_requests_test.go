@@ -7,10 +7,12 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/stretchr/testify/require"
 )
 
@@ -266,6 +268,32 @@ func TestBroadcast_UnbanRequestQueueTabNavigationDependsOnResolutionInput(t *tes
 	require.True(t, tab.IsComposing(), "the resolution input captures text and Tab")
 }
 
+func TestBroadcast_UnbanRequestQueueEscapeCancelsResolutionBeforeClosing(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeModerationClient()
+	api.unbanRequests = []twitchapi.UnbanRequest{{
+		ID: "pending-1", UserLogin: "alice", UserName: "Alice", Status: "pending", CreatedAt: time.Now(),
+	}}
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "chan-id", DisplayName: "me"})
+	tab.isUserMod = true
+	tab.client.Moderation = api
+	tab.state = unbanRequestMode
+	tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, api, tab.width, tab.height, tab.theme, tab.keymap)
+	tab.unbanRequests.setRequests(api.unbanRequests)
+	tab.unbanRequests.startResolution("approved")
+
+	updated, _ := tab.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	tab = updated.(*Broadcast)
+	require.Equal(t, unbanRequestMode, tab.state)
+	require.False(t, tab.unbanRequests.Resolving())
+
+	updated, _ = tab.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	tab = updated.(*Broadcast)
+	require.Equal(t, inChatWindow, tab.state)
+}
+
 func TestBroadcast_UnbanRequestQueueAppliesLiveEvents(t *testing.T) {
 	t.Parallel()
 
@@ -320,6 +348,115 @@ func TestBroadcast_UnbanRequestQueueAppliesLiveEvents(t *testing.T) {
 	require.Equal(t, "pending-2", tab.unbanRequests.visible[0].ID)
 }
 
+func TestUnbanRequestQueue_IgnoresMessagesForAnotherQueue(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeModerationClient()
+	api.unbanRequests = []twitchapi.UnbanRequest{{
+		ID: "pending-1", UserLogin: "alice", UserName: "Alice", Status: "pending", CreatedAt: time.Now(),
+	}}
+	q := newTestUnbanQueue(t, api)
+	q, _ = updateUnbanQueue(t, q, q.Init()())
+
+	q, _ = updateUnbanQueue(t, q, unbanRequestsLoadedMessage{
+		owner: "other-queue", requests: nil, err: errors.New("wrong tab"),
+	})
+	require.Len(t, q.requests, 1)
+	require.NoError(t, q.err)
+
+	q, _ = updateUnbanQueue(t, q, unbanRequestResolvedMessage{
+		owner: "other-queue", requestID: "pending-1", status: "approved",
+	})
+	require.Len(t, q.visible, 1)
+}
+
+func TestUnbanRequestQueue_SelectionStaysWithRequestAcrossLiveUpdates(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	api := newFakeModerationClient()
+	api.unbanRequests = []twitchapi.UnbanRequest{{
+		ID: "pending-1", UserLogin: "alice", UserName: "Alice", Status: "pending", CreatedAt: now.Add(-time.Minute),
+	}}
+
+	q := newTestUnbanQueue(t, api)
+	q, _ = updateUnbanQueue(t, q, q.Init()())
+	require.Equal(t, "pending-1", q.selectedID)
+
+	q.applyEvent(eventsub.Message[eventsub.NotificationPayload]{
+		Payload: eventsub.NotificationPayload{
+			Subscription: eventsub.Subscription{Type: "channel.unban_request.create"},
+			Event: eventsub.Event{
+				ID: "pending-2", UserLogin: "bob", UserName: "Bob", Text: "newer",
+				CreatedAt: now,
+			},
+		},
+	})
+
+	require.Equal(t, "pending-1", q.selectedID, "the cursor follows the request, not the sorted index")
+	require.Equal(t, 1, q.selected)
+	selected, ok := q.selectedRequest()
+	require.True(t, ok)
+	require.Equal(t, "pending-1", selected.ID)
+}
+
+func TestUnbanRequestQueue_DeduplicatesStatusFanout(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeModerationClient()
+	q := newTestUnbanQueue(t, api)
+	q.setRequests([]twitchapi.UnbanRequest{
+		{ID: "request-1", UserLogin: "alice", UserName: "Alice", Status: "pending", CreatedAt: time.Now()},
+		{ID: "request-1", UserLogin: "alice", UserName: "Alice", Status: "approved", CreatedAt: time.Now(),
+			ResolutionText: "resolved while paging"},
+	})
+
+	require.Len(t, q.requests, 1)
+	require.Equal(t, "approved", q.requests[0].Status)
+	require.Equal(t, "resolved while paging", q.requests[0].ResolutionText)
+}
+
+func TestUnbanRequestQueue_ModifiedKeysDoNotTriggerActions(t *testing.T) {
+	t.Parallel()
+
+	api := newFakeModerationClient()
+	api.unbanRequests = []twitchapi.UnbanRequest{{
+		ID: "pending-1", UserLogin: "alice", UserName: "Alice", Status: "pending", CreatedAt: time.Now(),
+	}}
+
+	q := newTestUnbanQueue(t, api)
+	q, _ = updateUnbanQueue(t, q, q.Init()())
+
+	q, _ = updateUnbanQueue(t, q, tea.KeyPressMsg{Code: 'a', Mod: tea.ModAlt, Text: "a"})
+	require.False(t, q.Resolving())
+
+	q, _ = updateUnbanQueue(t, q, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl, Text: "r"})
+	require.False(t, q.loading)
+}
+
+func TestBroadcast_UnbanRequestQueueFitsNarrowTabSizes(t *testing.T) {
+	t.Parallel()
+
+	for _, size := range [][2]int{{80, 24}, {40, 12}, {20, 6}, {1, 1}} {
+		api := newFakeModerationClient()
+		api.unbanRequests = []twitchapi.UnbanRequest{{
+			ID: "pending-1", UserLogin: "alice", UserName: "Alice", Status: "pending",
+			Text: strings.Repeat("please unban me ", 10), CreatedAt: time.Now(),
+		}}
+
+		tab := newLoadedLayoutTestTab(t, size[0], size[1], save.Account{ID: "chan-id", DisplayName: "me"})
+		tab.isUserMod = true
+		tab.client.Moderation = api
+		tab.state = unbanRequestMode
+		tab.unbanRequests = newUnbanRequestQueue(tab.id, tab.channelID, tab.account.ID, api, tab.width, tab.height, tab.theme, tab.keymap)
+		tab.unbanRequests.setRequests(api.unbanRequests)
+		tab.HandleResize()
+
+		require.NotPanics(t, func() { _ = tab.View() }, "size %v", size)
+		require.Equal(t, size[1], lipgloss.Height(tab.View()), "size %v", size)
+	}
+}
+
 func TestUnbanRequestQueue_ViewFitsAllocatedRows(t *testing.T) {
 	t.Parallel()
 
@@ -343,5 +480,9 @@ func TestHandleCommand_UnbanRequestsOpensQueue(t *testing.T) {
 
 	cmd := handleCommand("tab-id", "unbanrequests", nil, "channel-id", "channel", "account-id", newFakeModerationClient())
 	require.NotNil(t, cmd)
-	require.NotPanics(t, func() { _ = cmd() })
+
+	envelope, ok := cmd().(nav.Envelope)
+	require.True(t, ok)
+	require.Equal(t, "tab-id", envelope.To)
+	require.IsType(t, openUnbanRequestsMessage{}, envelope.Msg)
 }

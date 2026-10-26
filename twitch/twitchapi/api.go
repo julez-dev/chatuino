@@ -421,7 +421,9 @@ func (a *API) ResolveBanRequest(ctx context.Context, broadcasterID, moderatorID,
 		return UnbanRequest{}, err
 	}
 	if len(resp.Data) == 0 {
-		return UnbanRequest{}, errors.New("resolve unban request returned no data")
+		// A 204 means the write succeeded without echoing the request. Return the
+		// state we sent so callers can still update their local queue.
+		return UnbanRequest{ID: requestID, Status: status, ResolutionText: resolutionText}, nil
 	}
 
 	return resp.Data[0], nil
