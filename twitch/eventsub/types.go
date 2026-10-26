@@ -112,6 +112,15 @@ type Event struct {
 	SubscriberMode       *bool `json:"subscriber_mode"`
 	UniqueChatMode       *bool `json:"unique_chat_mode"`
 
+	// Unban request related. Resolve events use moderator_id while the other
+	// moderation events above use moderator_user_id.
+	Text           string    `json:"text"`
+	CreatedAt      time.Time `json:"created_at"`
+	ResolutionText string    `json:"resolution_text"`
+	ModeratorID    string    `json:"moderator_id"`
+	ModeratorLogin string    `json:"moderator_login"`
+	ModeratorName  string    `json:"moderator_name"`
+
 	// Warning and AutoMod related
 	ModeratorUserID    string `json:"moderator_user_id"`
 	ModeratorUserLogin string `json:"moderator_user_login"`

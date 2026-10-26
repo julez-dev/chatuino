@@ -77,6 +77,8 @@ func (t broadcastTabState) String() string {
 		return "Inspect / Insert"
 	case 4:
 		return "Emote Overview"
+	case 5:
+		return "Unban Requests"
 	}
 
 	return "View"
@@ -88,6 +90,7 @@ const (
 	userInspectMode
 	userInspectInsertMode
 	emoteOverviewMode
+	unbanRequestMode
 )
 
 type ModStatusFetcher interface {
@@ -171,6 +174,7 @@ type Broadcast struct {
 	input         *chatInput
 	statusInfo    *streamStatus
 	emoteOverview *emoteOverview
+	unbanRequests *unbanRequestQueue
 	spinner       spinner.Model
 
 	err error
@@ -430,7 +434,9 @@ func (t *Broadcast) SetLocalSubOnly(v bool) { t.isLocalSub = v }
 // IsComposing reports whether a text input inside the tab is capturing printable
 // keys. The shell asks this to decide whether a key press is text or a command.
 func (t *Broadcast) IsComposing() bool {
-	return t.state.isComposing()
+	// The unban queue is a modal: while it is open every key belongs to it, so
+	// tab-navigation keys must be forwarded instead of switching tabs.
+	return t.state.isComposing() || t.state == unbanRequestMode
 }
 
 func (t *Broadcast) IsSearching() bool {
@@ -475,6 +481,10 @@ func (t *Broadcast) Focus() {
 	switch {
 	case t.state == emoteOverviewMode:
 		// The overview consumes tab input itself; do not focus hidden widgets.
+	case t.state == unbanRequestMode:
+		if t.unbanRequests != nil {
+			_ = t.unbanRequests.Focus()
+		}
 	case t.state.isComposing():
 		t.input.Focus()
 	case t.state.isInspecting():
@@ -502,6 +512,9 @@ func (t *Broadcast) Blur() {
 
 		if t.userInspect != nil {
 			t.userInspect.chatWindow.Blur()
+		}
+		if t.unbanRequests != nil {
+			t.unbanRequests.Blur()
 		}
 	}
 }
@@ -571,6 +584,15 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		return t, predictionTickCmd(t.prediction)
 	case ChatEventMessage: // delegate message event to chat window
 		return t, t.handleChatEvent(msg)
+	case openUnbanRequestsMessage:
+		return t, t.handleOpenUnbanRequests()
+	case unbanRequestsLoadedMessage, unbanRequestResolvedMessage:
+		if t.unbanRequests == nil {
+			return t, nil
+		}
+		var cmd tea.Cmd
+		t.unbanRequests, cmd = t.unbanRequests.Update(msg)
+		return t, cmd
 	case chatSettingsUpdatedMessage:
 		if t.statusInfo != nil {
 			t.statusInfo.ApplySettings(msg.settings)
@@ -588,6 +610,18 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 	}
 
 	var cmds []tea.Cmd
+
+	if t.state == unbanRequestMode && t.unbanRequests != nil {
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok &&
+			key.Matches(keyMsg, t.keymap.Escape) && !t.unbanRequests.Resolving() {
+			t.handleEscapePressed()
+			return t, nil
+		}
+
+		var cmd tea.Cmd
+		t.unbanRequests, cmd = t.unbanRequests.Update(msg)
+		return t, cmd
+	}
 
 	if t.focused {
 		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
@@ -718,19 +752,26 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 // subscribeChannelEventCmds returns the commands that subscribe to the channel's
 // EventSub events (polls, predictions, channel point redemptions, raids, ad breaks).
 //
-// Subscriptions are only created
-//   - if authenticated user
-//   - if channel belongs to user
-//
-// sadly due to cost limits, we only allow this events users channel not other channels
+// The broadcaster-only topics are limited to the account's own channel because of
+// EventSub cost limits. Unban request topics are also available to moderators of
+// other channels, so those two subscriptions stay usable without taking on the
+// full broadcaster subscription set.
 func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	eventSubAPI := t.client.EventSub
-	if eventSubAPI == nil || t.account.ID != channelID {
+	if eventSubAPI == nil {
 		return nil
 	}
 
-	var cmds []tea.Cmd
 	accountID := t.account.ID
+	if t.account.ID != channelID {
+		if !t.isUserMod {
+			return nil
+		}
+
+		return t.subscribeUnbanRequestEventCmds(accountID, channelID, eventSubAPI)
+	}
+
+	var cmds []tea.Cmd
 
 	for _, subType := range [...]string{
 		"channel.poll.begin", "channel.poll.progress", "channel.poll.end",
@@ -804,6 +845,26 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
 				Type:    sub.typeName,
 				Version: sub.version,
+				Condition: map[string]string{
+					"broadcaster_user_id": channelID,
+					"moderator_user_id":   accountID,
+				},
+			}, eventSubAPI)
+			return nil
+		})
+	}
+
+	return append(cmds, t.subscribeUnbanRequestEventCmds(accountID, channelID, eventSubAPI)...)
+}
+
+func (t *Broadcast) subscribeUnbanRequestEventCmds(accountID, channelID string, eventSubAPI wspool.EventSubService) []tea.Cmd {
+	var cmds []tea.Cmd
+	for _, subType := range [...]string{"channel.unban_request.create", "channel.unban_request.resolve"} {
+		subType := subType
+		cmds = append(cmds, func() tea.Msg {
+			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
+				Type:    subType,
+				Version: "1",
 				Condition: map[string]string{
 					"broadcaster_user_id": channelID,
 					"moderator_user_id":   accountID,
@@ -1001,6 +1062,18 @@ func (t *Broadcast) render(includeStatus bool) string {
 			Render(t.spinner.View() + " Loading channel")
 	}
 
+	// Modal screens replace the whole content area and append only the status bar.
+	if t.state == unbanRequestMode && t.unbanRequests != nil {
+		var blocks []string
+		if t.layout.unbanRequests.visible() {
+			blocks = append(blocks, t.unbanRequests.View())
+		}
+		if includeStatus && t.layout.status.visible() {
+			blocks = append(blocks, t.statusInfo.View())
+		}
+		return strings.Join(blocks, "\n")
+	}
+
 	// In emote overview mode the overview replaces the whole content area and
 	// only the status bar is appended.
 	if t.state == emoteOverviewMode {
@@ -1090,6 +1163,7 @@ func (t *Broadcast) HandleResize() {
 		status:        viewHeight(statusView),
 		inspecting:    t.state.isInspecting(),
 		emoteOverview: t.state == emoteOverviewMode,
+		unbanRequests: t.state == unbanRequestMode,
 	}
 	if !t.account.IsAnonymous {
 		in.composer = t.input.Height()
@@ -1107,6 +1181,10 @@ func (t *Broadcast) HandleResize() {
 
 	if t.state == emoteOverviewMode && t.emoteOverview != nil {
 		t.emoteOverview.resize(t.width, t.layout.emoteOverview.height)
+	}
+
+	if t.state == unbanRequestMode && t.unbanRequests != nil {
+		t.unbanRequests.Resize(t.width, t.layout.unbanRequests.height)
 	}
 }
 
@@ -1166,6 +1244,7 @@ type broadcastLayout struct {
 	composer      layoutSpan
 	status        layoutSpan
 	emoteOverview layoutSpan // replaces the content area in emote overview mode
+	unbanRequests layoutSpan // replaces the content area while the unban modal is open
 }
 
 // layoutInputs are the measured row counts of the fixed-size regions around the
@@ -1180,6 +1259,7 @@ type layoutInputs struct {
 	status        int // rows the status bar occupies inside the tab; 0 when absent
 	inspecting    bool
 	emoteOverview bool
+	unbanRequests bool
 }
 
 // allocateBroadcastLayout distributes the available rows. The chat window and
@@ -1189,9 +1269,13 @@ type layoutInputs struct {
 func allocateBroadcastLayout(in layoutInputs) broadcastLayout {
 	l := broadcastLayout{height: in.height}
 
-	if in.emoteOverview {
+	if in.emoteOverview || in.unbanRequests {
 		overviewHeight := max(0, in.height-in.status)
-		l.emoteOverview = layoutSpan{top: 0, height: overviewHeight}
+		if in.emoteOverview {
+			l.emoteOverview = layoutSpan{top: 0, height: overviewHeight}
+		} else {
+			l.unbanRequests = layoutSpan{top: 0, height: overviewHeight}
+		}
 		l.status = layoutSpan{top: overviewHeight, height: in.status}
 
 		return l
@@ -1270,6 +1354,8 @@ const (
 	eventInspect
 	// eventEmoteOverview opens the emote overview.
 	eventEmoteOverview
+	// eventUnbanRequests opens the moderator's unban request queue.
+	eventUnbanRequests
 	// eventLeaveInspect closes the user inspect window without returning to the
 	// composer, used when the user clicks outside of it.
 	eventLeaveInspect
@@ -1290,6 +1376,7 @@ var tabTransitions = map[broadcastTabState]map[tabEvent]tabTransition{
 		eventCompose:       {to: insertMode, guard: canInteract, exit: blurChatWindow, enter: focusMessageInput},
 		eventInspect:       {to: userInspectMode, guard: hasInspectWindow, exit: blurChatWindow, enter: focusInspectWindow},
 		eventEmoteOverview: {to: emoteOverviewMode, guard: canInteract, exit: blurChatWindow},
+		eventUnbanRequests: {to: unbanRequestMode, guard: canOpenUnbanRequests, exit: blurChatWindow, enter: focusUnbanRequests},
 	},
 	insertMode: {
 		eventSend:          {to: inChatWindow, exit: clearMessageInput, enter: focusChatWindow},
@@ -1313,6 +1400,9 @@ var tabTransitions = map[broadcastTabState]map[tabEvent]tabTransition{
 	},
 	emoteOverviewMode: {
 		eventCancel: {to: inChatWindow, exit: dropInspectWindow, enter: focusChatWindow},
+	},
+	unbanRequestMode: {
+		eventCancel: {to: inChatWindow, exit: blurUnbanRequests, enter: focusChatWindow},
 	},
 }
 
@@ -1347,6 +1437,12 @@ func (t *Broadcast) transit(event tabEvent) (bool, tea.Cmd) {
 // accounts can read chat but cannot compose messages or open the emote overview.
 func canInteract(t *Broadcast) bool {
 	return !t.account.IsAnonymous
+}
+
+// canOpenUnbanRequests limits the queue to moderators and broadcasters with a
+// moderation-capable client.
+func canOpenUnbanRequests(t *Broadcast) bool {
+	return canInteract(t) && t.isUserMod && t.client.Moderation != nil
 }
 
 // hasInspectWindow rejects entering inspect mode without an inspect window. The
@@ -1415,6 +1511,20 @@ func focusChatWindow(t *Broadcast) tea.Cmd {
 	return nil
 }
 
+func blurUnbanRequests(t *Broadcast) {
+	if t.unbanRequests != nil {
+		t.unbanRequests.Blur()
+	}
+}
+
+func focusUnbanRequests(t *Broadcast) tea.Cmd {
+	if t.unbanRequests != nil {
+		return t.unbanRequests.Focus()
+	}
+
+	return nil
+}
+
 func focusInspectWindow(t *Broadcast) tea.Cmd {
 	if t.userInspect != nil {
 		t.userInspect.chatWindow.Focus()
@@ -1456,6 +1566,11 @@ func (t *Broadcast) handleKeyPress(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 
 	// Plain-letter shortcuts must not fire while a chat search input is focused.
 	searching := t.isChatSearching()
+
+	// Open the unban request queue.
+	if key.Matches(msg, t.keymap.UnbanRequests) && !searching && t.state == inChatWindow {
+		return true, t.handleOpenUnbanRequests()
+	}
 
 	// Open user inspect mode, where only messages from a specific user are shown
 	if key.Matches(msg, t.keymap.InspectMode) && !searching && t.state.isViewing() {
@@ -1574,7 +1689,7 @@ func (t *Broadcast) leaveUserInspect() {
 func (t *Broadcast) handleEscapePressed() {
 	// Leaving a mode that replaced the chat window with a full-sized one changes
 	// the layout; leaving the composer does not.
-	fullWindow := t.state.isInspecting() || t.state == emoteOverviewMode
+	fullWindow := t.state.isInspecting() || t.state == emoteOverviewMode || t.state == unbanRequestMode
 
 	changed, _ := t.transit(eventCancel)
 	if !changed {
@@ -1813,6 +1928,24 @@ func (t *Broadcast) handleOpenEmoteOverview() tea.Cmd {
 	return t.emoteOverview.Init()
 }
 
+func (t *Broadcast) handleOpenUnbanRequests() tea.Cmd {
+	if t.account.IsAnonymous || !t.isUserMod || t.client.Moderation == nil {
+		return t.localNoticeCmd("Unban requests are only available to moderators and broadcasters")
+	}
+
+	if accepted, _ := t.transit(eventUnbanRequests); !accepted {
+		return nil
+	}
+
+	if t.unbanRequests == nil {
+		t.unbanRequests = newUnbanRequestQueue(t.id, t.channelID, t.account.ID, t.client.Moderation,
+			t.width, t.height, t.theme, t.keymap)
+	}
+
+	t.HandleResize()
+	return t.unbanRequests.Init()
+}
+
 func (t *Broadcast) handleManualRefreshEmotes() tea.Cmd {
 	if t.account.IsAnonymous {
 		return nil
@@ -1863,7 +1996,7 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 		return nil
 	}
 
-	if t.state == emoteOverviewMode {
+	if t.state == emoteOverviewMode || t.state == unbanRequestMode {
 		return nil
 	}
 
@@ -1936,6 +2069,11 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 // HandleMouseMotion records the pointer position (tab-local) for the emote tooltip.
 func (t *Broadcast) HandleMouseMotion(x, y int) {
+	if t.state == unbanRequestMode {
+		t.hoverActive = false
+		return
+	}
+
 	t.hoverActive, t.hoverX, t.hoverY = true, x, y
 }
 
@@ -2003,6 +2141,10 @@ func (t *Broadcast) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 
 	delta := WheelDelta(msg)
 	if delta == 0 {
+		return nil
+	}
+
+	if t.state == unbanRequestMode {
 		return nil
 	}
 
@@ -2915,6 +3057,11 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 		}
 
 		return createCMDFunc(notice)
+	case "channel.unban_request.create", "channel.unban_request.resolve":
+		if t.unbanRequests != nil {
+			t.unbanRequests.applyEvent(msg)
+		}
+		return nil
 	case "channel.raid":
 		// broadcaster raided another channel
 		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {

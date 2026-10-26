@@ -112,6 +112,7 @@ Bindings are additive: every action accepts all keys listed for it.
 | Quick timeout | `alt+t` |
 | Approve selected AutoMod message | `alt+a` |
 | Deny selected AutoMod message | `alt+d` |
+| Unban request queue | `alt+u` |
 | Send and keep typing | `alt+enter`, `ctrl+enter` |
 | Dump screen / chat | `ctrl+alt+d`, `ctrl+alt+c` |
 
