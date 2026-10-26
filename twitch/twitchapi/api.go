@@ -628,7 +628,7 @@ func (a *API) getChatRoleUsers(ctx context.Context, path string, broadcasterID s
 
 		endpoint := fmt.Sprintf("%s?%s", path, values.Encode())
 
-		resp, err := doAuthenticatedUserRequest[GetModeratorsResponse](ctx, a, http.MethodGet, endpoint, nil)
+		resp, err := doAuthenticatedUserRequest[ChatRoleUsersResponse](ctx, a, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, err
 		}

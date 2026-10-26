@@ -1833,10 +1833,31 @@ func TestBroadcast_SubscribeChannelEventCmds(t *testing.T) {
 		"automod.message.update",
 	})
 
-	for _, subscription := range pool.subscriptions {
-		if subscription.Condition["moderator_user_id"] != "" {
-			require.Equal(t, "chan-id", subscription.Condition["moderator_user_id"])
+	for _, expected := range []struct {
+		typeName  string
+		version   string
+		condition map[string]string
+	}{
+		{"channel.chat_settings.update", "1", map[string]string{"broadcaster_user_id": "chan-id", "user_id": "chan-id"}},
+		{"channel.warning.send", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.warning.acknowledge", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.shoutout.create", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"channel.shoutout.receive", "1", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"automod.message.hold", "2", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+		{"automod.message.update", "2", map[string]string{"broadcaster_user_id": "chan-id", "moderator_user_id": "chan-id"}},
+	} {
+		matched := false
+		for _, subscription := range pool.subscriptions {
+			if subscription.Type != expected.typeName {
+				continue
+			}
+
+			matched = true
+			require.Equal(t, expected.version, subscription.Version, expected.typeName)
+			require.Equal(t, expected.condition, subscription.Condition, expected.typeName)
 		}
+
+		require.True(t, matched, "missing subscription %s", expected.typeName)
 	}
 }
 
@@ -2126,12 +2147,12 @@ func TestBroadcast_HandleAutoModEvents(t *testing.T) {
 	}
 
 	held := eventsub.Event{
-		MessageID:  "msg-1",
-		UserName:   "BadUser",
-		Reason:     "automod",
-		Category:   "aggressive",
-		Level:      2,
-		RewardText: eventsub.RewardMessage{Text: "a bad message"},
+		MessageID: "msg-1",
+		UserName:  "BadUser",
+		Reason:    "automod",
+		Category:  "aggressive",
+		Level:     2,
+		Message:   eventsub.MessageContent{Text: "a bad message"},
 	}
 
 	cmd := tab.handleEventSubMessage(event("automod.message.hold", held))
@@ -2146,11 +2167,11 @@ func TestBroadcast_HandleAutoModEvents(t *testing.T) {
 	tab.chatWindow.handleMessage(ChatEventMessage{Message: notice})
 
 	require.Nil(t, tab.handleEventSubMessage(event("automod.message.update", eventsub.Event{
-		MessageID:  "msg-1",
-		UserName:   "BadUser",
-		Status:     "approved",
-		Reason:     "automod",
-		RewardText: eventsub.RewardMessage{Text: "a bad message"},
+		MessageID: "msg-1",
+		UserName:  "BadUser",
+		Status:    "approved",
+		Reason:    "automod",
+		Message:   eventsub.MessageContent{Text: "a bad message"},
 	})))
 
 	require.Empty(t, tab.automodHeld, "a terminal update stops tracking the message")
@@ -2172,11 +2193,11 @@ func TestBroadcast_ChatSettingsEventUpdatesStatus(t *testing.T) {
 			},
 			Event: eventsub.Event{
 				BroadcasterUserID:    "chan-id",
-				SlowMode:             ptrBool(true),
-				SlowModeWaitTime:     ptrInt(30),
-				FollowerMode:         ptrBool(true),
-				FollowerModeDuration: ptrInt(10),
-				SubscriberMode:       ptrBool(true),
+				SlowMode:             boolValue(true),
+				SlowModeWaitTime:     intValue(30),
+				FollowerMode:         boolValue(true),
+				FollowerModeDuration: intValue(10),
+				SubscriberMode:       boolValue(true),
 			},
 		},
 	})

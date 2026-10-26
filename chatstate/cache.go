@@ -68,7 +68,6 @@ func SettingsFromUpdate(event eventsub.Event) twitchapi.ChatSettingData {
 }
 
 // Fetcher loads the complete chat settings of one broadcaster.
-// Fetcher loads the complete chat settings of one broadcaster.
 type Fetcher func(ctx context.Context) (twitchapi.ChatSettingData, error)
 
 // Cache holds the known chat settings per broadcaster ID. Settings belong to the

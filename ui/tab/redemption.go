@@ -41,7 +41,7 @@ func redemptionText(event eventsub.Event) string {
 
 	if input := strings.TrimSpace(event.UserInput); input != "" {
 		text += ": " + input
-	} else if input := strings.TrimSpace(event.RewardText.Text); input != "" {
+	} else if input := strings.TrimSpace(event.Message.Text); input != "" {
 		text += ": " + input
 	}
 

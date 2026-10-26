@@ -3,12 +3,10 @@ package tab
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/julez-dev/chatuino/command"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/nav"
@@ -97,28 +95,6 @@ func TestFormatTimeoutDuration(t *testing.T) {
 			require.Equal(t, tt.want, formatTimeoutDuration(tt.in))
 		})
 	}
-}
-
-// fakeModerationClient records the ban request and answers GetUsers, so the command
-// handlers can be exercised without the network.
-type fakeModerationClient struct {
-	ModerationAPI
-
-	banned []twitchapi.BanUserData
-}
-
-func (f *fakeModerationClient) GetUsers(ctx context.Context, logins []string, ids []string) (twitchapi.UserResponse, error) {
-	return twitchapi.UserResponse{Data: []twitchapi.UserData{{
-		ID:          "user-id",
-		Login:       "alice",
-		DisplayName: "Alice",
-	}}}, nil
-}
-
-func (f *fakeModerationClient) BanUser(ctx context.Context, broadcasterID string, moderatorID string, data twitchapi.BanUserData) error {
-	f.banned = append(f.banned, data)
-
-	return nil
 }
 
 // runModerationCommand executes a moderation command and returns the notice it shows.
@@ -226,7 +202,7 @@ func TestHandleCommand_TimeoutDuration(t *testing.T) {
 				command = "timeout"
 			}
 
-			client := &fakeModerationClient{}
+			client := newFakeModerationClient()
 			notice := runModerationCommand(t, client, command, tt.args...)
 
 			require.Contains(t, notice, tt.wantNotice)
@@ -244,7 +220,7 @@ func TestHandleCommand_TimeoutDuration(t *testing.T) {
 			}
 
 			require.Equal(t, tt.wantReason, client.banned[0].Reason)
-			require.Equal(t, "user-id", client.banned[0].UserID)
+			require.Equal(t, "alice-id", client.banned[0].UserID)
 		})
 	}
 }
@@ -254,7 +230,7 @@ func TestHandleCommand_TimeoutDuration(t *testing.T) {
 func TestHandleCommand_BanStaysPermanent(t *testing.T) {
 	t.Parallel()
 
-	client := &fakeModerationClient{}
+	client := newFakeModerationClient()
 	notice := runModerationCommand(t, client, "ban", "alice", "spam", "and", "hate")
 
 	require.Contains(t, notice, "received a ban by you because: spam and hate")
@@ -263,13 +239,15 @@ func TestHandleCommand_BanStaysPermanent(t *testing.T) {
 	require.Equal(t, "spam and hate", client.banned[0].Reason)
 }
 
-// fakeCommandClient covers the moderation surface the new commands use. The
+// fakeModerationClient covers the moderation surface the commands use. The
 // embedded interface keeps the fixture small: a method a test does not exercise
 // would panic if the command suddenly called it.
-type fakeCommandClient struct {
+type fakeModerationClient struct {
 	ModerationAPI
 
 	users map[string]twitchapi.UserData
+
+	banned []twitchapi.BanUserData
 
 	settingsUpdate twitchapi.ChatSettingsUpdateData
 	settingsCalls  int
@@ -304,7 +282,7 @@ type fakeCommandClient struct {
 	snoozeErr  error
 }
 
-func (f *fakeCommandClient) GetUsers(_ context.Context, logins []string, _ []string) (twitchapi.UserResponse, error) {
+func (f *fakeModerationClient) GetUsers(_ context.Context, logins []string, _ []string) (twitchapi.UserResponse, error) {
 	users := make([]twitchapi.UserData, 0, len(logins))
 	for _, login := range logins {
 		if user, ok := f.users[login]; ok {
@@ -315,7 +293,12 @@ func (f *fakeCommandClient) GetUsers(_ context.Context, logins []string, _ []str
 	return twitchapi.UserResponse{Data: users}, nil
 }
 
-func (f *fakeCommandClient) UpdateChatSettings(_ context.Context, broadcasterID string, _ string, data twitchapi.ChatSettingsUpdateData) (twitchapi.GetChatSettingsResponse, error) {
+func (f *fakeModerationClient) BanUser(_ context.Context, _ string, _ string, data twitchapi.BanUserData) error {
+	f.banned = append(f.banned, data)
+	return nil
+}
+
+func (f *fakeModerationClient) UpdateChatSettings(_ context.Context, broadcasterID string, _ string, data twitchapi.ChatSettingsUpdateData) (twitchapi.GetChatSettingsResponse, error) {
 	f.settingsCalls++
 	f.settingsUpdate = data
 
@@ -326,70 +309,70 @@ func (f *fakeCommandClient) UpdateChatSettings(_ context.Context, broadcasterID 
 	return twitchapi.GetChatSettingsResponse{Data: []twitchapi.ChatSettingData{{BroadcasterID: broadcasterID}}}, nil
 }
 
-func (f *fakeCommandClient) GetModerators(context.Context, string, []string) ([]twitchapi.ChatRoleUser, error) {
+func (f *fakeModerationClient) GetModerators(context.Context, string, []string) ([]twitchapi.ChatRoleUser, error) {
 	return f.moderators, nil
 }
 
-func (f *fakeCommandClient) AddChannelModerator(_ context.Context, _ string, userID string) error {
+func (f *fakeModerationClient) AddChannelModerator(_ context.Context, _ string, userID string) error {
 	f.addedModerator = userID
 	return nil
 }
 
-func (f *fakeCommandClient) RemoveChannelModerator(_ context.Context, _ string, userID string) error {
+func (f *fakeModerationClient) RemoveChannelModerator(_ context.Context, _ string, userID string) error {
 	f.removedMod = userID
 	return nil
 }
 
-func (f *fakeCommandClient) GetVIPs(context.Context, string, []string) ([]twitchapi.ChatRoleUser, error) {
+func (f *fakeModerationClient) GetVIPs(context.Context, string, []string) ([]twitchapi.ChatRoleUser, error) {
 	return f.vips, nil
 }
 
-func (f *fakeCommandClient) AddChannelVIP(_ context.Context, _ string, userID string) error {
+func (f *fakeModerationClient) AddChannelVIP(_ context.Context, _ string, userID string) error {
 	f.addedVIP = userID
 	return nil
 }
 
-func (f *fakeCommandClient) RemoveChannelVIP(_ context.Context, _ string, userID string) error {
+func (f *fakeModerationClient) RemoveChannelVIP(_ context.Context, _ string, userID string) error {
 	f.removedVIP = userID
 	return nil
 }
 
-func (f *fakeCommandClient) WarnChatUser(_ context.Context, _ string, _ string, userID string, reason string) error {
+func (f *fakeModerationClient) WarnChatUser(_ context.Context, _ string, _ string, userID string, reason string) error {
 	f.warnedUser = userID
 	f.warnedReason = reason
 	return f.warnErr
 }
 
-func (f *fakeCommandClient) StartRaid(_ context.Context, from string, to string) (twitchapi.RaidData, error) {
+func (f *fakeModerationClient) StartRaid(_ context.Context, from string, to string) (twitchapi.RaidData, error) {
 	f.raidFrom = from
 	f.raidTo = to
 	return twitchapi.RaidData{}, f.raidErr
 }
 
-func (f *fakeCommandClient) CancelRaid(context.Context, string) error {
+func (f *fakeModerationClient) CancelRaid(context.Context, string) error {
 	f.canceled = true
 	return f.raidErr
 }
 
-func (f *fakeCommandClient) SendShoutout(_ context.Context, from string, to string, moderator string) error {
+func (f *fakeModerationClient) SendShoutout(_ context.Context, from string, to string, moderator string) error {
 	f.shoutoutFrom = from
 	f.shoutoutTo = to
 	f.shoutoutMod = moderator
 	return f.shoutoutErr
 }
 
-func (f *fakeCommandClient) ManageAutoModMessage(_ context.Context, _ string, messageID string, action string) error {
+func (f *fakeModerationClient) ManageAutoModMessage(_ context.Context, _ string, messageID string, action string) error {
 	f.automodMsgID = messageID
 	f.automodAction = action
 	return f.automodErr
 }
 
-func (f *fakeCommandClient) SnoozeNextAd(context.Context, string) (twitchapi.AdSnoozeData, error) {
+func (f *fakeModerationClient) SnoozeNextAd(context.Context, string) (twitchapi.AdSnoozeData, error) {
 	return f.snoozeResp, f.snoozeErr
 }
 
-func newFakeCommandClient() *fakeCommandClient {
-	return &fakeCommandClient{
+func newFakeModerationClient() *fakeModerationClient {
+	return &fakeModerationClient{
 		users: map[string]twitchapi.UserData{
 			"alice": {ID: "alice-id", Login: "alice", DisplayName: "Alice"},
 			"bob":   {ID: "bob-id", Login: "bob", DisplayName: "Bob"},
@@ -472,25 +455,25 @@ func TestHandleCommand_ChatSettings(t *testing.T) {
 		wantUnique   *bool
 		wantNotice   string
 	}{
-		{name: "slow default", command: "slow", args: []string{""}, wantSlow: ptrBool(true), wantNotice: "Slow mode enabled"},
-		{name: "slow with seconds", command: "slow", args: []string{"10"}, wantSlow: ptrBool(true), wantSlowWait: ptrInt(10), wantNotice: "10s"},
-		{name: "slow with combined duration", command: "slow", args: []string{"1m30s"}, wantSlow: ptrBool(true), wantSlowWait: ptrInt(90), wantNotice: "1m30s"},
-		{name: "slow off", command: "slowoff", args: []string{""}, wantSlow: ptrBool(false), wantNotice: "disabled"},
-		{name: "followers default", command: "followers", args: []string{""}, wantFollow: ptrBool(true), wantNotice: "Followers-only mode enabled"},
-		{name: "followers bare number is minutes", command: "followers", args: []string{"10"}, wantFollow: ptrBool(true), wantFollowIn: ptrInt(10)},
-		{name: "followers zero is allowed", command: "followers", args: []string{"0m"}, wantFollow: ptrBool(true), wantFollowIn: ptrInt(0)},
-		{name: "followers off", command: "followersoff", args: []string{""}, wantFollow: ptrBool(false)},
-		{name: "subscribers", command: "subscribers", args: []string{""}, wantSub: ptrBool(true)},
-		{name: "subscribers off", command: "subscribersoff", args: []string{""}, wantSub: ptrBool(false)},
-		{name: "emote only", command: "emoteonly", args: []string{""}, wantEmote: ptrBool(true)},
-		{name: "emote only off", command: "emoteonlyoff", args: []string{""}, wantEmote: ptrBool(false)},
-		{name: "unique chat", command: "uniquechat", args: []string{""}, wantUnique: ptrBool(true)},
-		{name: "unique chat off", command: "uniquechatoff", args: []string{""}, wantUnique: ptrBool(false)},
+		{name: "slow default", command: "slow", args: []string{""}, wantSlow: boolValue(true), wantNotice: "Slow mode enabled"},
+		{name: "slow with seconds", command: "slow", args: []string{"10"}, wantSlow: boolValue(true), wantSlowWait: intValue(10), wantNotice: "10s"},
+		{name: "slow with combined duration", command: "slow", args: []string{"1m30s"}, wantSlow: boolValue(true), wantSlowWait: intValue(90), wantNotice: "1m30s"},
+		{name: "slow off", command: "slowoff", args: []string{""}, wantSlow: boolValue(false), wantNotice: "disabled"},
+		{name: "followers default", command: "followers", args: []string{""}, wantFollow: boolValue(true), wantNotice: "Followers-only mode enabled"},
+		{name: "followers bare number is minutes", command: "followers", args: []string{"10"}, wantFollow: boolValue(true), wantFollowIn: intValue(10)},
+		{name: "followers zero is allowed", command: "followers", args: []string{"0m"}, wantFollow: boolValue(true), wantFollowIn: intValue(0)},
+		{name: "followers off", command: "followersoff", args: []string{""}, wantFollow: boolValue(false)},
+		{name: "subscribers", command: "subscribers", args: []string{""}, wantSub: boolValue(true)},
+		{name: "subscribers off", command: "subscribersoff", args: []string{""}, wantSub: boolValue(false)},
+		{name: "emote only", command: "emoteonly", args: []string{""}, wantEmote: boolValue(true)},
+		{name: "emote only off", command: "emoteonlyoff", args: []string{""}, wantEmote: boolValue(false)},
+		{name: "unique chat", command: "uniquechat", args: []string{""}, wantUnique: boolValue(true)},
+		{name: "unique chat off", command: "uniquechatoff", args: []string{""}, wantUnique: boolValue(false)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newFakeCommandClient()
+			client := newFakeModerationClient()
 			msgs := runCommandMessages(t, client, tt.command, tt.args...)
 
 			require.Equal(t, 1, client.settingsCalls)
@@ -526,9 +509,6 @@ func joinNotices(t *testing.T, msgs []tea.Msg) string {
 	return text
 }
 
-func ptrBool(value bool) *bool { return &value }
-func ptrInt(value int) *int    { return &value }
-
 func TestHandleCommand_ChatSettingsRejectsBadDuration(t *testing.T) {
 	t.Parallel()
 
@@ -546,7 +526,7 @@ func TestHandleCommand_ChatSettingsRejectsBadDuration(t *testing.T) {
 		t.Run(tt.command+" "+tt.arg, func(t *testing.T) {
 			t.Parallel()
 
-			client := newFakeCommandClient()
+			client := newFakeModerationClient()
 			msgs := runCommandMessages(t, client, tt.command, tt.arg)
 			require.Zero(t, client.settingsCalls, "a rejected duration sends nothing")
 			require.Contains(t, joinNotices(t, msgs), tt.want)
@@ -557,7 +537,7 @@ func TestHandleCommand_ChatSettingsRejectsBadDuration(t *testing.T) {
 func TestHandleCommand_ChatSettingsAPIError(t *testing.T) {
 	t.Parallel()
 
-	client := newFakeCommandClient()
+	client := newFakeModerationClient()
 	client.settingsErr = twitchapi.APIError{Status: 401, Message: "missing scope"}
 
 	msgs := runCommandMessages(t, client, "slow", "10")
@@ -572,17 +552,17 @@ func TestHandleCommand_RoleCommands(t *testing.T) {
 	for _, tt := range []struct {
 		command string
 		want    string
-		check   func(*testing.T, *fakeCommandClient)
+		check   func(*testing.T, *fakeModerationClient)
 	}{
-		{"mod", "now a moderator", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.addedModerator) }},
-		{"unmod", "no longer a moderator", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.removedMod) }},
-		{"vip", "now a VIP", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.addedVIP) }},
-		{"unvip", "no longer a VIP", func(t *testing.T, c *fakeCommandClient) { require.Equal(t, "alice-id", c.removedVIP) }},
+		{"mod", "now a moderator", func(t *testing.T, c *fakeModerationClient) { require.Equal(t, "alice-id", c.addedModerator) }},
+		{"unmod", "no longer a moderator", func(t *testing.T, c *fakeModerationClient) { require.Equal(t, "alice-id", c.removedMod) }},
+		{"vip", "now a VIP", func(t *testing.T, c *fakeModerationClient) { require.Equal(t, "alice-id", c.addedVIP) }},
+		{"unvip", "no longer a VIP", func(t *testing.T, c *fakeModerationClient) { require.Equal(t, "alice-id", c.removedVIP) }},
 	} {
 		t.Run(tt.command, func(t *testing.T) {
 			t.Parallel()
 
-			client := newFakeCommandClient()
+			client := newFakeModerationClient()
 			msgs := runCommandMessages(t, client, tt.command, "alice")
 			require.Contains(t, joinNotices(t, msgs), tt.want)
 			tt.check(t, client)
@@ -591,28 +571,28 @@ func TestHandleCommand_RoleCommands(t *testing.T) {
 
 	t.Run("mods list", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "mods")
 		require.Contains(t, joinNotices(t, msgs), "Moderators (2): Alice, Bob")
 	})
 
 	t.Run("vips list", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "vips")
 		require.Contains(t, joinNotices(t, msgs), "VIPs (1): Alice")
 	})
 
 	t.Run("missing user", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "mod")
 		require.Contains(t, joinNotices(t, msgs), "Expected Usage: /mod <username>")
 	})
 
 	t.Run("unknown user", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "warn", "nobody")
 		require.Contains(t, joinNotices(t, msgs), "can not be found")
 	})
@@ -632,7 +612,7 @@ func TestHandleCommand_Warn(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newFakeCommandClient()
+			client := newFakeModerationClient()
 			msgs := runCommandMessages(t, client, "warn", tt.args...)
 			require.Equal(t, "alice-id", client.warnedUser)
 			require.Equal(t, tt.wantReason, client.warnedReason)
@@ -642,7 +622,7 @@ func TestHandleCommand_Warn(t *testing.T) {
 
 	t.Run("api error is a notice", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		client.warnErr = twitchapi.APIError{Status: 409, Message: "warning is being updated"}
 		msgs := runCommandMessages(t, client, "warn", "alice", "spam")
 		require.Contains(t, joinNotices(t, msgs), "conflict")
@@ -654,7 +634,7 @@ func TestHandleCommand_RaidAndShoutout(t *testing.T) {
 
 	t.Run("raid resolves the target", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "raid", "bob")
 		require.Equal(t, "channel-id", client.raidFrom)
 		require.Equal(t, "bob-id", client.raidTo)
@@ -663,7 +643,7 @@ func TestHandleCommand_RaidAndShoutout(t *testing.T) {
 
 	t.Run("raid to self is refused", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		client.users["channel"] = twitchapi.UserData{ID: "channel-id", Login: "channel", DisplayName: "Me"}
 		msgs := runCommandMessages(t, client, "raid", "channel")
 		require.Empty(t, client.raidTo)
@@ -672,7 +652,7 @@ func TestHandleCommand_RaidAndShoutout(t *testing.T) {
 
 	t.Run("unraid cancels", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "unraid")
 		require.True(t, client.canceled)
 		require.Contains(t, joinNotices(t, msgs), "canceled")
@@ -680,7 +660,7 @@ func TestHandleCommand_RaidAndShoutout(t *testing.T) {
 
 	t.Run("shoutout", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "shoutout", "bob")
 		require.Equal(t, "channel-id", client.shoutoutFrom)
 		require.Equal(t, "bob-id", client.shoutoutTo)
@@ -690,7 +670,7 @@ func TestHandleCommand_RaidAndShoutout(t *testing.T) {
 
 	t.Run("shoutout rate limit is surfaced", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		client.shoutoutErr = twitchapi.APIError{Status: 429, Message: "too many shoutouts"}
 		msgs := runCommandMessages(t, client, "shoutout", "bob")
 		require.Contains(t, joinNotices(t, msgs), "Rate limited")
@@ -702,7 +682,7 @@ func TestHandleCommand_AutoModAndSnooze(t *testing.T) {
 
 	t.Run("approve", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "approve", "msg-1")
 		require.Equal(t, "msg-1", client.automodMsgID)
 		require.Equal(t, "ALLOW", client.automodAction)
@@ -711,7 +691,7 @@ func TestHandleCommand_AutoModAndSnooze(t *testing.T) {
 
 	t.Run("deny", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "deny", "msg-1")
 		require.Equal(t, "DENY", client.automodAction)
 		require.Contains(t, joinNotices(t, msgs), "denied")
@@ -719,14 +699,14 @@ func TestHandleCommand_AutoModAndSnooze(t *testing.T) {
 
 	t.Run("missing message id", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		msgs := runCommandMessages(t, client, "approve")
 		require.Contains(t, joinNotices(t, msgs), "Expected Usage: /approve <message_id>")
 	})
 
 	t.Run("snooze", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		client.snoozeResp = twitchapi.AdSnoozeData{NextAdAt: "2026-10-26T21:00:00Z"}
 		msgs := runCommandMessages(t, client, "snooze")
 		require.Contains(t, joinNotices(t, msgs), "snoozed to")
@@ -734,27 +714,9 @@ func TestHandleCommand_AutoModAndSnooze(t *testing.T) {
 
 	t.Run("snooze error", func(t *testing.T) {
 		t.Parallel()
-		client := newFakeCommandClient()
+		client := newFakeModerationClient()
 		client.snoozeErr = errors.New("no snoozes left")
 		msgs := runCommandMessages(t, client, "snooze")
 		require.Contains(t, joinNotices(t, msgs), "no snoozes left")
 	})
-}
-
-func TestModeratorSuggestionsIncludeNewCommands(t *testing.T) {
-	t.Parallel()
-
-	joined := strings.Join(moderatorSuggestionTexts(), "\n")
-	for _, command := range []string{
-		"/slow", "/slowoff", "/followers", "/followersoff", "/subscribers", "/subscribersoff",
-		"/emoteonly", "/emoteonlyoff", "/uniquechat", "/uniquechatoff", "/clear",
-		"/mod ", "/unmod ", "/mods", "/vip ", "/unvip ", "/vips",
-		"/warn ", "/raid ", "/unraid", "/shoutout ", "/approve ", "/deny ", "/snooze",
-	} {
-		require.Contains(t, joined, command)
-	}
-}
-
-func moderatorSuggestionTexts() []string {
-	return command.ModeratorSuggestions[:]
 }

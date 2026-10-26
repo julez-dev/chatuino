@@ -166,13 +166,7 @@ type (
 // https://dev.twitch.tv/docs/api/reference/#get-vips
 type (
 	//easyjson:json
-	GetModeratorsResponse struct {
-		Data       []ChatRoleUser `json:"data"`
-		Pagination Pagination     `json:"pagination"`
-	}
-
-	//easyjson:json
-	GetVIPsResponse struct {
+	ChatRoleUsersResponse struct {
 		Data       []ChatRoleUser `json:"data"`
 		Pagination Pagination     `json:"pagination"`
 	}

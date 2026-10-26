@@ -49,17 +49,17 @@ func handleCommand(tabID string, name string, args []string, channelID string, c
 	case "marker":
 		return handleMarker(args, channelID, channel, userAccountID, ttv, noticeCommandFunc)
 	case "slow", "slowoff", "followers", "followersoff", "subscribers", "subscribersoff", "emoteonly", "emoteonlyoff", "uniquechat", "uniquechatoff":
-		return handleChatSetting(name, args, tabID, channelID, channel, userAccountID, ttv, noticeCommandFunc)
+		return handleChatSetting(name, args, tabID, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "clear":
 		return handleDeleteMessages("delete_all_messages", nil, channel, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "mod", "unmod", "mods", "vip", "unvip", "vips":
-		return handleRoleCommand(name, args, channelID, channel, userAccountID, ttv, noticeCommandFunc)
+		return handleRoleCommand(name, args, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "warn":
-		return handleWarn(args, channelID, channel, userAccountID, ttv, noticeCommandFunc)
+		return handleWarn(args, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "raid", "unraid":
-		return handleRaid(name, args, channelID, channel, userAccountID, ttv, noticeCommandFunc)
+		return handleRaid(name, args, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "shoutout":
-		return handleShoutout(args, channelID, channel, userAccountID, ttv, noticeCommandFunc)
+		return handleShoutout(args, channelID, userAccountID, ttv, noticeCommandFunc)
 	case "approve", "deny":
 		return handleAutoModAction(name, args, userAccountID, ttv, noticeCommandFunc)
 	case "snooze":
@@ -154,7 +154,7 @@ func describeAPIError(err error, action string) string {
 	return fmt.Sprintf("Failed to %s: %s", action, err.Error())
 }
 
-func handleChatSetting(name string, args []string, tabID string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleChatSetting(name string, args []string, tabID string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	data := twitchapi.ChatSettingsUpdateData{}
 	success := ""
 
@@ -238,7 +238,7 @@ func handleChatSetting(name string, args []string, tabID string, channelID strin
 	}
 }
 
-func handleRoleCommand(name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleRoleCommand(name string, args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	isList := name == "mods" || name == "vips"
 
 	if !isList && firstArg(args) == "" {
@@ -290,10 +290,7 @@ func handleRoleCommand(name string, args []string, channelID string, channel str
 			return noticeFunc(notice)()
 		}
 
-		displayName := user.DisplayName
-		if displayName == "" {
-			displayName = user.Login
-		}
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
 
 		var (
 			err     error
@@ -323,7 +320,7 @@ func handleRoleCommand(name string, args []string, channelID string, channel str
 	}
 }
 
-func handleWarn(args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleWarn(args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	username := firstArg(args)
 	if username == "" {
 		return noticeFunc("Expected Usage: /warn <username> [reason]")
@@ -347,16 +344,13 @@ func handleWarn(args []string, channelID string, channel string, userAccountID s
 			return noticeFunc(describeAPIError(err, "warn user"))()
 		}
 
-		displayName := user.DisplayName
-		if displayName == "" {
-			displayName = user.Login
-		}
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
 
 		return noticeFunc(fmt.Sprintf("User %s has been warned because: %s", displayName, reason))()
 	}
 }
 
-func handleRaid(name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleRaid(name string, args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	if name == "unraid" {
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -392,16 +386,13 @@ func handleRaid(name string, args []string, channelID string, channel string, us
 			return noticeFunc(describeAPIError(err, "start raid"))()
 		}
 
-		displayName := user.DisplayName
-		if displayName == "" {
-			displayName = user.Login
-		}
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
 
 		return noticeFunc(fmt.Sprintf("Raid started towards %s; it begins once the broadcaster confirms", displayName))()
 	}
 }
 
-func handleShoutout(args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
+func handleShoutout(args []string, channelID string, userAccountID string, ttv ModerationAPI, noticeFunc func(msg string) tea.Cmd) tea.Cmd {
 	target := firstArg(args)
 	if target == "" {
 		return noticeFunc("Expected Usage: /shoutout <channel>")
@@ -420,10 +411,7 @@ func handleShoutout(args []string, channelID string, channel string, userAccount
 			return noticeFunc(describeAPIError(err, "send shoutout"))()
 		}
 
-		displayName := user.DisplayName
-		if displayName == "" {
-			displayName = user.Login
-		}
+		displayName := preferredDisplayName(user.DisplayName, user.Login)
 
 		return noticeFunc(fmt.Sprintf("Sent a shoutout to %s", displayName))()
 	}

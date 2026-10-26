@@ -736,7 +736,6 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 		"channel.channel_points_custom_reward_redemption.add", "channel.channel_points_custom_reward_redemption.update",
 		"channel.channel_points_automatic_reward_redemption.add",
 		"channel.ad_break.begin",
-		"channel.chat_settings.update",
 	} {
 		subType := subType // capture for closure
 		cmds = append(cmds, func() tea.Msg {
@@ -2938,17 +2937,16 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 		)
 	case "channel.chat_settings.update":
 		settings := chatstate.SettingsFromUpdate(msg.Payload.Event)
-		if t.chatSettings != nil {
-			t.chatSettings.Put(t.channelID, settings)
-		}
 		if t.statusInfo != nil {
 			t.statusInfo.ApplySettings(settings)
+		} else if t.chatSettings != nil {
+			t.chatSettings.Put(t.channelID, settings)
 		}
 
 		return nil
 	case "channel.warning.send":
-		moderator := eventDisplayName(msg.Payload.Event.ModeratorUserName, msg.Payload.Event.ModeratorUserLogin)
-		user := eventDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
+		moderator := preferredDisplayName(msg.Payload.Event.ModeratorUserName, msg.Payload.Event.ModeratorUserLogin)
+		user := preferredDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
 
 		return createCMDFunc(
 			&twitchirc.Notice{
@@ -2959,7 +2957,7 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 			},
 		)
 	case "channel.warning.acknowledge":
-		user := eventDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
+		user := preferredDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
 
 		return createCMDFunc(
 			&twitchirc.Notice{
@@ -2970,7 +2968,7 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 			},
 		)
 	case "channel.shoutout.create":
-		target := eventDisplayName(msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.ToBroadcasterUserLogin)
+		target := preferredDisplayName(msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.ToBroadcasterUserLogin)
 
 		return createCMDFunc(
 			&twitchirc.Notice{
@@ -2981,7 +2979,7 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 			},
 		)
 	case "channel.shoutout.receive":
-		from := eventDisplayName(msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.FromBroadcasterUserLogin)
+		from := preferredDisplayName(msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.FromBroadcasterUserLogin)
 
 		return createCMDFunc(
 			&twitchirc.Notice{
@@ -3041,7 +3039,7 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 	return nil
 }
 
-func eventDisplayName(name string, login string) string {
+func preferredDisplayName(name string, login string) string {
 	if name != "" {
 		return name
 	}
@@ -3062,7 +3060,7 @@ func (t *Broadcast) trackAutoMod(id string, notice *twitchirc.Notice) {
 }
 
 func (t *Broadcast) autoModNotice(event eventsub.Event) *twitchirc.Notice {
-	user := eventDisplayName(event.UserName, event.UserLogin)
+	user := preferredDisplayName(event.UserName, event.UserLogin)
 
 	reason := event.Reason
 	if event.Category != "" {
@@ -3083,7 +3081,7 @@ func (t *Broadcast) autoModNotice(event eventsub.Event) *twitchirc.Notice {
 		status = fmt.Sprintf(" [%s]", event.Status)
 	}
 
-	message := strings.TrimSpace(event.RewardText.Text)
+	message := strings.TrimSpace(event.Message.Text)
 	if message != "" {
 		message = ": " + message
 	}

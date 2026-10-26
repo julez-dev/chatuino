@@ -175,8 +175,6 @@ func (s *streamStatus) ApplySettings(settings twitchapi.ChatSettingData) {
 
 // scheduleFallback arms the fallback request for a channel that has not reported
 // its room state yet.
-// scheduleFallback arms the fallback request for a channel that has not reported
-// its room state yet.
 func (s *streamStatus) scheduleFallback() tea.Cmd {
 	s.fallbackSeq++
 

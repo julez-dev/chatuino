@@ -139,7 +139,7 @@ func TestMessage_AutomaticRedemptionPayload(t *testing.T) {
 	var msg Message[NotificationPayload]
 	require.NoError(t, json.Unmarshal([]byte(raw), &msg))
 
-	require.Equal(t, "sparkles", msg.Payload.Event.RewardText.Text)
+	require.Equal(t, "sparkles", msg.Payload.Event.Message.Text)
 }
 
 // TestMessage_AutoModPayload covers both message shapes Twitch uses: AutoMod v1
@@ -184,7 +184,7 @@ func TestMessage_AutoModPayload(t *testing.T) {
 			require.Equal(t, "msg-1", event.MessageID)
 			require.Equal(t, "BadUser", event.UserName)
 			require.Equal(t, "automod", event.Reason)
-			require.Equal(t, "This is a bad message", event.RewardText.Text)
+			require.Equal(t, "This is a bad message", event.Message.Text)
 		})
 	}
 }
