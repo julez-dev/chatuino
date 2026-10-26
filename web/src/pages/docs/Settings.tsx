@@ -294,7 +294,7 @@ custom_commands:
     replacement: "CurrentTime: {{ .CurrentTime }}; BroadcastName: {{ .BroadcastName }}"
     # You can even create custom mod commands/shortcuts
   - trigger: "/custom-spam-timeout"
-    replacement: "/timeout {{ .SelectedDisplayName }} 10 Please stop spamming."`}</code>
+    replacement: "/timeout {{ .SelectedDisplayName }} 10m Please stop spamming."`}</code>
         </pre>
 
         <p class="mb-4 text-nord4">

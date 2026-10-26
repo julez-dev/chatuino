@@ -1613,7 +1613,7 @@ func (t *Broadcast) handleTimeoutShortcut() {
 		return
 	}
 
-	t.input.SetValue("/timeout " + msg.DisplayName + " 600")
+	t.input.SetValue("/timeout " + msg.DisplayName + " 10m")
 	t.HandleResize() // Recalculate layout after setting timeout command
 }
 
