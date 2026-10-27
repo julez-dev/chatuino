@@ -98,17 +98,17 @@ func TestDisplayManager_ApplyLayout(t *testing.T) {
 	frames := []DecodedImageFrame{{Width: 28, Height: 28}}
 
 	single := DecodedImage{Cols: 99, Images: frames}
-	NewDisplayManager(nil, 10, 20, DisplayOptions{Rows: 1}).applyLayout(&single)
+	NewDisplayManager(nil, CellSize{Width: 10, Height: 20}, DisplayOptions{Rows: 1}).applyLayout(&single)
 	require.Equal(t, 1, single.Rows)
 	require.Equal(t, 2, single.Cols) // 28px -> 20px high -> 20px wide -> 2 cols
 
 	double := DecodedImage{Cols: 99, Images: frames}
-	NewDisplayManager(nil, 10, 20, DisplayOptions{Rows: 2}).applyLayout(&double)
+	NewDisplayManager(nil, CellSize{Width: 10, Height: 20}, DisplayOptions{Rows: 2}).applyLayout(&double)
 	require.Equal(t, 2, double.Rows)
 	require.Equal(t, 4, double.Cols) // 28px -> 40px high -> 40px wide -> 4 cols
 
 	clamped := DecodedImage{Images: frames}
-	NewDisplayManager(nil, 10, 20, DisplayOptions{Rows: 10}).applyLayout(&clamped)
+	NewDisplayManager(nil, CellSize{Width: 10, Height: 20}, DisplayOptions{Rows: 10}).applyLayout(&clamped)
 	require.Equal(t, MaxRows, clamped.Rows)
 }
 

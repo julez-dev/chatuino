@@ -805,11 +805,11 @@ func TestRoot_ResizeRefreshesCellSize(t *testing.T) {
 
 	root := newTestRoot(t, nil, nil, nil)
 	refreshes := 0
-	root.imageDisplayManager = kittyimg.NewDisplayManager(afero.NewMemMapFs(), 10, 10, kittyimg.DisplayOptions{
+	root.imageDisplayManager = kittyimg.NewDisplayManager(afero.NewMemMapFs(), kittyimg.CellSize{Width: 10, Height: 10}, kittyimg.DisplayOptions{
 		Rows: 1,
-		CellSize: func() (float32, float32, error) {
+		CellSize: func() (kittyimg.CellSize, error) {
 			refreshes++
-			return 12, 24, nil
+			return kittyimg.CellSize{Width: 12, Height: 24}, nil
 		},
 	})
 

@@ -241,12 +241,12 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 					return support.unavailableError(save.SettingsPath())
 				}
 
-				cellWidth, cellHeight, err := getTermCellWidthHeight()
+				cell, err := getTermCellWidthHeight()
 				if err != nil {
 					return fmt.Errorf("graphic emotes are enabled, but %w", err)
 				}
 
-				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight, kittyimg.DisplayOptions{
+				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cell, kittyimg.DisplayOptions{
 					Rows:        settings.Chat.GraphicScale,
 					Passthrough: support.Passthrough,
 					CellSize:    getTermCellWidthHeight,

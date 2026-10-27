@@ -138,10 +138,16 @@ type DisplayManager struct {
 	fs          afero.Fs
 	rows        int
 	passthrough bool
-	cellSizeFn  func() (float32, float32, error)
+	cellSizeFn  func() (CellSize, error)
 
-	cellMu                sync.RWMutex
-	cellWidth, cellHeight float32
+	cellMu sync.RWMutex
+	cell   CellSize
+}
+
+// CellSize is the terminal cell size in pixels. Kept together because every
+// image geometry calculation needs both dimensions.
+type CellSize struct {
+	Width, Height float32
 }
 
 // DisplayOptions configures how images are displayed.
@@ -153,44 +159,44 @@ type DisplayOptions struct {
 
 	// CellSize, when set, re-reads the terminal cell size on RefreshCellSize so
 	// images converted after a resize or font change keep their aspect ratio.
-	CellSize func() (float32, float32, error)
+	CellSize func() (CellSize, error)
 }
 
 // NewDisplayManager creates a display manager for a terminal with the given cell size in pixels.
-func NewDisplayManager(fs afero.Fs, cellWidth, cellHeight float32, opts DisplayOptions) *DisplayManager {
+func NewDisplayManager(fs afero.Fs, cell CellSize, opts DisplayOptions) *DisplayManager {
 	return &DisplayManager{
 		fs:          fs,
-		cellWidth:   cellWidth,
-		cellHeight:  cellHeight,
+		cell:        cell,
 		rows:        min(max(opts.Rows, 1), MaxRows),
 		passthrough: opts.Passthrough,
 		cellSizeFn:  opts.CellSize,
 	}
 }
 
-// RefreshCellSize re-reads the terminal cell size. Images already on screen keep
-// the geometry they were rendered with; images converted afterwards use the new
-// cell size.
+// RefreshCellSize re-reads the terminal cell size. Images that are converted
+// afterwards use the new size; images already placed in this session keep their
+// geometry, because their placeholder cells and placement are already in the
+// rendered chat and cannot be re-laid-out.
 func (d *DisplayManager) RefreshCellSize() {
 	if d.cellSizeFn == nil {
 		return
 	}
 
-	width, height, err := d.cellSizeFn()
-	if err != nil || width <= 0 || height <= 0 {
+	cell, err := d.cellSizeFn()
+	if err != nil || cell.Width <= 0 || cell.Height <= 0 {
 		return
 	}
 
 	d.cellMu.Lock()
-	d.cellWidth, d.cellHeight = width, height
+	d.cell = cell
 	d.cellMu.Unlock()
 }
 
-func (d *DisplayManager) cellSize() (float32, float32) {
+func (d *DisplayManager) cellSize() CellSize {
 	d.cellMu.RLock()
 	defer d.cellMu.RUnlock()
 
-	return d.cellWidth, d.cellHeight
+	return d.cell
 }
 
 // applyLayout sets rows and recomputes the column count from the first frame's pixel size,
@@ -206,14 +212,14 @@ func (d *DisplayManager) applyLayout(decoded *DecodedImage) {
 }
 
 func (d *DisplayManager) colsFor(width, height int) int {
-	cellWidth, cellHeight := d.cellSize()
-	if cellWidth <= 0 || cellHeight <= 0 || width <= 0 || height <= 0 {
+	cell := d.cellSize()
+	if cell.Width <= 0 || cell.Height <= 0 || width <= 0 || height <= 0 {
 		return 1
 	}
 
-	ratio := cellHeight * float32(d.rows) / float32(height)
+	ratio := cell.Height * float32(d.rows) / float32(height)
 	scaledWidth := int(math.Round(float64(float32(width) * ratio)))
-	return max(1, int(math.Ceil(float64(float32(scaledWidth)/cellWidth))))
+	return max(1, int(math.Ceil(float64(float32(scaledWidth)/cell.Width))))
 }
 
 func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {

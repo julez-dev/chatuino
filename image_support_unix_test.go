@@ -1,4 +1,4 @@
-//go:build unix || darwin
+//go:build unix
 
 package main
 
@@ -70,16 +70,31 @@ func TestDetectImageSupport(t *testing.T) {
 		},
 		{
 			name:      "iterm2 new enough",
-			env:       map[string]string{"LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.6.0"},
+			env:       map[string]string{"LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.6.7"},
 			available: true,
-			terminal:  "iTerm2 3.6.0",
+			terminal:  "iTerm2 3.6.7",
 		},
 		{
-			name:     "iterm2 too old",
-			env:      map[string]string{"LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.4.19"},
-			terminal: "iTerm2 3.4.19",
-			reason:   "cannot display kitty graphics",
+			name:     "iterm2 before the placeholder fix",
+			env:      map[string]string{"LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.6.6"},
+			terminal: "iTerm2 3.6.6",
+			reason:   "does not render Unicode placeholders correctly",
+			hint:     "update iTerm2 to 3.6.7",
+		},
+		{
+			name:     "iterm2 version unknown",
+			env:      map[string]string{"LC_TERMINAL": "iTerm2"},
+			terminal: "iTerm2",
+			reason:   "could not determine the iTerm2 version",
 			hint:     "update iTerm2",
+		},
+		{
+			name:        "iterm2 inside tmux ignores tmux's version",
+			env:         map[string]string{"TMUX": "/tmp/tmux-1000/default,1,0", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.6.7", "TERM_PROGRAM": "tmux", "TERM_PROGRAM_VERSION": "3.8"},
+			tmux:        map[string]string{clientTermname: "xterm-256color", allowPassthrough: "on"},
+			available:   true,
+			terminal:    "iTerm2 3.6.7 inside tmux",
+			passthrough: true,
 		},
 		{
 			name:     "wezterm has no placeholders",
@@ -147,10 +162,10 @@ func TestDetectImageSupport(t *testing.T) {
 		},
 		{
 			name:        "tmux with iTerm2 detected from surviving env",
-			env:         map[string]string{"TMUX": "/tmp/tmux-1000/default,1,0", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.6.0"},
+			env:         map[string]string{"TMUX": "/tmp/tmux-1000/default,1,0", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.6.7"},
 			tmux:        map[string]string{clientTermname: "xterm-256color", allowPassthrough: "on"},
 			available:   true,
-			terminal:    "iTerm2 3.6.0 inside tmux",
+			terminal:    "iTerm2 3.6.7 inside tmux",
 			passthrough: true,
 		},
 		{
@@ -208,7 +223,7 @@ func TestDetectImageSupport(t *testing.T) {
 			}
 			if !tc.available {
 				message := got.unavailableError("/tmp/settings.yaml").Error()
-				require.Contains(t, message, "kitty >= 0.28, Ghostty, iTerm2 >= 3.5.4")
+				require.Contains(t, message, "kitty >= 0.28, Ghostty, iTerm2 >= 3.6.7")
 				require.Contains(t, message, "/tmp/settings.yaml")
 			}
 		})
@@ -222,19 +237,19 @@ func TestVersionAtLeast(t *testing.T) {
 		version string
 		want    bool
 	}{
-		{"3.5.4", true},
-		{"3.5.4beta2", true},
-		{"3.5.10", true},
-		{"3.6.0", true},
+		{"3.6.7", true},
+		{"3.6.7beta1", true},
+		{"3.6.10", true},
+		{"3.7.0", true},
 		{"4.0", true},
-		{"3.4.19", false},
-		{"3.5", false},
-		{"3.5.3", false},
+		{"3.6.7.1", true},
+		{"3.6.6", false},
+		{"3.6", false},
+		{"3.5.4", false},
 		{"2.9.9", false},
-		{"", true},     // unparseable: do not block the user
-		{"beta", true}, // unparseable: do not block the user
-		{"3.5.4.1", true},
+		{"", false},     // unverifiable: fail closed
+		{"beta", false}, // unparseable: fail closed
 	} {
-		require.Equal(t, tc.want, versionAtLeast(tc.version, 3, 5, 4), tc.version)
+		require.Equal(t, tc.want, versionAtLeast(tc.version, 3, 6, 7), tc.version)
 	}
 }

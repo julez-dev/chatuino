@@ -18,7 +18,7 @@ func TestDisplayManager_Convert_Cached(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
 
 	// Pre-cache a decoded image
 	cachedImage := DecodedImage{
@@ -61,7 +61,7 @@ func TestDisplayManager_Convert_SessionCache(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
 
 	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
 	require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 400, 400, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 400, Height: 400}, DisplayOptions{Rows: 1})
 
 	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
 	require.NoError(t, err)
@@ -138,7 +138,7 @@ func TestDisplayManager_Convert_Codecs(t *testing.T) {
 			globalImagePlacementIDCounter.Store(0)
 			globalPlacedImages = &syncmap.Map{}
 
-			dm := NewDisplayManager(afero.NewMemMapFs(), 400, 400, DisplayOptions{Rows: 1})
+			dm := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 400, Height: 400}, DisplayOptions{Rows: 1})
 
 			data, err := os.ReadFile(tt.testdata)
 			require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 400, 400, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 400, Height: 400}, DisplayOptions{Rows: 1})
 
 	unit := DisplayUnit{
 		ID:         "animated-webp",
@@ -347,13 +347,13 @@ func TestDisplayManager_PassthroughWrapsEveryGraphicsCommand(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
 
-	dm := NewDisplayManager(afero.NewMemMapFs(), 10, 10, DisplayOptions{Rows: 1, Passthrough: true})
+	dm := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1, Passthrough: true})
 	require.Equal(t, wrapPassthrough("\x1b_Ga=D\x1b\\"), dm.CleanupAllImagesCommand())
 
 	globalPlacedImages.Store("stale", DecodedImage{ID: 7, lastUsed: time.Now().Add(-time.Hour)})
 	require.Equal(t, wrapPassthrough("\x1b_Ga=D,i=7,q=2\x1b\\"), dm.CleanupOldImagesCommand(time.Minute))
 
-	plain := NewDisplayManager(afero.NewMemMapFs(), 10, 10, DisplayOptions{Rows: 1})
+	plain := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
 	require.Equal(t, "\x1b_Ga=D\x1b\\", plain.CleanupAllImagesCommand())
 	require.NotContains(t, plain.CleanupAllImagesCommand(), "Ptmux")
 }
@@ -364,7 +364,7 @@ func TestDisplayManager_ConvertWrapsPrepareCommand(t *testing.T) {
 	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1, Passthrough: true})
+	dm := NewDisplayManager(fs, CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1, Passthrough: true})
 	cachedImage := DecodedImage{
 		Cols:   2,
 		Images: []DecodedImageFrame{{Width: 10, Height: 10, EncodedPath: "L3BhdGgvdG8vY2FjaGVkLnBuZw=="}},
@@ -389,27 +389,27 @@ func TestDisplayManager_ConvertWrapsPrepareCommand(t *testing.T) {
 func TestDisplayManager_RefreshCellSize(t *testing.T) {
 	t.Parallel()
 
-	size := [2]float32{10, 20}
-	dm := NewDisplayManager(afero.NewMemMapFs(), size[0], size[1], DisplayOptions{
+	size := CellSize{Width: 10, Height: 20}
+	dm := NewDisplayManager(afero.NewMemMapFs(), size, DisplayOptions{
 		Rows: 1,
-		CellSize: func() (float32, float32, error) {
-			return size[0], size[1], nil
+		CellSize: func() (CellSize, error) {
+			return size, nil
 		},
 	})
 	require.Equal(t, 2, dm.colsFor(100, 100), "100px wide at 10px cells")
 
-	size = [2]float32{25, 20}
+	size = CellSize{Width: 25, Height: 20}
 	dm.RefreshCellSize()
 	require.Equal(t, 1, dm.colsFor(100, 100), "same image at 25px cells")
 
-	size = [2]float32{0, 0}
+	size = CellSize{}
 	dm.RefreshCellSize()
 	require.Equal(t, 1, dm.colsFor(100, 100), "an invalid size keeps the last usable one")
 
-	failing := NewDisplayManager(afero.NewMemMapFs(), 10, 10, DisplayOptions{
+	failing := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{
 		Rows: 1,
-		CellSize: func() (float32, float32, error) {
-			return 0, 0, errors.New("no tty")
+		CellSize: func() (CellSize, error) {
+			return CellSize{}, errors.New("no tty")
 		},
 	})
 	require.Equal(t, 1, failing.colsFor(100, 100))
