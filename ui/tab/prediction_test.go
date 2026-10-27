@@ -4,27 +4,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/live"
 	"github.com/stretchr/testify/require"
 )
-
-func predictionMessage(event eventsub.Event) eventsub.Message[eventsub.NotificationPayload] {
-	return eventsub.Message[eventsub.NotificationPayload]{
-		Payload: eventsub.NotificationPayload{Event: event},
-	}
-}
 
 func TestPrediction_SetPredictionData(t *testing.T) {
 	t.Parallel()
 
 	p := newPrediction(80)
-	p.setPredictionData(predictionMessage(eventsub.Event{
+	p.setPredictionData(live.Prediction{
 		Title: "Will we win?",
-		Outcomes: []eventsub.Outcome{
-			{ID: "yes", Title: "Yes", ChannelPoints: 500},
-			{ID: "no", Title: "No", ChannelPoints: 200},
+		Outcomes: []live.PredictionOutcome{
+			{ID: "yes", Title: "Yes", Points: 500},
+			{ID: "no", Title: "No", Points: 200},
 		},
-	}))
+	})
 
 	require.Equal(t, "Will we win?", p.title)
 	require.Len(t, p.outcomes, 2)

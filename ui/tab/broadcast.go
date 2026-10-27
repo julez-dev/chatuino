@@ -26,6 +26,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/ivr"
+	"github.com/julez-dev/chatuino/twitch/live"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/component"
@@ -63,6 +64,13 @@ type setChannelDataMessage struct {
 type emoteSetRefreshedMessage struct {
 	err      error
 	manually bool
+}
+
+// eventSubSubscribeFailedMessage reports one failed EventSub subscription. The
+// tab logs every failure and shows at most one non-fatal notice per watch cycle.
+type eventSubSubscribeFailedMessage struct {
+	topic string
+	err   error
 }
 
 type broadcastTabState int
@@ -109,6 +117,10 @@ type Broadcast struct {
 	isUserMod          bool
 	isModStatusAssumed bool // true when mod fetch failed; don't show "Mod" in status
 	focused            bool
+
+	// eventSubFailureNotified prevents one broken subscription set from filling
+	// the chat with a notice per topic. It resets when the tab subscribes again.
+	eventSubFailureNotified bool
 
 	// redemptions tracks notices that can still change status, so an update
 	// rewrites the existing chat notice instead of adding a second one.
@@ -576,6 +588,15 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			return t, nil
 		}
 		return t, t.handleEventSubMessage(msg.Message)
+	case eventSubSubscribeFailedMessage:
+		log.Logger.Err(msg.err).Str("topic", msg.topic).Msg("EventSub subscription failed")
+
+		if !t.channelDataLoaded || t.eventSubFailureNotified {
+			return t, nil
+		}
+
+		t.eventSubFailureNotified = true
+		return t, t.localNoticeCmd("Could not subscribe to some live events; polls, predictions, or redemptions may be missing")
 	case predictionTickMsg:
 		if msg.owner != t.prediction {
 			return t, nil
@@ -766,12 +787,12 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 }
 
 // subscribeChannelEventCmds returns the commands that subscribe to the channel's
-// EventSub events (polls, predictions, channel point redemptions, raids, ad breaks).
+// live events. The catalog and its role rules live in the live module; the tab only
+// turns each opaque subscription into a command and reports failures.
 //
-// The broadcaster-only topics are limited to the account's own channel because of
-// EventSub cost limits. Unban request topics are also available to moderators of
-// other channels, so those two subscriptions stay usable without taking on the
-// full broadcaster subscription set.
+// A failed subscription is non-fatal: the tab keeps working with the events it has.
+// The first failure per watch cycle produces one chat notice; every failure is
+// logged with its topic.
 func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	eventSubAPI := t.client.EventSub
 	if eventSubAPI == nil {
@@ -779,113 +800,29 @@ func (t *Broadcast) subscribeChannelEventCmds(channelID string) []tea.Cmd {
 	}
 
 	accountID := t.account.ID
-	if t.account.ID != channelID {
-		if !t.isUserMod {
-			return nil
-		}
 
-		return t.subscribeUnbanRequestEventCmds(accountID, channelID, eventSubAPI)
+	var role live.Role
+	switch {
+	case accountID == channelID:
+		role = live.RoleBroadcaster
+	case t.isUserMod:
+		role = live.RoleModerator
+	default:
+		return nil
 	}
 
-	var cmds []tea.Cmd
+	t.eventSubFailureNotified = false
 
-	for _, subType := range [...]string{
-		"channel.poll.begin", "channel.poll.progress", "channel.poll.end",
-		"channel.prediction.begin", "channel.prediction.progress", "channel.prediction.lock", "channel.prediction.end",
-		"channel.channel_points_custom_reward_redemption.add", "channel.channel_points_custom_reward_redemption.update",
-		"channel.channel_points_automatic_reward_redemption.add",
-		"channel.ad_break.begin",
-	} {
-		subType := subType // capture for closure
+	subscriptions := live.Watch(role, channelID, accountID)
+	cmds := make([]tea.Cmd, 0, len(subscriptions))
+
+	for _, subscription := range subscriptions {
+		subscription := subscription
 		cmds = append(cmds, func() tea.Msg {
-			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
-				Type:    subType,
-				Version: "1",
-				Condition: map[string]string{
-					"broadcaster_user_id": channelID,
-				},
-			}, eventSubAPI)
-			return nil
-		})
-	}
+			if err := t.pool.SubscribeEventSub(accountID, subscription.Request(), eventSubAPI); err != nil {
+				return eventSubSubscribeFailedMessage{topic: subscription.Type(), err: err}
+			}
 
-	cmds = append(cmds, func() tea.Msg {
-		t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
-			Type:    "channel.raid",
-			Version: "1",
-			Condition: map[string]string{
-				"to_broadcaster_user_id": channelID, // broadcaster gets raided
-			},
-		}, eventSubAPI)
-		return nil
-	})
-
-	cmds = append(cmds, func() tea.Msg {
-		t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
-			Type:    "channel.raid",
-			Version: "1",
-			Condition: map[string]string{
-				"from_broadcaster_user_id": channelID, // another channel gets raided from broadcaster
-			},
-		}, eventSubAPI)
-		return nil
-	})
-
-	// Chat settings events identify the moderator with user_id, while the
-	// moderation events below identify them with moderator_user_id.
-	cmds = append(cmds, func() tea.Msg {
-		t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
-			Type:    "channel.chat_settings.update",
-			Version: "1",
-			Condition: map[string]string{
-				"broadcaster_user_id": channelID,
-				"user_id":             accountID,
-			},
-		}, eventSubAPI)
-		return nil
-	})
-
-	for _, sub := range [...]struct {
-		typeName string
-		version  string
-	}{
-		{"channel.warning.send", "1"},
-		{"channel.warning.acknowledge", "1"},
-		{"channel.shoutout.create", "1"},
-		{"channel.shoutout.receive", "1"},
-		{"automod.message.hold", "2"},
-		{"automod.message.update", "2"},
-	} {
-		sub := sub
-		cmds = append(cmds, func() tea.Msg {
-			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
-				Type:    sub.typeName,
-				Version: sub.version,
-				Condition: map[string]string{
-					"broadcaster_user_id": channelID,
-					"moderator_user_id":   accountID,
-				},
-			}, eventSubAPI)
-			return nil
-		})
-	}
-
-	return append(cmds, t.subscribeUnbanRequestEventCmds(accountID, channelID, eventSubAPI)...)
-}
-
-func (t *Broadcast) subscribeUnbanRequestEventCmds(accountID, channelID string, eventSubAPI wspool.EventSubService) []tea.Cmd {
-	var cmds []tea.Cmd
-	for _, subType := range [...]string{"channel.unban_request.create", "channel.unban_request.resolve"} {
-		subType := subType
-		cmds = append(cmds, func() tea.Msg {
-			t.pool.SubscribeEventSub(accountID, twitchapi.CreateEventSubSubscriptionRequest{
-				Type:    subType,
-				Version: "1",
-				Condition: map[string]string{
-					"broadcaster_user_id": channelID,
-					"moderator_user_id":   accountID,
-				},
-			}, eventSubAPI)
 			return nil
 		})
 	}
@@ -2903,87 +2840,67 @@ func (t *Broadcast) handleOpenUserInspect(args []string) tea.Cmd {
 
 // EventSub notifications.
 
+// handleEventSubMessage routes one EventSub notification into the tab. Channel
+// filtering and translation are here; child state and notices are applied by
+// applyLiveEvent.
 func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.NotificationPayload]) tea.Cmd {
-	if msg.Payload.Subscription.Condition["broadcaster_user_id"] != t.channelID &&
-		msg.Payload.Subscription.Condition["from_broadcaster_user_id"] != t.channelID &&
-		msg.Payload.Subscription.Condition["to_broadcaster_user_id"] != t.channelID {
+	condition := msg.Payload.Subscription.Condition
+	if condition["broadcaster_user_id"] != t.channelID &&
+		condition["from_broadcaster_user_id"] != t.channelID &&
+		condition["to_broadcaster_user_id"] != t.channelID {
 		return nil
 	}
 
-	createCMDFunc := func(ircer twitchirc.IRCer) tea.Cmd {
-		return func() tea.Msg {
-			return RequestLocalMessageHandleMessage{
-				Message:   ircer,
-				AccountID: t.AccountID(),
-			}
-		}
+	event, ok := live.Translate(msg)
+	if !ok {
+		return nil
 	}
 
-	switch msg.Payload.Subscription.Type {
-	case "channel.poll.begin":
-		t.poll.setPollData(msg)
+	return t.applyLiveEvent(event)
+}
+
+// applyLiveEvent folds one typed domain event into the tab's children and chat.
+// The switch is exhaustive over the events this tab knows how to render; an
+// unknown event is ignored rather than guessed at.
+func (t *Broadcast) applyLiveEvent(event live.Event) tea.Cmd {
+	switch event := event.(type) {
+	case live.PollStarted:
+		t.poll.setPollData(event.Poll)
 		t.poll.enabled = true
 		t.HandleResize()
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Poll %q has started!", msg.Payload.Event.Title),
-			},
-		)
-	case "channel.poll.progress":
+		return t.noticeCmd(fmt.Sprintf("Poll %q has started!", event.Poll.Title))
+	case live.PollProgress:
 		heightBefore := lipgloss.Height(t.poll.View())
-		t.poll.setPollData(msg)
+		t.poll.setPollData(event.Poll)
 		t.poll.enabled = true
-		heightAfter := lipgloss.Height(t.poll.View())
 
-		if heightAfter != heightBefore {
+		if lipgloss.Height(t.poll.View()) != heightBefore {
 			t.HandleResize()
 		}
-	case "channel.poll.end":
-		winner := msg.Payload.Event.Choices[0]
-
-		for _, choice := range msg.Payload.Event.Choices {
-			if choice.Votes > winner.Votes {
-				winner = choice
-			}
-		}
-
+	case live.PollEnded:
 		t.poll.enabled = false
 		t.HandleResize()
 
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", msg.Payload.Event.Title, winner.Title, winner.Votes),
-			},
-		)
-	case "channel.prediction.begin":
-		t.prediction.setPredictionData(msg)
+		if event.Winner == nil {
+			return t.noticeCmd(fmt.Sprintf("Poll %q has ended!", event.Poll.Title))
+		}
+
+		return t.noticeCmd(fmt.Sprintf("Poll %q has ended, %q has won with %d votes!", event.Poll.Title, event.Winner.Title, event.Winner.Votes))
+	case live.PredictionStarted:
+		t.prediction.setPredictionData(event.Prediction)
 		t.prediction.enabled = true
 		t.prediction.locked = false
 		t.HandleResize()
 
-		cmds := []tea.Cmd{createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Prediction %q has started!", msg.Payload.Event.Title),
-			},
-		)}
-
+		cmds := []tea.Cmd{t.noticeCmd(fmt.Sprintf("Prediction %q has started!", event.Prediction.Title))}
 		if countdown := t.startPredictionCountdown(); countdown != nil {
 			cmds = append(cmds, countdown)
 		}
 
 		return tea.Batch(cmds...)
-	case "channel.prediction.progress":
+	case live.PredictionProgress:
 		heightBefore := viewHeight(t.prediction.View())
-		t.prediction.setPredictionData(msg)
+		t.prediction.setPredictionData(event.Prediction)
 		t.prediction.enabled = true
 
 		if viewHeight(t.prediction.View()) != heightBefore {
@@ -2991,76 +2908,47 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 		}
 
 		return t.startPredictionCountdown()
-	case "channel.prediction.lock":
-		t.prediction.setPredictionData(msg)
+	case live.PredictionLocked:
+		t.prediction.setPredictionData(event.Prediction)
 		t.prediction.enabled = true
 		t.prediction.locked = true
 		t.HandleResize()
 
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Prediction %q is locked!", msg.Payload.Event.Title),
-			},
-		)
-	case "channel.prediction.end":
-		t.prediction.setPredictionData(msg)
+		return t.noticeCmd(fmt.Sprintf("Prediction %q is locked!", event.Prediction.Title))
+	case live.PredictionEnded:
+		t.prediction.setPredictionData(event.Prediction)
 		t.prediction.enabled = false
 		t.HandleResize()
 
-		if msg.Payload.Event.Status == "canceled" {
-			return createCMDFunc(
-				&twitchirc.Notice{
-					FakeTimestamp:   time.Now(),
-					ChannelUserName: t.channelLogin,
-					MsgID:           twitchirc.MsgID(uuid.NewString()),
-					Message:         fmt.Sprintf("Prediction %q was canceled!", msg.Payload.Event.Title),
-				},
-			)
+		if event.Status == "canceled" {
+			return t.noticeCmd(fmt.Sprintf("Prediction %q was canceled!", event.Prediction.Title))
 		}
 
-		winner, ok := t.prediction.winner(msg.Payload.Event.WinningOutcomeID)
+		winner, ok := t.prediction.winner(event.WinningOutcomeID)
 		if !ok {
-			return createCMDFunc(
-				&twitchirc.Notice{
-					FakeTimestamp:   time.Now(),
-					ChannelUserName: t.channelLogin,
-					MsgID:           twitchirc.MsgID(uuid.NewString()),
-					Message:         fmt.Sprintf("Prediction %q has ended!", msg.Payload.Event.Title),
-				},
-			)
+			return t.noticeCmd(fmt.Sprintf("Prediction %q has ended!", event.Prediction.Title))
 		}
 
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Prediction %q has ended, %q won with %d points!", msg.Payload.Event.Title, winner.title, winner.points),
-			},
-		)
-	case "channel.channel_points_custom_reward_redemption.add", "channel.channel_points_automatic_reward_redemption.add":
-		notice := t.redemptionNotice(msg.Payload.Event)
+		return t.noticeCmd(fmt.Sprintf("Prediction %q has ended, %q won with %d points!", event.Prediction.Title, winner.title, winner.points))
+	case live.RedemptionAdded:
+		notice := t.redemptionNotice(event.Redemption)
 
 		// Only custom rewards can be updated later. Automatic rewards are
 		// one-shot events, so tracking them would leak an entry per redemption.
-		if msg.Payload.Subscription.Type == "channel.channel_points_custom_reward_redemption.add" &&
-			!redemptionStatusTerminal(msg.Payload.Event.Status) {
-			t.trackRedemption(msg.Payload.Event.ID, notice)
+		if event.Custom && !redemptionStatusTerminal(event.Redemption.Status) {
+			t.trackRedemption(event.Redemption.ID, notice)
 		}
 
-		return createCMDFunc(notice)
-	case "channel.channel_points_custom_reward_redemption.update":
-		notice := t.redemptionNotice(msg.Payload.Event)
+		return t.noticeCmdForNotice(notice)
+	case live.RedemptionUpdated:
+		notice := t.redemptionNotice(event.Redemption)
 
-		if existing, ok := t.redemptions[msg.Payload.Event.ID]; ok {
+		if existing, ok := t.redemptions[event.Redemption.ID]; ok {
 			existing.Message = notice.Message
-			t.chatWindow.updateNotice(msg.Payload.Event.ID, notice.Message)
+			t.chatWindow.updateNotice(event.Redemption.ID, notice.Message)
 
-			if redemptionStatusTerminal(msg.Payload.Event.Status) {
-				delete(t.redemptions, msg.Payload.Event.ID)
+			if redemptionStatusTerminal(event.Redemption.Status) {
+				delete(t.redemptions, event.Redemption.ID)
 			}
 
 			return nil
@@ -3068,140 +2956,97 @@ func (t *Broadcast) handleEventSubMessage(msg eventsub.Message[eventsub.Notifica
 
 		// The add event may have happened before this tab subscribed. Show the
 		// current state rather than dropping the update.
-		if !redemptionStatusTerminal(msg.Payload.Event.Status) {
-			t.trackRedemption(msg.Payload.Event.ID, notice)
+		if !redemptionStatusTerminal(event.Redemption.Status) {
+			t.trackRedemption(event.Redemption.ID, notice)
 		}
 
-		return createCMDFunc(notice)
-	case "channel.unban_request.create", "channel.unban_request.resolve":
+		return t.noticeCmdForNotice(notice)
+	case live.UnbanRequestCreated, live.UnbanRequestResolved:
 		if t.unbanRequests != nil {
-			t.unbanRequests.applyEvent(msg)
-		}
-		return nil
-	case "channel.raid":
-		// broadcaster raided another channel
-		if msg.Payload.Event.FromBroadcasterUserID == t.channelID {
-			return createCMDFunc(
-				&twitchirc.Notice{
-					FakeTimestamp:   time.Now(),
-					ChannelUserName: t.channelLogin,
-					MsgID:           twitchirc.MsgID(uuid.NewString()),
-					Message:         fmt.Sprintf("Raiding %s with %d Viewers!", msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.Viewers),
-				},
-			)
+			t.unbanRequests.applyEvent(event)
 		}
 
-		// broadcaster gets raided
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("You are getting raided by %s with %d Viewers!", msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.Viewers),
-			},
-		)
-	case "channel.chat_settings.update":
-		settings := chatstate.SettingsFromUpdate(msg.Payload.Event)
+		return nil
+	case live.Raid:
+		// The broadcaster raided another channel.
+		if event.FromID == t.channelID {
+			return t.noticeCmd(fmt.Sprintf("Raiding %s with %d Viewers!", event.ToName, event.Viewers))
+		}
+
+		return t.noticeCmd(fmt.Sprintf("You are getting raided by %s with %d Viewers!", event.FromName, event.Viewers))
+	case live.ChatSettingsChanged:
 		if t.statusInfo != nil {
-			t.statusInfo.ApplySettings(settings)
+			t.statusInfo.ApplySettings(event.Settings)
 		} else if t.chatSettings != nil {
-			t.chatSettings.Put(t.channelID, settings)
+			t.chatSettings.Put(t.channelID, event.Settings)
 		}
 
 		return nil
-	case "channel.warning.send":
-		moderator := preferredDisplayName(msg.Payload.Event.ModeratorUserName, msg.Payload.Event.ModeratorUserLogin)
-		user := preferredDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
+	case live.WarningSent:
+		return t.noticeCmd(fmt.Sprintf("%s warned %s: %s", event.Moderator, event.User, event.Reason))
+	case live.WarningAcknowledged:
+		return t.noticeCmd(fmt.Sprintf("%s acknowledged the warning", event.User))
+	case live.ShoutoutSent:
+		return t.noticeCmd(fmt.Sprintf("Sent a shoutout to %s with %d viewers", event.Target, event.Viewers))
+	case live.ShoutoutReceived:
+		return t.noticeCmd(fmt.Sprintf("%s sent this channel a shoutout with %d viewers", event.From, event.Viewers))
+	case live.AutoModHeld:
+		notice := t.autoModNotice(event.AutoMod)
 
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("%s warned %s: %s", moderator, user, msg.Payload.Event.Reason),
-			},
-		)
-	case "channel.warning.acknowledge":
-		user := preferredDisplayName(msg.Payload.Event.UserName, msg.Payload.Event.UserLogin)
-
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("%s acknowledged the warning", user),
-			},
-		)
-	case "channel.shoutout.create":
-		target := preferredDisplayName(msg.Payload.Event.ToBroadcasterUserName, msg.Payload.Event.ToBroadcasterUserLogin)
-
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("Sent a shoutout to %s with %d viewers", target, msg.Payload.Event.ViewerCount),
-			},
-		)
-	case "channel.shoutout.receive":
-		from := preferredDisplayName(msg.Payload.Event.FromBroadcasterUserName, msg.Payload.Event.FromBroadcasterUserLogin)
-
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         fmt.Sprintf("%s sent this channel a shoutout with %d viewers", from, msg.Payload.Event.ViewerCount),
-			},
-		)
-	case "automod.message.hold":
-		notice := t.autoModNotice(msg.Payload.Event)
-
-		if !automodStatusTerminal(msg.Payload.Event.Status) {
-			t.trackAutoMod(msg.Payload.Event.MessageID, notice)
+		if !automodStatusTerminal(event.AutoMod.Status) {
+			t.trackAutoMod(event.AutoMod.MessageID, notice)
 		}
 
-		return createCMDFunc(notice)
-	case "automod.message.update":
-		notice := t.autoModNotice(msg.Payload.Event)
+		return t.noticeCmdForNotice(notice)
+	case live.AutoModUpdated:
+		notice := t.autoModNotice(event.AutoMod)
 
-		if existing, ok := t.automodHeld[msg.Payload.Event.MessageID]; ok {
+		if existing, ok := t.automodHeld[event.AutoMod.MessageID]; ok {
 			existing.Message = notice.Message
-			t.chatWindow.updateNotice(msg.Payload.Event.MessageID, notice.Message)
+			t.chatWindow.updateNotice(event.AutoMod.MessageID, notice.Message)
 
-			if automodStatusTerminal(msg.Payload.Event.Status) {
-				delete(t.automodHeld, msg.Payload.Event.MessageID)
+			if automodStatusTerminal(event.AutoMod.Status) {
+				delete(t.automodHeld, event.AutoMod.MessageID)
 			}
 
 			return nil
 		}
 
-		if !automodStatusTerminal(msg.Payload.Event.Status) {
-			t.trackAutoMod(msg.Payload.Event.MessageID, notice)
+		if !automodStatusTerminal(event.AutoMod.Status) {
+			t.trackAutoMod(event.AutoMod.MessageID, notice)
 		}
 
-		return createCMDFunc(notice)
-	case "channel.ad_break.begin":
-		var chatMsg string
-
-		adDuration := humanizeDuration(time.Duration(msg.Payload.Event.DurationInSeconds) * time.Second)
-		if msg.Payload.Event.IsAutomatic {
-			chatMsg = fmt.Sprintf("An automatic %s ad just started!", adDuration)
-		} else {
-			chatMsg = fmt.Sprintf("A %s ad, requested by %s, just started!", adDuration, msg.Payload.Event.RequesterUserName)
+		return t.noticeCmdForNotice(notice)
+	case live.AdBreakStarted:
+		duration := humanizeDuration(event.Duration)
+		if event.Automatic {
+			return t.noticeCmd(fmt.Sprintf("An automatic %s ad just started!", duration))
 		}
 
-		return createCMDFunc(
-			&twitchirc.Notice{
-				FakeTimestamp:   time.Now(),
-				ChannelUserName: t.channelLogin,
-				MsgID:           twitchirc.MsgID(uuid.NewString()),
-				Message:         chatMsg,
-			},
-		)
+		return t.noticeCmd(fmt.Sprintf("A %s ad, requested by %s, just started!", duration, event.Requester))
 	}
 
 	return nil
+}
+
+// noticeCmd wraps a message in a tab-local notice. All live-event notices share
+// this constructor so the timestamp, channel name and message ID cannot drift.
+func (t *Broadcast) noticeCmd(message string) tea.Cmd {
+	return t.noticeCmdForNotice(&twitchirc.Notice{
+		FakeTimestamp:   time.Now(),
+		ChannelUserName: t.channelLogin,
+		MsgID:           twitchirc.MsgID(uuid.NewString()),
+		Message:         message,
+	})
+}
+
+func (t *Broadcast) noticeCmdForNotice(notice *twitchirc.Notice) tea.Cmd {
+	return func() tea.Msg {
+		return RequestLocalMessageHandleMessage{
+			Message:   notice,
+			AccountID: t.AccountID(),
+		}
+	}
 }
 
 func preferredDisplayName(name string, login string) string {
@@ -3224,17 +3069,10 @@ func (t *Broadcast) trackAutoMod(id string, notice *twitchirc.Notice) {
 	t.automodHeld[id] = notice
 }
 
-func (t *Broadcast) autoModNotice(event eventsub.Event) *twitchirc.Notice {
-	user := preferredDisplayName(event.UserName, event.UserLogin)
-
-	reason := event.Reason
-	if event.Category != "" {
-		reason = event.Category
-	}
-
+func (t *Broadcast) autoModNotice(event live.AutoMod) *twitchirc.Notice {
 	details := ""
-	if reason != "" {
-		details = fmt.Sprintf(" (%s", reason)
+	if event.Reason != "" {
+		details = fmt.Sprintf(" (%s", event.Reason)
 		if event.Level > 0 {
 			details += fmt.Sprintf(", level %d", event.Level)
 		}
@@ -3246,7 +3084,7 @@ func (t *Broadcast) autoModNotice(event eventsub.Event) *twitchirc.Notice {
 		status = fmt.Sprintf(" [%s]", event.Status)
 	}
 
-	message := strings.TrimSpace(event.Message.Text)
+	message := strings.TrimSpace(event.Message)
 	if message != "" {
 		message = ": " + message
 	}
@@ -3256,7 +3094,7 @@ func (t *Broadcast) autoModNotice(event eventsub.Event) *twitchirc.Notice {
 		ChannelUserName: t.channelLogin,
 		MsgID:           twitchirc.MsgID(event.MessageID),
 		Message: fmt.Sprintf("AutoMod held a message from %s%s%s%s [id: %s] - /approve %s or /deny %s",
-			user, status, details, message, event.MessageID, event.MessageID, event.MessageID),
+			event.User, status, details, message, event.MessageID, event.MessageID, event.MessageID),
 	}
 }
 

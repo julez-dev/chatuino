@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/live"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/nav"
@@ -403,15 +404,10 @@ func TestUnbanRequestQueue_SelectionStaysWithRequestAcrossLiveUpdates(t *testing
 	q, _ = updateUnbanQueue(t, q, q.Init()())
 	require.Equal(t, "pending-1", q.selectedID)
 
-	q.applyEvent(eventsub.Message[eventsub.NotificationPayload]{
-		Payload: eventsub.NotificationPayload{
-			Subscription: eventsub.Subscription{Type: "channel.unban_request.create"},
-			Event: eventsub.Event{
-				ID: "pending-2", UserLogin: "bob", UserName: "Bob", Text: "newer",
-				CreatedAt: now,
-			},
-		},
-	})
+	q.applyEvent(live.UnbanRequestCreated{Request: live.UnbanRequest{
+		ID: "pending-2", UserLogin: "bob", UserName: "Bob", Text: "newer",
+		CreatedAt: now,
+	}})
 
 	require.Equal(t, "pending-1", q.selectedID, "the cursor follows the request, not the sorted index")
 	require.Equal(t, 1, q.selected)

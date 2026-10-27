@@ -14,7 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/live"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/reflow/wordwrap"
 )
@@ -453,56 +453,65 @@ func (q *unbanRequestQueue) upsertRequest(updated twitchapi.UnbanRequest) {
 
 // applyEvent folds a live EventSub notification into the queue. Creation events
 // add the request, resolve events remove it from the pending list.
-func (q *unbanRequestQueue) applyEvent(msg eventsub.Message[eventsub.NotificationPayload]) {
-	event := msg.Payload.Event
-	switch msg.Payload.Subscription.Type {
-	case "channel.unban_request.create":
-		for _, request := range q.requests {
-			if request.ID == event.ID {
+// applyEvent folds a live EventSub event into the queue. Creation events add the
+// request, resolve events remove it from the pending list.
+func (q *unbanRequestQueue) applyEvent(event live.Event) {
+	switch event := event.(type) {
+	case live.UnbanRequestCreated:
+		request := unbanRequestFromLive(event.Request)
+		request.Status = "pending"
+
+		for _, existing := range q.requests {
+			if existing.ID == request.ID {
 				return
 			}
 		}
 
-		q.requests = append(q.requests, twitchapi.UnbanRequest{
-			ID:              event.ID,
-			BroadcasterID:   event.BroadcasterUserID,
-			BroadcasterName: event.BroadcasterUserName,
-			UserID:          event.UserID,
-			UserLogin:       event.UserLogin,
-			UserName:        event.UserName,
-			Text:            event.Text,
-			Status:          "pending",
-			CreatedAt:       event.CreatedAt,
-		})
+		q.requests = append(q.requests, request)
 		q.setRequests(q.requests)
-		q.notice = fmt.Sprintf("New unban request from %s", preferredDisplayName(event.UserName, event.UserLogin))
-	case "channel.unban_request.resolve":
-		if q.resolveID == event.ID {
+		q.notice = fmt.Sprintf("New unban request from %s", preferredDisplayName(request.UserName, request.UserLogin))
+	case live.UnbanRequestResolved:
+		request := unbanRequestFromLive(event.Request)
+
+		if q.resolveID == request.ID {
 			q.cancelResolution()
 		}
 
-		request, ok := q.requestByID(event.ID)
+		existing, ok := q.requestByID(request.ID)
 		if !ok {
-			request = twitchapi.UnbanRequest{
-				ID:              event.ID,
-				BroadcasterID:   event.BroadcasterUserID,
-				BroadcasterName: event.BroadcasterUserName,
-				UserID:          event.UserID,
-				UserLogin:       event.UserLogin,
-				UserName:        event.UserName,
-			}
+			existing = request
 		}
-		request.Status = event.Status
-		request.ResolutionText = event.ResolutionText
-		request.ModeratorID = event.ModeratorID
-		request.ModeratorLogin = event.ModeratorLogin
-		request.ModeratorName = event.ModeratorName
-		q.upsertRequest(request)
+
+		existing.Status = request.Status
+		existing.ResolutionText = request.ResolutionText
+		existing.ModeratorID = request.ModeratorID
+		existing.ModeratorLogin = request.ModeratorLogin
+		existing.ModeratorName = request.ModeratorName
+		q.upsertRequest(existing)
+
 		if ok {
-			q.notice = fmt.Sprintf("Unban request from %s was %s", preferredDisplayName(request.UserName, request.UserLogin), event.Status)
+			q.notice = fmt.Sprintf("Unban request from %s was %s", preferredDisplayName(existing.UserName, existing.UserLogin), request.Status)
 		} else {
-			q.notice = fmt.Sprintf("Unban request %s was %s", event.ID, event.Status)
+			q.notice = fmt.Sprintf("Unban request %s was %s", request.ID, request.Status)
 		}
+	}
+}
+
+func unbanRequestFromLive(request live.UnbanRequest) twitchapi.UnbanRequest {
+	return twitchapi.UnbanRequest{
+		ID:              request.ID,
+		BroadcasterID:   request.BroadcasterID,
+		BroadcasterName: request.BroadcasterName,
+		UserID:          request.UserID,
+		UserLogin:       request.UserLogin,
+		UserName:        request.UserName,
+		Text:            request.Text,
+		Status:          request.Status,
+		CreatedAt:       request.CreatedAt,
+		ResolutionText:  request.ResolutionText,
+		ModeratorID:     request.ModeratorID,
+		ModeratorLogin:  request.ModeratorLogin,
+		ModeratorName:   request.ModeratorName,
 	}
 }
 

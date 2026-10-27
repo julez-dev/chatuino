@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/live"
 )
 
 type pollItem struct {
@@ -67,14 +67,14 @@ func (p *poll) setWidth(width int) {
 	}
 }
 
-func (p *poll) setPollData(event eventsub.Message[eventsub.NotificationPayload]) {
+func (p *poll) setPollData(poll live.Poll) {
 	p.items = nil
-	p.items = make([]pollItem, 0, len(event.Payload.Event.Choices))
+	p.items = make([]pollItem, 0, len(poll.Choices))
 
-	p.title = event.Payload.Event.Title
+	p.title = poll.Title
 
 	var totalPoints int
-	for _, choice := range event.Payload.Event.Choices {
+	for _, choice := range poll.Choices {
 		item := pollItem{
 			id:    choice.ID,
 			title: choice.Title,
