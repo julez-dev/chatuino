@@ -765,7 +765,9 @@ func (b *Buffer) goToEntry(entry *Entry) {
 	for _, candidate := range active {
 		if candidate == entry {
 			candidate.selected = true
-			b.cursor = candidate.position.cursorEnd
+			// Jumping to a parent must show the entry from its first row: a
+			// parent that is itself a reply carries its quoted context there.
+			b.cursor = candidate.position.cursorStart
 			b.updatePort()
 			b.snapScroll()
 			return

@@ -541,3 +541,39 @@ func TestBuffer_ShortQueryCountsRunesNotBytes(t *testing.T) {
 	require.False(t, status.Applied, "two runes must still count as a short query")
 	require.Equal(t, "type at least 3 characters", status.Hint)
 }
+
+func TestBuffer_ReplyJumpShowsParentContextRow(t *testing.T) {
+	t.Parallel()
+
+	c := New(60, 1, save.BuildDefaultSettings(), save.BuildDefaultTheme())
+
+	c.Append(ChatEventMessage{Message: &twitchirc.PrivateMessage{
+		ID: "grand", DisplayName: "Alice", LoginName: "alice", Message: "grand parent",
+	}})
+	c.Append(ChatEventMessage{Message: &twitchirc.PrivateMessage{
+		ID: "parent", DisplayName: "Bob", LoginName: "bob", Message: "parent body",
+		ParentMsgID: "grand", ParentUserLogin: "alice", ParentDisplayName: "Alice", ParentMsgBody: "grand parent",
+	}})
+	c.Append(ChatEventMessage{Message: &twitchirc.PrivateMessage{
+		ID: "child", DisplayName: "Carol", LoginName: "carol", Message: "child body",
+		ParentMsgID: "parent", ParentUserLogin: "bob", ParentDisplayName: "Bob", ParentMsgBody: "parent body",
+	}})
+
+	entries := c.Entries()
+	parentEntry := entries[1]
+	childEntry := entries[2]
+
+	require.True(t, c.handleReplyReferenceClick(childEntry.position.cursorStart, c.renderer.timePaddingWidth))
+
+	selected, ok := c.Selected()
+	require.True(t, ok)
+	require.Equal(t, parentEntry.ID, selected.ID)
+
+	start, _, ok := c.LineRange(parentEntry.ID)
+	require.True(t, ok)
+	require.LessOrEqual(t, c.ViewportRenderStart(), start, "the parent's context row must be visible")
+	require.GreaterOrEqual(t, c.ViewportRenderStart()+c.height-1, start)
+
+	rows, _ := c.Rows(c.height)
+	require.Contains(t, plain(rows), "↩ Alice: grand parent", "the parent's own reply context is in view")
+}
