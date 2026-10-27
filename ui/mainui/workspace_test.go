@@ -629,30 +629,52 @@ func TestWorkspace_TinyTerminalsStayBoundedAndDoNotDestroySavedLayout(t *testing
 	}
 }
 
-func TestWorkspace_MoveAtOuterEdgeLiftsNestedPaneOneLevel(t *testing.T) {
+func TestWorkspace_MoveAtRootEdgeRedocksAndChangesOrientation(t *testing.T) {
 	t.Parallel()
 	root, a, b, c := workspaceRoot(t)
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyF2})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+	// Splitting the same axis joins the row, so the workspace holds a|b|c.
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+	require.Equal(t, c.ID(), root.activeID())
+
+	// c is already at the right edge of the root row: the horizontal move is
+	// refused and explains itself.
+	before := root.workspace.Arrange(101, 33)
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'L', Text: "L"})
+	require.Equal(t, before, root.workspace.Arrange(101, 33))
+	require.Contains(t, root.View().Content, "Move refused")
+
+	// A vertical move has no container above the root: c is re-docked as a
+	// full-width bottom pane and the row above keeps a and b.
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'J', Text: "J"})
+	panes := root.workspace.Arrange(101, 33).Panes
+	require.Len(t, panes, 3)
+	require.Equal(t, a.ID(), panes[0].Tab)
+	require.Equal(t, b.ID(), panes[1].Tab)
+	require.Equal(t, c.ID(), panes[2].Tab)
+	require.Equal(t, 101, panes[2].Width)
+	require.Less(t, panes[0].Y, panes[2].Y)
+	require.Equal(t, panes[0].Height, panes[1].Height)
+	require.Equal(t, c.ID(), root.activeID(), "focus follows the moved pane")
+	require.NotContains(t, root.View().Content, "Move refused", "a performed move clears the refusal hint")
+}
+
+func TestWorkspace_MoveAtNestedEdgeLiftsPaneOneLevel(t *testing.T) {
+	t.Parallel()
+	root, _, b, _ := workspaceRoot(t)
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyF2})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
 	require.Equal(t, b.ID(), root.activeID())
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 's', Text: "s"})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
-	require.Equal(t, c.ID(), root.activeID())
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'h', Text: "h"})
-	require.Equal(t, a.ID(), root.activeID())
 
-	// alpha is a child of the root row: pushing it against that edge must not
-	// rewrite the layout.
-	before := root.workspace.Arrange(101, 33)
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'J', Text: "J"})
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'H', Text: "H"})
-	require.Equal(t, before, root.workspace.Arrange(101, 33), "a pane at the root edge has nowhere to lift into")
-	require.Contains(t, root.View().Content, "Move refused", "a refused move explains itself instead of silently doing nothing")
-
-	// The bottom row is a nested container: moving beta up leaves it and joins the
-	// root row as an equal sibling instead of re-docking at the screen edge.
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	// columns[alpha, rows[beta, gamma]]: the bottom row is a nested container, so
+	// moving beta up leaves it and joins the root row as an equal sibling instead
+	// of re-docking at the screen edge.
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'k', Text: "k"})
 	require.Equal(t, b.ID(), root.activeID())
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'K', Text: "K"})
@@ -663,6 +685,7 @@ func TestWorkspace_MoveAtOuterEdgeLiftsNestedPaneOneLevel(t *testing.T) {
 	}
 	require.Equal(t, b.ID(), panes[1].Tab, "the lifted pane lands next to its former container")
 	require.Equal(t, b.ID(), root.activeID(), "focus follows the lifted pane")
+	require.NotContains(t, root.View().Content, "Move refused")
 	require.Equal(t, []string{"alpha", "beta", "gamma"}, []string{root.tabs.Rows()[0].ID, root.tabs.Rows()[1].ID, root.tabs.Rows()[2].ID}, "moves never reorder registry storage order")
 }
 

@@ -486,9 +486,15 @@ func cloneNode(n *Node) *Node {
 }
 
 // Move is i3-like directional movement. A pane first swaps contents with its
-// nearest neighbour. At an outer edge it moves one level up the tree instead of
-// re-docking at the screen edge: it leaves its container and becomes a sibling of
-// that container in the container above, on the requested side.
+// nearest neighbour. At the edge of a nested container it moves one level up the
+// tree: it leaves its container and becomes a sibling of that container in the
+// container above, on the requested side.
+//
+// At the root there is no container above, so the pane cannot lift. There the
+// previous re-dock is kept: the rest of the layout becomes one half of a new root
+// split and the pane the other half, which is how a row becomes a stack (or the
+// reverse). i3 itself refuses that move; changing the root's orientation is worth
+// keeping.
 func (l *Layout) Move(tab string, direction Direction, width, height int) bool {
 	if direction < Left || direction > Right || l.Count() < 2 || !l.Contains(tab) {
 		return false
@@ -501,32 +507,48 @@ func (l *Layout) Move(tab string, direction Direction, width, height int) bool {
 	if direction == Up || direction == Down {
 		axis = Rows
 	}
-	parent, _ := parentOf(l.root, tab)
-	if parent == nil || parent.Axis != axis {
-		// The pane is not at an edge of a container that splits along the
-		// requested direction, or it is the whole layout.
-		return false
-	}
-	if parent == l.root {
+	parent, index := parentOf(l.root, tab)
+	if parent == nil {
 		return false
 	}
 
 	root := cloneNode(l.root)
-	container, index := parentOf(root, tab)
-	leaf := container.Children[index]
-	container.Children = slices.Delete(container.Children, index, index+1)
-	container.Weights = slices.Delete(container.Weights, index, index+1)
-	if len(container.Children) == 1 {
-		// The container had just this pane and one sibling; the sibling takes
-		// its place and keeps its own subtree.
-		only := container.Children[0]
-		*container = *only
-	} else {
-		// The survivors keep their relative shares, but a container's weights
-		// must still sum to weightTotal: Resize and Restore rely on that scale.
-		container.Weights = normalizeWeights(container.Weights)
+	container, clonedIndex := parentOf(root, tab)
+	atStart := direction == Left || direction == Up
+
+	if parent == l.root {
+		// Already pinned to the requested root edge on a matching axis:
+		// re-docking would only reset the preferred ratio.
+		if parent.Axis == axis {
+			if atStart && index == 0 {
+				return false
+			}
+			if !atStart && index == len(parent.Children)-1 {
+				return false
+			}
+		}
+		leaf := detachLeaf(container, clonedIndex)
+		wrapped := &Node{Axis: axis, Weights: equalWeights(2)}
+		if atStart {
+			wrapped.Children = []*Node{leaf, container}
+		} else {
+			wrapped.Children = []*Node{container, leaf}
+		}
+		if minimumWidth, minimumHeight := minimum(wrapped); width < minimumWidth || height < minimumHeight {
+			return false
+		}
+		l.root = wrapped
+		l.revision++
+		return true
 	}
 
+	if parent.Axis != axis {
+		// The pane is not at an edge of a container that splits along the
+		// requested direction; only a root move changes the orientation.
+		return false
+	}
+
+	leaf := detachLeaf(container, clonedIndex)
 	grandparent, grandIndex := parentOfNode(root, container)
 	if grandparent == nil {
 		return false
@@ -544,6 +566,22 @@ func (l *Layout) Move(tab string, direction Direction, width, height int) bool {
 	l.root = root
 	l.revision++
 	return true
+}
+
+// detachLeaf removes the leaf at index from an already cloned container and
+// returns it. A container left with one child is replaced by that child; the
+// remaining weights are rescaled so they still sum to weightTotal.
+func detachLeaf(container *Node, index int) *Node {
+	leaf := container.Children[index]
+	container.Children = slices.Delete(container.Children, index, index+1)
+	container.Weights = slices.Delete(container.Weights, index, index+1)
+	if len(container.Children) == 1 {
+		only := container.Children[0]
+		*container = *only
+	} else {
+		container.Weights = normalizeWeights(container.Weights)
+	}
+	return leaf
 }
 
 func first(n *Node) string {

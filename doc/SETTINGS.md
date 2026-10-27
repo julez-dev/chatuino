@@ -128,7 +128,7 @@ Press **F2** to enter pane mode, then use the controls below. A standalone tab b
 
 Splitting follows i3's containers: a split along the focused pane's container axis joins that container as an equal sibling and rebalances all its panes equally, while a split along the other axis wraps the focused pane in a new container. **Ctrl+T** inherits the container's axis; **v** and **s** force left/right or top/bottom for that split.
 
-A move with a directional neighbour swaps the two pane contents without changing geometry. At the edge of a nested container it lifts the pane one level up the tree: the pane leaves its container and becomes a sibling of it in the container above, on the requested side (i3-style), keeping the surviving subtree intact. The receiving container rebalances equally like any other insertion; the container the pane left keeps its survivors' relative shares. A pane that is already an edge child of the root container has nowhere to lift to, so the move is refused. A move is also refused if the result cannot satisfy the pane minima; the layout is left unchanged and the status line says `Move refused`.
+A move with a directional neighbour swaps the two pane contents without changing geometry. At the edge of a nested container it lifts the pane one level up the tree: the pane leaves its container and becomes a sibling of it in the container above, on the requested side (i3-style), keeping the surviving subtree intact. The receiving container rebalances equally like any other insertion; the container the pane left keeps its survivors' relative shares. At the root there is no container above, so the pane is re-docked as a 50/50 half of a new root split on the requested side instead; this is how **H/J/K/L** changes a row into a stack (or the reverse), for example moving the last pane of a row down to span the width below the remaining row. A pane already sitting on that outer edge does not move. Moves that cannot satisfy the pane minima are refused; the layout is left unchanged and the status line says `Move refused`.
 
 Outside pane mode, **Tab/Shift+Tab** cycle the displayed tab list in header order without changing pane assignments: assigned tabs focus their pane and automatically show the workspace that owns them; unassigned tabs appear full-screen while the layout stays preserved. In pane mode, Tab/Shift+Tab cycle panes instead. While composing, Tab is handled as suggestion completion; while searching, it stays in search rather than switching tabs.
 
@@ -139,10 +139,10 @@ Outside pane mode, **Tab/Shift+Tab** cycle the displayed tab list in header orde
 | `pane_focus_down` | `down`, `j` | Focus down |
 | `pane_focus_up` | `up`, `k` | Focus up |
 | `pane_focus_right` | `right`, `l` | Focus right |
-| `pane_swap_left` | `H` | Move left; swaps with a neighbour, or at a container edge joins the container above on the left |
-| `pane_swap_down` | `J` | Move down; swaps with a neighbour, or at a container edge joins the parent container at the bottom |
-| `pane_swap_up` | `K` | Move up; swaps with a neighbour, or at a container edge joins the parent container at the top |
-| `pane_swap_right` | `L` | Move right; swaps with a neighbour, or at a container edge joins the container above on the right |
+| `pane_swap_left` | `H` | Move left; swaps with a neighbour, lifts at a container edge, or re-docks at the root edge |
+| `pane_swap_down` | `J` | Move down; swaps with a neighbour, lifts at a container edge, or re-docks at the root edge |
+| `pane_swap_up` | `K` | Move up; swaps with a neighbour, lifts at a container edge, or re-docks at the root edge |
+| `pane_swap_right` | `L` | Move right; swaps with a neighbour, lifts at a container edge, or re-docks at the root edge |
 | `pane_split_columns` | `v` | Choose a tab for a new right-hand pane; joins the row as an equal sibling |
 | `pane_split_rows` | `s` | Choose a tab for a new bottom pane; joins the stack as an equal sibling |
 | `pane_narrow` / `pane_widen` | `<` / `>` | Shrink/grow width |

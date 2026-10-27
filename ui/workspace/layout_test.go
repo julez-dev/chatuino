@@ -121,20 +121,36 @@ func TestLayout_NavigationAndSwapsUseSpatialOrderWithoutWrapping(t *testing.T) {
 	require.False(t, layout.Swap("alpha", workspace.Right, 101, 33))
 }
 
-func TestLayout_MoveSwapsNeighboursAndLiftsAtOuterEdges(t *testing.T) {
+func TestLayout_MoveSwapsNeighboursAndRedocksAtTheRootEdge(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
 	layout.Select("", "alpha")
 	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 101, 33))
 
-	// Both panes are children of the root container, so there is no container to
-	// lift them into: pushing against that edge must not rewrite the layout.
+	// Both panes are children of the root container: alpha is already at the
+	// left edge of a matching axis, so that move must not rewrite the layout.
 	before := layout.Arrange(101, 33)
 	revision := layout.Revision()
 	require.False(t, layout.Move("alpha", workspace.Left, 101, 33))
-	require.False(t, layout.Move("alpha", workspace.Down, 101, 33), "a column container does not move down")
 	require.Equal(t, before, layout.Arrange(101, 33))
 	require.Equal(t, revision, layout.Revision())
+
+	// There is no container above the root to lift into, so a vertical move
+	// re-docks the pane as a new half of the root split and the row becomes a
+	// stack.
+	require.True(t, layout.Move("alpha", workspace.Down, 101, 33))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "beta", Rect: workspace.Rect{Width: 101, Height: 16}},
+		{Tab: "alpha", Rect: workspace.Rect{Y: 17, Width: 101, Height: 16}},
+	}, layout.Arrange(101, 33).Panes)
+	require.False(t, layout.Move("alpha", workspace.Down, 101, 33), "already at the requested root edge")
+
+	// Re-docking from the bottom edge to the left restores a row layout.
+	require.True(t, layout.Move("alpha", workspace.Left, 101, 33))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 50, Height: 33}},
+		{Tab: "beta", Rect: workspace.Rect{X: 51, Width: 50, Height: 33}},
+	}, layout.Arrange(101, 33).Panes)
 
 	// A pane with a neighbour keeps the current geometry and swaps contents.
 	require.True(t, layout.Move("alpha", workspace.Right, 101, 33))
@@ -142,6 +158,23 @@ func TestLayout_MoveSwapsNeighboursAndLiftsAtOuterEdges(t *testing.T) {
 		{Tab: "beta", Rect: workspace.Rect{Width: 50, Height: 33}},
 		{Tab: "alpha", Rect: workspace.Rect{X: 51, Width: 50, Height: 33}},
 	}, layout.Arrange(101, 33).Panes)
+	require.False(t, layout.Move("alpha", workspace.Right, 101, 33))
+}
+
+// Moving the third pane of a row down re-docks it below the remaining row, the
+// shape that a strict i3 root-edge refusal could not produce.
+func TestLayout_MoveRedocksTheLastPaneOfARowBelowIt(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 161, 65))
+	require.NoError(t, layout.Split("beta", "gamma", workspace.Columns, 161, 65))
+	require.True(t, layout.Move("gamma", workspace.Down, 161, 65))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 80, Height: 32}},
+		{Tab: "beta", Rect: workspace.Rect{X: 81, Width: 80, Height: 32}},
+		{Tab: "gamma", Rect: workspace.Rect{Y: 33, Width: 161, Height: 32}},
+	}, layout.Arrange(161, 65).Panes)
 }
 
 // At the edge of a nested container the pane leaves it and becomes a sibling of
