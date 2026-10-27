@@ -302,7 +302,9 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 			return true
 		}
 		if time.Since(c.lastUsed) > maxAge {
-			fmt.Fprintf(&cmd, "\x1b_Ga=D,i=%d,q=2\x1b\\", c.ID)
+			// a=d,d=I deletes the image and frees its stored frame data; the
+			// previous a=D was not a valid action, so cleanup never ran.
+			cmd.WriteString(deleteImageCommand(c.ID))
 			globalPlacedImages.Delete(key)
 		}
 		return true
@@ -312,7 +314,21 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 }
 
 func (d *DisplayManager) CleanupAllImagesCommand() string {
-	return d.wrap("\x1b_Ga=D\x1b\\")
+	var cmd strings.Builder
+
+	globalPlacedImages.Range(func(key, value any) bool {
+		if c, ok := value.(DecodedImage); ok {
+			cmd.WriteString(deleteImageCommand(c.ID))
+		}
+		globalPlacedImages.Delete(key)
+		return true
+	})
+
+	return d.wrap(cmd.String())
+}
+
+func deleteImageCommand(id int32) string {
+	return fmt.Sprintf("\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", id)
 }
 
 // wrap tunnels a kitty command through tmux's DCS passthrough when Chatuino runs

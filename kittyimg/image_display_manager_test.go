@@ -348,13 +348,18 @@ func TestDisplayManager_PassthroughWrapsEveryGraphicsCommand(t *testing.T) {
 	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
 
 	dm := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1, Passthrough: true})
-	require.Equal(t, wrapPassthrough("\x1b_Ga=D\x1b\\"), dm.CleanupAllImagesCommand())
+	require.Empty(t, dm.CleanupAllImagesCommand(), "nothing placed yet")
 
 	globalPlacedImages.Store("stale", DecodedImage{ID: 7, lastUsed: time.Now().Add(-time.Hour)})
-	require.Equal(t, wrapPassthrough("\x1b_Ga=D,i=7,q=2\x1b\\"), dm.CleanupOldImagesCommand(time.Minute))
+	require.Equal(t, wrapPassthrough("\x1b_Ga=d,d=I,i=7,q=2\x1b\\"), dm.CleanupOldImagesCommand(time.Minute))
 
+	globalPlacedImages.Store("current", DecodedImage{ID: 8, lastUsed: time.Now()})
+	require.Equal(t, wrapPassthrough("\x1b_Ga=d,d=I,i=8,q=2\x1b\\"), dm.CleanupAllImagesCommand())
+	require.Empty(t, dm.CleanupAllImagesCommand(), "cleanup-all clears the session cache")
+
+	globalPlacedImages.Store("plain", DecodedImage{ID: 9})
 	plain := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
-	require.Equal(t, "\x1b_Ga=D\x1b\\", plain.CleanupAllImagesCommand())
+	require.Equal(t, "\x1b_Ga=d,d=I,i=9,q=2\x1b\\", plain.CleanupAllImagesCommand())
 	require.NotContains(t, plain.CleanupAllImagesCommand(), "Ptmux")
 }
 
