@@ -16,6 +16,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/chat"
+	"github.com/rs/zerolog/log"
 )
 
 type setUserInspectData struct {
@@ -159,6 +160,16 @@ func (u *userInspect) init(initialEvents []chat.ChatEventMessage) tea.Cmd {
 
 			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ctx, ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
 			prepareCmd.WriteString(prepare)
+
+			if badgeOverwrite == nil {
+				badgeOverwrite = make(chat.WordReplacement)
+			}
+
+			contributorPrepare, err := u.badgeReplacer.InjectContributorBadge(ctx, loggedEntry.PrivateMessage.LoginName, badgeOverwrite)
+			if err != nil {
+				log.Logger.Info().Err(err).Str("login", loggedEntry.PrivateMessage.LoginName).Msg("failed to inject contributor badge")
+			}
+			prepareCmd.WriteString(contributorPrepare)
 
 			fakeInitialEvent = append(fakeInitialEvent, chat.ChatEventMessage{
 				IsFakeEvent: true,
