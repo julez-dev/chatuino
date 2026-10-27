@@ -1,17 +1,15 @@
-//go:build !unix && !darwin
+//go:build !unix
 
 package main
 
 import (
 	"errors"
+
+	"github.com/julez-dev/chatuino/kittyimg"
 )
 
 var errUnsupported = errors.New("image support not available for this platform")
 
-func hasImageSupport() bool {
-	return false
-}
-
-func getTermCellWidthHeight() (float32, float32, error) {
-	return 0, 0, errUnsupported
+func getTermCellWidthHeight() (kittyimg.CellSize, error) {
+	return kittyimg.CellSize{}, errUnsupported
 }

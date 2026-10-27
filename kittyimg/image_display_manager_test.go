@@ -2,9 +2,12 @@ package kittyimg
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -15,7 +18,7 @@ func TestDisplayManager_Convert_Cached(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
 
 	// Pre-cache a decoded image
 	cachedImage := DecodedImage{
@@ -58,7 +61,7 @@ func TestDisplayManager_Convert_SessionCache(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
 
 	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
 	require.NoError(t, err)
@@ -91,7 +94,7 @@ func TestDisplayManager_Convert_FreshDownload(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 400, 400, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 400, Height: 400}, DisplayOptions{Rows: 1})
 
 	emoteData, err := os.ReadFile("../emote/testdata/pepeLaugh.webp")
 	require.NoError(t, err)
@@ -135,7 +138,7 @@ func TestDisplayManager_Convert_Codecs(t *testing.T) {
 			globalImagePlacementIDCounter.Store(0)
 			globalPlacedImages = &syncmap.Map{}
 
-			dm := NewDisplayManager(afero.NewMemMapFs(), 400, 400, DisplayOptions{Rows: 1})
+			dm := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 400, Height: 400}, DisplayOptions{Rows: 1})
 
 			data, err := os.ReadFile(tt.testdata)
 			require.NoError(t, err)
@@ -164,7 +167,7 @@ func TestDisplayManager_Convert_AnimatedUnsupported(t *testing.T) {
 	globalPlacedImages = &syncmap.Map{}
 
 	fs := afero.NewMemMapFs()
-	dm := NewDisplayManager(fs, 400, 400, DisplayOptions{Rows: 1})
+	dm := NewDisplayManager(fs, CellSize{Width: 400, Height: 400}, DisplayOptions{Rows: 1})
 
 	unit := DisplayUnit{
 		ID:         "animated-webp",
@@ -316,4 +319,105 @@ func TestIntToRGB(t *testing.T) {
 			require.Equal(t, tt.b, b)
 		})
 	}
+}
+
+func TestWrapPassthrough(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, wrapPassthrough(""))
+
+	command := "\x1b_Ga=D\x1b\\"
+	wrapped := wrapPassthrough(command)
+	require.Equal(t, "\x1bPtmux;\x1b\x1b_Ga=D\x1b\x1b\\\x1b\\", wrapped)
+	require.Equal(t, command, strings.ReplaceAll(wrapped[len(passthroughPrefix):len(wrapped)-len(passthroughSuffix)], "\x1b\x1b", "\x1b"))
+
+	// Every ESC inside the payload is doubled so tmux cannot terminate the
+	// passthrough at the kitty command's own string terminator.
+	payload := wrapped[len(passthroughPrefix) : len(wrapped)-len(passthroughSuffix)]
+	for i := 0; i < len(payload); i++ {
+		if payload[i] != 0x1b {
+			continue
+		}
+		require.Equal(t, byte(0x1b), payload[i+1], "unpaired ESC at %d", i)
+		i++
+	}
+}
+
+func TestDisplayManager_PassthroughWrapsEveryGraphicsCommand(t *testing.T) {
+	globalPlacedImages = &syncmap.Map{}
+	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
+
+	dm := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1, Passthrough: true})
+	require.Empty(t, dm.CleanupAllImagesCommand(), "nothing placed yet")
+
+	globalPlacedImages.Store("stale", DecodedImage{ID: 7, lastUsed: time.Now().Add(-time.Hour)})
+	require.Equal(t, wrapPassthrough("\x1b_Ga=d,d=I,i=7,q=2\x1b\\"), dm.CleanupOldImagesCommand(time.Minute))
+
+	globalPlacedImages.Store("current", DecodedImage{ID: 8, lastUsed: time.Now()})
+	require.Equal(t, wrapPassthrough("\x1b_Ga=d,d=I,i=8,q=2\x1b\\"), dm.CleanupAllImagesCommand())
+	require.Empty(t, dm.CleanupAllImagesCommand(), "cleanup-all clears the session cache")
+
+	globalPlacedImages.Store("plain", DecodedImage{ID: 9})
+	plain := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1})
+	require.Equal(t, "\x1b_Ga=d,d=I,i=9,q=2\x1b\\", plain.CleanupAllImagesCommand())
+	require.NotContains(t, plain.CleanupAllImagesCommand(), "Ptmux")
+}
+
+func TestDisplayManager_ConvertWrapsPrepareCommand(t *testing.T) {
+	globalImagePlacementIDCounter.Store(0)
+	globalPlacedImages = &syncmap.Map{}
+	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
+
+	fs := afero.NewMemMapFs()
+	dm := NewDisplayManager(fs, CellSize{Width: 10, Height: 10}, DisplayOptions{Rows: 1, Passthrough: true})
+	cachedImage := DecodedImage{
+		Cols:   2,
+		Images: []DecodedImageFrame{{Width: 10, Height: 10, EncodedPath: "L3BhdGgvdG8vY2FjaGVkLnBuZw=="}},
+	}
+	unit := DisplayUnit{
+		ID:        "test-emote",
+		Directory: "emote",
+		Load: func() (io.ReadCloser, string, error) {
+			t.Fatal("Load should not be called for a cached image")
+			return nil, "", nil
+		},
+	}
+	require.NoError(t, dm.cacheDecodedImage(cachedImage, unit))
+
+	result, err := dm.Convert(unit)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(result.PrepareCommand, passthroughPrefix), "graphics command must be wrapped")
+	require.NotContains(t, result.ReplacementText, "Ptmux", "placeholder cells are text and must never be wrapped")
+	require.Contains(t, result.ReplacementText, "\U0010eeee")
+}
+
+func TestDisplayManager_RefreshCellSize(t *testing.T) {
+	t.Parallel()
+
+	size := CellSize{Width: 10, Height: 20}
+	dm := NewDisplayManager(afero.NewMemMapFs(), size, DisplayOptions{
+		Rows: 1,
+		CellSize: func() (CellSize, error) {
+			return size, nil
+		},
+	})
+	require.Equal(t, 2, dm.colsFor(100, 100), "100px wide at 10px cells")
+
+	size = CellSize{Width: 25, Height: 20}
+	dm.RefreshCellSize()
+	require.Equal(t, 1, dm.colsFor(100, 100), "same image at 25px cells")
+
+	size = CellSize{}
+	dm.RefreshCellSize()
+	require.Equal(t, 1, dm.colsFor(100, 100), "an invalid size keeps the last usable one")
+
+	failing := NewDisplayManager(afero.NewMemMapFs(), CellSize{Width: 10, Height: 10}, DisplayOptions{
+		Rows: 1,
+		CellSize: func() (CellSize, error) {
+			return CellSize{}, errors.New("no tty")
+		},
+	})
+	require.Equal(t, 1, failing.colsFor(100, 100))
+	failing.RefreshCellSize()
+	require.Equal(t, 1, failing.colsFor(100, 100), "a failed refresh keeps the previous size")
 }

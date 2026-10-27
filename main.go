@@ -236,17 +236,20 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 			)
 
 			if settings.Chat.GraphicEmotes || settings.Chat.GraphicBadges {
-				if !hasImageSupport() {
-					return fmt.Errorf("graphical image support enabled but not available for this platform (unix & kitty terminal only)")
+				support := detectImageSupport()
+				if !support.Available() {
+					return support.unavailableError(save.SettingsPath())
 				}
 
-				cellWidth, cellHeight, err := getTermCellWidthHeight()
+				cell, err := getTermCellWidthHeight()
 				if err != nil {
-					return fmt.Errorf("failed to get terminal size: %w", err)
+					return fmt.Errorf("graphic emotes are enabled, but %w", err)
 				}
 
-				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cellWidth, cellHeight, kittyimg.DisplayOptions{
-					Rows: settings.Chat.GraphicScale,
+				displayManager = kittyimg.NewDisplayManager(afero.NewOsFs(), cell, kittyimg.DisplayOptions{
+					Rows:        settings.Chat.GraphicScale,
+					Passthrough: support.Passthrough,
+					CellSize:    getTermCellWidthHeight,
 				})
 
 				if settings.Chat.GraphicEmotes {

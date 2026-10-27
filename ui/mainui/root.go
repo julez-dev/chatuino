@@ -343,6 +343,11 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		r.width = max(0, msg.Width)
 		r.height = max(0, msg.Height)
+		if r.imageDisplayManager != nil {
+			// A font or monitor change alters the cell pixel size, not just the
+			// cell count; images converted afterwards need the new ratio.
+			r.imageDisplayManager.RefreshCellSize()
+		}
 		r.handleResize()
 		return r, nil
 	case tea.MouseClickMsg:

@@ -10,11 +10,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/badge"
+	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/wspool"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
 
@@ -794,4 +796,23 @@ func TestRoot_DuplicateGraphicsPreparationHasNoSideEffects(t *testing.T) {
 	require.Nil(t, duplicate, "a stale result must not affect a newer request")
 	require.Equal(t, nextSeq, root.events.inFlight)
 	require.Len(t, ft.messages(), 1)
+}
+
+// A resize can change the cell pixel size (font or monitor switch), so the
+// display manager re-reads it instead of keeping the startup value forever.
+func TestRoot_ResizeRefreshesCellSize(t *testing.T) {
+	t.Parallel()
+
+	root := newTestRoot(t, nil, nil, nil)
+	refreshes := 0
+	root.imageDisplayManager = kittyimg.NewDisplayManager(afero.NewMemMapFs(), kittyimg.CellSize{Width: 10, Height: 10}, kittyimg.DisplayOptions{
+		Rows: 1,
+		CellSize: func() (kittyimg.CellSize, error) {
+			refreshes++
+			return kittyimg.CellSize{Width: 12, Height: 24}, nil
+		},
+	})
+
+	root.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	require.Equal(t, 1, refreshes)
 }
