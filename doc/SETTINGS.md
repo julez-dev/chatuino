@@ -126,7 +126,9 @@ Clipboard copies use the terminal's OSC 52 sequence, so they also work over SSH.
 
 Press **F2** to enter pane mode, then use the controls below. A standalone tab becomes the first pane of its own workspace; pressing F2 on a tab already in a workspace enters that workspace's pane mode. Ctrl+T inside pane mode adds a tab to the current workspace; outside pane mode it creates a standalone tab. The status line shows `-- Pane --` with themed, width-aware hints for focus, moves, splits, creating a pane, resize, zoom, cycling, and exit; printable commands are consumed by pane mode rather than typed into chat. **Escape** or **F2** exits to the focused tab's previous interaction mode. Normal chat/suggestion/tab-navigation controls retain their existing behavior outside pane mode.
 
-A move with a directional neighbour swaps the two pane contents without changing geometry. At an outer edge it detaches the pane and re-docks it as a new 50/50 split, so **H/J/K/L** can change a row layout into a stacked one, or the reverse. A move is refused if the result cannot satisfy the pane minima; the layout is left unchanged.
+Splitting follows i3's containers: a split along the focused pane's container axis joins that container as an equal sibling and rebalances all its panes equally, while a split along the other axis wraps the focused pane in a new container. **Ctrl+T** inherits the container's axis; **v** and **s** force left/right or top/bottom for that split.
+
+A move with a directional neighbour swaps the two pane contents without changing geometry. At the edge of a nested container it lifts the pane one level up the tree: the pane leaves its container and becomes a sibling of it in the container above, on the requested side (i3-style), keeping the surviving subtree intact. A pane that is already an edge child of the root container has nowhere to lift to, so the move is refused. A move is also refused if the result cannot satisfy the pane minima; the layout is left unchanged.
 
 Outside pane mode, **Tab/Shift+Tab** cycle the displayed tab list in header order without changing pane assignments: assigned tabs focus their pane and automatically show the workspace that owns them; unassigned tabs appear full-screen while the layout stays preserved. In pane mode, Tab/Shift+Tab cycle panes instead. While composing, Tab is handled as suggestion completion; while searching, it stays in search rather than switching tabs.
 
@@ -137,12 +139,12 @@ Outside pane mode, **Tab/Shift+Tab** cycle the displayed tab list in header orde
 | `pane_focus_down` | `down`, `j` | Focus down |
 | `pane_focus_up` | `up`, `k` | Focus up |
 | `pane_focus_right` | `right`, `l` | Focus right |
-| `pane_swap_left` | `H` | Move left; swaps with a neighbour or re-docks to the left edge |
-| `pane_swap_down` | `J` | Move down; swaps with a neighbour or re-docks to the bottom edge |
-| `pane_swap_up` | `K` | Move up; swaps with a neighbour or re-docks to the top edge |
-| `pane_swap_right` | `L` | Move right; swaps with a neighbour or re-docks to the right edge |
-| `pane_split_columns` | `v` | Choose a tab for a new right-hand pane |
-| `pane_split_rows` | `s` | Choose a tab for a new bottom pane |
+| `pane_swap_left` | `H` | Move left; swaps with a neighbour, or at a container edge joins the container above on the left |
+| `pane_swap_down` | `J` | Move down; swaps with a neighbour, or at a container edge joins the parent container at the bottom |
+| `pane_swap_up` | `K` | Move up; swaps with a neighbour, or at a container edge joins the parent container at the top |
+| `pane_swap_right` | `L` | Move right; swaps with a neighbour, or at a container edge joins the container above on the right |
+| `pane_split_columns` | `v` | Choose a tab for a new right-hand pane; joins the row as an equal sibling |
+| `pane_split_rows` | `s` | Choose a tab for a new bottom pane; joins the stack as an equal sibling |
 | `pane_narrow` / `pane_widen` | `<` / `>` | Shrink/grow width |
 | `pane_shorten` / `pane_taller` | `-` / `+` | Shrink/grow height |
 | `pane_close` | `x` | Hide the pane; keep its tab open |

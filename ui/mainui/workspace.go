@@ -636,8 +636,10 @@ func (r *Root) handlePaneKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if key.Matches(msg, r.keymap.Create) {
 		// In pane mode Create adds a tab to the current workspace as a new pane.
-		// Outside pane mode the same binding opens a standalone tab.
-		return r.beginPaneJoin(workspace.Columns)
+		// Outside pane mode the same binding opens a standalone tab. The pane
+		// inherits its container's orientation, like i3's layout inheritance, so
+		// a vertical stack grows downwards instead of always to the right.
+		return r.beginPaneJoin(r.workspace.SplitAxis(r.activeID()))
 	}
 	r.paneHint = ""
 	active, bounds := r.activeID(), r.workspaceBounds()
