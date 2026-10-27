@@ -59,7 +59,16 @@ func (p *panePicker) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 func (p *panePicker) View() string {
 	content := "Choose a tab for the new pane\n\n" + p.list.View() + "\n" +
 		p.keymap.Confirm.Help().Key + ": select • " + p.keymap.Escape.Help().Key + ": cancel"
-	return strings.Join(blockLines(lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Render(content), p.width, p.height), "\n")
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Render(content)
+
+	// The modal is centered by the width of the string this returns, so size the
+	// block to the box lipgloss actually drew instead of padding it out to the
+	// maximum the picker may occupy: trailing padding is invisible but still
+	// counts as width, which pushed the visible box left of centre. Clamping to
+	// p.width/p.height keeps blockLines' clipping for tiny terminals.
+	width, height := min(p.width, lipgloss.Width(box)), min(p.height, lipgloss.Height(box))
+
+	return strings.Join(blockLines(box, width, height), "\n")
 }
 
 func (p *panePicker) Route() string            { return panePickerRoute }

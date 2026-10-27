@@ -12,6 +12,15 @@ import (
 const (
 	MinWidth  = 24
 	MinHeight = 8
+
+	// weightTotal is the resolution of a container's child shares. Weights are
+	// relative, so only their ratio matters; a container of equal siblings uses
+	// equalWeights.
+	weightTotal = 10000
+
+	// currentVersion is the layout format Snapshot writes. Version 1 stored
+	// binary splits (ratio/first/second); Restore still migrates those.
+	currentVersion = 2
 )
 
 // Direction is a spatial focus/swap direction.
@@ -54,14 +63,23 @@ type Arrangement struct {
 	Fits     bool
 }
 
-// Node is a serialized tree node. Snapshot/Restore copy nodes, so changing a
-// serialized tree never mutates the live layout. Ratios use ten-thousandths.
+// Node is a serialized tree node: either a leaf (Tab) or a container (Axis with
+// Children, one weight per child). Like i3, a container is a list of siblings, so
+// adding a pane next to an existing one never deepens the tree.
+//
+// Ratio, First and Second are the version 1 binary-split fields. They are only
+// read to migrate old sessions and are never written.
 type Node struct {
-	Tab    string `json:"tab,omitempty"`
-	Axis   Axis   `json:"axis,omitempty"`
-	Ratio  int    `json:"ratio,omitempty"`
-	First  *Node  `json:"first,omitempty"`
-	Second *Node  `json:"second,omitempty"`
+	Tab string `json:"tab,omitempty"`
+
+	Axis     Axis    `json:"axis,omitempty"`
+	Children []*Node `json:"children,omitempty"`
+	Weights  []int   `json:"weights,omitempty"`
+
+	// Deprecated: version 1 layout fields, decode-only.
+	Ratio  int   `json:"ratio,omitempty"`
+	First  *Node `json:"first,omitempty"`
+	Second *Node `json:"second,omitempty"`
 }
 
 // Layout's zero value is an empty workspace. It deliberately has no active-tab
@@ -86,6 +104,62 @@ func remap(tab string, refs map[string]string) string {
 	return refs[tab]
 }
 
+// equalWeights returns shares that split a container as evenly as integer math
+// allows, which is how i3 treats the children of one container.
+func equalWeights(n int) []int {
+	if n <= 0 {
+		return nil
+	}
+	weights := make([]int, n)
+	base, remainder := weightTotal/n, weightTotal%n
+	for i := range weights {
+		weights[i] = base
+	}
+	for i := 0; i < remainder; i++ {
+		weights[i]++
+	}
+	return weights
+}
+
+// normalizeWeights scales arbitrary positive weights to weightTotal, keeping
+// their ratio. Rounding leftovers go to the largest shares.
+func normalizeWeights(weights []int) []int {
+	n := len(weights)
+	if n == 0 {
+		return nil
+	}
+	total := 0
+	for _, weight := range weights {
+		total += max(1, weight)
+	}
+	out := make([]int, n)
+	remainder := make([]int, n)
+	assigned := 0
+	for i, weight := range weights {
+		weight = max(1, weight)
+		out[i] = max(1, weight*weightTotal/total)
+		remainder[i] = weight * weightTotal % total
+		assigned += out[i]
+	}
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return cmp.Compare(remainder[b], remainder[a]) })
+	for k := 0; assigned < weightTotal; k++ {
+		out[order[k%n]]++
+		assigned++
+	}
+	for k := 0; assigned > weightTotal && k < n; k++ {
+		index := order[n-1-k]
+		if out[index] > 1 {
+			out[index]--
+			assigned--
+		}
+	}
+	return out
+}
+
 func (l Layout) Snapshot(focus string, refs map[string]string) State {
 	var clone func(*Node) *Node
 	clone = func(n *Node) *Node {
@@ -95,16 +169,21 @@ func (l Layout) Snapshot(focus string, refs map[string]string) State {
 		if n.Tab != "" {
 			return &Node{Tab: remap(n.Tab, refs)}
 		}
-		return &Node{Axis: n.Axis, Ratio: n.Ratio, First: clone(n.First), Second: clone(n.Second)}
+		out := &Node{Axis: n.Axis, Children: make([]*Node, len(n.Children)), Weights: slices.Clone(n.Weights)}
+		for i, child := range n.Children {
+			out.Children[i] = clone(child)
+		}
+		return out
 	}
-	return State{Version: 1, Root: clone(l.root), Focus: remap(focus, refs)}
+	return State{Version: currentVersion, Root: clone(l.root), Focus: remap(focus, refs)}
 }
 
 // Restore validates and copies a serialized tree, pruning missing/duplicate tab
 // references and collapsing empty branches. It never changes the caller's tabs.
 // Cyclic/aliased node graphs are pruned without imposing a pane/depth cap.
+// Version 1 binary splits are migrated to sibling containers with the same ratio.
 func Restore(state State, refs map[string]string) (layout Layout, focus string, repaired bool) {
-	if state.Version != 1 {
+	if state.Version != 1 && state.Version != currentVersion {
 		return layout, "", true
 	}
 	if state.Root == nil {
@@ -113,43 +192,111 @@ func Restore(state State, refs map[string]string) (layout Layout, focus string, 
 	}
 	seen := make(map[string]bool)
 	visited := make(map[*Node]bool)
-	var restore func(*Node) *Node
-	restore = func(n *Node) *Node {
+
+	restoreLeaf := func(n *Node) *Node {
+		tab := remap(n.Tab, refs)
+		if tab == "" || seen[tab] {
+			repaired = true
+			return nil
+		}
+		seen[tab] = true
+		return &Node{Tab: tab}
+	}
+
+	var restoreV1 func(*Node) *Node
+	restoreV1 = func(n *Node) *Node {
 		if n == nil || visited[n] {
 			repaired = true
 			return nil
 		}
 		visited[n] = true
 		if n.Tab != "" {
-			tab := remap(n.Tab, refs)
-			if tab == "" || seen[tab] {
-				repaired = true
-				return nil
-			}
-			seen[tab] = true
 			if n.Axis != "" || n.Ratio != 0 || n.First != nil || n.Second != nil {
 				repaired = true
 			}
-			return &Node{Tab: tab}
+			return restoreLeaf(n)
 		}
 		if n.Axis != Columns && n.Axis != Rows {
 			repaired = true
 			return nil
 		}
-		a, b := restore(n.First), restore(n.Second)
-		if a == nil {
+		a, b := restoreV1(n.First), restoreV1(n.Second)
+		switch {
+		case a == nil:
 			return b
-		}
-		if b == nil {
+		case b == nil:
 			return a
 		}
 		ratio := n.Ratio
-		if ratio <= 0 || ratio >= 10000 {
+		if ratio <= 0 || ratio >= weightTotal {
 			ratio, repaired = 5000, true
 		}
-		return &Node{Axis: n.Axis, Ratio: ratio, First: a, Second: b}
+		return &Node{Axis: n.Axis, Children: []*Node{a, b}, Weights: []int{ratio, weightTotal - ratio}}
 	}
-	layout.root = restore(state.Root)
+
+	var restoreV2 func(*Node) *Node
+	restoreV2 = func(n *Node) *Node {
+		if n == nil || visited[n] {
+			repaired = true
+			return nil
+		}
+		visited[n] = true
+		if n.Tab != "" {
+			if n.Axis != "" || len(n.Children) != 0 {
+				repaired = true
+			}
+			if n.Ratio != 0 || n.First != nil || n.Second != nil {
+				repaired = true
+			}
+			return restoreLeaf(n)
+		}
+		if n.Axis != Columns && n.Axis != Rows || len(n.Children) == 0 {
+			repaired = true
+			return nil
+		}
+		if n.Ratio != 0 || n.First != nil || n.Second != nil {
+			repaired = true
+		}
+		weightsMatch := len(n.Weights) == len(n.Children)
+		if !weightsMatch {
+			repaired = true
+		}
+		children := make([]*Node, 0, len(n.Children))
+		weights := make([]int, 0, len(n.Children))
+		for i, child := range n.Children {
+			restored := restoreV2(child)
+			if restored == nil {
+				continue
+			}
+			children = append(children, restored)
+			weight := 1
+			if weightsMatch {
+				weight = n.Weights[i]
+				if weight <= 0 {
+					weight, repaired = 1, true
+				}
+			}
+			weights = append(weights, weight)
+		}
+		switch len(children) {
+		case 0:
+			return nil
+		case 1:
+			repaired = true
+			return children[0]
+		}
+		normalized := normalizeWeights(weights)
+		if !slices.Equal(normalized, weights) {
+			repaired = true
+		}
+		return &Node{Axis: n.Axis, Children: children, Weights: normalized}
+	}
+
+	if state.Version == 1 {
+		layout.root = restoreV1(state.Root)
+	} else {
+		layout.root = restoreV2(state.Root)
+	}
 	layout.revision = 1
 	focus = remap(state.Focus, refs)
 	if !layout.Contains(focus) {
@@ -169,7 +316,11 @@ func (l Layout) Count() int {
 		if n.Tab != "" {
 			return 1
 		}
-		return count(n.First) + count(n.Second)
+		total := 0
+		for _, child := range n.Children {
+			total += count(child)
+		}
+		return total
 	}
 	return count(l.root)
 }
@@ -181,13 +332,58 @@ func find(n *Node, tab string) *Node {
 	if n.Tab == tab {
 		return n
 	}
-	if found := find(n.First, tab); found != nil {
-		return found
+	for _, child := range n.Children {
+		if found := find(child, tab); found != nil {
+			return found
+		}
 	}
-	return find(n.Second, tab)
+	return nil
 }
 
 func (l Layout) Contains(tab string) bool { return find(l.root, tab) != nil }
+
+// parentOf returns the container directly holding tab, and its child index. A
+// tab that is the whole layout (a root leaf) has no parent.
+func parentOf(n *Node, tab string) (*Node, int) {
+	if n == nil || n.Tab != "" {
+		return nil, -1
+	}
+	for i, child := range n.Children {
+		if child.Tab == tab {
+			return n, i
+		}
+		if parent, index := parentOf(child, tab); parent != nil {
+			return parent, index
+		}
+	}
+	return nil, -1
+}
+
+// parentOfNode returns the container directly holding target, and its index.
+func parentOfNode(n, target *Node) (*Node, int) {
+	if n == nil || n.Tab != "" {
+		return nil, -1
+	}
+	for i, child := range n.Children {
+		if child == target {
+			return n, i
+		}
+		if parent, index := parentOfNode(child, target); parent != nil {
+			return parent, index
+		}
+	}
+	return nil, -1
+}
+
+// SplitAxis reports the axis a new pane inherits from the layout: the focused
+// pane's container orientation, or Columns for a pane that is alone.
+func (l Layout) SplitAxis(tab string) Axis {
+	parent, _ := parentOf(l.root, tab)
+	if parent == nil {
+		return Columns
+	}
+	return parent.Axis
+}
 
 func readingOrder(panes []Pane) {
 	slices.SortFunc(panes, func(a, b Pane) int {
@@ -282,39 +478,23 @@ func cloneNode(n *Node) *Node {
 	if n.Tab != "" {
 		return &Node{Tab: n.Tab}
 	}
-	return &Node{Axis: n.Axis, Ratio: n.Ratio, First: cloneNode(n.First), Second: cloneNode(n.Second)}
+	out := &Node{Axis: n.Axis, Children: make([]*Node, len(n.Children)), Weights: slices.Clone(n.Weights)}
+	for i, child := range n.Children {
+		out.Children[i] = cloneNode(child)
+	}
+	return out
 }
 
-// detach removes tab from an already cloned tree, collapsing its parent. The
-// returned tree keeps every other pane and preferred proportion.
-func detach(n *Node, tab string) (*Node, bool) {
-	if n == nil || n.Tab == tab {
-		return nil, n != nil
-	}
-	if n.Tab != "" {
-		return n, false
-	}
-	if first, found := detach(n.First, tab); found {
-		if first == nil {
-			return n.Second, true
-		}
-		n.First = first
-		return n, true
-	}
-	if second, found := detach(n.Second, tab); found {
-		if second == nil {
-			return n.First, true
-		}
-		n.Second = second
-		return n, true
-	}
-	return n, false
-}
-
-// Move is i3-like directional movement. A pane swaps positions with its nearest
-// neighbour when one exists. At an outer edge it is detached and re-docked as a
-// new 50/50 root split on that edge, which can turn a row of panes into a stack
-// (or the reverse). The focused tab stays active; only layout geometry changes.
+// Move is i3-like directional movement. A pane first swaps contents with its
+// nearest neighbour. At the edge of a nested container it moves one level up the
+// tree: it leaves its container and becomes a sibling of that container in the
+// container above, on the requested side.
+//
+// At the root there is no container above, so the pane cannot lift. There the
+// previous re-dock is kept: the rest of the layout becomes one half of a new root
+// split and the pane the other half, which is how a row becomes a stack (or the
+// reverse). i3 itself refuses that move; changing the root's orientation is worth
+// keeping.
 func (l *Layout) Move(tab string, direction Direction, width, height int) bool {
 	if direction < Left || direction > Right || l.Count() < 2 || !l.Contains(tab) {
 		return false
@@ -324,39 +504,84 @@ func (l *Layout) Move(tab string, direction Direction, width, height int) bool {
 	}
 
 	axis := Columns
-	first := direction == Left || direction == Up
 	if direction == Up || direction == Down {
 		axis = Rows
 	}
-	// Re-docking a pane that already occupies the requested root edge would
-	// only reset its preferred ratio to 50/50.
-	if l.root.Axis == axis {
-		if first && find(l.root.First, tab) != nil {
-			return false
-		}
-		if !first && find(l.root.Second, tab) != nil {
-			return false
-		}
-	}
-
-	remaining, found := detach(cloneNode(l.root), tab)
-	if !found || remaining == nil {
+	parent, index := parentOf(l.root, tab)
+	if parent == nil {
 		return false
 	}
-	moved := &Node{Tab: tab}
-	root := &Node{Axis: axis, Ratio: 5000}
-	if first {
-		root.First, root.Second = moved, remaining
-	} else {
-		root.First, root.Second = remaining, moved
+
+	root := cloneNode(l.root)
+	container, clonedIndex := parentOf(root, tab)
+	atStart := direction == Left || direction == Up
+
+	if parent == l.root {
+		// Already pinned to the requested root edge on a matching axis:
+		// re-docking would only reset the preferred ratio.
+		if parent.Axis == axis {
+			if atStart && index == 0 {
+				return false
+			}
+			if !atStart && index == len(parent.Children)-1 {
+				return false
+			}
+		}
+		leaf := detachLeaf(container, clonedIndex)
+		wrapped := &Node{Axis: axis, Weights: equalWeights(2)}
+		if atStart {
+			wrapped.Children = []*Node{leaf, container}
+		} else {
+			wrapped.Children = []*Node{container, leaf}
+		}
+		if minimumWidth, minimumHeight := minimum(wrapped); width < minimumWidth || height < minimumHeight {
+			return false
+		}
+		l.root = wrapped
+		l.revision++
+		return true
 	}
-	minimumWidth, minimumHeight := minimum(root)
-	if width < minimumWidth || height < minimumHeight {
+
+	if parent.Axis != axis {
+		// The pane is not at an edge of a container that splits along the
+		// requested direction; only a root move changes the orientation.
+		return false
+	}
+
+	leaf := detachLeaf(container, clonedIndex)
+	grandparent, grandIndex := parentOfNode(root, container)
+	if grandparent == nil {
+		return false
+	}
+	insertAt := grandIndex
+	if direction == Right || direction == Down {
+		insertAt++
+	}
+	grandparent.Children = slices.Insert(grandparent.Children, insertAt, leaf)
+	grandparent.Weights = equalWeights(len(grandparent.Children))
+
+	if minimumWidth, minimumHeight := minimum(root); width < minimumWidth || height < minimumHeight {
 		return false
 	}
 	l.root = root
 	l.revision++
 	return true
+}
+
+// detachLeaf removes the leaf at index from an already cloned container and
+// returns it. A container left with one child is replaced by that child; the
+// remaining weights are rescaled so they still sum to weightTotal.
+func detachLeaf(container *Node, index int) *Node {
+	leaf := container.Children[index]
+	container.Children = slices.Delete(container.Children, index, index+1)
+	container.Weights = slices.Delete(container.Weights, index, index+1)
+	if len(container.Children) == 1 {
+		only := container.Children[0]
+		*container = *only
+	} else {
+		container.Weights = normalizeWeights(container.Weights)
+	}
+	return leaf
 }
 
 func first(n *Node) string {
@@ -366,7 +591,12 @@ func first(n *Node) string {
 	if n.Tab != "" {
 		return n.Tab
 	}
-	return first(n.First)
+	for _, child := range n.Children {
+		if found := first(child); found != "" {
+			return found
+		}
+	}
+	return ""
 }
 
 func (l Layout) First() string { return first(l.root) }
@@ -383,8 +613,9 @@ func (l Layout) PaneOrder() []string {
 			out = append(out, n.Tab)
 			return
 		}
-		walk(n.First)
-		walk(n.Second)
+		for _, child := range n.Children {
+			walk(child)
+		}
 	}
 	walk(l.root)
 	return out
@@ -405,54 +636,71 @@ func (l Layout) PaneNumber(tab string) int {
 			}
 			return 0
 		}
-		if found := walk(n.First, count); found != 0 {
-			return found
+		for _, child := range n.Children {
+			if found := walk(child, count); found != 0 {
+				return found
+			}
 		}
-		return walk(n.Second, count)
+		return 0
 	}
 	count := 0
 	return walk(l.root, &count)
 }
 
-// Remove collapses the parent split and returns the first tab in its surviving
-// sibling. The caller uses that target only when it removed the active pane.
+// Remove drops the pane and collapses a container that is left with one child.
+// It returns the tab that should take focus, which the caller uses only when it
+// removed the focused pane.
 func (l *Layout) Remove(tab string) string {
 	if tab == "" {
 		return ""
 	}
-	var remove func(**Node) (string, bool)
-	remove = func(slot **Node) (string, bool) {
-		n := *slot
+	var remove func(*Node) (*Node, string, bool)
+	remove = func(n *Node) (*Node, string, bool) {
 		if n == nil {
-			return "", false
+			return nil, "", false
 		}
 		if n.Tab == tab {
-			*slot = nil
-			return "", true
+			return nil, "", true
 		}
 		if n.Tab != "" {
-			return "", false
+			return n, "", false
 		}
-		for _, child := range []**Node{&n.First, &n.Second} {
-			if target, found := remove(child); found {
-				if n.First == nil {
-					*slot = n.Second
-					return first(n.Second), true
-				}
-				if n.Second == nil {
-					*slot = n.First
-					return first(n.First), true
-				}
-				return target, true
+		for i, child := range n.Children {
+			restored, focus, found := remove(child)
+			if !found {
+				continue
 			}
+			if restored == nil {
+				n.Children = slices.Delete(n.Children, i, i+1)
+				n.Weights = slices.Delete(n.Weights, i, i+1)
+			} else {
+				n.Children[i] = restored
+			}
+			switch len(n.Children) {
+			case 0:
+				return nil, "", true
+			case 1:
+				only := n.Children[0]
+				*n = *only
+				if focus == "" {
+					focus = first(n)
+				}
+				return n, focus, true
+			}
+			n.Weights = normalizeWeights(n.Weights)
+			if focus == "" {
+				focus = first(n.Children[min(i, len(n.Children)-1)])
+			}
+			return n, focus, true
 		}
-		return "", false
+		return n, "", false
 	}
-	target, changed := remove(&l.root)
-	if changed {
+	root, focus, removed := remove(l.root)
+	if removed {
+		l.root = root
 		l.revision++
 	}
-	return target
+	return focus
 }
 
 // Select assigns an unassigned tab to the target pane, or creates the initial
@@ -472,27 +720,82 @@ func (l *Layout) Select(target, tab string) bool {
 	return true
 }
 
-func minimum(n *Node) (int, int) { return splitMinimum(n, "", "") }
-
-func splitMinimum(n *Node, target string, axis Axis) (int, int) {
+func minimum(n *Node) (int, int) {
 	if n == nil {
 		return 0, 0
 	}
 	if n.Tab != "" {
-		if n.Tab == target {
-			if axis == Columns {
-				return 2*MinWidth + 1, MinHeight
-			}
-			return MinWidth, 2*MinHeight + 1
-		}
 		return MinWidth, MinHeight
 	}
-	aw, ah := splitMinimum(n.First, target, axis)
-	bw, bh := splitMinimum(n.Second, target, axis)
-	if n.Axis == Columns {
-		return aw + 1 + bw, max(ah, bh)
+	width, height := 0, 0
+	for i, child := range n.Children {
+		childWidth, childHeight := minimum(child)
+		if n.Axis == Columns {
+			width += childWidth
+			height = max(height, childHeight)
+		} else {
+			width = max(width, childWidth)
+			height += childHeight
+		}
+		if i > 0 {
+			if n.Axis == Columns {
+				width++
+			} else {
+				height++
+			}
+		}
 	}
-	return max(aw, bw), ah + 1 + bh
+	return width, height
+}
+
+// splitPlaceholder lets CanSplit measure a prospective insertion without a tab.
+const splitPlaceholder = "\x00split"
+
+// insertSplit adds tab next to target. When target's container already splits
+// along axis the new pane becomes a sibling there and the container's shares are
+// rebalanced equally, so all its panes grow into a row/stack of equal parts.
+// Otherwise target is wrapped in a new two-pane container. Shares of unrelated
+// containers are untouched.
+func insertSplit(n *Node, target string, axis Axis, tab string) bool {
+	if n == nil || n.Tab != "" {
+		return false
+	}
+	for i, child := range n.Children {
+		if child.Tab == target {
+			if n.Axis == axis {
+				n.Children = slices.Insert(n.Children, i+1, &Node{Tab: tab})
+				n.Weights = equalWeights(len(n.Children))
+			} else {
+				n.Children[i] = &Node{
+					Axis:     axis,
+					Children: []*Node{{Tab: target}, {Tab: tab}},
+					Weights:  equalWeights(2),
+				}
+			}
+			return true
+		}
+		if insertSplit(child, target, axis, tab) {
+			return true
+		}
+	}
+	return false
+}
+
+func prospectiveSplit(root *Node, target string, axis Axis, tab string) (*Node, bool) {
+	if root == nil || root.Tab != "" {
+		if root == nil || root.Tab != target {
+			return root, false
+		}
+		return &Node{
+			Axis:     axis,
+			Children: []*Node{{Tab: target}, {Tab: tab}},
+			Weights:  equalWeights(2),
+		}, true
+	}
+	if !insertSplit(root, target, axis, tab) {
+		return root, false
+	}
+	return root, true
 }
 
 // CanSplit checks a prospective split before asking the user to select a tab.
@@ -500,25 +803,84 @@ func (l Layout) CanSplit(target string, axis Axis, width, height int) error {
 	if !l.Contains(target) || (axis != Columns && axis != Rows) {
 		return errors.New("the split target is no longer available")
 	}
-	w, h := splitMinimum(l.root, target, axis)
-	if width < w || height < h {
+	root, ok := prospectiveSplit(cloneNode(l.root), target, axis, splitPlaceholder)
+	if !ok {
+		return errors.New("the split target is no longer available")
+	}
+	if w, h := minimum(root); width < w || height < h {
 		return errors.New("not enough space: panes need at least 24 columns by 8 rows")
 	}
 	return nil
 }
 
 // Split is atomic, including fit validation. It never creates an empty pane.
+// A pane whose container already splits along axis joins it as an equal sibling
+// (i3's container list); otherwise the target is wrapped in a new container.
 func (l *Layout) Split(target, tab string, axis Axis, width, height int) error {
-	n := find(l.root, target)
-	if n == nil || tab == "" || l.Contains(tab) || (axis != Columns && axis != Rows) {
+	if !l.Contains(target) || tab == "" || l.Contains(tab) || (axis != Columns && axis != Rows) {
 		return errors.New("the split target or selected tab is no longer available")
 	}
-	if err := l.CanSplit(target, axis, width, height); err != nil {
-		return err
+	root, ok := prospectiveSplit(cloneNode(l.root), target, axis, tab)
+	if !ok {
+		return errors.New("the split target or selected tab is no longer available")
 	}
-	*n = Node{Axis: axis, Ratio: 5000, First: &Node{Tab: target}, Second: &Node{Tab: tab}}
+	if w, h := minimum(root); width < w || height < h {
+		return errors.New("not enough space: panes need at least 24 columns by 8 rows")
+	}
+	l.root = root
 	l.revision++
 	return nil
+}
+
+// allocate distributes avail cells among children by weight. Children never drop
+// below their minimum; the minimum takes the cells from the largest sibling.
+// Proportional floor allocation keeps equal siblings within one cell of each
+// other and always hands out exactly avail cells.
+func allocate(avail int, weights, mins []int) []int {
+	n := len(weights)
+	sizes := make([]int, n)
+	total := 0
+	for _, weight := range weights {
+		total += weight
+	}
+	if total <= 0 {
+		total = 1
+	}
+	cumulative, previous := 0, 0
+	for i, weight := range weights {
+		cumulative += weight
+		end := cumulative * max(0, avail) / total
+		sizes[i] = end - previous
+		previous = end
+	}
+	for i := range sizes {
+		for sizes[i] < mins[i] {
+			donor := largestAbove(sizes, mins)
+			if donor < 0 {
+				break
+			}
+			sizes[donor]--
+			sizes[i]++
+		}
+	}
+	return sizes
+}
+
+func largestAbove(sizes, mins []int) int {
+	best := -1
+	for i := range sizes {
+		if sizes[i] > mins[i] && (best < 0 || sizes[i] > sizes[best]) {
+			best = i
+		}
+	}
+	return best
+}
+
+func ceilDiv(a, b int) int {
+	if b <= 0 {
+		return 0
+	}
+	return (a + b - 1) / b
 }
 
 // Arrange allocates every cell exactly once, including one-cell dividers.
@@ -546,28 +908,50 @@ func (l Layout) arrange(width, height int) (Arrangement, map[*Node]Rect) {
 			out.Panes = append(out.Panes, Pane{Tab: n.Tab, Rect: r})
 			return
 		}
-		aw, ah := minimum(n.First)
-		bw, bh := minimum(n.Second)
-		if n.Axis == Columns {
-			available := r.Width - 1
-			first := max(aw, min(available-bw, available*n.Ratio/10000))
-			place(n.First, Rect{r.X, r.Y, first, r.Height})
-			out.Dividers = append(out.Dividers, Rect{r.X + first, r.Y, 1, r.Height})
-			place(n.Second, Rect{r.X + first + 1, r.Y, available - first, r.Height})
-		} else {
-			available := r.Height - 1
-			first := max(ah, min(available-bh, available*n.Ratio/10000))
-			place(n.First, Rect{r.X, r.Y, r.Width, first})
-			out.Dividers = append(out.Dividers, Rect{r.X, r.Y + first, r.Width, 1})
-			place(n.Second, Rect{r.X, r.Y + first + 1, r.Width, available - first})
+		count := len(n.Children)
+		weights := n.Weights
+		if len(weights) != count {
+			weights = equalWeights(count)
+		}
+		mins := make([]int, count)
+		for i, child := range n.Children {
+			childWidth, childHeight := minimum(child)
+			if n.Axis == Columns {
+				mins[i] = childWidth
+			} else {
+				mins[i] = childHeight
+			}
+		}
+		available := max(0, r.Width-(count-1))
+		if n.Axis == Rows {
+			available = max(0, r.Height-(count-1))
+		}
+		sizes := allocate(available, weights, mins)
+		offset := 0
+		for i, child := range n.Children {
+			if n.Axis == Columns {
+				place(child, Rect{r.X + offset, r.Y, sizes[i], r.Height})
+			} else {
+				place(child, Rect{r.X, r.Y + offset, r.Width, sizes[i]})
+			}
+			offset += sizes[i]
+			if i < count-1 {
+				if n.Axis == Columns {
+					out.Dividers = append(out.Dividers, Rect{r.X + offset, r.Y, 1, r.Height})
+				} else {
+					out.Dividers = append(out.Dividers, Rect{r.X, r.Y + offset, r.Width, 1})
+				}
+				offset++
+			}
 		}
 	}
 	place(l.root, Rect{Width: width, Height: height})
 	return out, bounds
 }
 
-// Resize adjusts the deepest split on the requested axis. Positive steps grow
-// the focused region, even when it is the second child of that split.
+// Resize moves the divider next to the focused pane by five-percent steps.
+// Positive steps grow the focused child, even when it is not the first child of
+// the container. It edits the deepest matching container on the pane's path.
 func (l *Layout) Resize(tab string, axis Axis, steps, width, height int) bool {
 	arrangement, bounds := l.arrange(width, height)
 	if !arrangement.Fits || steps == 0 {
@@ -582,9 +966,11 @@ func (l *Layout) Resize(tab string, axis Axis, steps, width, height int) bool {
 		if n.Tab == tab {
 			return true
 		}
-		if descend(n.First) || descend(n.Second) {
-			path = append(path, n)
-			return true
+		for _, child := range n.Children {
+			if descend(child) {
+				path = append(path, n)
+				return true
+			}
 		}
 		return false
 	}
@@ -592,30 +978,67 @@ func (l *Layout) Resize(tab string, axis Axis, steps, width, height int) bool {
 		return false
 	}
 	for _, n := range path {
-		if n.Axis != axis {
+		if n.Axis != axis || len(n.Children) < 2 {
 			continue
 		}
-		if find(n.Second, tab) != nil {
-			steps = -steps
+		index := slices.IndexFunc(n.Children, func(child *Node) bool { return find(child, tab) != nil })
+		if index < 0 {
+			continue
 		}
-		aw, ah := minimum(n.First)
-		bw, bh := minimum(n.Second)
-		total, low, high := bounds[n].Width-1, aw, bounds[n].Width-1-bw
+		// The divider that moves is the one next to the focused child: between
+		// it and the following sibling, or the preceding one when it is last.
+		first := min(index, len(n.Children)-2)
+		second := first + 1
+		direction := steps
+		if index != first {
+			direction = -direction
+		}
+		available := bounds[n].Width - (len(n.Children) - 1)
 		if axis == Rows {
-			total, low, high = bounds[n].Height-1, ah, bounds[n].Height-1-bh
+			available = bounds[n].Height - (len(n.Children) - 1)
 		}
-		minimumRatio := (low*10000 + total - 1) / total
-		maximumRatio := (high*10000 + total - 1) / total
-		// Terminal-size clamping preserves the preferred ratio. An explicit
-		// resize, however, must start at the visible divider; otherwise a pane
-		// pinned at its minimum could be impossible to grow after shrinking.
-		effective := max(minimumRatio, min(maximumRatio, n.Ratio))
-		next := max(minimumRatio, min(maximumRatio, effective+steps*500))
-		oldCells := max(low, min(high, total*n.Ratio/10000))
-		if oldCells == max(low, min(high, total*next/10000)) {
+		if available <= 0 {
+			continue
+		}
+		mins := make([]int, len(n.Children))
+		for i, child := range n.Children {
+			childWidth, childHeight := minimum(child)
+			if axis == Rows {
+				mins[i] = childHeight
+			} else {
+				mins[i] = childWidth
+			}
+		}
+		weights := n.Weights
+		if len(weights) != len(n.Children) {
+			weights = equalWeights(len(n.Children))
+		}
+		sizes := allocate(available, weights, mins)
+		low := mins[first]
+		high := sizes[first] + sizes[second] - mins[second]
+		if high <= low {
 			return false
 		}
-		n.Ratio = next
+		lowRatio := ceilDiv(low*weightTotal, available)
+		highRatio := ceilDiv(high*weightTotal, available)
+		effective := max(lowRatio, min(highRatio, weights[first]))
+		next := max(lowRatio, min(highRatio, effective+direction*500))
+		// Compare visible cells, not ratios: a pane pinned at its minimum must
+		// stay growable after the terminal shrinks.
+		oldCells := max(low, min(high, available*weights[first]/weightTotal))
+		newCells := max(low, min(high, available*next/weightTotal))
+		if oldCells == newCells {
+			return false
+		}
+		sum := weights[first] + weights[second]
+		if next < 1 || sum-next < 1 {
+			return false
+		}
+		if len(n.Weights) != len(n.Children) {
+			n.Weights = slices.Clone(weights)
+		}
+		n.Weights[first] = next
+		n.Weights[second] = sum - next
 		l.revision++
 		return true
 	}

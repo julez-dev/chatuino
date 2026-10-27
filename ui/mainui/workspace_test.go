@@ -191,7 +191,8 @@ func TestWorkspace_SessionRestoresAssignmentsRatiosAndLogicalFocusWithoutZoom(t 
 	require.True(t, snapshot.Tabs[1].IsFocused, "temporary dialog blur is not logical loss of focus")
 	var saved workspace.State
 	require.NoError(t, json.Unmarshal(snapshot.Layout, &saved))
-	require.Equal(t, 4500, saved.Root.Ratio)
+	require.Equal(t, 2, saved.Version)
+	require.Equal(t, []int{4500, 5500}, saved.Root.Weights)
 	restored := newRestoreTestRoot(t)
 	restored.Update(tea.WindowSizeMsg{Width: 101, Height: 33})
 	restored.Update(persistedDataLoadedMessage{state: snapshot})
@@ -332,6 +333,26 @@ func TestWorkspace_NewTabSplitUsesExistingJoinFlowAndTicketedCommit(t *testing.T
 	require.Equal(t, tab.LiveNotificationKind, active.Kind())
 	require.Contains(t, root.View().Content, "BODY alpha")
 	require.Contains(t, root.View().Content, "-- Pane --")
+}
+
+// Ctrl+T inherits the focused pane's container orientation, like i3: inside a
+// vertical stack the next pane opens below instead of always to the right.
+func TestWorkspace_NewPaneInheritsContainerAxis(t *testing.T) {
+	t.Parallel()
+	root, _, _, _ := workspaceRoot(t)
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyF2})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 's', Text: "s"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+	require.Equal(t, workspace.Rows, root.workspace.SplitAxis(root.activeID()))
+
+	// Run the key without executing the join dialog's account fetches.
+	_, _ = root.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	require.NotNil(t, root.pendingSplit)
+	require.Equal(t, workspace.Rows, root.pendingSplit.axis, "the new pane inherits the container's axis")
+	require.Equal(t, root.activeID(), root.pendingSplit.target)
+	require.NotZero(t, root.stack.Len(), "Ctrl+T still asks which tab to add as a pane")
 }
 
 func TestWorkspace_NewTabSplitRevalidatesSpaceForWiderVerticalTabList(t *testing.T) {
@@ -561,9 +582,9 @@ func TestWorkspace_RestoreMapsOriginalRecordPositionsAfterSkippedAccounts(t *tes
 	var saved workspace.State
 	require.NoError(t, json.Unmarshal(root.TakeStateSnapshot().Layout, &saved))
 	require.Equal(t, workspace.Rows, saved.Root.Axis)
-	require.Equal(t, 6000, saved.Root.Ratio)
-	require.Equal(t, "0", saved.Root.First.Tab)
-	require.Equal(t, "1", saved.Root.Second.Tab)
+	require.Equal(t, []int{6000, 4000}, saved.Root.Weights)
+	require.Equal(t, "0", saved.Root.Children[0].Tab)
+	require.Equal(t, "1", saved.Root.Children[1].Tab)
 }
 
 func TestWorkspace_TinyTerminalsStayBoundedAndDoNotDestroySavedLayout(t *testing.T) {
@@ -608,31 +629,63 @@ func TestWorkspace_TinyTerminalsStayBoundedAndDoNotDestroySavedLayout(t *testing
 	}
 }
 
-func TestWorkspace_MoveAtOuterEdgeRedocksAndChangesSplitOrientation(t *testing.T) {
+func TestWorkspace_MoveAtRootEdgeRedocksAndChangesOrientation(t *testing.T) {
 	t.Parallel()
-	root, a, b, _ := workspaceRoot(t)
+	root, a, b, c := workspaceRoot(t)
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyF2})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+	// Splitting the same axis joins the row, so the workspace holds a|b|c.
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+	require.Equal(t, c.ID(), root.activeID())
+
+	// c is already at the right edge of the root row: the horizontal move is
+	// refused and explains itself.
+	before := root.workspace.Arrange(101, 33)
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'L', Text: "L"})
+	require.Equal(t, before, root.workspace.Arrange(101, 33))
+	require.Contains(t, root.View().Content, "Move refused")
+
+	// A vertical move has no container above the root: c is re-docked as a
+	// full-width bottom pane and the row above keeps a and b.
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'J', Text: "J"})
+	panes := root.workspace.Arrange(101, 33).Panes
+	require.Len(t, panes, 3)
+	require.Equal(t, a.ID(), panes[0].Tab)
+	require.Equal(t, b.ID(), panes[1].Tab)
+	require.Equal(t, c.ID(), panes[2].Tab)
+	require.Equal(t, 101, panes[2].Width)
+	require.Less(t, panes[0].Y, panes[2].Y)
+	require.Equal(t, panes[0].Height, panes[1].Height)
+	require.Equal(t, c.ID(), root.activeID(), "focus follows the moved pane")
+	require.NotContains(t, root.View().Content, "Move refused", "a performed move clears the refusal hint")
+}
+
+func TestWorkspace_MoveAtNestedEdgeLiftsPaneOneLevel(t *testing.T) {
+	t.Parallel()
+	root, _, b, _ := workspaceRoot(t)
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyF2})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'v', Text: "v"})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
 	require.Equal(t, b.ID(), root.activeID())
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'h', Text: "h"})
-	require.Equal(t, a.ID(), root.activeID())
-	// No pane below alpha: moving down re-docks it as a full-width bottom pane.
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'J', Text: "J"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 's', Text: "s"})
+	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	// columns[alpha, rows[beta, gamma]]: the bottom row is a nested container, so
+	// moving beta up leaves it and joins the root row as an equal sibling instead
+	// of re-docking at the screen edge.
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	require.Equal(t, b.ID(), root.activeID())
+	workspaceKey(t, root, tea.KeyPressMsg{Code: 'K', Text: "K"})
 	panes := root.workspace.Arrange(101, 33).Panes
-	require.Len(t, panes, 2)
-	require.Equal(t, b.ID(), panes[0].Tab)
-	require.Equal(t, a.ID(), panes[1].Tab)
-	require.Equal(t, 101, panes[1].Width)
-	require.Equal(t, 16, panes[1].Height)
-	// No pane left of alpha now: moving left re-docks it back into a column.
-	workspaceKey(t, root, tea.KeyPressMsg{Code: 'H', Text: "H"})
-	panes = root.workspace.Arrange(101, 33).Panes
-	require.Equal(t, a.ID(), panes[0].Tab)
-	require.Equal(t, b.ID(), panes[1].Tab)
-	require.Equal(t, 50, panes[0].Width)
-	require.Equal(t, 33, panes[0].Height)
-	require.Equal(t, a.ID(), root.activeID(), "focus follows the moved pane")
+	require.Len(t, panes, 3)
+	for _, pane := range panes {
+		require.Equal(t, 33, pane.Height, "all three panes share the root row")
+	}
+	require.Equal(t, b.ID(), panes[1].Tab, "the lifted pane lands next to its former container")
+	require.Equal(t, b.ID(), root.activeID(), "focus follows the lifted pane")
+	require.NotContains(t, root.View().Content, "Move refused")
 	require.Equal(t, []string{"alpha", "beta", "gamma"}, []string{root.tabs.Rows()[0].ID, root.tabs.Rows()[1].ID, root.tabs.Rows()[2].ID}, "moves never reorder registry storage order")
 }
 

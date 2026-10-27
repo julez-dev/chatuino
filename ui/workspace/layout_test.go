@@ -26,6 +26,56 @@ func TestLayout_SplitKeepsExistingTabAndRejectsDuplicateViews(t *testing.T) {
 	require.Equal(t, arrangement, layout.Arrange(81, 24))
 }
 
+// A split along the container's own axis joins the container as a sibling and
+// rebalances every child equally, like adding a window to an i3 container.
+func TestLayout_SplitJoinsContainerAsEqualSiblings(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 99, 24))
+	require.NoError(t, layout.Split("alpha", "gamma", workspace.Columns, 99, 24))
+
+	arrangement := layout.Arrange(99, 24)
+	require.True(t, arrangement.Fits)
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 32, Height: 24}},
+		{Tab: "gamma", Rect: workspace.Rect{X: 33, Width: 32, Height: 24}},
+		{Tab: "beta", Rect: workspace.Rect{X: 66, Width: 33, Height: 24}},
+	}, arrangement.Panes, "the new pane is inserted after the focused one and all three share the row")
+
+	// A split along the other axis wraps the focused leaf instead of flattening
+	// the existing container.
+	require.NoError(t, layout.Split("beta", "delta", workspace.Rows, 99, 49))
+	rows := layout.Arrange(99, 49)
+	require.Equal(t, "beta", rows.Panes[2].Tab)
+	require.Equal(t, "delta", rows.Panes[3].Tab)
+	require.Equal(t, 33, rows.Panes[2].Width, "the wrapped pane keeps the container's width")
+
+	// Removing panes renormalizes the survivors' shares instead of resetting them.
+	require.Equal(t, "beta", layout.Remove("delta"))
+	require.Equal(t, "gamma", layout.Remove("alpha"))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "gamma", Rect: workspace.Rect{Width: 49, Height: 24}},
+		{Tab: "beta", Rect: workspace.Rect{X: 50, Width: 49, Height: 24}},
+	}, layout.Arrange(99, 24).Panes)
+}
+
+func TestLayout_SplitAxisInheritsTheFocusedContainer(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.Equal(t, workspace.Columns, layout.SplitAxis("alpha"), "a lone pane splits to the right by default")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Rows, 101, 33))
+	require.Equal(t, workspace.Rows, layout.SplitAxis("beta"))
+	// Inheriting Rows inserts below the focused pane inside the same container.
+	require.NoError(t, layout.Split("beta", "gamma", layout.SplitAxis("beta"), 101, 33))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 101, Height: 10}},
+		{Tab: "beta", Rect: workspace.Rect{Y: 11, Width: 101, Height: 10}},
+		{Tab: "gamma", Rect: workspace.Rect{Y: 22, Width: 101, Height: 11}},
+	}, layout.Arrange(101, 33).Panes)
+}
+
 func TestLayout_CloseCollapsesSiblingAndPreservesItsSubtree(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
@@ -44,7 +94,7 @@ func TestLayout_CloseCollapsesSiblingAndPreservesItsSubtree(t *testing.T) {
 	require.Equal(t, before.Panes[1].Height, after.Panes[0].Height)
 	revision := layout.Revision()
 	require.Empty(t, layout.Remove("missing"))
-	require.Empty(t, layout.Remove(""), "an empty target must not match an internal split node")
+	require.Empty(t, layout.Remove(""), "an empty target must not match an internal container")
 	require.Equal(t, 2, layout.Count())
 	require.Equal(t, revision, layout.Revision())
 	require.Equal(t, "gamma", layout.Remove("beta"))
@@ -71,11 +121,36 @@ func TestLayout_NavigationAndSwapsUseSpatialOrderWithoutWrapping(t *testing.T) {
 	require.False(t, layout.Swap("alpha", workspace.Right, 101, 33))
 }
 
-func TestLayout_MoveSwapsNeighboursAndRedocksAtOuterEdges(t *testing.T) {
+func TestLayout_MoveSwapsNeighboursAndRedocksAtTheRootEdge(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
 	layout.Select("", "alpha")
 	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 101, 33))
+
+	// Both panes are children of the root container: alpha is already at the
+	// left edge of a matching axis, so that move must not rewrite the layout.
+	before := layout.Arrange(101, 33)
+	revision := layout.Revision()
+	require.False(t, layout.Move("alpha", workspace.Left, 101, 33))
+	require.Equal(t, before, layout.Arrange(101, 33))
+	require.Equal(t, revision, layout.Revision())
+
+	// There is no container above the root to lift into, so a vertical move
+	// re-docks the pane as a new half of the root split and the row becomes a
+	// stack.
+	require.True(t, layout.Move("alpha", workspace.Down, 101, 33))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "beta", Rect: workspace.Rect{Width: 101, Height: 16}},
+		{Tab: "alpha", Rect: workspace.Rect{Y: 17, Width: 101, Height: 16}},
+	}, layout.Arrange(101, 33).Panes)
+	require.False(t, layout.Move("alpha", workspace.Down, 101, 33), "already at the requested root edge")
+
+	// Re-docking from the bottom edge to the left restores a row layout.
+	require.True(t, layout.Move("alpha", workspace.Left, 101, 33))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 50, Height: 33}},
+		{Tab: "beta", Rect: workspace.Rect{X: 51, Width: 50, Height: 33}},
+	}, layout.Arrange(101, 33).Panes)
 
 	// A pane with a neighbour keeps the current geometry and swaps contents.
 	require.True(t, layout.Move("alpha", workspace.Right, 101, 33))
@@ -83,53 +158,112 @@ func TestLayout_MoveSwapsNeighboursAndRedocksAtOuterEdges(t *testing.T) {
 		{Tab: "beta", Rect: workspace.Rect{Width: 50, Height: 33}},
 		{Tab: "alpha", Rect: workspace.Rect{X: 51, Width: 50, Height: 33}},
 	}, layout.Arrange(101, 33).Panes)
-
-	// At an outer edge, move re-docks the pane and changes the split orientation.
-	require.True(t, layout.Move("alpha", workspace.Down, 101, 33))
-	require.Equal(t, []workspace.Pane{
-		{Tab: "beta", Rect: workspace.Rect{Width: 101, Height: 16}},
-		{Tab: "alpha", Rect: workspace.Rect{Y: 17, Width: 101, Height: 16}},
-	}, layout.Arrange(101, 33).Panes)
-	require.False(t, layout.Move("alpha", workspace.Down, 101, 33), "already at the requested outer edge")
-
-	// A move at the new edge can switch back to columns.
-	require.True(t, layout.Move("alpha", workspace.Left, 101, 33))
-	columns := layout.Arrange(101, 33)
-	require.Equal(t, "alpha", columns.Panes[0].Tab)
-	require.Equal(t, "beta", columns.Panes[1].Tab)
-	require.Equal(t, []workspace.Pane{
-		{Tab: "alpha", Rect: workspace.Rect{Width: 50, Height: 33}},
-		{Tab: "beta", Rect: workspace.Rect{X: 51, Width: 50, Height: 33}},
-	}, columns.Panes, "moving from the bottom edge back to the left restores a row layout")
+	require.False(t, layout.Move("alpha", workspace.Right, 101, 33))
 }
 
-func TestLayout_MovePreservesTheRemainingSubtreeAndPreferredRatios(t *testing.T) {
+// Moving the third pane of a row down re-docks it below the remaining row, the
+// shape that a strict i3 root-edge refusal could not produce.
+func TestLayout_MoveRedocksTheLastPaneOfARowBelowIt(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 161, 65))
+	require.NoError(t, layout.Split("beta", "gamma", workspace.Columns, 161, 65))
+	require.True(t, layout.Move("gamma", workspace.Down, 161, 65))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 80, Height: 32}},
+		{Tab: "beta", Rect: workspace.Rect{X: 81, Width: 80, Height: 32}},
+		{Tab: "gamma", Rect: workspace.Rect{Y: 33, Width: 161, Height: 32}},
+	}, layout.Arrange(161, 65).Panes)
+}
+
+// At the edge of a nested container the pane leaves it and becomes a sibling of
+// that container in the container above (one level up), instead of re-docking as
+// a new split at the screen edge.
+func TestLayout_MoveAtNestedEdgeLiftsPaneOneLevel(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 101, 33))
+	require.NoError(t, layout.Split("beta", "gamma", workspace.Rows, 101, 33))
+
+	// columns[alpha, rows[beta, gamma]]: beta has no pane above it, so it lifts
+	// out of the rows container into the root columns container.
+	require.True(t, layout.Move("beta", workspace.Up, 101, 33))
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 33, Height: 33}},
+		{Tab: "beta", Rect: workspace.Rect{X: 34, Width: 33, Height: 33}},
+		{Tab: "gamma", Rect: workspace.Rect{X: 68, Width: 33, Height: 33}},
+	}, layout.Arrange(101, 33).Panes)
+	require.Equal(t, workspace.Columns, layout.SplitAxis("gamma"), "the surviving pane now belongs to the root row")
+}
+
+func TestLayout_MovePreservesTheSurvivingSubtreeShares(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
 	layout.Select("", "alpha")
 	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 101, 65))
 	require.NoError(t, layout.Split("beta", "gamma", workspace.Rows, 101, 65))
 	require.True(t, layout.Resize("beta", workspace.Rows, 1, 101, 65))
-	require.True(t, layout.Move("alpha", workspace.Down, 101, 65))
+	before := layout.Arrange(101, 65)
+	require.Greater(t, before.Panes[1].Height, before.Panes[2].Height)
+
+	require.True(t, layout.Move("beta", workspace.Up, 101, 65))
 	after := layout.Arrange(101, 65)
-	require.Equal(t, "alpha", after.Panes[2].Tab)
-	require.Equal(t, 101, after.Panes[2].Width, "the moved pane becomes a full-width bottom pane")
-	require.Equal(t, "beta", after.Panes[0].Tab)
-	require.Equal(t, "gamma", after.Panes[1].Tab)
-	require.Greater(t, after.Panes[0].Height, after.Panes[1].Height, "the surviving nested split keeps its preferred ratio")
-	require.Equal(t, 31, after.Panes[0].Height+after.Panes[1].Height, "the surviving subtree keeps the top half, excluding its divider")
-	require.Equal(t, 32, after.Panes[2].Height)
+	require.Equal(t, []string{"alpha", "beta", "gamma"}, []string{after.Panes[0].Tab, after.Panes[1].Tab, after.Panes[2].Tab})
+	for _, pane := range after.Panes {
+		require.Equal(t, 65, pane.Height, "the lifted pane and the former container share the root row")
+	}
+	require.Equal(t, 101, after.Panes[0].Width+after.Panes[1].Width+after.Panes[2].Width+2)
+}
+
+// Lifting a pane out of a container with three or more children must leave the
+// survivors' weights normalized: Resize and Restore both assume the weightTotal
+// scale, and a stale scale silently turns one 5% resize step into a big jump and
+// makes a freshly snapshotted layout restore as "repaired".
+func TestLayout_MoveRenormalizesSurvivingContainerShares(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Rows, 161, 65))
+	require.NoError(t, layout.Split("alpha", "gamma", workspace.Columns, 161, 65))
+	require.NoError(t, layout.Split("alpha", "delta", workspace.Columns, 161, 65))
+
+	// rows[columns[alpha, delta, gamma], beta]: alpha is at the left edge of
+	// the nested columns container, so it lifts into the root rows container.
+	require.True(t, layout.Move("alpha", workspace.Left, 161, 65))
+
+	snapshot := layout.Snapshot("alpha", nil)
+	_, _, repaired := workspace.Restore(snapshot, nil)
+	require.False(t, repaired, "a move must not leave weights outside the snapshot scale")
+
+	before := layout.Arrange(161, 65)
+	// The surviving columns container sits beside beta at full width, so one
+	// step moves its divider by 5% of 160 available cells, not by a share of a
+	// stale 6666-scale weight.
+	var gammaIndex int
+	for i, pane := range before.Panes {
+		if pane.Tab == "gamma" {
+			gammaIndex = i
+		}
+	}
+	require.True(t, layout.Resize("gamma", workspace.Columns, 1, 161, 65))
+	after := layout.Arrange(161, 65)
+	require.Equal(t, 8, after.Panes[gammaIndex].Width-before.Panes[gammaIndex].Width, "one 5% step of the container")
 }
 
 func TestLayout_MoveRejectsAProspectiveLayoutThatCannotFit(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
 	layout.Select("", "alpha")
-	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 49, 12))
-	before := layout.Arrange(49, 12)
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 60, 33))
+	require.NoError(t, layout.Split("beta", "gamma", workspace.Rows, 60, 33))
+	before := layout.Arrange(60, 33)
 	revision := layout.Revision()
-	require.False(t, layout.Move("alpha", workspace.Down, 49, 12), "a stacked layout needs 17 rows")
-	require.Equal(t, before, layout.Arrange(49, 12))
+	// Lifting beta into the root row adds a divider and a pane minimum, which no
+	// longer fits 60 columns.
+	require.False(t, layout.Move("beta", workspace.Up, 60, 33))
+	require.Equal(t, before, layout.Arrange(60, 33))
 	require.Equal(t, revision, layout.Revision())
 }
 
@@ -172,6 +306,22 @@ func TestLayout_ResizeStartsFromVisibleDividerAfterTerminalClamping(t *testing.T
 	require.Greater(t, layout.Arrange(70, 24).Panes[1].Width, 24)
 }
 
+// Resizing moves the divider next to the focused pane, also when it sits in the
+// middle of a container with more than two children.
+func TestLayout_ResizeThreeSiblingsMovesTheFocusedDivider(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 101, 24))
+	require.NoError(t, layout.Split("beta", "gamma", workspace.Columns, 101, 24))
+	before := layout.Arrange(101, 24)
+	require.True(t, layout.Resize("beta", workspace.Columns, 1, 101, 24))
+	after := layout.Arrange(101, 24)
+	require.Greater(t, after.Panes[1].Width, before.Panes[1].Width)
+	require.Equal(t, before.Panes[0].Width, after.Panes[0].Width, "the divider after beta moves, not alpha's")
+	require.Less(t, after.Panes[2].Width, before.Panes[2].Width)
+}
+
 func TestLayout_SnapshotRestoresNewIdentitiesAndRepairsMissingTabs(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
@@ -193,9 +343,35 @@ func TestLayout_SnapshotRestoresNewIdentitiesAndRepairsMissingTabs(t *testing.T)
 	require.Equal(t, "new-alpha", focus)
 	require.Equal(t, 2, repairedLayout.Count())
 	require.Equal(t, 33, repairedLayout.Arrange(101, 33).Panes[1].Height)
-	decoded.Root.First.Tab = "modified"
+	decoded.Root.Children[0].Tab = "modified"
 	require.True(t, restored.Contains("new-alpha"), "restored layout must not alias input state")
 	require.True(t, layout.Contains("alpha"), "snapshot must not expose the live tree")
+}
+
+// Version 1 layouts stored binary splits. Restoring one keeps the same ratios as
+// a two-child container so old sessions reopen with their geometry intact.
+func TestLayout_RestoreMigratesVersionOneBinarySplits(t *testing.T) {
+	t.Parallel()
+	tree := &workspace.Node{
+		Axis: workspace.Columns, Ratio: 3000,
+		First:  &workspace.Node{Tab: "alpha"},
+		Second: &workspace.Node{Axis: workspace.Rows, Ratio: 7500, First: &workspace.Node{Tab: "beta"}, Second: &workspace.Node{Tab: "gamma"}},
+	}
+	layout, focus, repaired := workspace.Restore(workspace.State{Version: 1, Root: tree, Focus: "gamma"}, nil)
+	require.False(t, repaired)
+	require.Equal(t, "gamma", focus)
+	require.Equal(t, 3, layout.Count())
+	require.Equal(t, []workspace.Pane{
+		{Tab: "alpha", Rect: workspace.Rect{Width: 30, Height: 33}},
+		{Tab: "beta", Rect: workspace.Rect{X: 31, Width: 70, Height: 24}},
+		{Tab: "gamma", Rect: workspace.Rect{X: 31, Y: 25, Width: 70, Height: 8}},
+	}, layout.Arrange(101, 33).Panes)
+	// Migration is one-way: the snapshot is written in the sibling-container
+	// format and restores without repairs.
+	state := layout.Snapshot(focus, nil)
+	require.Equal(t, 2, state.Version)
+	_, _, repaired = workspace.Restore(state, nil)
+	require.False(t, repaired)
 }
 
 func TestLayout_AllocatesCellsExactlyOnceAndRejectsTooSmallSplits(t *testing.T) {
@@ -295,7 +471,12 @@ func FuzzLayout_OperationsPreserveAssignmentsAndRoundTrip(f *testing.F) {
 			case 3:
 				layout.Select(current, target)
 			case 4:
-				layout.Swap(current, workspace.Direction(op%4), 161, 65)
+				// Vary the moved tab so the edge-lift and removal paths are
+				// reachable; Move(layout.First(), Right, …) never leaves a
+				// container.
+				if panes := layout.PaneOrder(); len(panes) > 0 {
+					layout.Swap(panes[int(op/8)%len(panes)], workspace.Direction(int(op/8)%4), 161, 65)
+				}
 			case 5:
 				axis := workspace.Columns
 				if op&1 != 0 {
@@ -305,7 +486,9 @@ func FuzzLayout_OperationsPreserveAssignmentsAndRoundTrip(f *testing.F) {
 			case 6:
 				layout.Arrange(int(op%32), int(op%16))
 			case 7:
-				layout.Move(current, workspace.Direction(op%4), 49+int(op%113), 17+int(op%49))
+				if panes := layout.PaneOrder(); len(panes) > 0 {
+					layout.Move(panes[int(op/8)%len(panes)], workspace.Direction(int(op/8)%4), 49+int(op%113), 17+int(op%49))
+				}
 			}
 			arrangement := layout.Arrange(161, 65)
 			require.True(t, arrangement.Fits)
@@ -330,15 +513,18 @@ func TestLayout_RestoreHasNoArbitraryDepthLimitButRejectsCycles(t *testing.T) {
 	t.Parallel()
 	tree := &workspace.Node{Tab: "0"}
 	for i := 1; i <= 140; i++ {
-		tree = &workspace.Node{Axis: workspace.Rows, Ratio: 5000, First: tree, Second: &workspace.Node{Tab: strconv.Itoa(i)}}
+		tree = &workspace.Node{
+			Axis: workspace.Rows, Weights: []int{5000, 5000},
+			Children: []*workspace.Node{tree, {Tab: strconv.Itoa(i)}},
+		}
 	}
-	layout, _, repaired := workspace.Restore(workspace.State{Version: 1, Root: tree, Focus: "0"}, nil)
+	layout, _, repaired := workspace.Restore(workspace.State{Version: 2, Root: tree, Focus: "0"}, nil)
 	require.False(t, repaired, "a valid layout must not lose panes at a hard-coded nesting limit")
 	require.Equal(t, 141, layout.Count())
 	require.True(t, layout.Arrange(24, 1268).Fits)
-	cycle := &workspace.Node{Axis: workspace.Columns, Ratio: 5000, Second: &workspace.Node{Tab: "alpha"}}
-	cycle.First = cycle
-	layout, _, repaired = workspace.Restore(workspace.State{Version: 1, Root: cycle, Focus: "alpha"}, nil)
+	cycle := &workspace.Node{Axis: workspace.Columns, Weights: []int{5000, 5000}, Children: []*workspace.Node{nil, {Tab: "alpha"}}}
+	cycle.Children[0] = cycle
+	layout, _, repaired = workspace.Restore(workspace.State{Version: 2, Root: cycle, Focus: "alpha"}, nil)
 	require.True(t, repaired)
 	require.Equal(t, 1, layout.Count())
 }
@@ -349,10 +535,16 @@ func TestLayout_RestoreRejectsInvalidMetadataWithoutDuplicatePanes(t *testing.T)
 		{Version: 100, Root: &workspace.Node{Tab: "alpha"}},
 		{Version: 1, Root: &workspace.Node{Axis: "invalid", First: &workspace.Node{Tab: "alpha"}}},
 		{Version: 1, Root: &workspace.Node{Axis: workspace.Columns, Ratio: -1, First: &workspace.Node{Tab: "alpha"}, Second: &workspace.Node{Tab: "alpha"}}},
+		{Version: 2, Root: &workspace.Node{Axis: "invalid", Children: []*workspace.Node{{Tab: "alpha"}}}},
+		{Version: 2, Root: &workspace.Node{Axis: workspace.Columns, Children: []*workspace.Node{{Tab: "alpha"}, {Tab: "alpha"}}}},
+		{Version: 2, Root: &workspace.Node{Axis: workspace.Columns, Children: []*workspace.Node{{Tab: "alpha"}, {Tab: "beta"}}, Weights: []int{1}}},
 	} {
 		layout, _, repaired := workspace.Restore(state, nil)
 		require.True(t, repaired)
-		require.LessOrEqual(t, layout.Count(), 1)
-		require.True(t, layout.Arrange(0, 0).Fits)
+		seen := map[string]bool{}
+		for _, tab := range layout.PaneOrder() {
+			require.False(t, seen[tab], "a tab must not be restored twice")
+			seen[tab] = true
+		}
 	}
 }
