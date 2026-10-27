@@ -1854,6 +1854,7 @@ func TestBroadcast_EmoteRefreshFailureKeepsTabUsable(t *testing.T) {
 // connection methods are unused by these tests but required by the port.
 type capturingPool struct {
 	subscriptions []twitchapi.CreateEventSubSubscriptionRequest
+	err           error
 }
 
 func (p *capturingPool) ConnectIRC(string) error { return nil }
@@ -1864,7 +1865,7 @@ func (p *capturingPool) SendIRC(string, twitchirc.IRCer) error {
 func (p *capturingPool) JoinChannel(string, string) error { return nil }
 func (p *capturingPool) SubscribeEventSub(_ string, req twitchapi.CreateEventSubSubscriptionRequest, _ wspool.EventSubService) error {
 	p.subscriptions = append(p.subscriptions, req)
-	return nil
+	return p.err
 }
 func (p *capturingPool) Close() error { return nil }
 
@@ -1988,6 +1989,27 @@ func TestBroadcast_SubscribeChannelEventCmdsIncludesUnbanRequestsForModerators(t
 			"moderator_user_id":   "other",
 		}, subscription.Condition)
 	}
+}
+
+func TestBroadcast_SubscribeFailureShowsOneNotice(t *testing.T) {
+	t.Parallel()
+
+	tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "chan-id", DisplayName: "me"})
+	tab.pool = &capturingPool{err: errors.New("subscription rejected")}
+	tab.client.EventSub = fakeEventSubService{}
+
+	cmds := tab.subscribeChannelEventCmds("chan-id")
+	require.NotEmpty(t, cmds)
+
+	_, cmd := tab.Update(cmds[0]())
+	require.NotNil(t, cmd, "the first failure produces one notice")
+
+	notice, ok := cmd().(RequestLocalMessageHandleMessage)
+	require.True(t, ok)
+	require.Contains(t, notice.Message.(*twitchirc.Notice).Message, "Could not subscribe")
+
+	_, cmd = tab.Update(cmds[1]())
+	require.Nil(t, cmd, "later failures in the same watch cycle only log")
 }
 
 func TestBroadcast_HandleEventSubMessageIgnoresOtherChannels(t *testing.T) {
