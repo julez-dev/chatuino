@@ -15,6 +15,7 @@ import (
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/rs/zerolog/log"
 )
@@ -73,14 +74,14 @@ type prepareRequest struct {
 // belongs to so a stale result cannot be routed as if it were current.
 type preparedChatEvent struct {
 	seq   uint64
-	event tab.ChatEventMessage
+	event chat.ChatEventMessage
 }
 
 // routedPreparedEvent continues a prepared event after its terminal preparation
 // command was written.
 type routedPreparedEvent struct {
 	seq   uint64
-	event tab.ChatEventMessage
+	event chat.ChatEventMessage
 }
 
 // chatEventPreparer owns the enrichment rules and their collaborators: protocol
@@ -142,11 +143,11 @@ func (p *chatEventPreparer) close() {
 // prepare enriches one event. Network failures are logged and the event is still
 // produced, matching the previous best-effort behaviour. All I/O shares one
 // per-event deadline, derived from the UI lifetime.
-func (p *chatEventPreparer) prepare(req prepareRequest) tab.ChatEventMessage {
+func (p *chatEventPreparer) prepare(req prepareRequest) chat.ChatEventMessage {
 	p.mu.Lock()
 	if p.closed || p.ctx.Err() != nil {
 		p.mu.Unlock()
-		return tab.ChatEventMessage{}
+		return chat.ChatEventMessage{}
 	}
 	p.work.Add(1)
 	p.mu.Unlock()
@@ -265,7 +266,7 @@ func (p *chatEventPreparer) prepare(req prepareRequest) tab.ChatEventMessage {
 		channel = ircMessage.ChannelUserName
 	}
 
-	event := tab.ChatEventMessage{
+	event := chat.ChatEventMessage{
 		IsFakeEvent:             req.isFake,
 		AccountID:               req.accountID,
 		Channel:                 channel,
@@ -275,9 +276,9 @@ func (p *chatEventPreparer) prepare(req prepareRequest) tab.ChatEventMessage {
 		TabID:                   req.tabID,
 
 		Message: req.ircer,
-		DisplayModifier: tab.MessageContentModifier{
-			WordReplacements: make(tab.WordReplacement),
-			BadgeReplacement: make(tab.WordReplacement),
+		DisplayModifier: chat.MessageContentModifier{
+			WordReplacements: make(chat.WordReplacement),
+			BadgeReplacement: make(chat.WordReplacement),
 		},
 	}
 
@@ -330,7 +331,7 @@ func (p *chatEventPreparer) prepare(req prepareRequest) tab.ChatEventMessage {
 
 // annotateLinks renders the "[status, content type, redirects]" annotation after
 // every URL of a live message.
-func (p *chatEventPreparer) annotateLinks(ctx context.Context, event *tab.ChatEventMessage, message string) {
+func (p *chatEventPreparer) annotateLinks(ctx context.Context, event *chat.ChatEventMessage, message string) {
 	ctx, cancel := context.WithTimeout(ctx, p.linkBudget)
 	defer cancel()
 

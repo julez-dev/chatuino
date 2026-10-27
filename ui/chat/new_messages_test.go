@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"fmt"
@@ -18,10 +18,10 @@ const singularBadgeLabel = "↓ 1 new message"
 // scrolledUpChatWindow returns a window that is filled to the tail and then paged up
 // twice, so the tail is out of view and arriving messages are missed rather than
 // followed.
-func scrolledUpChatWindow(t *testing.T, width, height int, settings save.Settings) *chatWindow {
+func scrolledUpChatWindow(t *testing.T, width, height int, settings save.Settings) *Buffer {
 	t.Helper()
 
-	c := newChatWindow(width, height, settings, save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+	c := New(width, height, settings, save.BuildDefaultTheme())
 
 	for i := range 12 {
 		addPrivateMessage(t, c, fmt.Sprintf("msg-%d", i), fmt.Sprintf("message %d", i))
@@ -29,22 +29,12 @@ func scrolledUpChatWindow(t *testing.T, width, height int, settings save.Setting
 
 	require.True(t, c.atTail(), "the fixture starts at the tail")
 
-	c.pageUp()
-	c.pageUp()
+	c.PageUp()
+	c.PageUp()
 
 	require.False(t, c.atTail(), "two pages up must leave the tail")
 
 	return c
-}
-
-// viewRows splits the rendered view, stripped of ANSI sequences, into its rows.
-func viewRows(t *testing.T, c *chatWindow) []string {
-	t.Helper()
-
-	rows := strings.Split(ansi.Strip(c.View()), "\n")
-	require.Len(t, rows, c.height, "the view always renders exactly height rows")
-
-	return rows
 }
 
 func TestChatWindow_NewMessageBadgeCountsMissedMessages(t *testing.T) {
@@ -69,7 +59,7 @@ func TestChatWindow_NewMessageBadgeCountsMissedMessages(t *testing.T) {
 func TestChatWindow_NewMessageBadgeHiddenAtTail(t *testing.T) {
 	t.Parallel()
 
-	c := newChatWindow(60, 6, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+	c := New(60, 6, save.BuildDefaultSettings(), save.BuildDefaultTheme())
 
 	for i := range 20 {
 		addPrivateMessage(t, c, fmt.Sprintf("msg-%d", i), "hello")
@@ -86,7 +76,7 @@ func TestChatWindow_NewMessageBadgeHiddenAtTail(t *testing.T) {
 func TestChatWindow_NewMessageBadgeCountsBelowAFullViewport(t *testing.T) {
 	t.Parallel()
 
-	c := newChatWindow(60, 6, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+	c := New(60, 6, save.BuildDefaultSettings(), save.BuildDefaultTheme())
 
 	for i := range 6 {
 		addPrivateMessage(t, c, fmt.Sprintf("msg-%d", i), fmt.Sprintf("message %d", i))
@@ -109,23 +99,23 @@ func TestChatWindow_NewMessageBadgeClearsAtTail(t *testing.T) {
 
 	for _, tt := range []struct {
 		name string
-		back func(c *chatWindow)
+		back func(c *Buffer)
 	}{
 		{
 			name: "jump to newest",
-			back: func(c *chatWindow) { c.jumpToNewest() },
+			back: func(c *Buffer) { c.jumpToNewest() },
 		},
 		{
 			name: "keyboard pages down",
-			back: func(c *chatWindow) {
+			back: func(c *Buffer) {
 				for range 10 {
-					c.pageDown()
+					c.PageDown()
 				}
 			},
 		},
 		{
 			name: "selecting the newest message",
-			back: func(c *chatWindow) {
+			back: func(c *Buffer) {
 				active := c.activeEntries()
 				c.selectEntry(active[len(active)-1])
 			},
@@ -164,8 +154,7 @@ func TestChatWindow_NewMessageBadgePlacement(t *testing.T) {
 	c := scrolledUpChatWindow(t, 60, 6, save.BuildDefaultSettings())
 	addPrivateMessage(t, c, "missed", strings.Repeat("a very long message ", 8))
 
-	view := c.View()
-	rows := strings.Split(view, "\n")
+	rows, _ := c.Rows(c.height)
 	require.Len(t, rows, c.height)
 
 	badgeRow := -1
@@ -217,7 +206,7 @@ func TestChatWindow_NewMessageBadgeSkipsGraphicEmoteRows(t *testing.T) {
 			image := strings.Repeat(" ", 44) + "\x1b[38;2;0;0;7m" + strings.Repeat("\U0010EEEE", 4) + "\x1b[39m"
 			require.NotEmpty(t, kittyimg.PlaceholderSpans(image), "the fixture must look like an image to the window")
 
-			bottom := c.viewportRenderStart() + c.height - 1
+			bottom := c.ViewportRenderStart() + c.height - 1
 			c.lines[bottom] = image
 
 			above := kittyimg.PlaceholderRowsAbove(image, tt.imageRows)
@@ -227,7 +216,7 @@ func TestChatWindow_NewMessageBadgeSkipsGraphicEmoteRows(t *testing.T) {
 
 			_, width := c.newMessageBadge()
 
-			row, _, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
+			row, _, ok := c.newMessageBadgeSpan(c.ViewportRenderStart(), c.height, width)
 			require.True(t, ok)
 			require.Equal(t, c.height-1-tt.wantFromEnd, row, "the badge steps over every image row")
 
@@ -259,7 +248,7 @@ func TestChatWindow_NewMessageBadgeWithGraphicsDisabled(t *testing.T) {
 
 	_, width := c.newMessageBadge()
 
-	row, _, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
+	row, _, ok := c.newMessageBadgeSpan(c.ViewportRenderStart(), c.height, width)
 	require.True(t, ok)
 	require.Equal(t, c.height-1, row, "nothing to step over, the badge uses the bottom row")
 	require.Contains(t, viewRows(t, c)[c.height-1], singularBadgeLabel)
@@ -273,7 +262,7 @@ func TestChatWindow_NewMessageBadgeHitArea(t *testing.T) {
 
 	_, width := c.newMessageBadge()
 
-	row, col, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, width)
+	row, col, ok := c.newMessageBadgeSpan(c.ViewportRenderStart(), c.height, width)
 	require.True(t, ok)
 
 	require.True(t, c.newMessageBadgeHit(row, col), "the first badge cell is a hit")

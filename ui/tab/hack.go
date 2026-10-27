@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"iter"
-	"math/rand/v2"
 	"net/url"
 	"regexp"
 	"slices"
@@ -15,15 +14,7 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-var (
-	duplicateBypass = rune(917504)
-	ansiRegex       = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
-
-	accountStartRegex = regexp.MustCompile(`^[^a-zA-Z0-9_-]+`)
-	accountEndRegex   = regexp.MustCompile(`[^a-zA-Z0-9_-]+$`)
-
-	urlStartRegex = regexp.MustCompile(`https?://[^\s]+`)
-)
+var urlStartRegex = regexp.MustCompile(`https?://[^\s]+`)
 
 func ExtractValidURLs(text string) []string {
 	rawMatches := urlStartRegex.FindAllString(text, -1)
@@ -57,14 +48,6 @@ func filter[S ~[]E, E any](x S, f func(e E) bool) iter.Seq[E] {
 			}
 		}
 	}
-}
-
-func StripANSI(str string) string {
-	return ansiRegex.ReplaceAllString(str, "")
-}
-
-func stripDisplayNameEdges(str string) string {
-	return accountEndRegex.ReplaceAllString(accountStartRegex.ReplaceAllString(str, ""), "")
 }
 
 func clamp(v, low, high int) int {
@@ -175,12 +158,4 @@ func messageMatchesBlocked(msg twitchirc.IRCer, settings save.BlockSettings) boo
 	}
 
 	return false
-}
-
-func randomHexColor() string {
-	red := rand.Int32N(256)
-	green := rand.Int32N(256)
-	blue := rand.Int32N(256)
-
-	return fmt.Sprintf("#%02x%02x%02x", red, green, blue)
 }

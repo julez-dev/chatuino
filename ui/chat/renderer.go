@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"fmt"
@@ -33,7 +33,7 @@ type messageRenderer struct {
 	timeFormatWidth  int
 	timePaddingWidth int
 
-	palette *userPalette
+	palette *Palette
 
 	subAlertStyle       lipgloss.Style
 	noticeAlertStyle    lipgloss.Style
@@ -53,7 +53,7 @@ func newMessageRenderer(
 	width, indicatorWidth int,
 	settings save.Settings,
 	theme save.Theme,
-	palette *userPalette,
+	palette *Palette,
 ) *messageRenderer {
 	r := &messageRenderer{
 		width:          width,
@@ -339,9 +339,9 @@ func (r *messageRenderer) setUserColorModifier(content string, modifier *Message
 func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipgloss.Style) []string {
 	// Strip duplicate-bypass rune (U+E0000) used to bypass Twitch spam detection.
 	// Guard with ContainsRune to avoid allocating when the rune isn't present (vast majority of messages).
-	if strings.ContainsRune(content, duplicateBypass) {
+	if strings.ContainsRune(content, DuplicateBypass) {
 		content = strings.Map(func(r rune) rune {
-			if r == duplicateBypass {
+			if r == DuplicateBypass {
 				return -1
 			}
 			return r
@@ -349,12 +349,6 @@ func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipglos
 	}
 
 	prefixWidth := lipgloss.Width(prefix)
-
-	// Assure that the prefix is at least prefixPadding wide
-	if prefixWidth < prefixPadding {
-		prefix = prefix + strings.Repeat(" ", prefixPadding-prefixWidth)
-		prefixWidth = lipgloss.Width(prefix)
-	}
 
 	contentWidthLimit := r.width - r.indicatorWidth - prefixWidth
 
@@ -365,7 +359,7 @@ func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipglos
 	lines := make([]string, 0, len(splits))
 	lines = append(lines, prefix+styledBody(style, splits[0])) // first line is prefix + content at index 0
 
-	// if there are more lines, add prefixPadding spaces to the beginning of the line
+	// if there are more lines, pad the continuation lines to the prefix width
 	for _, line := range splits[1:] {
 		indent := strings.Repeat(" ", prefixWidth)
 		if r.settings.Chat.DisablePaddingWrappedLines {
@@ -430,4 +424,15 @@ func expandGraphicRows(lines []string, rows int) []string {
 	}
 
 	return expanded
+}
+
+// GraphicRows returns the number of terminal rows graphic emotes and badges
+// occupy, or 1 when graphics are disabled.
+func GraphicRows(settings save.Settings) int {
+	return graphicRows(settings)
+}
+
+// FormatBadgeReplacement renders a badge set for text-mode output.
+func FormatBadgeReplacement(settings save.Settings, replacements map[string]string) string {
+	return formatBadgeReplacement(settings, replacements)
 }

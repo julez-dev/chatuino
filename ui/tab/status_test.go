@@ -11,6 +11,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/stretchr/testify/require"
 )
 
@@ -233,7 +234,7 @@ func TestStreamStatus_RoomStateFromChatEvent(t *testing.T) {
 	tab := newFSMTestTab(t, false)
 	require.False(t, tab.statusInfo.isDataFetched)
 
-	_, cmd := tab.Update(ChatEventMessage{
+	_, cmd := tab.Update(chat.ChatEventMessage{
 		AccountID: "acc",
 		Channel:   "chan",
 		ChannelID: "chan-id",

@@ -152,8 +152,8 @@ func (v *verticalTabHeader) View(rows []nav.Row) string {
 
 	borderStyle := v.borderStyle
 
-	innerWidth := v.width - 2   // -2 for left/right │
-	innerHeight := v.height - 2 // -2 for top/bottom borders
+	innerWidth := max(0, v.width-2)   // -2 for left/right │
+	innerHeight := max(0, v.height-2) // -2 for top/bottom borders
 
 	// Get list content
 	view := v.list.View()
@@ -206,8 +206,18 @@ func (v *verticalTabHeader) View(rows []nav.Row) string {
 	}
 	bottomBorder += strings.Repeat("─", bottomFill) + "┘"
 
-	// Wrap each line with │ borders
+	// The list view carries one leading padding row, which is stripped above.
+	// Pad the remaining content back to the inner height so the header keeps the
+	// rows it was allocated instead of leaving a blank row outside its border.
 	lines := strings.Split(view, "\n")
+	for len(lines) < innerHeight {
+		lines = append(lines, "")
+	}
+	if len(lines) > innerHeight {
+		lines = lines[:innerHeight]
+	}
+
+	// Wrap each line with │ borders
 	var borderedLines []string
 	for _, line := range lines {
 		padNeeded := max(0, innerWidth-lipgloss.Width(line))

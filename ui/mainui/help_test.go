@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/julez-dev/chatuino/save"
-	"github.com/julez-dev/chatuino/ui/tab"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -13,7 +13,7 @@ func TestHelp_ListsConfigurablePaneControlsAndDistinctClosures(t *testing.T) {
 	t.Parallel()
 	mapping := save.BuildDefaultKeyMap()
 	require.NoError(t, yaml.Unmarshal([]byte("pane_mode: [ctrl+g]\npane_close: [ctrl+x]\n"), &mapping))
-	view := tab.StripANSI(newHelp(220, 140, mapping).View())
+	view := chat.StripANSI(newHelp(220, 140, mapping).View())
 	require.Contains(t, view, "Pane Controls")
 	require.Contains(t, view, "ctrl+g")
 	require.Contains(t, view, "ctrl+x")

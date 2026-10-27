@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ const newMessageBadgeScanRows = kittyimg.MaxRows + 1
 
 // newMessageBadgeText is the label of the missed-message badge, for example
 // "↓ 3 new messages". The counter is capped so the badge keeps its width.
-func (c *chatWindow) newMessageBadgeText() string {
+func (c *Buffer) newMessageBadgeText() string {
 	switch {
 	case c.newMessages < 1:
 		return ""
@@ -31,7 +31,7 @@ func (c *chatWindow) newMessageBadgeText() string {
 
 // newMessageBadge renders the badge and reports the cells it needs. Both come from
 // here so that measuring and drawing cannot disagree about its width.
-func (c *chatWindow) newMessageBadge() (string, int) {
+func (c *Buffer) newMessageBadge() (string, int) {
 	badge := c.newMessageStyle.Render(c.newMessageBadgeText())
 
 	return badge, lipgloss.Width(badge)
@@ -40,20 +40,20 @@ func (c *chatWindow) newMessageBadge() (string, int) {
 // newMessageIndicatorEnabled reports whether this window counts and shows new
 // messages. The setting is read in one place so counting and drawing cannot drift
 // apart.
-func (c *chatWindow) newMessageIndicatorEnabled() bool {
+func (c *Buffer) newMessageIndicatorEnabled() bool {
 	return c.settings.Chat.NewMessageIndicator
 }
 
 // newMessageBadgeVisible reports whether this window shows the badge at all.
-func (c *chatWindow) newMessageBadgeVisible() bool {
+func (c *Buffer) newMessageBadgeVisible() bool {
 	return c.newMessages > 0 && c.newMessageIndicatorEnabled()
 }
 
 // countNewMessage records a message that ended up outside the viewport. A message is
 // only in view when the viewport reaches its last rendered line, so a buffer that
 // exactly fills the viewport still reports messages that landed below the fold.
-func (c *chatWindow) countNewMessage(entry *chatEntry) {
-	if entry.Position.CursorEnd < c.lineEnd || !c.newMessageIndicatorEnabled() {
+func (c *Buffer) countNewMessage(entry *Entry) {
+	if entry.position.cursorEnd < c.lineEnd || !c.newMessageIndicatorEnabled() {
 		return
 	}
 
@@ -66,7 +66,7 @@ func (c *chatWindow) countNewMessage(entry *chatEntry) {
 // instead of floating in the padding of a partly filled buffer, and it steps over
 // rows that hold a graphic emote: a kitty placeholder owns those cells and the image
 // would cover the badge.
-func (c *chatWindow) newMessageBadgeSpan(renderStart, height, width int) (row, col int, ok bool) {
+func (c *Buffer) newMessageBadgeSpan(renderStart, height, width int) (row, col int, ok bool) {
 	if height < 1 {
 		return 0, 0, false
 	}
@@ -100,7 +100,7 @@ func (c *chatWindow) newMessageBadgeSpan(renderStart, height, width int) (row, c
 // drawNewMessageBadge overlays the badge on the right edge of the row found by
 // newMessageBadgeSpan. That row is truncated to make room, so a long message loses
 // its tail for as long as the badge is up.
-func (c *chatWindow) drawNewMessageBadge(view []string, renderStart, height int) {
+func (c *Buffer) drawNewMessageBadge(view []string, renderStart, height int) {
 	if !c.newMessageBadgeVisible() {
 		return
 	}
@@ -125,7 +125,7 @@ func (c *chatWindow) drawNewMessageBadge(view []string, renderStart, height int)
 // handleNewMessageBadgeClick catches up with the chat when a click on the chat view,
 // relative to its top-left cell, lands on the badge, and reports whether the click was
 // consumed. It lives here so every tab wires its chat clicks the same way.
-func (c *chatWindow) handleNewMessageBadgeClick(row, col int) bool {
+func (c *Buffer) handleNewMessageBadgeClick(row, col int) bool {
 	if !c.newMessageBadgeHit(row, col) {
 		return false
 	}
@@ -137,14 +137,14 @@ func (c *chatWindow) handleNewMessageBadgeClick(row, col int) bool {
 
 // newMessageBadgeHit reports whether the given cell is covered by the badge. The badge
 // then means "show me the new messages" rather than "select the message underneath it".
-func (c *chatWindow) newMessageBadgeHit(row, col int) bool {
-	if c.state == searchChatWindowState || !c.newMessageBadgeVisible() {
+func (c *Buffer) newMessageBadgeHit(row, col int) bool {
+	if c.filterActive || c.searchActive || !c.newMessageBadgeVisible() {
 		return false
 	}
 
 	_, badgeWidth := c.newMessageBadge()
 
-	badgeRow, badgeCol, ok := c.newMessageBadgeSpan(c.viewportRenderStart(), c.height, badgeWidth)
+	badgeRow, badgeCol, ok := c.newMessageBadgeSpan(c.ViewportRenderStart(), c.height, badgeWidth)
 	if !ok {
 		return false
 	}
@@ -154,7 +154,7 @@ func (c *chatWindow) newMessageBadgeHit(row, col int) bool {
 
 // jumpToNewest selects the newest message and snaps the viewport to it, so the
 // badge disappears in the same frame.
-func (c *chatWindow) jumpToNewest() {
+func (c *Buffer) jumpToNewest() {
 	c.moveToBottom()
 	c.snapScroll()
 }

@@ -8,7 +8,7 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/live"
 )
 
 type predictionOutcome struct {
@@ -103,20 +103,20 @@ func (p *prediction) setWidth(width int) {
 	}
 }
 
-func (p *prediction) setPredictionData(event eventsub.Message[eventsub.NotificationPayload]) {
-	p.title = event.Payload.Event.Title
-	p.locksAt = event.Payload.Event.LocksAt
-	p.outcomes = make([]predictionOutcome, 0, len(event.Payload.Event.Outcomes))
+func (p *prediction) setPredictionData(prediction live.Prediction) {
+	p.title = prediction.Title
+	p.locksAt = prediction.LocksAt
+	p.outcomes = make([]predictionOutcome, 0, len(prediction.Outcomes))
 
 	var totalPoints int
-	for _, outcome := range event.Payload.Event.Outcomes {
+	for _, outcome := range prediction.Outcomes {
 		p.outcomes = append(p.outcomes, predictionOutcome{
 			id:     outcome.ID,
 			title:  outcome.Title,
-			points: outcome.ChannelPoints,
+			points: outcome.Points,
 			bar:    progress.New(progress.WithWidth(clamp(p.width-4, 0, p.width))),
 		})
-		totalPoints += outcome.ChannelPoints
+		totalPoints += outcome.Points
 	}
 
 	for i := range p.outcomes {

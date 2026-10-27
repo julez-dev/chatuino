@@ -15,13 +15,14 @@ import (
 	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/nav"
 )
 
 func handleCommand(tabID string, name string, args []string, channelID string, channel string, userAccountID string, ttv ModerationAPI) tea.Cmd {
 	noticeCommandFunc := func(msg string) tea.Cmd {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: userAccountID,
 				Channel:   channel,
 				ChannelID: channelID,

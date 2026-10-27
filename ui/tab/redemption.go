@@ -5,21 +5,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/julez-dev/chatuino/twitch/eventsub"
+	"github.com/julez-dev/chatuino/twitch/live"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
 )
 
 // redemptionNotice turns a channel point redemption into a chat notice. Add and
 // update events share the same rendering so an update can rewrite the original
 // line instead of appending a second, stale one.
-func (t *Broadcast) redemptionNotice(event eventsub.Event) *twitchirc.Notice {
-	text := redemptionText(event)
-
+func (t *Broadcast) redemptionNotice(redemption live.Redemption) *twitchirc.Notice {
 	return &twitchirc.Notice{
 		FakeTimestamp:   time.Now(),
 		ChannelUserName: t.channelLogin,
-		MsgID:           twitchirc.MsgID(event.ID),
-		Message:         text,
+		MsgID:           twitchirc.MsgID(redemption.ID),
+		Message:         redemptionText(redemption),
 	}
 }
 
@@ -31,22 +29,17 @@ func (t *Broadcast) trackRedemption(id string, notice *twitchirc.Notice) {
 	t.redemptions[id] = notice
 }
 
-func redemptionText(event eventsub.Event) string {
-	user := event.UserName
-	if user == "" {
-		user = event.UserLogin
-	}
+func redemptionText(redemption live.Redemption) string {
+	text := fmt.Sprintf("%s redeemed %q (%d points)", redemption.User, redemption.Reward, redemption.Cost)
 
-	text := fmt.Sprintf("%s redeemed %q (%d points)", user, event.Reward.Title, event.Reward.Cost)
-
-	if input := strings.TrimSpace(event.UserInput); input != "" {
+	if input := strings.TrimSpace(redemption.UserInput); input != "" {
 		text += ": " + input
-	} else if input := strings.TrimSpace(event.Message.Text); input != "" {
+	} else if input := strings.TrimSpace(redemption.MessageText); input != "" {
 		text += ": " + input
 	}
 
-	if event.Status != "" && event.Status != "unfulfilled" {
-		text += fmt.Sprintf(" [%s]", event.Status)
+	if redemption.Status != "" && redemption.Status != "unfulfilled" {
+		text += fmt.Sprintf(" [%s]", redemption.Status)
 	}
 
 	return text

@@ -14,6 +14,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/spf13/afero"
@@ -403,7 +404,7 @@ func TestRoot_PreparationPreservesArrivalOrder(t *testing.T) {
 	require.Len(t, messages, 3)
 
 	for i, want := range []string{"first", "second", "third"} {
-		event, ok := messages[i].(tab.ChatEventMessage)
+		event, ok := messages[i].(chat.ChatEventMessage)
 		require.True(t, ok)
 		require.Equal(t, want, event.Message.(*twitchirc.PrivateMessage).Message,
 			"events must be routed in arrival order")
@@ -426,7 +427,7 @@ func TestRoot_PrepareCommandRunsBeforeRouting(t *testing.T) {
 	seq := root.events.inFlight
 	require.NotZero(t, seq)
 
-	event := tab.ChatEventMessage{
+	event := chat.ChatEventMessage{
 		TabID:          "tab-1",
 		Message:        privateMessage("image"),
 		PrepareCommand: "\x1b_G the image",
@@ -446,7 +447,7 @@ func TestRoot_PrepareCommandRunsBeforeRouting(t *testing.T) {
 	messages := ft.messages()
 	require.Len(t, messages, 1, "the event is routed exactly once")
 
-	routed, ok := messages[0].(tab.ChatEventMessage)
+	routed, ok := messages[0].(chat.ChatEventMessage)
 	require.True(t, ok)
 	require.Empty(t, routed.PrepareCommand, "the preparation command is not duplicated into the tab")
 }
@@ -463,7 +464,7 @@ func TestRoot_DuplicatePreparedResultIsIgnored(t *testing.T) {
 	root.enqueueChatEvent("acc", "", privateMessage("once"), false)
 	seq := root.events.inFlight
 
-	prepared := preparedChatEvent{seq: seq, event: tab.ChatEventMessage{Message: privateMessage("once")}}
+	prepared := preparedChatEvent{seq: seq, event: chat.ChatEventMessage{Message: privateMessage("once")}}
 
 	_, _ = root.Update(prepared)
 	require.Len(t, ft.messages(), 1)
@@ -487,7 +488,7 @@ func TestRoot_ClosedTabDropsLateEvent(t *testing.T) {
 	require.True(t, ok)
 
 	require.NotPanics(t, func() {
-		_ = root.dispatchPreparedEvent(tab.ChatEventMessage{TabID: "tab-1", Message: privateMessage("late")})
+		_ = root.dispatchPreparedEvent(chat.ChatEventMessage{TabID: "tab-1", Message: privateMessage("late")})
 	})
 
 	require.Empty(t, closed.messages())
@@ -506,7 +507,7 @@ func TestRoot_BroadcastRouting(t *testing.T) {
 	root.tabs.Add(one)
 	root.tabs.Add(two)
 
-	_ = root.dispatchPreparedEvent(tab.ChatEventMessage{Message: privateMessage("hello")})
+	_ = root.dispatchPreparedEvent(chat.ChatEventMessage{Message: privateMessage("hello")})
 
 	require.Len(t, one.messages(), 1)
 	require.Len(t, two.messages(), 1)
@@ -587,10 +588,10 @@ func TestRoot_CloseBeforeScheduledPreparationStarts(t *testing.T) {
 	require.Zero(t, calls.Load())
 }
 
-func chatEvents(ft *fakeTab) []tab.ChatEventMessage {
-	var events []tab.ChatEventMessage
+func chatEvents(ft *fakeTab) []chat.ChatEventMessage {
+	var events []chat.ChatEventMessage
 	for _, msg := range ft.messages() {
-		if event, ok := msg.(tab.ChatEventMessage); ok {
+		if event, ok := msg.(chat.ChatEventMessage); ok {
 			events = append(events, event)
 		}
 	}
@@ -767,7 +768,7 @@ func TestRoot_DuplicateGraphicsPreparationHasNoSideEffects(t *testing.T) {
 	root.tabs.Add(ft)
 	root.enqueueChatEvent("acc", "tab-1", privateMessage("image"), false)
 	seq := root.events.inFlight
-	prepared := preparedChatEvent{seq: seq, event: tab.ChatEventMessage{
+	prepared := preparedChatEvent{seq: seq, event: chat.ChatEventMessage{
 		TabID: "tab-1", Message: privateMessage("image"), PrepareCommand: "kitty-image",
 	}}
 

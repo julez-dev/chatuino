@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"strings"
@@ -50,7 +50,7 @@ func (r *messageRenderer) replyContextFor(msg *twitchirc.PrivateMessage) (replyC
 		ParentID:    msg.ParentMsgID,
 		ParentLogin: msg.ParentUserLogin,
 		ParentName:  name,
-		Snippet:     replySnippet(msg.ParentMsgBody),
+		Snippet:     Snippet(msg.ParentMsgBody),
 	}, true
 }
 
@@ -84,41 +84,6 @@ func stripReplyMention(body, parentName, parentLogin string) string {
 	return body
 }
 
-// handleReplyReferenceClick selects the parent message when the click lands on a reply's
-// reference row and the parent is still in the buffer, and reports whether it did. The
-// indent in front of the reference still belongs to the reply itself, so a click there
-// selects the reply like any other message row.
-func (c *chatWindow) handleReplyReferenceClick(line, col int) bool {
-	if col < c.renderer.timePaddingWidth {
-		return false
-	}
-
-	_, entry := c.entryAtLine(line)
-	if entry == nil || line != entry.Position.CursorStart {
-		return false
-	}
-
-	msg, ok := entry.Event.Message.(*twitchirc.PrivateMessage)
-	if !ok {
-		return false
-	}
-
-	ctx, ok := c.renderer.replyContextFor(msg)
-	if !ok {
-		return false
-	}
-
-	for _, candidate := range c.activeEntries() {
-		if parent, ok := candidate.Event.Message.(*twitchirc.PrivateMessage); ok && parent.ID == ctx.ParentID {
-			c.goToEntry(candidate)
-
-			return true
-		}
-	}
-
-	return false
-}
-
 // replyContextRow renders the quoted parent as one row above the reply. The row starts in
 // the message's name column, and name and quote share the width the pane has left, so a
 // long display name cannot push the reference past the pane edge.
@@ -126,8 +91,8 @@ func (r *messageRenderer) replyContextRow(ctx replyContext, modifier MessageCont
 	indent := strings.Repeat(" ", r.timePaddingWidth)
 	budget := r.width - r.indicatorWidth - r.timePaddingWidth - lipgloss.Width(replyMarker) - lipgloss.Width(replySep)
 
-	name := truncateToWidth(ctx.ParentName, min(lipgloss.Width(ctx.ParentName), budget))
-	snippet := truncateToWidth(ctx.Snippet, max(0, budget-lipgloss.Width(name)))
+	name := TruncateToWidth(ctx.ParentName, min(lipgloss.Width(ctx.ParentName), budget))
+	snippet := TruncateToWidth(ctx.Snippet, max(0, budget-lipgloss.Width(name)))
 
 	// A struck or italic reply carries the attribute into its quote as well: a clean
 	// reference above a struck message reads like a rendering fault. The parent's color
