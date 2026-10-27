@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestChatInput(t *testing.T, width int) *chatInput {
+func newTestComposer(t *testing.T, width int) *composer {
 	t.Helper()
 
 	settings := save.BuildDefaultSettings()
-	input := newChatInput(chat.NewPalette(), settings.BuildCustomSuggestionMap(), save.BuildDefaultTheme(), nil)
+	input := newComposer(chat.NewPalette(), settings.BuildCustomSuggestionMap(), save.BuildDefaultTheme(), nil)
 	input.SetWidth(width)
 
 	return input
@@ -27,10 +27,10 @@ func indicatorLine(view string) string {
 	return strings.SplitN(view, "\n", 2)[0]
 }
 
-func Test_chatInput_View_frame(t *testing.T) {
+func Test_composer_View_frame(t *testing.T) {
 	t.Parallel()
 
-	input := newTestChatInput(t, 40)
+	input := newTestComposer(t, 40)
 	input.SetValue("hello")
 
 	view := input.View()
@@ -44,20 +44,20 @@ func Test_chatInput_View_frame(t *testing.T) {
 	}
 }
 
-func Test_chatInput_replyIndicator(t *testing.T) {
+func Test_composer_replyIndicator(t *testing.T) {
 	t.Parallel()
 
 	t.Run("no armed reply adds no row", func(t *testing.T) {
 		t.Parallel()
 
-		input := newTestChatInput(t, 80)
+		input := newTestComposer(t, 80)
 		require.NotContains(t, input.View(), "Replying to")
 	})
 
 	t.Run("shows author snippet and cancel hint padded to width", func(t *testing.T) {
 		t.Parallel()
 
-		input := newTestChatInput(t, 80)
+		input := newTestComposer(t, 80)
 		input.ArmReply("msg-1", "otheruser", "nice play")
 
 		got := indicatorLine(input.View())
@@ -71,7 +71,7 @@ func Test_chatInput_replyIndicator(t *testing.T) {
 	t.Run("long snippet truncated and still fits the width", func(t *testing.T) {
 		t.Parallel()
 
-		input := newTestChatInput(t, 80)
+		input := newTestComposer(t, 80)
 		input.ArmReply("msg-1", "otheruser", "this message is far too long to ever fit into the indicator line")
 
 		got := indicatorLine(input.View())
@@ -84,7 +84,7 @@ func Test_chatInput_replyIndicator(t *testing.T) {
 	t.Run("narrow terminal does not join label and hint", func(t *testing.T) {
 		t.Parallel()
 
-		input := newTestChatInput(t, 10)
+		input := newTestComposer(t, 10)
 		input.ArmReply("msg-1", "otheruser", "nice play")
 
 		got := indicatorLine(input.View())
@@ -94,10 +94,10 @@ func Test_chatInput_replyIndicator(t *testing.T) {
 	})
 }
 
-func Test_chatInput_Height_tracksReply(t *testing.T) {
+func Test_composer_Height_tracksReply(t *testing.T) {
 	t.Parallel()
 
-	input := newTestChatInput(t, 80)
+	input := newTestComposer(t, 80)
 	base := input.Height()
 
 	input.ArmReply("msg-1", "otheruser", "nice play")
@@ -110,10 +110,10 @@ func Test_chatInput_Height_tracksReply(t *testing.T) {
 	require.False(t, input.ClearReply(), "nothing left to clear")
 }
 
-func Test_chatInput_Update_reportsHeightChange(t *testing.T) {
+func Test_composer_Update_reportsHeightChange(t *testing.T) {
 	t.Parallel()
 
-	input := newTestChatInput(t, 20)
+	input := newTestComposer(t, 20)
 	input.Focus()
 
 	// type enough to wrap onto a second line

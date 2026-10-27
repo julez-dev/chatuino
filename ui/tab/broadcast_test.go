@@ -1580,7 +1580,7 @@ func newReplyTab(t *testing.T) (*Broadcast, *fakeUserClient) {
 	}
 
 	tab.chatWindow = newChatWindow(tab.width, tab.height, settings, theme, keymap)
-	tab.input = newChatInput(tab.chatWindow.Palette(), settings.BuildCustomSuggestionMap(), theme, nil)
+	tab.input = newComposer(tab.chatWindow.Palette(), settings.BuildCustomSuggestionMap(), theme, nil)
 	tab.input.SetWidth(tab.width)
 
 	return tab, client
@@ -1612,17 +1612,17 @@ func layoutRows(tab *Broadcast) int {
 	return tab.chatWindow.height + lipgloss.Height(tab.renderMessageInput())
 }
 
-func Test_broadcastTab_takeReplyTarget(t *testing.T) {
+func Test_composer_SubmitConsumesReply(t *testing.T) {
 	t.Parallel()
 
 	tab, _ := newReplyTab(t)
 
-	require.Empty(t, tab.takeReplyTarget(), "no armed reply yields no message ID")
+	require.Empty(t, tab.input.Submit().ReplyTo, "no armed reply yields no message ID")
 
 	tab.input.ArmReply("msg-1", "other", "hi")
-	require.Equal(t, "msg-1", tab.takeReplyTarget())
+	require.Equal(t, "msg-1", tab.input.Submit().ReplyTo)
 	require.False(t, tab.input.ReplyArmed(), "taking disarms the reply")
-	require.Empty(t, tab.takeReplyTarget(), "a reply target is only used once")
+	require.Empty(t, tab.input.Submit().ReplyTo, "a reply target is only used once")
 }
 
 func Test_broadcastTab_handleMessageSent_sendsArmedReply(t *testing.T) {

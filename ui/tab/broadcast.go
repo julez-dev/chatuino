@@ -179,16 +179,18 @@ type Broadcast struct {
 	centeredStyle lipgloss.Style // for loading/error states; Width/Height set at render time
 
 	// components
-	streamInfo    *streamInfo
-	prediction    *prediction
-	poll          *poll
-	chatWindow    *chatWindow
-	userInspect   *userInspect
-	input         *chatInput
-	statusInfo    *streamStatus
-	emoteOverview *emoteOverview
-	unbanRequests *unbanRequestQueue
-	spinner       spinner.Model
+	streamInfo       *streamInfo
+	prediction       *prediction
+	poll             *poll
+	chatWindow       *chatWindow
+	userInspect      *userInspect
+	input            *composer
+	composerChannels []string
+	composerEmotes   []string
+	statusInfo       *streamStatus
+	emoteOverview    *emoteOverview
+	unbanRequests    *unbanRequestQueue
+	spinner          spinner.Model
 
 	err error
 }
@@ -578,7 +580,8 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		return t, t.handleEmoteSetRefreshed(msg)
 	case ChannelSuggestionsLoadedMessage:
 		if t.input != nil {
-			t.input.SetChannelSuggestions(msg.Channels)
+			t.composerChannels = msg.Channels
+			t.configureComposer()
 		} else {
 			t.pendingChannelSuggestions = msg.Channels
 		}
@@ -709,13 +712,9 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 	if chat.GraphicRows(t.settings) <= 1 {
 		emoteReplacer = t.emoteReplacer
 	}
-	t.input = newChatInput(t.chatWindow.Palette(), t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
-	t.input.SetSuggestionKeyMap(t.keymap)
-
-	if len(t.pendingChannelSuggestions) > 0 {
-		t.input.SetChannelSuggestions(t.pendingChannelSuggestions)
-		t.pendingChannelSuggestions = nil
-	}
+	t.input = newComposer(t.chatWindow.Palette(), t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
+	t.composerChannels = t.pendingChannelSuggestions
+	t.pendingChannelSuggestions = nil
 
 	t.statusInfo = newStreamStatus(t.width, t.height, t, t.account.ID, msg.channelID, t.theme, t.client.API, t.chatSettings)
 
@@ -730,11 +729,9 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 			t.isModStatusAssumed = false
 		}
 
-		// user is mod or broadcaster, include mod commands
-		if t.isUserMod {
-			t.input.SetIncludeModeratorCommands(true)
-		}
 	}
+
+	t.configureComposer()
 
 	if t.focused {
 		t.chatWindow.Focus()
@@ -849,7 +846,8 @@ func (t *Broadcast) handleEmoteSetRefreshed(msg emoteSetRefreshedMessage) tea.Cm
 
 	channelEmoteSet := t.emoteCache.GetAllForChannel(t.channelID) // includes bttv, 7tv
 
-	t.input.SetSuggestions(emoteSuggestions(userEmoteSet, channelEmoteSet))
+	t.composerEmotes = emoteSuggestions(userEmoteSet, channelEmoteSet)
+	t.configureComposer()
 
 	if msg.err != nil {
 		// A tab refresh happens on every open, and a slow or unavailable third-party
@@ -2213,11 +2211,14 @@ func isNearDuplicate(message string, recent []string) bool {
 // press: slash commands are dispatched to their handlers, everything else is sent
 // to the channel as a chat message.
 func (t *Broadcast) handleMessageSent(quickSend bool) tea.Cmd {
-	input := t.input.Value()
-
 	// Consume the armed reply before the command dispatch below: commands, quick-sends
 	// and unsupported entries must never send a stale reply target.
-	replyTo := t.takeReplyTarget()
+	hadReply := t.input.ReplyArmed()
+	submission := t.input.Submit()
+
+	if hadReply {
+		t.HandleResize()
+	}
 
 	if !quickSend {
 		t.resetAfterSend()
@@ -2225,13 +2226,13 @@ func (t *Broadcast) handleMessageSent(quickSend bool) tea.Cmd {
 
 	t.chatWindow.moveToBottom()
 
-	if name, args, ok := parseSlashCommand(input); ok {
+	if name, args, ok := parseSlashCommand(submission.Text); ok {
 		return t.dispatchSlashCommand(name, args)
 	}
 
-	input = applyDuplicateBypass(input, t.lastMessageSent)
+	input := applyDuplicateBypass(submission.Text, t.lastMessageSent)
 
-	cmd := t.sendChatMessageCmd(input, replyTo)
+	cmd := t.sendChatMessageCmd(input, submission.ReplyTo)
 
 	t.lastMessageSent = input
 	t.lastMessageSentAt = time.Now()
@@ -2485,15 +2486,18 @@ func (t *Broadcast) replaceInputTemplate() tea.Cmd {
 
 // Reply lifecycle.
 
-// takeReplyTarget returns the armed reply's message ID and disarms the reply. The
-// layout is recalculated because the indicator row is given back to the chat window.
-func (t *Broadcast) takeReplyTarget() string {
-	id := t.input.TakeReply()
-	if id != "" {
-		t.HandleResize()
+// configureComposer applies the complete suggestion state in one call.
+func (t *Broadcast) configureComposer() {
+	if t.input == nil {
+		return
 	}
 
-	return id
+	t.input.Configure(SuggestionConfig{
+		Channels:                 t.composerChannels,
+		Emotes:                   t.composerEmotes,
+		IncludeModeratorCommands: t.isUserMod,
+		KeyMap:                   t.keymap,
+	})
 }
 
 // clearReplyTarget disarms the armed reply. The reply indicator occupies a row above

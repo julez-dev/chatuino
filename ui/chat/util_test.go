@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_replySnippet(t *testing.T) {
+func Test_Snippet(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -25,12 +25,12 @@ func Test_replySnippet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, replySnippet(tt.message))
+			require.Equal(t, tt.want, Snippet(tt.message))
 		})
 	}
 }
 
-func Test_truncateToWidth(t *testing.T) {
+func Test_TruncateToWidth(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -52,7 +52,7 @@ func Test_truncateToWidth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := truncateToWidth(tt.input, tt.width)
+			got := TruncateToWidth(tt.input, tt.width)
 			require.Equal(t, tt.want, got)
 			require.LessOrEqual(t, lipgloss.Width(got), max(tt.width, 1))
 		})

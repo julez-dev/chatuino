@@ -12,7 +12,7 @@ func TestUserPalette_ComposerSeesUpdatesThroughReadOnlyInterface(t *testing.T) {
 	t.Parallel()
 
 	palette := chat.NewPalette()
-	input := newChatInput(palette, nil, save.BuildDefaultTheme(), nil)
+	input := newComposer(palette, nil, save.BuildDefaultTheme(), nil)
 	input.SetWidth(80)
 	input.SetValue("@al")
 	require.NotContains(t, input.View(), "@alice")
