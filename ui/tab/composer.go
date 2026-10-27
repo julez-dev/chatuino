@@ -2,6 +2,7 @@ package tab
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -48,8 +49,9 @@ type SuggestionConfig struct {
 // shows them. It does not know about slash-command routing, moderator mode or
 // connection state.
 type composer struct {
-	input *component.SuggestionTextInput
-	reply *ReplyTarget
+	input  *component.SuggestionTextInput
+	reply  *ReplyTarget
+	config SuggestionConfig
 
 	width int // outer width including the border columns
 
@@ -84,16 +86,24 @@ func newComposer(
 	}
 }
 
-// Configure replaces the complete suggestion state.
+// Configure replaces the complete suggestion state. Sources that did not change
+// are left alone, so an emote refresh cannot reset the channel suggestions or the
+// user's current selection.
 func (c *composer) Configure(config SuggestionConfig) {
-	c.input.SetChannelSuggestions(config.Channels)
-	c.input.SetSuggestions(config.Emotes)
+	if !slices.Equal(c.config.Channels, config.Channels) {
+		c.input.SetChannelSuggestions(config.Channels)
+	}
+	if !slices.Equal(c.config.Emotes, config.Emotes) {
+		c.input.SetSuggestions(config.Emotes)
+	}
+
 	c.input.IncludeModeratorCommands = config.IncludeModeratorCommands
 	c.input.KeyMap = component.KeyMap{
 		AcceptSuggestion: config.KeyMap.AcceptSuggestion,
 		NextSuggestion:   config.KeyMap.NextSuggestion,
 		PrevSuggestion:   config.KeyMap.PrevSuggestion,
 	}
+	c.config = config
 }
 
 // Update forwards msg to the text input. heightChanged reports whether the

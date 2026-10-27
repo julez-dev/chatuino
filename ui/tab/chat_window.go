@@ -1,6 +1,7 @@
 package tab
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -196,7 +197,7 @@ func (c *chatWindow) View() string {
 		case status.Hint != "":
 			searchLine += "  " + status.Hint
 		case status.Matches > 0:
-			searchLine += "  " + itoa(status.Matches) + " matches"
+			searchLine += "  " + strconv.Itoa(status.Matches) + " matches"
 		}
 
 		return searchLine + "\n" + strings.Join(rows, "\n")
@@ -356,33 +357,12 @@ func (c *chatWindow) applySearch() {
 	c.buffer.SetFilter(c.searchInput.Value())
 }
 
-// itoa avoids importing strconv for one call in View.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-
-	var digits [20]byte
-	i := len(digits)
-	for n > 0 {
-		i--
-		digits[i] = byte('0' + n%10)
-		n /= 10
-	}
-
-	return string(digits[i:])
-}
-
 func (c *chatWindow) UpdatePort() {
 	c.buffer.UpdatePort()
 }
 
 func (c *chatWindow) SnapScroll() {
 	c.buffer.SnapScroll()
-}
-
-func (c *chatWindow) NewMessages() int {
-	return c.buffer.NewMessages()
 }
 
 func (c *chatWindow) Selected() (chat.Entry, bool) {
@@ -392,6 +372,14 @@ func (c *chatWindow) Selected() (chat.Entry, bool) {
 func (c *chatWindow) RenderedRows() []string {
 	rows, _ := c.buffer.Rows(c.height)
 	return rows
+}
+
+func (c *chatWindow) RawRows() []string {
+	return c.buffer.RawRows()
+}
+
+func (c *chatWindow) NewMessages() int {
+	return c.buffer.NewMessages()
 }
 
 func (c *chatWindow) StartOf(entry *chat.Entry) int {
@@ -412,6 +400,14 @@ func entryID(entry *chat.Entry) chat.EntryID {
 	return entry.ID
 }
 
+func (c *chatWindow) TimePaddingWidth() int {
+	return c.buffer.TimePaddingWidth()
+}
+
+func (c *chatWindow) CursorLine() int {
+	return c.buffer.CursorLine()
+}
+
 func (c *chatWindow) newMessageBadge() (string, int) {
 	return c.buffer.Badge()
 }
@@ -422,16 +418,4 @@ func (c *chatWindow) newMessageBadgeSpan(renderStart, height, width int) (int, i
 
 func (c *chatWindow) newMessageBadgeHit(row, col int) bool {
 	return c.buffer.BadgeHit(row, col)
-}
-
-func (c *chatWindow) TimePaddingWidth() int {
-	return c.buffer.TimePaddingWidth()
-}
-
-func (c *chatWindow) CursorLine() int {
-	return c.buffer.CursorLine()
-}
-
-func (c *chatWindow) RawRows() []string {
-	return c.buffer.RawRows()
 }
