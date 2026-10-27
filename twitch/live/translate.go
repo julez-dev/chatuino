@@ -179,15 +179,10 @@ func unbanRequestFrom(event eventsub.Event) UnbanRequest {
 }
 
 func autoModFrom(event eventsub.Event) AutoMod {
-	reason := event.Reason
-	if event.Category != "" {
-		reason = event.Category
-	}
-
 	return AutoMod{
 		MessageID: event.MessageID,
 		User:      preferredDisplayName(event.UserName, event.UserLogin),
-		Reason:    reason,
+		Reason:    event.Reason,
 		Category:  event.Category,
 		Status:    event.Status,
 		Message:   strings.TrimSpace(event.Message.Text),

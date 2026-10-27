@@ -138,7 +138,7 @@ func (c *chatWindow) handleStartSearchMode() tea.Cmd {
 	c.state = searchChatWindowState
 	c.searchInput.Focus()
 	c.SetSearchActive(true)
-	c.ClearFilter()
+	c.ResetFilter()
 	c.SnapScroll()
 	return c.searchInput.Focus()
 }

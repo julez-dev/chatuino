@@ -458,7 +458,7 @@ func (q *unbanRequestQueue) upsertRequest(updated twitchapi.UnbanRequest) {
 func (q *unbanRequestQueue) applyEvent(event live.Event) {
 	switch event := event.(type) {
 	case live.UnbanRequestCreated:
-		request := unbanRequestFromLive(event.Request)
+		request := event.Request
 		request.Status = "pending"
 
 		for _, existing := range q.requests {
@@ -471,7 +471,7 @@ func (q *unbanRequestQueue) applyEvent(event live.Event) {
 		q.setRequests(q.requests)
 		q.notice = fmt.Sprintf("New unban request from %s", preferredDisplayName(request.UserName, request.UserLogin))
 	case live.UnbanRequestResolved:
-		request := unbanRequestFromLive(event.Request)
+		request := event.Request
 
 		if q.resolveID == request.ID {
 			q.cancelResolution()
@@ -494,24 +494,6 @@ func (q *unbanRequestQueue) applyEvent(event live.Event) {
 		} else {
 			q.notice = fmt.Sprintf("Unban request %s was %s", request.ID, request.Status)
 		}
-	}
-}
-
-func unbanRequestFromLive(request live.UnbanRequest) twitchapi.UnbanRequest {
-	return twitchapi.UnbanRequest{
-		ID:              request.ID,
-		BroadcasterID:   request.BroadcasterID,
-		BroadcasterName: request.BroadcasterName,
-		UserID:          request.UserID,
-		UserLogin:       request.UserLogin,
-		UserName:        request.UserName,
-		Text:            request.Text,
-		Status:          request.Status,
-		CreatedAt:       request.CreatedAt,
-		ResolutionText:  request.ResolutionText,
-		ModeratorID:     request.ModeratorID,
-		ModeratorLogin:  request.ModeratorLogin,
-		ModeratorName:   request.ModeratorName,
 	}
 }
 

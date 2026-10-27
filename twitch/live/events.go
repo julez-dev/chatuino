@@ -50,22 +50,9 @@ type Redemption struct {
 	Status      string
 }
 
-// UnbanRequest is an unban request as carried by a create or resolve event.
-type UnbanRequest struct {
-	ID              string
-	BroadcasterID   string
-	BroadcasterName string
-	UserID          string
-	UserLogin       string
-	UserName        string
-	Text            string
-	Status          string
-	ResolutionText  string
-	ModeratorID     string
-	ModeratorLogin  string
-	ModeratorName   string
-	CreatedAt       time.Time
-}
+// UnbanRequest is the Helix unban request shape carried by create and resolve
+// events. It is an alias so the tab does not need a second mapper.
+type UnbanRequest = twitchapi.UnbanRequest
 
 // AutoMod is a held or updated AutoMod message.
 type AutoMod struct {

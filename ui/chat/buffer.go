@@ -412,7 +412,6 @@ func (b *Buffer) ViewportRenderStart() int {
 	return start
 }
 
-// Hit returns the entry containing the viewport row.
 func (b *Buffer) Hit(row int) (EntryID, bool) {
 	_, entry := b.entryAtLine(b.ViewportRenderStart() + row)
 	if entry == nil {
@@ -443,7 +442,6 @@ func (b *Buffer) SelectAtViewportRow(row int) {
 	b.selectAtViewportRow(row)
 }
 
-// Move moves the selection by n rendered lines.
 func (b *Buffer) Move(n int) {
 	b.moveSelectionByLines(n)
 }
@@ -579,6 +577,22 @@ func (b *Buffer) ClearFilter() {
 	b.clearFilter()
 }
 
+// ResetFilter removes the filter without moving the selection. The search
+// widget calls it when it opens, so entering search does not jump to the tail.
+func (b *Buffer) ResetFilter() {
+	b.filterQuery = ""
+	b.currentMatcher = nil
+	b.filterActive = false
+	b.filterStatus = FilterStatus{}
+
+	for _, entry := range b.entries {
+		entry.filtered = false
+	}
+
+	b.invalidateFiltered()
+	b.recalculateLines()
+}
+
 // FilterStatus returns the last filter result.
 func (b *Buffer) FilterStatus() FilterStatus {
 	return b.filterStatus
@@ -589,8 +603,6 @@ func (b *Buffer) IsFiltering() bool {
 	return b.filterActive
 }
 
-// SetSearchActive reserves the search row and hides the new-message badge while
-// the search widget is open.
 func (b *Buffer) SetSearchActive(active bool) {
 	b.searchActive = active
 	b.updatePort()
@@ -769,8 +781,6 @@ func (b *Buffer) messageUp(n int) {
 	b.moveMessage(-n, false)
 }
 
-// moveMessage selects the active entry n positions away. atEnd chooses the
-// entry's last row for down/tail movement and its first row for up movement.
 func (b *Buffer) moveMessage(delta int, atEnd bool) {
 	active := b.activeEntries()
 	if len(active) < 1 {
@@ -932,7 +942,6 @@ func (b *Buffer) clipboardText(entry *Entry) string {
 	return ""
 }
 
-// UpdatePort recomputes the viewport and clears the missed-message counter.
 func (b *Buffer) UpdatePort() {
 	b.updatePort()
 }
@@ -1158,6 +1167,10 @@ func (b *Buffer) handleReplyReferenceClick(line, col int) bool {
 }
 
 func (b *Buffer) emoteNameAt(row, col int) (string, bool) {
+	if b.searchActive {
+		row-- // the first row is the search widget
+	}
+
 	if row < 0 || row >= b.height {
 		return "", false
 	}
@@ -1194,7 +1207,6 @@ func (b *Buffer) emoteNameAt(row, col int) (string, bool) {
 	return "", false
 }
 
-// DebugDump writes the transcript internals to chat_dump.json.
 func (b *Buffer) DebugDump() {
 	type state struct {
 		Lines     []string
@@ -1239,7 +1251,6 @@ func (b *Buffer) BadgeHit(row, col int) bool {
 	return b.newMessageBadgeHit(row, col)
 }
 
-// TimePaddingWidth returns the columns reserved by the timestamp prefix.
 func (b *Buffer) TimePaddingWidth() int {
 	return b.renderer.timePaddingWidth
 }

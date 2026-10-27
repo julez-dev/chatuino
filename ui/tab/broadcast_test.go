@@ -675,6 +675,19 @@ func rawText(t *testing.T, c *chatWindow) string {
 	return strings.ReplaceAll(plain(rows), "> ", "  ")
 }
 
+func referenceColumn(t *testing.T, c *chatWindow, line int) int {
+	t.Helper()
+
+	rows, _ := c.Rows(c.height)
+	row := line - c.ViewportRenderStart()
+	require.GreaterOrEqual(t, row, 0)
+	require.Less(t, row, len(rows))
+
+	col := strings.Index(plain([]string{rows[row]}), "↩")
+	require.GreaterOrEqual(t, col, 0, "reply reference row")
+	return col
+}
+
 func badgeCell(t *testing.T, c *chatWindow) (int, int) {
 	t.Helper()
 
@@ -1092,14 +1105,16 @@ func Test_Broadcast_MouseClickReplyReferenceJumpsToTheParent(t *testing.T) {
 
 	tab.HandleResize()
 
-	referenceRow := tab.layout.chat.top + entryStart(t, tab.chatWindow, reply) - tab.chatWindow.ViewportRenderStart()
-	_ = tab.HandleMouseClick(leftClick(referenceRow), tab.chatWindow.TimePaddingWidth(), referenceRow)
+	referenceLine := entryStart(t, tab.chatWindow, reply)
+	referenceRow := tab.layout.chat.top + referenceLine - tab.chatWindow.ViewportRenderStart()
+	_ = tab.HandleMouseClick(leftClick(referenceRow), referenceColumn(t, tab.chatWindow, referenceLine), referenceRow)
 
 	require.Equal(t, entryStart(t, tab.chatWindow, parent), selectedCursor(t, tab.chatWindow), "the reference jumped to the parent")
 
 	// The reply's message row still selects the reply itself.
-	messageRow := tab.layout.chat.top + entryEnd(t, tab.chatWindow, reply) - tab.chatWindow.ViewportRenderStart()
-	_ = tab.HandleMouseClick(leftClick(messageRow), tab.chatWindow.TimePaddingWidth()+2, messageRow)
+	messageLine := entryEnd(t, tab.chatWindow, reply)
+	messageRow := tab.layout.chat.top + messageLine - tab.chatWindow.ViewportRenderStart()
+	_ = tab.HandleMouseClick(leftClick(messageRow), referenceColumn(t, tab.chatWindow, referenceLine)+2, messageRow)
 
 	require.Equal(t, entryStart(t, tab.chatWindow, reply), selectedCursor(t, tab.chatWindow))
 }
@@ -1127,10 +1142,12 @@ func Test_Broadcast_MouseClickUserInspectReplyReference(t *testing.T) {
 	chat := tab.inspectChatSpan()
 	require.True(t, chat.visible())
 
-	y := chat.top + entryStart(t, tab.chatWindow, reply) - history.ViewportRenderStart()
-	_ = tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: history.TimePaddingWidth(), Y: y}, history.TimePaddingWidth(), y)
+	referenceLine := entryStart(t, history, reply)
+	y := chat.top + referenceLine - history.ViewportRenderStart()
+	col := referenceColumn(t, history, referenceLine)
+	_ = tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: col, Y: y}, col, y)
 
-	require.Equal(t, entryStart(t, tab.chatWindow, parent), selectedCursor(t, history))
+	require.Equal(t, entryStart(t, history, parent), selectedCursor(t, history))
 	require.Equal(t, userInspectMode, tab.state, "jumping to a parent must not leave inspect mode")
 }
 
@@ -1814,20 +1831,40 @@ func TestBroadcastTab_RegisterClick(t *testing.T) {
 	other := &entries[1]
 	tab := &Broadcast{chatWindow: c}
 
-	require.False(t, tab.registerClick(entry, entryStart(t, c, entry)))
-	require.True(t, tab.registerClick(entry, entryEnd(t, c, entry)), "second click on the same entry within the window is a double-click")
+	require.False(t, tab.registerClick(c, entry, entryStart(t, c, entry)))
+	require.True(t, tab.registerClick(c, entry, entryEnd(t, c, entry)), "second click on the same entry within the window is a double-click")
 
-	require.False(t, tab.registerClick(other, entryStart(t, c, other)), "a different entry is not a double-click")
-	require.True(t, tab.registerClick(other, entryStart(t, c, other)), "the tracker follows the new entry")
+	require.False(t, tab.registerClick(c, other, entryStart(t, c, other)), "a different entry is not a double-click")
+	require.True(t, tab.registerClick(c, other, entryStart(t, c, other)), "the tracker follows the new entry")
 
-	require.False(t, tab.registerClick(entry, entryEnd(t, c, entry)+10), "a click outside the entry resets the tracker")
-	require.False(t, tab.registerClick(entry, entryStart(t, c, entry)), "the reset click cannot pair with the earlier one")
+	require.False(t, tab.registerClick(c, entry, entryEnd(t, c, entry)+10), "a click outside the entry resets the tracker")
+	require.False(t, tab.registerClick(c, entry, entryStart(t, c, entry)), "the reset click cannot pair with the earlier one")
 
 	tab.lastClickEntry = entry
 	tab.lastClickAt = time.Now().Add(-doubleClickWindow - time.Second)
-	require.False(t, tab.registerClick(entry, entryEnd(t, c, entry)), "clicks outside the time window are not a double-click")
+	require.False(t, tab.registerClick(c, entry, entryEnd(t, c, entry)), "clicks outside the time window are not a double-click")
 
-	require.False(t, tab.registerClick(nil, 0), "nil entries are ignored")
+	require.False(t, tab.registerClick(c, nil, 0), "nil entries are ignored")
+}
+
+func TestBroadcast_RegisterClickUsesOwningTranscript(t *testing.T) {
+	t.Parallel()
+
+	settings := save.BuildDefaultSettings()
+	theme := save.BuildDefaultTheme()
+	main := newChatWindow(80, 10, settings, theme, save.BuildDefaultKeyMap())
+	history := newChatWindow(80, 10, settings, theme, save.BuildDefaultKeyMap())
+
+	addPrivateMessage(t, main, "main-0", "short message")
+	tall := addPrivateMessage(t, history, "inspect-0", strings.Repeat("word ", 20))
+
+	start, end, ok := history.LineRange(tall.ID)
+	require.True(t, ok)
+	require.Greater(t, end, start, "fixture needs a multi-row inspect entry")
+
+	tab := &Broadcast{chatWindow: main}
+	require.False(t, tab.registerClick(history, tall, end), "first click only arms the tracker")
+	require.True(t, tab.registerClick(history, tall, end), "the range must come from the owning transcript, not the main chat")
 }
 
 func TestBroadcast_EmoteRefreshFailureKeepsTabUsable(t *testing.T) {

@@ -385,6 +385,11 @@ func TestBuffer_EmoteNameAt(t *testing.T) {
 
 	_, ok = c.emoteNameAt(-1, 5)
 	require.False(t, ok)
+
+	c.SetSearchActive(true)
+	name, ok = c.EmoteNameAt(row+1, 5)
+	require.True(t, ok, "the search widget occupies the first row")
+	require.Equal(t, "Kappa", name)
 }
 
 // TestBuffer_SmoothScrollFollowIsBounded pins the frame budget of the follow

@@ -1918,14 +1918,14 @@ const doubleClickWindow = 400 * time.Millisecond
 // registerClick records the clicked entry and reports whether it forms a
 // double-click with the previous click. Clicks outside the entry's line range
 // (for example on the blank padding below the last message) reset the tracker.
-func (t *Broadcast) registerClick(entry *chat.Entry, line int) bool {
+func (t *Broadcast) registerClick(window *chatWindow, entry *chat.Entry, line int) bool {
 	if entry == nil {
 		t.lastClickEntry = nil
 		t.lastClickAt = time.Time{}
 		return false
 	}
 
-	start, end, ok := t.chatWindow.LineRange(entry.ID)
+	start, end, ok := window.LineRange(entry.ID)
 	if !ok || line < start || line > end {
 		t.lastClickEntry = nil
 		t.lastClickAt = time.Time{}
@@ -1972,7 +1972,7 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 		// insert/inspect mode so subsequent shortcuts act on the main chat.
 		line := t.chatWindow.ViewportRenderStart() + row
 		_, entry := t.chatWindow.EntryAtLine(line)
-		double := t.registerClick(entry, line)
+		double := t.registerClick(t.chatWindow, entry, line)
 
 		switch t.state {
 		case insertMode:
@@ -2006,7 +2006,7 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 			line := t.userInspect.chatWindow.ViewportRenderStart() + row
 			_, entry := t.userInspect.chatWindow.EntryAtLine(line)
-			double := t.registerClick(entry, line)
+			double := t.registerClick(t.userInspect.chatWindow, entry, line)
 
 			t.userInspect.chatWindow.SelectAtViewportRow(row)
 
@@ -3082,9 +3082,14 @@ func (t *Broadcast) trackAutoMod(id string, notice *twitchirc.Notice) {
 }
 
 func (t *Broadcast) autoModNotice(event live.AutoMod) *twitchirc.Notice {
+	reason := event.Reason
+	if event.Category != "" {
+		reason = event.Category
+	}
+
 	details := ""
-	if event.Reason != "" {
-		details = fmt.Sprintf(" (%s", event.Reason)
+	if reason != "" {
+		details = fmt.Sprintf(" (%s", reason)
 		if event.Level > 0 {
 			details += fmt.Sprintf(", level %d", event.Level)
 		}

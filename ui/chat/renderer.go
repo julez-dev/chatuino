@@ -15,8 +15,6 @@ import (
 	"github.com/julez-dev/reflow/wrap"
 )
 
-const prefixPadding = 0
-
 // messageRenderer turns chat events into styled, wrapped terminal rows.
 //
 // It owns the formatting configuration and the caches derived from it (user
@@ -352,12 +350,6 @@ func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipglos
 
 	prefixWidth := lipgloss.Width(prefix)
 
-	// Assure that the prefix is at least prefixPadding wide
-	if prefixWidth < prefixPadding {
-		prefix = prefix + strings.Repeat(" ", prefixPadding-prefixWidth)
-		prefixWidth = lipgloss.Width(prefix)
-	}
-
 	contentWidthLimit := r.width - r.indicatorWidth - prefixWidth
 
 	// softwrap text to contentWidthLimit, if soft wrapping fails (for example in links) force break
@@ -367,7 +359,7 @@ func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipglos
 	lines := make([]string, 0, len(splits))
 	lines = append(lines, prefix+styledBody(style, splits[0])) // first line is prefix + content at index 0
 
-	// if there are more lines, add prefixPadding spaces to the beginning of the line
+	// if there are more lines, pad the continuation lines to the prefix width
 	for _, line := range splits[1:] {
 		indent := strings.Repeat(" ", prefixWidth)
 		if r.settings.Chat.DisablePaddingWrappedLines {

@@ -264,7 +264,8 @@ func TestTranslate_AutoModEvents(t *testing.T) {
 	require.True(t, ok)
 	held, ok := event.(AutoModHeld)
 	require.True(t, ok)
-	require.Equal(t, "harassment", held.AutoMod.Reason)
+	require.Empty(t, held.AutoMod.Reason)
+	require.Equal(t, "harassment", held.AutoMod.Category)
 	require.Equal(t, "text", held.AutoMod.Message)
 	require.Equal(t, 2, held.AutoMod.Level)
 
