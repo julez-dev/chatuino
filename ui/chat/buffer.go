@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -519,7 +520,7 @@ func (b *Buffer) NewMessages() int {
 func (b *Buffer) SetFilter(query string) FilterStatus {
 	b.filterQuery = query
 
-	if len(query) <= 2 {
+	if utf8.RuneCountInString(query) <= 2 {
 		b.currentMatcher = nil
 		b.filterStatus = FilterStatus{Hint: "type at least 3 characters"}
 		b.clearFilter()
@@ -1079,6 +1080,8 @@ func (b *Buffer) invalidateFiltered() {
 }
 
 func (b *Buffer) clearFilter() {
+	b.filterActive = false
+
 	var last *Entry
 	for _, entry := range b.entries {
 		entry.filtered = false

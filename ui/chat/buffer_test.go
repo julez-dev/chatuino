@@ -498,3 +498,30 @@ func TestBuffer_UpdateNotice(t *testing.T) {
 	require.Contains(t, plain(c.lines), "fulfilled")
 	require.False(t, c.ReplaceNotice("missing", "ignored"))
 }
+
+func TestBuffer_ShortQueryAfterActiveFilterKeepsAppending(t *testing.T) {
+	t.Parallel()
+
+	b := New(80, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme())
+	addPrivateMessage(t, b, "msg-1", "alpha target")
+
+	require.True(t, b.SetFilter("alpha").Applied)
+	require.True(t, b.IsFiltering())
+
+	status := b.SetFilter("a")
+	require.False(t, status.Applied)
+	require.Equal(t, "type at least 3 characters", status.Hint)
+	require.False(t, b.IsFiltering(), "a short query must stop the active filter")
+
+	addPrivateMessage(t, b, "msg-2", "beta target")
+	require.Contains(t, strings.Join(b.RawRows(), "\n"), "beta target", "messages keep rendering after the filter is cleared")
+}
+
+func TestBuffer_ShortQueryCountsRunesNotBytes(t *testing.T) {
+	t.Parallel()
+
+	b := New(80, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme())
+	status := b.SetFilter("日本")
+	require.False(t, status.Applied, "two runes must still count as a short query")
+	require.Equal(t, "type at least 3 characters", status.Hint)
+}
