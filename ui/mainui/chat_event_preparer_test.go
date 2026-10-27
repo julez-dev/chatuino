@@ -12,7 +12,7 @@ import (
 	"github.com/julez-dev/chatuino/server"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/julez-dev/chatuino/ui/tab"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/stretchr/testify/require"
 )
 
@@ -381,7 +381,7 @@ func TestChatEventPreparer_DeadlineCoversEveryReplacement(t *testing.T) {
 			result := runPreparation(func() tea.Msg {
 				return prep.prepare(prepareRequest{ircer: message})
 			})
-			event := awaitPreparation(t, result).(tab.ChatEventMessage)
+			event := awaitPreparation(t, result).(chat.ChatEventMessage)
 			require.Same(t, message, event.Message, "enrichment failure must not discard the original message")
 			require.NotNil(t, event.DisplayModifier.BadgeReplacement, "failed badge replacement must retain a writable contributor map")
 			require.Empty(t, event.PrepareCommand)

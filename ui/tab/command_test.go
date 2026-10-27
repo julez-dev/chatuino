@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/stretchr/testify/require"
 )
@@ -104,7 +105,7 @@ func runModerationCommand(t *testing.T, client *fakeModerationClient, name strin
 	cmd := handleCommand("tab-id", name, args, "channel-id", "channel", "account-id", client)
 	require.NotNil(t, cmd, "the command must produce a notice")
 
-	msg, ok := cmd().(ChatEventMessage)
+	msg, ok := cmd().(chat.ChatEventMessage)
 	require.True(t, ok, "moderation commands answer with a chat event")
 
 	notice, ok := msg.Message.(*twitchirc.Notice)
@@ -443,7 +444,7 @@ func runCommandMessages(t *testing.T, client ModerationAPI, name string, args ..
 func noticeText(t *testing.T, msg tea.Msg) string {
 	t.Helper()
 
-	chatEvent, ok := msg.(ChatEventMessage)
+	chatEvent, ok := msg.(chat.ChatEventMessage)
 	require.True(t, ok)
 
 	notice, ok := chatEvent.Message.(*twitchirc.Notice)
@@ -531,7 +532,7 @@ func joinNotices(t *testing.T, msgs []tea.Msg) string {
 
 	var text string
 	for _, msg := range msgs {
-		if _, ok := msg.(ChatEventMessage); ok {
+		if _, ok := msg.(chat.ChatEventMessage); ok {
 			text += noticeText(t, msg) + "\n"
 		}
 	}

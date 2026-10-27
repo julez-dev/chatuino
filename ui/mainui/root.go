@@ -21,6 +21,7 @@ import (
 	"github.com/julez-dev/chatuino/kittyimg"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/ui/workspace"
@@ -317,7 +318,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return r, r.enqueueChatEvent(msg.AccountID, "", msg.Message, false)
-	case tab.ChatEventMessage:
+	case chat.ChatEventMessage:
 		// Already prepared (for example by a tab emitting a local notice).
 		return r, r.dispatchPreparedEvent(msg)
 	case tab.RequestLocalMessageHandleMessage:
@@ -1033,7 +1034,7 @@ func (r *Root) releasePreparedEvent(msg preparedChatEvent) tea.Cmd {
 
 // finishAndRoute releases the queue slot, routes the event and starts the next
 // preparation. A superseded result is dropped.
-func (r *Root) finishAndRoute(seq uint64, event tab.ChatEventMessage) tea.Cmd {
+func (r *Root) finishAndRoute(seq uint64, event chat.ChatEventMessage) tea.Cmd {
 	if r.preparer.ctx.Err() != nil {
 		return nil
 	}
@@ -1053,7 +1054,7 @@ func (r *Root) finishAndRoute(seq uint64, event tab.ChatEventMessage) tea.Cmd {
 // dispatchPreparedEvent routes an event to its tab, or to every tab when it is
 // not tab-addressed. A tab-addressed event whose tab has closed in the meantime is
 // dropped by the registry instead of reaching a different tab.
-func (r *Root) dispatchPreparedEvent(event tab.ChatEventMessage) tea.Cmd {
+func (r *Root) dispatchPreparedEvent(event chat.ChatEventMessage) tea.Cmd {
 	var cmds []tea.Cmd
 
 	if event.PrepareCommand != "" {

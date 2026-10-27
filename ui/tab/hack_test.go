@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/stretchr/testify/require"
 )
@@ -33,9 +34,9 @@ func Test_selectWordAtIndex(t *testing.T) {
 }
 
 func Test_filter(t *testing.T) {
-	entries := []*chatEntry{
+	entries := []*chat.Entry{
 		{
-			Event: ChatEventMessage{
+			Event: chat.ChatEventMessage{
 				Message: &twitchirc.PrivateMessage{
 					DisplayName: "abc",
 					Message:     "hello test message",
@@ -43,7 +44,7 @@ func Test_filter(t *testing.T) {
 			},
 		},
 		{
-			Event: ChatEventMessage{
+			Event: chat.ChatEventMessage{
 				Message: &twitchirc.PrivateMessage{
 					DisplayName: "xyz",
 					Message:     "hello test message",
@@ -52,7 +53,7 @@ func Test_filter(t *testing.T) {
 		},
 	}
 
-	filtered := slices.Collect(filter(entries, func(e *chatEntry) bool {
+	filtered := slices.Collect(filter(entries, func(e *chat.Entry) bool {
 		cast, ok := e.Event.Message.(*twitchirc.PrivateMessage)
 
 		if !ok {

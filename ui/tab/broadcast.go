@@ -29,6 +29,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/live"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/component"
 	"github.com/julez-dev/chatuino/ui/nav"
 	"github.com/julez-dev/chatuino/wspool"
@@ -145,7 +146,7 @@ type Broadcast struct {
 	hoverY      int
 
 	// double-click tracking for chat messages
-	lastClickEntry *chatEntry
+	lastClickEntry *chat.Entry
 	lastClickAt    time.Time
 
 	channel      string
@@ -608,7 +609,7 @@ func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		}
 
 		return t, predictionTickCmd(t.prediction)
-	case ChatEventMessage: // delegate message event to chat window
+	case chat.ChatEventMessage: // delegate message event to chat window
 		return t, t.handleChatEvent(msg)
 	case openUnbanRequestsMessage:
 		return t, t.handleOpenUnbanRequests()
@@ -705,10 +706,10 @@ func (t *Broadcast) handleChannelDataLoaded(msg setChannelDataMessage) tea.Cmd {
 
 	// enable inline emote replacement; the single line input can only display single row images
 	var emoteReplacer component.Replacer
-	if graphicRows(t.settings) <= 1 {
+	if chat.GraphicRows(t.settings) <= 1 {
 		emoteReplacer = t.emoteReplacer
 	}
-	t.input = newChatInput(t.chatWindow.palette, t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
+	t.input = newChatInput(t.chatWindow.Palette(), t.settings.BuildCustomSuggestionMap(), t.theme, emoteReplacer)
 	t.input.SetSuggestionKeyMap(t.keymap)
 
 	if len(t.pendingChannelSuggestions) > 0 {
@@ -898,7 +899,7 @@ func emoteSuggestions(userEmoteSet []emote.Emote, channelEmoteSet emote.EmoteSet
 
 // handleChatEvent forwards a chat event to the chat window and dependent
 // components, unless the message is filtered by the tab's ignore rules.
-func (t *Broadcast) handleChatEvent(msg ChatEventMessage) tea.Cmd {
+func (t *Broadcast) handleChatEvent(msg chat.ChatEventMessage) tea.Cmd {
 	// ignore all messages that don't target this account and channel
 	if t.AccountID() != msg.AccountID || t.channelLogin != msg.Channel && msg.Channel != "" {
 		return nil
@@ -1636,7 +1637,7 @@ func (t *Broadcast) leaveUserInspect() {
 	}
 
 	t.HandleResize()
-	t.chatWindow.updatePort()
+	t.chatWindow.UpdatePort()
 }
 
 func (t *Broadcast) handleEscapePressed() {
@@ -1651,7 +1652,7 @@ func (t *Broadcast) handleEscapePressed() {
 
 	if fullWindow && t.state == inChatWindow {
 		t.HandleResize()
-		t.chatWindow.updatePort()
+		t.chatWindow.UpdatePort()
 	}
 }
 
@@ -1744,7 +1745,7 @@ func (t *Broadcast) handleReplyMessage() {
 }
 
 func (t *Broadcast) handleOpenUserInspectFromMessage() tea.Cmd {
-	var e *chatEntry
+	var e *chat.Entry
 
 	if t.state == inChatWindow {
 		_, e = t.chatWindow.entryForCurrentCursor()
@@ -1844,7 +1845,7 @@ func (t *Broadcast) activeChatWindow() *chatWindow {
 
 // cursorEntry returns the entry under the cursor of the active chat window. An
 // active search is stopped first so the cursor resolves against the full list.
-func (t *Broadcast) cursorEntry() (*chatEntry, bool) {
+func (t *Broadcast) cursorEntry() (*chat.Entry, bool) {
 	window := t.activeChatWindow()
 	if window == nil {
 		return nil, false
@@ -1876,7 +1877,7 @@ func (t *Broadcast) handleOpenEmoteOverview() tea.Cmd {
 		return nil
 	}
 
-	t.emoteOverview = NewEmoteOverview(t.channelID, t.emoteCache, t.emoteReplacer, graphicRows(t.settings), t.width, t.height)
+	t.emoteOverview = NewEmoteOverview(t.channelID, t.emoteCache, t.emoteReplacer, chat.GraphicRows(t.settings), t.width, t.height)
 	t.HandleResize()
 	return t.emoteOverview.Init()
 }
@@ -1919,8 +1920,9 @@ const doubleClickWindow = 400 * time.Millisecond
 // registerClick records the clicked entry and reports whether it forms a
 // double-click with the previous click. Clicks outside the entry's line range
 // (for example on the blank padding below the last message) reset the tracker.
-func (t *Broadcast) registerClick(entry *chatEntry, line int) bool {
-	if entry == nil || line < entry.Position.CursorStart || line > entry.Position.CursorEnd {
+func (t *Broadcast) registerClick(entry *chat.Entry, line int) bool {
+	start, end, ok := t.chatWindow.LineRange(entry)
+	if entry == nil || !ok || line < start || line > end {
 		t.lastClickEntry = nil
 		t.lastClickAt = time.Time{}
 		return false
@@ -2113,13 +2115,13 @@ func (t *Broadcast) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 
 	if t.layout.chat.contains(y) {
 		t.chatWindow.scrollByLines(delta)
-		t.chatWindow.snapScroll()
+		t.chatWindow.SnapScroll()
 		return nil
 	}
 
 	if t.state.isInspecting() && t.layout.userInspect.visible() && t.inspectChatSpan().contains(y) {
 		t.userInspect.chatWindow.scrollByLines(delta)
-		t.userInspect.chatWindow.snapScroll()
+		t.userInspect.chatWindow.SnapScroll()
 	}
 
 	return nil
@@ -2297,7 +2299,7 @@ func (t *Broadcast) dispatchSlashCommand(name string, args []string) tea.Cmd {
 
 	if !t.isUserMod {
 		return func() tea.Msg {
-			respMsg := ChatEventMessage{
+			respMsg := chat.ChatEventMessage{
 				IsFakeEvent: true,
 				AccountID:   t.account.ID,
 				TabID:       t.id,
@@ -2352,7 +2354,7 @@ func (t *Broadcast) sendChatMessageCmd(input, replyTo string) tea.Cmd {
 			FakeTimestamp: time.Now(),
 		}
 
-		resp := ChatEventMessage{
+		resp := chat.ChatEventMessage{
 			IsFakeEvent: true,
 			AccountID:   userID,
 			Channel:     t.channelLogin,
@@ -2391,7 +2393,7 @@ func (t *Broadcast) replaceInputTemplate() tea.Cmd {
 		FakeTimestamp: time.Now(),
 	}
 
-	resp := ChatEventMessage{
+	resp := chat.ChatEventMessage{
 		IsFakeEvent: true,
 		AccountID:   t.account.ID,
 		Channel:     t.channelLogin,
@@ -2516,7 +2518,7 @@ func (t *Broadcast) clearReplyTarget() {
 func (t *Broadcast) handleJoinCommand(args []string) tea.Cmd {
 	if len(args) < 1 || args[0] == "" {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2562,7 +2564,7 @@ func (t *Broadcast) handlePyramidMessagesCommand(args []string) tea.Cmd {
 
 	if !accountIsStreamer && t.statusInfo != nil && t.statusInfo.settings.SlowMode {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2577,7 +2579,7 @@ func (t *Broadcast) handlePyramidMessagesCommand(args []string) tea.Cmd {
 
 	if len(args) < 2 {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2594,7 +2596,7 @@ func (t *Broadcast) handlePyramidMessagesCommand(args []string) tea.Cmd {
 	count, err := strconv.Atoi(args[1])
 	if err != nil {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2638,7 +2640,7 @@ func (t *Broadcast) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			FakeTimestamp: time.Now(),
 		}
 
-		resp := ChatEventMessage{
+		resp := chat.ChatEventMessage{
 			IsFakeEvent: true,
 			AccountID:   userID,
 			Channel:     t.channelLogin,
@@ -2682,7 +2684,7 @@ func (t *Broadcast) handlePyramidMessagesCommand(args []string) tea.Cmd {
 func (t *Broadcast) handleLocalSubCommand(enable bool) tea.Cmd {
 	if enable && t.isLocalSub {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2697,7 +2699,7 @@ func (t *Broadcast) handleLocalSubCommand(enable bool) tea.Cmd {
 
 	if !enable && !t.isLocalSub {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2718,7 +2720,7 @@ func (t *Broadcast) handleLocalSubCommand(enable bool) tea.Cmd {
 func (t *Broadcast) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 	if enable && t.isUniqueOnlyChat {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2733,7 +2735,7 @@ func (t *Broadcast) handleUniqueOnlyChatCommand(enable bool) tea.Cmd {
 
 	if !enable && !t.isUniqueOnlyChat {
 		return func() tea.Msg {
-			return ChatEventMessage{
+			return chat.ChatEventMessage{
 				AccountID: t.account.ID,
 				Channel:   t.channelLogin,
 				ChannelID: t.channelID,
@@ -2768,7 +2770,7 @@ func (t *Broadcast) handleCreateClipMessage() tea.Cmd {
 			FakeTimestamp: time.Now(),
 		}
 
-		resp := ChatEventMessage{
+		resp := chat.ChatEventMessage{
 			IsFakeEvent: true,
 			AccountID:   t.account.ID,
 			Channel:     t.channelLogin,
@@ -2813,14 +2815,14 @@ func (t *Broadcast) handleOpenUserInspect(args []string) tea.Cmd {
 
 	t.userInspect = newUserInspect(t.id, t.width, t.height, username, t.channelLogin, t.account.ID,
 		t.settings, t.theme, t.keymap, t.client.API, t.messageLogger, t.emoteReplacer, t.badgeReplacer)
-	t.userInspect.chatWindow.UsePalette(t.chatWindow.palette)
+	t.userInspect.chatWindow.UsePalette(t.chatWindow.Palette())
 
 	// The table blurs the chat window and focuses the new inspect window.
 	_, _ = t.transit(eventInspect)
 
-	initialEvents := make([]ChatEventMessage, 0, 15)
-	for e := range slices.Values(t.chatWindow.entries) {
-		initialEvents = append(initialEvents, ChatEventMessage{
+	initialEvents := make([]chat.ChatEventMessage, 0, 15)
+	for e := range slices.Values(t.chatWindow.Entries()) {
+		initialEvents = append(initialEvents, chat.ChatEventMessage{
 			IsFakeEvent:             true,
 			AccountID:               t.account.ID,
 			Channel:                 t.channelLogin,

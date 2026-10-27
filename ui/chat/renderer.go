@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"fmt"
@@ -14,6 +14,8 @@ import (
 	"github.com/julez-dev/reflow/wordwrap"
 	"github.com/julez-dev/reflow/wrap"
 )
+
+const prefixPadding = 0
 
 // messageRenderer turns chat events into styled, wrapped terminal rows.
 //
@@ -33,7 +35,7 @@ type messageRenderer struct {
 	timeFormatWidth  int
 	timePaddingWidth int
 
-	palette *userPalette
+	palette *Palette
 
 	subAlertStyle       lipgloss.Style
 	noticeAlertStyle    lipgloss.Style
@@ -53,7 +55,7 @@ func newMessageRenderer(
 	width, indicatorWidth int,
 	settings save.Settings,
 	theme save.Theme,
-	palette *userPalette,
+	palette *Palette,
 ) *messageRenderer {
 	r := &messageRenderer{
 		width:          width,
@@ -430,4 +432,15 @@ func expandGraphicRows(lines []string, rows int) []string {
 	}
 
 	return expanded
+}
+
+// GraphicRows returns the number of terminal rows graphic emotes and badges
+// occupy, or 1 when graphics are disabled.
+func GraphicRows(settings save.Settings) int {
+	return graphicRows(settings)
+}
+
+// FormatBadgeReplacement renders a badge set for text-mode output.
+func FormatBadgeReplacement(settings save.Settings, replacements map[string]string) string {
+	return formatBadgeReplacement(settings, replacements)
 }

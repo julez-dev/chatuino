@@ -10,6 +10,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 )
 
 type setMentionTabData struct {
@@ -97,7 +98,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 
 		if msg.err != nil {
 			msg := fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error())
-			m.chatWindow.handleMessage(ChatEventMessage{
+			m.chatWindow.handleMessage(chat.ChatEventMessage{
 				Message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -110,7 +111,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		}
 
 		notice := fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", "))
-		m.chatWindow.handleMessage(ChatEventMessage{
+		m.chatWindow.handleMessage(chat.ChatEventMessage{
 			Message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -122,7 +123,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		return m, nil
 	}
 
-	if event, ok := msg.(ChatEventMessage); ok {
+	if event, ok := msg.(chat.ChatEventMessage); ok {
 		if privMsg, ok := event.Message.(*twitchirc.PrivateMessage); ok {
 			var mentioned bool
 
@@ -241,7 +242,7 @@ func (m *mentionTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 func (m *mentionTab) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 	if delta := WheelDelta(msg); delta != 0 {
 		m.chatWindow.scrollByLines(delta)
-		m.chatWindow.snapScroll()
+		m.chatWindow.SnapScroll()
 	}
 
 	return nil

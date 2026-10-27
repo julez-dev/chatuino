@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"testing"
@@ -68,18 +68,18 @@ func TestStripReplyMention_UnicodeCaseFolding(t *testing.T) {
 
 // replyTestWindow returns a window holding a parent message and a reply to it, with the
 // reply's entries reachable through the viewport.
-func replyTestWindow(t *testing.T, settings save.Settings) (*chatWindow, *chatEntry) {
+func replyTestWindow(t *testing.T, settings save.Settings) (*Buffer, *Entry) {
 	t.Helper()
 
-	c := newChatWindow(60, 10, settings, save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+	c := New(60, 10, settings, save.BuildDefaultTheme())
 
-	c.handleMessage(ChatEventMessage{Message: &twitchirc.PrivateMessage{
+	c.Append(ChatEventMessage{Message: &twitchirc.PrivateMessage{
 		ID: "parent-1", DisplayName: "Alice", LoginName: "alice", Color: "#d08770",
 		Message: "that was a great play", TMISentTS: replyTestTime,
 	}})
 
 	reply := replyMessage("@Alice no it wasn't, watch the vod")
-	c.handleMessage(ChatEventMessage{Message: reply})
+	c.Append(ChatEventMessage{Message: reply})
 
 	entries := c.activeEntries()
 	require.Len(t, entries, 2)
@@ -94,11 +94,11 @@ func TestChatWindow_ReplyReferenceClick(t *testing.T) {
 		t.Parallel()
 
 		c, reply := replyTestWindow(t, save.BuildDefaultSettings())
-		row := reply.Position.CursorStart - c.viewportRenderStart()
+		row := reply.position.cursorStart - c.ViewportRenderStart()
 
-		require.True(t, c.handleChatClick(row, c.renderer.timePaddingWidth))
+		require.True(t, c.HandleChatClick(row, c.renderer.timePaddingWidth))
 
-		_, selected := c.entryForCurrentCursor()
+		_, selected := c.Current()
 		require.NotNil(t, selected)
 		require.Equal(t, "parent-1", selected.Event.Message.(*twitchirc.PrivateMessage).ID)
 	})
@@ -107,11 +107,11 @@ func TestChatWindow_ReplyReferenceClick(t *testing.T) {
 		t.Parallel()
 
 		c, reply := replyTestWindow(t, save.BuildDefaultSettings())
-		row := reply.Position.CursorStart - c.viewportRenderStart()
+		row := reply.position.cursorStart - c.ViewportRenderStart()
 
-		require.False(t, c.handleChatClick(row, c.renderer.timePaddingWidth-1))
+		require.False(t, c.HandleChatClick(row, c.renderer.timePaddingWidth-1))
 
-		_, selected := c.entryForCurrentCursor()
+		_, selected := c.Current()
 		require.Equal(t, "reply-1", selected.Event.Message.(*twitchirc.PrivateMessage).ID, "the reply keeps its own rows")
 	})
 
@@ -119,21 +119,21 @@ func TestChatWindow_ReplyReferenceClick(t *testing.T) {
 		t.Parallel()
 
 		c, reply := replyTestWindow(t, save.BuildDefaultSettings())
-		row := reply.Position.CursorEnd - c.viewportRenderStart()
+		row := reply.position.cursorEnd - c.ViewportRenderStart()
 
-		require.False(t, c.handleChatClick(row, c.renderer.timePaddingWidth+3))
+		require.False(t, c.HandleChatClick(row, c.renderer.timePaddingWidth+3))
 	})
 
 	t.Run("a parent outside the buffer is not a reference hit", func(t *testing.T) {
 		t.Parallel()
 
-		c := newChatWindow(60, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+		c := New(60, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme())
 
 		reply := replyMessage("hello")
-		c.handleMessage(ChatEventMessage{Message: reply})
+		c.Append(ChatEventMessage{Message: reply})
 
 		row := 0
-		require.False(t, c.handleChatClick(row, c.renderer.timePaddingWidth), "nothing to jump to")
+		require.False(t, c.HandleChatClick(row, c.renderer.timePaddingWidth), "nothing to jump to")
 	})
 
 	t.Run("no reference rows when the setting is off", func(t *testing.T) {
@@ -143,9 +143,9 @@ func TestChatWindow_ReplyReferenceClick(t *testing.T) {
 		settings.Chat.ReplyContext = false
 
 		c, reply := replyTestWindow(t, settings)
-		row := reply.Position.CursorStart - c.viewportRenderStart()
+		row := reply.position.cursorStart - c.ViewportRenderStart()
 
-		require.False(t, c.handleChatClick(row, c.renderer.timePaddingWidth))
-		require.Equal(t, reply.Position.CursorStart, reply.Position.CursorEnd, "a reply is a single row")
+		require.False(t, c.HandleChatClick(row, c.renderer.timePaddingWidth))
+		require.Equal(t, reply.position.cursorStart, reply.position.cursorEnd, "a reply is a single row")
 	})
 }

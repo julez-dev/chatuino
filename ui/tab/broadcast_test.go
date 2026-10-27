@@ -16,6 +16,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/eventsub"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/wspool"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -604,31 +605,63 @@ func newLoadedLayoutTestTab(t *testing.T, width, height int, account save.Accoun
 	return tab
 }
 
-// addTestMessages fills the main chat window with one-row entries.
+// addTestMessages fills the main chat window with one-row messages.
 func addTestMessages(t *testing.T, c *chatWindow, count int) {
 	t.Helper()
 
-	c.lines = nil
-	c.entries = nil
-
 	for i := 0; i < count; i++ {
-		c.lines = append(c.lines, fmt.Sprintf("line %d", i))
-		c.entries = append(c.entries, &chatEntry{
-			Position: position{CursorStart: i, CursorEnd: i},
-		})
+		c.handleMessage(chat.ChatEventMessage{Message: &twitchirc.PrivateMessage{
+			ID:          fmt.Sprintf("test-%d", i),
+			DisplayName: "Alice",
+			LoginName:   "alice",
+			Message:     fmt.Sprintf("line %d", i),
+			TMISentTS:   time.Now(),
+		}})
 	}
 
-	c.cursor = count - 1
-	c.updatePort()
+	c.moveToBottom()
 }
 
 func selectedCursor(t *testing.T, c *chatWindow) int {
 	t.Helper()
 
-	_, entry := c.entryForCurrentCursor()
-	require.NotNil(t, entry, "expected a selected entry")
+	entry, ok := c.Selected()
+	require.True(t, ok, "expected a selected entry")
 
-	return entry.Position.CursorStart
+	return c.StartOf(&entry)
+}
+
+func addPrivateMessage(t *testing.T, c *chatWindow, id, content string) *chat.Entry {
+	t.Helper()
+
+	c.handleMessage(chat.ChatEventMessage{Message: &twitchirc.PrivateMessage{
+		ID:          id,
+		DisplayName: "Alice",
+		LoginName:   "alice",
+		Message:     content,
+		TMISentTS:   time.Now(),
+	}})
+
+	entries := c.Entries()
+	require.NotEmpty(t, entries)
+
+	return &entries[len(entries)-1]
+}
+
+func entryStart(t *testing.T, c *chatWindow, entry *chat.Entry) int {
+	t.Helper()
+
+	return c.StartOf(entry)
+}
+
+func entryEnd(t *testing.T, c *chatWindow, entry *chat.Entry) int {
+	t.Helper()
+
+	return c.EndOf(entry)
+}
+
+func plain(lines []string) string {
+	return StripANSI(strings.Join(lines, "\n"))
 }
 
 // Test_Broadcast_ViewMatchesLayoutHeight covers the geometry contract: the view
@@ -939,15 +972,15 @@ func Test_Broadcast_MouseClickNewMessageBadgeJumpsToTheNewestMessage(t *testing.
 
 	newest := tab.chatWindow.getNewestEntry()
 	require.NotNil(t, newest)
-	require.False(t, newest.Selected)
+	require.False(t, newest.Selected())
 
 	y := tab.layout.chat.top + row
 	cmd := tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: col, Y: y}, col, y)
 
 	require.Nil(t, cmd)
-	require.True(t, newest.Selected, "the click caught up with the chat")
+	require.True(t, newest.Selected(), "the click caught up with the chat")
 	require.True(t, tab.chatWindow.caughtUp())
-	require.Zero(t, tab.chatWindow.newMessages)
+	require.Zero(t, tab.chatWindow.NewMessages())
 }
 
 // Test_Broadcast_MouseClickUserInspectNewMessageBadge pins that the inspect chat
@@ -985,40 +1018,40 @@ func Test_Broadcast_MouseClickUserInspectNewMessageBadge(t *testing.T) {
 
 	newest := history.getNewestEntry()
 	require.NotNil(t, newest)
-	require.False(t, newest.Selected)
+	require.False(t, newest.Selected())
 
 	y := tab.inspectChatSpan().top + row
 	cmd := tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: col, Y: y}, col, y)
 
 	require.Nil(t, cmd)
-	require.True(t, newest.Selected, "the click caught up with the inspect history")
-	require.Zero(t, history.newMessages)
+	require.True(t, newest.Selected(), "the click caught up with the inspect history")
+	require.Zero(t, history.NewMessages())
 	require.Equal(t, userInspectMode, tab.state, "catching up must not leave inspect mode")
 }
 
 // addReplyToChat appends a reply to Alice's most recent message and returns its entry.
-func addReplyToChat(t *testing.T, c *chatWindow, parent *chatEntry, id, body string) *chatEntry {
+func addReplyToChat(t *testing.T, c *chatWindow, parent *chat.Entry, id, body string) *chat.Entry {
 	t.Helper()
 
 	parentMsg := parent.Event.Message.(*twitchirc.PrivateMessage)
 
-	c.handleMessage(ChatEventMessage{Message: &twitchirc.PrivateMessage{
+	c.handleMessage(chat.ChatEventMessage{Message: &twitchirc.PrivateMessage{
 		ID:                id,
 		DisplayName:       "carol",
 		LoginName:         "carol",
 		Color:             "#a3be8c",
 		Message:           body,
-		TMISentTS:         replyTestTime,
+		TMISentTS:         time.Now(),
 		ParentMsgID:       parentMsg.ID,
 		ParentUserLogin:   parentMsg.LoginName,
 		ParentDisplayName: parentMsg.DisplayName,
 		ParentMsgBody:     parentMsg.Message,
 	}})
 
-	entries := c.activeEntries()
+	entries := c.Entries()
 	require.NotEmpty(t, entries)
 
-	return entries[len(entries)-1]
+	return &entries[len(entries)-1]
 }
 
 // Test_Broadcast_MouseClickReplyReferenceJumpsToTheParent verifies that clicking a reply's
@@ -1034,16 +1067,16 @@ func Test_Broadcast_MouseClickReplyReferenceJumpsToTheParent(t *testing.T) {
 
 	tab.HandleResize()
 
-	referenceRow := tab.layout.chat.top + reply.Position.CursorStart - tab.chatWindow.viewportRenderStart()
-	_ = tab.HandleMouseClick(leftClick(referenceRow), tab.chatWindow.renderer.timePaddingWidth, referenceRow)
+	referenceRow := tab.layout.chat.top + entryStart(t, tab.chatWindow, reply) - tab.chatWindow.viewportRenderStart()
+	_ = tab.HandleMouseClick(leftClick(referenceRow), tab.chatWindow.TimePaddingWidth(), referenceRow)
 
-	require.Equal(t, parent.Position.CursorStart, selectedCursor(t, tab.chatWindow), "the reference jumped to the parent")
+	require.Equal(t, entryStart(t, tab.chatWindow, parent), selectedCursor(t, tab.chatWindow), "the reference jumped to the parent")
 
 	// The reply's message row still selects the reply itself.
-	messageRow := tab.layout.chat.top + reply.Position.CursorEnd - tab.chatWindow.viewportRenderStart()
-	_ = tab.HandleMouseClick(leftClick(messageRow), tab.chatWindow.renderer.timePaddingWidth+2, messageRow)
+	messageRow := tab.layout.chat.top + entryEnd(t, tab.chatWindow, reply) - tab.chatWindow.viewportRenderStart()
+	_ = tab.HandleMouseClick(leftClick(messageRow), tab.chatWindow.TimePaddingWidth()+2, messageRow)
 
-	require.Equal(t, reply.Position.CursorStart, selectedCursor(t, tab.chatWindow))
+	require.Equal(t, entryStart(t, tab.chatWindow, reply), selectedCursor(t, tab.chatWindow))
 }
 
 // Test_Broadcast_MouseClickUserInspectReplyReference pins that the inspect history gets
@@ -1069,10 +1102,10 @@ func Test_Broadcast_MouseClickUserInspectReplyReference(t *testing.T) {
 	chat := tab.inspectChatSpan()
 	require.True(t, chat.visible())
 
-	y := chat.top + reply.Position.CursorStart - history.viewportRenderStart()
-	_ = tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: history.renderer.timePaddingWidth, Y: y}, history.renderer.timePaddingWidth, y)
+	y := chat.top + entryStart(t, tab.chatWindow, reply) - history.viewportRenderStart()
+	_ = tab.HandleMouseClick(tea.MouseClickMsg{Button: tea.MouseLeft, X: history.TimePaddingWidth(), Y: y}, history.TimePaddingWidth(), y)
 
-	require.Equal(t, parent.Position.CursorStart, selectedCursor(t, history))
+	require.Equal(t, entryStart(t, tab.chatWindow, parent), selectedCursor(t, history))
 	require.Equal(t, userInspectMode, tab.state, "jumping to a parent must not leave inspect mode")
 }
 
@@ -1194,17 +1227,17 @@ func Test_Broadcast_MouseWheel(t *testing.T) {
 	addTestMessages(t, tab.chatWindow, 40)
 	tab.HandleResize()
 
-	start := tab.chatWindow.cursor
+	start := tab.chatWindow.CursorLine()
 	_ = tab.HandleMouseWheel(wheelUp(tab.layout.chat.top+1), 0, tab.layout.chat.top+1)
-	require.Less(t, tab.chatWindow.cursor, start, "the wheel over the chat scrolls it")
+	require.Less(t, tab.chatWindow.CursorLine(), start, "the wheel over the chat scrolls it")
 
-	scrolled := tab.chatWindow.cursor
+	scrolled := tab.chatWindow.CursorLine()
 	_ = tab.HandleMouseWheel(wheelUp(tab.layout.composer.top), 0, tab.layout.composer.top)
-	require.Equal(t, scrolled, tab.chatWindow.cursor, "the composer does not scroll the chat")
+	require.Equal(t, scrolled, tab.chatWindow.CursorLine(), "the composer does not scroll the chat")
 
 	// The status bar is not a scroll target either.
 	_ = tab.HandleMouseWheel(wheelUp(tab.layout.status.top), 0, tab.layout.status.top)
-	require.Equal(t, scrolled, tab.chatWindow.cursor)
+	require.Equal(t, scrolled, tab.chatWindow.CursorLine())
 }
 
 // Test_Broadcast_MouseWheelUserInspect scrolls the inspect history when the cursor
@@ -1222,10 +1255,10 @@ func Test_Broadcast_MouseWheelUserInspect(t *testing.T) {
 	tab.HandleResize()
 
 	chat := tab.inspectChatSpan()
-	start := tab.userInspect.chatWindow.cursor
+	start := tab.userInspect.chatWindow.CursorLine()
 	_ = tab.HandleMouseWheel(wheelUp(chat.top), 0, chat.top)
 
-	require.Less(t, tab.userInspect.chatWindow.cursor, start)
+	require.Less(t, tab.userInspect.chatWindow.CursorLine(), start)
 }
 
 // Test_Broadcast_MouseInVerticalMode verifies that the layout recorded for
@@ -1391,7 +1424,7 @@ func TestBroadcast_ModeratorCommandsRequireMod(t *testing.T) {
 			cmd := tab.dispatchSlashCommand(command.name, command.args)
 			require.NotNil(t, cmd)
 
-			msg, ok := cmd().(ChatEventMessage)
+			msg, ok := cmd().(chat.ChatEventMessage)
 			require.True(t, ok)
 			notice, ok := msg.Message.(*twitchirc.Notice)
 			require.True(t, ok)
@@ -1547,7 +1580,7 @@ func newReplyTab(t *testing.T) (*Broadcast, *fakeUserClient) {
 	}
 
 	tab.chatWindow = newChatWindow(tab.width, tab.height, settings, theme, keymap)
-	tab.input = newChatInput(tab.chatWindow.palette, settings.BuildCustomSuggestionMap(), theme, nil)
+	tab.input = newChatInput(tab.chatWindow.Palette(), settings.BuildCustomSuggestionMap(), theme, nil)
 	tab.input.SetWidth(tab.width)
 
 	return tab, client
@@ -1762,29 +1795,24 @@ func Test_broadcastTab_quickSendRestoresLayout(t *testing.T) {
 func TestBroadcastTab_RegisterClick(t *testing.T) {
 	t.Parallel()
 
-	tab := &Broadcast{}
-	entry := &chatEntry{Position: position{CursorStart: 0, CursorEnd: 2}}
-	other := &chatEntry{Position: position{CursorStart: 3, CursorEnd: 4}}
+	c := newChatWindow(80, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme(), save.BuildDefaultKeyMap())
+	addTestMessages(t, c, 5)
+	entries := c.Entries()
+	entry := &entries[0]
+	other := &entries[1]
+	tab := &Broadcast{chatWindow: c}
 
-	require.False(t, tab.registerClick(entry, 0))
-	require.True(t, tab.registerClick(entry, 2), "second click on the same entry within the window is a double-click")
+	require.False(t, tab.registerClick(entry, c.StartOf(entry)))
+	require.True(t, tab.registerClick(entry, c.EndOf(entry)), "second click on the same entry within the window is a double-click")
 
-	require.False(t, tab.registerClick(other, 3), "a different entry is not a double-click")
-	require.True(t, tab.registerClick(other, 3), "the tracker follows the new entry")
+	require.False(t, tab.registerClick(other, c.StartOf(other)), "a different entry is not a double-click")
+	require.True(t, tab.registerClick(other, c.StartOf(other)), "the tracker follows the new entry")
 
-	require.False(t, tab.registerClick(entry, 10), "a click outside the entry resets the tracker")
-	require.False(t, tab.registerClick(entry, 0), "the reset click cannot pair with the earlier one")
+	require.False(t, tab.registerClick(entry, c.EndOf(entry)+10), "a click outside the entry resets the tracker")
+	require.False(t, tab.registerClick(entry, c.StartOf(entry)), "the reset click cannot pair with the earlier one")
 	require.False(t, tab.registerClick(nil, 0), "nil entries are ignored")
-
-	tab.lastClickEntry = entry
-	tab.lastClickAt = time.Now().Add(-doubleClickWindow - time.Millisecond)
-	require.False(t, tab.registerClick(entry, 0), "clicks outside the time window are not a double-click")
 }
 
-// TestBroadcast_EmoteRefreshFailureKeepsTabUsable covers a failed emote/badge
-// refresh (provider error, 404 or timeout): emotes are cosmetic, so the tab keeps
-// rendering its chat. Before, the error was joined into the tab's error state, which
-// replaced the whole chat with the message and disabled input.
 func TestBroadcast_EmoteRefreshFailureKeepsTabUsable(t *testing.T) {
 	t.Parallel()
 
@@ -2117,17 +2145,17 @@ func TestBroadcast_HandleRedemptionEvents(t *testing.T) {
 
 	request, ok := addCmd().(RequestLocalMessageHandleMessage)
 	require.True(t, ok)
-	tab.chatWindow.handleMessage(ChatEventMessage{Message: request.Message})
+	tab.chatWindow.handleMessage(chat.ChatEventMessage{Message: request.Message})
 
-	require.Contains(t, strings.Join(strings.Fields(plain(tab.chatWindow.lines)), " "), `Alice redeemed "Highlight My Message" (500 points): make it purple`)
-	require.Len(t, tab.chatWindow.entries, 1)
+	require.Contains(t, strings.Join(strings.Fields(plain(tab.chatWindow.RawRows())), " "), `Alice redeemed "Highlight My Message" (500 points): make it purple`)
+	require.Len(t, tab.chatWindow.Entries(), 1)
 	require.Len(t, tab.redemptions, 1)
 
 	require.Nil(t, tab.handleEventSubMessage(event("channel.channel_points_custom_reward_redemption.update", "fulfilled")))
 
-	text := plain(tab.chatWindow.lines)
+	text := plain(tab.chatWindow.RawRows())
 	require.Contains(t, text, "[fulfilled]")
-	require.Len(t, tab.chatWindow.entries, 1, "an update must not append a second notice")
+	require.Len(t, tab.chatWindow.Entries(), 1, "an update must not append a second notice")
 	require.Empty(t, tab.redemptions, "a terminal update stops tracking the redemption")
 }
 
@@ -2256,7 +2284,7 @@ func TestBroadcast_HandleAutoModEvents(t *testing.T) {
 	require.Contains(t, notice.Message, "/approve msg-1")
 	require.Len(t, tab.automodHeld, 1)
 
-	tab.chatWindow.handleMessage(ChatEventMessage{Message: notice})
+	tab.chatWindow.handleMessage(chat.ChatEventMessage{Message: notice})
 
 	require.Nil(t, tab.handleEventSubMessage(event("automod.message.update", eventsub.Event{
 		MessageID: "msg-1",
@@ -2267,8 +2295,8 @@ func TestBroadcast_HandleAutoModEvents(t *testing.T) {
 	})))
 
 	require.Empty(t, tab.automodHeld, "a terminal update stops tracking the message")
-	require.Contains(t, plain(tab.chatWindow.lines), "[approved]")
-	require.Len(t, tab.chatWindow.entries, 1, "the update rewrites the existing notice")
+	require.Contains(t, plain(tab.chatWindow.RawRows()), "[approved]")
+	require.Len(t, tab.chatWindow.Entries(), 1, "the update rewrites the existing notice")
 }
 
 func TestBroadcast_ChatSettingsEventUpdatesStatus(t *testing.T) {
@@ -2325,7 +2353,7 @@ func TestBroadcast_AutoModShortcutTypesCommand(t *testing.T) {
 
 			tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
 			notice := &twitchirc.Notice{MsgID: "msg-1", Message: "AutoMod held a message"}
-			tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: notice})
+			tab.chatWindow.handleMessage(chat.ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: notice})
 			tab.automodHeld = map[string]*twitchirc.Notice{"msg-1": notice}
 
 			handled, cmd := tab.handleKeyPress(tt.key)
@@ -2341,15 +2369,16 @@ func TestBroadcast_AutoModShortcutTypesCommand(t *testing.T) {
 
 		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
 		tab.Focus()
-		tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
+		tab.chatWindow.handleMessage(chat.ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
 			MsgID:   "notice-1",
 			Message: "just a notice",
 		}})
-		tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
+		tab.chatWindow.handleMessage(chat.ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
 			MsgID:   "notice-2",
 			Message: "another notice",
 		}})
-		tab.chatWindow.selectEntry(tab.chatWindow.entries[0])
+		entries := tab.chatWindow.Entries()
+		tab.chatWindow.selectEntry(&entries[0])
 
 		handled, _ := tab.handleKeyPress(tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt})
 		require.True(t, handled)
@@ -2357,9 +2386,10 @@ func TestBroadcast_AutoModShortcutTypesCommand(t *testing.T) {
 		require.Empty(t, tab.input.RawValue())
 		require.True(t, tab.chatWindow.Focused(), "a rejected shortcut must not blur the chat and strand keyboard navigation")
 
-		before := tab.chatWindow.cursor
+		before, _ := tab.chatWindow.Selected()
 		_, _ = tab.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-		require.NotEqual(t, before, tab.chatWindow.cursor, "arrow-key navigation keeps working after the rejected shortcut")
+		after, _ := tab.chatWindow.Selected()
+		require.NotEqual(t, before.ID, after.ID, "arrow-key navigation keeps working after the rejected shortcut")
 	})
 
 	t.Run("finished AutoMod notice is ignored without losing chat focus", func(t *testing.T) {
@@ -2367,7 +2397,7 @@ func TestBroadcast_AutoModShortcutTypesCommand(t *testing.T) {
 
 		tab := newLoadedLayoutTestTab(t, 80, 24, save.Account{ID: "acc", DisplayName: "me"})
 		tab.Focus()
-		tab.chatWindow.handleMessage(ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
+		tab.chatWindow.handleMessage(chat.ChatEventMessage{AccountID: "acc", ChannelID: "chan-id", Message: &twitchirc.Notice{
 			MsgID:   "msg-1",
 			Message: "AutoMod held a message [approved]",
 		}})

@@ -1,4 +1,4 @@
-package tab
+package chat
 
 import (
 	"strings"
@@ -24,7 +24,7 @@ func newTestRenderer(t *testing.T, width int) *messageRenderer {
 func newTestRendererWith(t *testing.T, width int, settings save.Settings) *messageRenderer {
 	t.Helper()
 
-	return newMessageRenderer(width, lipgloss.Width("> "), settings, save.BuildDefaultTheme(), newUserPalette())
+	return newMessageRenderer(width, lipgloss.Width("> "), settings, save.BuildDefaultTheme(), NewPalette())
 }
 
 // testChatError is an error that can travel as a chat event, mirroring the shell's
@@ -35,7 +35,7 @@ func (e testChatError) Error() string { return string(e) }
 func (e testChatError) IRC() string   { return string(e) }
 
 func plain(lines []string) string {
-	return StripANSI(strings.Join(lines, "\n"))
+	return stripANSI(strings.Join(lines, "\n"))
 }
 
 func Test_messageRenderer_EventKinds(t *testing.T) {
@@ -256,7 +256,7 @@ func Test_messageRenderer_WrapsToWidth(t *testing.T) {
 				tt.settings(&s)
 			}
 
-			r := newMessageRenderer(40, 2, s, save.BuildDefaultTheme(), newUserPalette())
+			r := newMessageRenderer(40, 2, s, save.BuildDefaultTheme(), NewPalette())
 			lines := r.Render(ChatEventMessage{Message: &twitchirc.PrivateMessage{
 				DisplayName: "Alice",
 				LoginName:   "alice",
@@ -311,7 +311,7 @@ func Test_messageRenderer_GraphicRows(t *testing.T) {
 	settings.Chat.GraphicEmotes = true
 	settings.Chat.GraphicScale = 2
 
-	r := newMessageRenderer(80, 2, settings, save.BuildDefaultTheme(), newUserPalette())
+	r := newMessageRenderer(80, 2, settings, save.BuildDefaultTheme(), NewPalette())
 
 	// A line containing a kitty image placeholder expands to the graphic scale.
 	image := "\x1b[38;2;0;0;1m\U0010EEEE\u030D\u0305\U0010EEEE\x1b[39m"
@@ -327,7 +327,7 @@ func Test_messageRenderer_GraphicRows(t *testing.T) {
 func Test_messageRenderer_DoesNotMutateEventData(t *testing.T) {
 	t.Parallel()
 
-	palette := newUserPalette()
+	palette := NewPalette()
 	palette.Renderer("bob", "#ff0000")
 
 	r := newMessageRenderer(80, 2, save.BuildDefaultSettings(), save.BuildDefaultTheme(), palette)
@@ -529,4 +529,112 @@ func TestMessageRenderer_ReplyContextRow(t *testing.T) {
 			require.NotContains(t, ansi.Strip(lines[0]), "↩")
 		})
 	}
+}
+
+func TestApplyWordReplacements(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		content      string
+		replacements WordReplacement
+		want         string
+	}{
+		{
+			name:         "empty replacements returns content unchanged",
+			content:      "moon pool",
+			replacements: WordReplacement{},
+			want:         "moon pool",
+		},
+		{
+			name:         "single-char emote token does not bleed into words",
+			content:      "o moon pool",
+			replacements: WordReplacement{"o": "[emote]"},
+			want:         "[emote] moon pool",
+		},
+		{
+			name:         "no standalone token leaves words untouched",
+			content:      "moon pool",
+			replacements: WordReplacement{"o": "[emote]"},
+			want:         "moon pool",
+		},
+		{
+			name:         "repeated standalone tokens all replaced",
+			content:      "o moon o pool o",
+			replacements: WordReplacement{"o": "[emote]"},
+			want:         "[emote] moon [emote] pool [emote]",
+		},
+		{
+			name:         "multiple distinct emotes replaced per token",
+			content:      "Kappa and PogChamp",
+			replacements: WordReplacement{"Kappa": "[k]", "PogChamp": "[p]"},
+			want:         "[k] and [p]",
+		},
+		{
+			name:         "substring match inside larger word is not replaced",
+			content:      "Kappaccino Kappa",
+			replacements: WordReplacement{"Kappa": "[k]"},
+			want:         "Kappaccino [k]",
+		},
+		{
+			// link producer keys on the whole token, so trailing punctuation is
+			// part of the key and is preserved in the annotated value.
+			name:         "url token with trailing punctuation matches whole token",
+			content:      "see https://x.com! end",
+			replacements: WordReplacement{"https://x.com!": "https://x.com [200 OK]!"},
+			want:         "see https://x.com [200 OK]! end",
+		},
+		{
+			name:         "url token wrapped in parens matches whole token",
+			content:      "(https://x.com) done",
+			replacements: WordReplacement{"(https://x.com)": "(https://x.com [200 OK])"},
+			want:         "(https://x.com [200 OK]) done",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &messageRenderer{}
+			got := r.applyWordReplacements(tt.content, tt.replacements)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestExpandGraphicRows(t *testing.T) {
+	t.Parallel()
+
+	// bottom row (row 1) of a two row image
+	image := "\x1b[38;2;0;0;1m\U0010EEEE\u030D\u0305\U0010EEEE\x1b[39m"
+	lines := []string{"  12:00 user: hi " + image, "              plain text"}
+
+	t.Run("scale 1 is noop", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, lines, expandGraphicRows(lines, 1))
+	})
+
+	t.Run("scale 2 adds rows above lines with images only, images bottom aligned", func(t *testing.T) {
+		t.Parallel()
+		got := expandGraphicRows(lines, 2)
+		require.Equal(t, []string{
+			"                 \x1b[38;2;0;0;1m\U0010EEEE\u0305\u0305\U0010EEEE\x1b[39m",
+			lines[0],
+			lines[1],
+		}, got)
+	})
+}
+
+func TestGraphicRows(t *testing.T) {
+	t.Parallel()
+
+	s := save.Settings{Chat: save.ChatSettings{GraphicScale: 2}}
+	require.Equal(t, 1, graphicRows(s), "graphics disabled")
+
+	s.Chat.GraphicEmotes = true
+	require.Equal(t, 2, graphicRows(s))
+
+	s.Chat.GraphicScale = 0
+	require.Equal(t, 1, graphicRows(s), "unset defaults to 1")
 }

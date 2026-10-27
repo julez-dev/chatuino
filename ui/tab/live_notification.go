@@ -9,6 +9,7 @@ import (
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 )
 
 type liveNotificationTab struct {
@@ -90,7 +91,7 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			msg = fmt.Sprintf("%s is now offline!", info.Username)
 		}
 
-		l.chatWindow.handleMessage(ChatEventMessage{
+		l.chatWindow.handleMessage(chat.ChatEventMessage{
 			Message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -102,7 +103,7 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		return l, cmd
 	}
 
-	if _, ok := msg.(ChatEventMessage); ok {
+	if _, ok := msg.(chat.ChatEventMessage); ok {
 		return l, cmd
 	}
 
@@ -193,7 +194,7 @@ func (l *liveNotificationTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) 
 func (l *liveNotificationTab) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 	if delta := WheelDelta(msg); delta != 0 {
 		l.chatWindow.scrollByLines(delta)
-		l.chatWindow.snapScroll()
+		l.chatWindow.SnapScroll()
 	}
 
 	return nil

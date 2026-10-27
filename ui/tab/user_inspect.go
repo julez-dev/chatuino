@@ -15,6 +15,7 @@ import (
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
+	"github.com/julez-dev/chatuino/ui/chat"
 )
 
 type setUserInspectData struct {
@@ -22,7 +23,7 @@ type setUserInspectData struct {
 	err            error
 	ivrResp        ivr.SubAgeResponse
 	userData       twitchapi.UserData
-	initialEvents  []ChatEventMessage
+	initialEvents  []chat.ChatEventMessage
 	prepareCommand string // Kitty graphics prepare command
 }
 
@@ -39,7 +40,7 @@ type userInspect struct {
 	channel         string // the streamer
 	accountID       string // account id from chatuino user
 	badges          []twitchirc.Badge
-	formattedBadges WordReplacement
+	formattedBadges chat.WordReplacement
 
 	ivr           *ivr.API
 	settings      save.Settings
@@ -91,7 +92,7 @@ func (u *userInspect) Init() tea.Cmd {
 	return u.init(nil)
 }
 
-func (u *userInspect) init(initialEvents []ChatEventMessage) tea.Cmd {
+func (u *userInspect) init(initialEvents []chat.ChatEventMessage) tea.Cmd {
 	var cmds []tea.Cmd
 
 	cmds = append(cmds, u.chatWindow.Init(), u.spinner.Tick)
@@ -136,10 +137,10 @@ func (u *userInspect) init(initialEvents []ChatEventMessage) tea.Cmd {
 
 		var prepareCmd strings.Builder
 
-		fakeInitialEvent := make([]ChatEventMessage, 0, len(loggedEntries))
+		fakeInitialEvent := make([]chat.ChatEventMessage, 0, len(loggedEntries))
 		for loggedEntry := range slices.Values(loggedEntries) {
 			// remove duplicate messages
-			isAlreadyStored := slices.ContainsFunc(initialEvents, func(e ChatEventMessage) bool {
+			isAlreadyStored := slices.ContainsFunc(initialEvents, func(e chat.ChatEventMessage) bool {
 				privMSG, ok := e.Message.(*twitchirc.PrivateMessage)
 
 				if !ok {
@@ -159,10 +160,10 @@ func (u *userInspect) init(initialEvents []ChatEventMessage) tea.Cmd {
 			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ctx, ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
 			prepareCmd.WriteString(prepare)
 
-			fakeInitialEvent = append(fakeInitialEvent, ChatEventMessage{
+			fakeInitialEvent = append(fakeInitialEvent, chat.ChatEventMessage{
 				IsFakeEvent: true,
 				Message:     loggedEntry.PrivateMessage,
-				DisplayModifier: MessageContentModifier{
+				DisplayModifier: chat.MessageContentModifier{
 					WordReplacements: contentOverwrite,
 					BadgeReplacement: badgeOverwrite,
 				},
@@ -173,7 +174,7 @@ func (u *userInspect) init(initialEvents []ChatEventMessage) tea.Cmd {
 		initialEvents = append(fakeInitialEvent, initialEvents...)
 
 		// sort all messages by timestamp
-		slices.SortFunc(initialEvents, func(e1, e2 ChatEventMessage) int {
+		slices.SortFunc(initialEvents, func(e1, e2 chat.ChatEventMessage) int {
 			var (
 				t1 time.Time
 				t2 time.Time
@@ -245,7 +246,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
-	chatEvent, ok := msg.(ChatEventMessage)
+	chatEvent, ok := msg.(chat.ChatEventMessage)
 
 	// we don't need to intervene if the message is not a chat event, the window can handle it
 	if !ok {
@@ -269,7 +270,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 			return u, nil
 		}
 
-		for _, e := range u.chatWindow.entries {
+		for _, e := range u.chatWindow.Entries() {
 			if priv, ok := e.Event.Message.(*twitchirc.PrivateMessage); ok && strings.EqualFold(priv.LoginName, *msg.UserName) {
 				affectsUserInChat = true
 				break
@@ -365,7 +366,7 @@ func (u *userInspect) renderUserInfo() string {
 	b := &strings.Builder{}
 	_, _ = fmt.Fprintf(b, "User %s (%s)", u.subAge.User.DisplayName, u.subAge.User.ID)
 	if len(u.formattedBadges) > 0 {
-		_, _ = fmt.Fprintf(b, " - %s\n", formatBadgeReplacement(u.settings, u.formattedBadges))
+		_, _ = fmt.Fprintf(b, " - %s\n", chat.FormatBadgeReplacement(u.settings, u.formattedBadges))
 	} else {
 		_, _ = fmt.Fprintf(b, "\n")
 	}
