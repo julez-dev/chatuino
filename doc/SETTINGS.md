@@ -247,7 +247,7 @@ When `graphic_emotes` is disabled, Chatuino displays emotes as colored text. The
 
 Chatuino can display images and animated images as Twitch emotes using the Kitty Graphics Protocol with the [Unicode placeholder method](https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders). Placeholder cells are ordinary text, so images scroll with the chat and survive the full-frame redraw.
 
-That method requires a terminal that renders Unicode placeholders. As of October 2026 that is **kitty >= 0.28, Ghostty and iTerm2 >= 3.6.7**. On macOS all three work; Ghostty and iTerm2 display animated emotes as static images. WezTerm, Konsole, Warp and Rio implement parts of the kitty protocol but not placeholders; foot, Windows Terminal and mintty are sixel-only; Alacritty, VTE/GNOME Terminal and Apple Terminal have no inline image support.
+That method requires a terminal that renders Unicode placeholders. As of October 2026 that is **kitty >= 0.28, Ghostty and iTerm2 >= 3.6.7**. On macOS all three work. Ghostty 1.4 and newer animates emotes like kitty; older Ghostty versions and iTerm2 display animated emotes as static images. WezTerm, Konsole, Warp and Rio implement parts of the kitty protocol but not placeholders; foot, Windows Terminal and mintty are sixel-only; Alacritty, VTE/GNOME Terminal and Apple Terminal have no inline image support.
 
 Because graphic emotes are opt-in, Chatuino refuses to start when `graphic_emotes` or `graphic_badges` is enabled on a setup that cannot display the images. The error names the detected terminal and the settings file; disable the settings or switch to a supported terminal to start. Graphic emotes are not available on Windows.
 
