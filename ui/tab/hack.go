@@ -14,12 +14,7 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-var (
-	duplicateBypass = rune(917504)
-	ansiRegex       = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
-
-	urlStartRegex = regexp.MustCompile(`https?://[^\s]+`)
-)
+var urlStartRegex = regexp.MustCompile(`https?://[^\s]+`)
 
 func ExtractValidURLs(text string) []string {
 	rawMatches := urlStartRegex.FindAllString(text, -1)
@@ -53,10 +48,6 @@ func filter[S ~[]E, E any](x S, f func(e E) bool) iter.Seq[E] {
 			}
 		}
 	}
-}
-
-func StripANSI(str string) string {
-	return ansiRegex.ReplaceAllString(str, "")
 }
 
 func clamp(v, low, high int) int {

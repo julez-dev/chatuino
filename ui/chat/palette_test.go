@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUserPalette(t *testing.T) {
+func TestPalette(t *testing.T) {
 	t.Parallel()
 
 	p := NewPalette()

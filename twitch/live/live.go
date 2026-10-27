@@ -53,8 +53,10 @@ func Watch(role Role, channelID, accountID string) []Subscription {
 	}
 }
 
+// broadcasterSubscriptions is 22 subscriptions across 21 distinct topics:
+// channel.raid is subscribed twice, once per direction.
 func broadcasterSubscriptions(channelID, accountID string) []Subscription {
-	subscriptions := make([]Subscription, 0, 23)
+	subscriptions := make([]Subscription, 0, 22)
 
 	for _, topic := range [...]string{
 		"channel.poll.begin", "channel.poll.progress", "channel.poll.end",

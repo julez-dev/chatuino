@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/tab"
 	"github.com/julez-dev/chatuino/ui/workspace"
 	"github.com/stretchr/testify/require"
@@ -409,7 +410,7 @@ func TestWorkspace_GlobalDialogBlocksPaneInputAndRestoresControlState(t *testing
 
 func workspacePoint(t *testing.T, root *Root, text string) (int, int) {
 	t.Helper()
-	for y, line := range strings.Split(tab.StripANSI(root.View().Content), "\n") {
+	for y, line := range strings.Split(chat.StripANSI(root.View().Content), "\n") {
 		if i := strings.Index(line, text); i >= 0 {
 			return lipgloss.Width(line[:i]), y
 		}
@@ -497,7 +498,7 @@ func TestWorkspace_PaneFooterIsStyledCompactAndUsesUsefulHints(t *testing.T) {
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyF2})
 
 	raw := root.paneFooter(root.planPanes())
-	view := tab.StripANSI(raw)
+	view := chat.StripANSI(raw)
 	require.Contains(t, raw, "\x1b[", "pane status must use theme styles")
 	require.Contains(t, view, "-- Pane --")
 	require.Contains(t, view, "hjkl focus")
@@ -513,7 +514,7 @@ func TestWorkspace_PaneFooterIsStyledCompactAndUsesUsefulHints(t *testing.T) {
 
 	root.width = 60
 	root.handleResize()
-	narrow := tab.StripANSI(root.paneFooter(root.planPanes()))
+	narrow := chat.StripANSI(root.paneFooter(root.planPanes()))
 	require.Contains(t, narrow, "-- Pane --")
 	require.Contains(t, narrow, "hjkl focus")
 	require.NotContains(t, narrow, "ctrl+t new", "narrow terminals keep only the core hints")
@@ -530,7 +531,7 @@ func TestWorkspace_RemapAndDisableControlsThroughKeymap(t *testing.T) {
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'c', Text: "c"})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: tea.KeyEnter})
 	require.Equal(t, b.ID(), root.activeID())
-	footer := tab.StripANSI(root.paneFooter(root.planPanes()))
+	footer := chat.StripANSI(root.paneFooter(root.planPanes()))
 	require.Contains(t, footer, "c/s split", "footer hints must follow the configured keymap")
 	require.Contains(t, footer, "d close")
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'h', Text: "h"})

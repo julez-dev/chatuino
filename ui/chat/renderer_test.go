@@ -35,7 +35,7 @@ func (e testChatError) Error() string { return string(e) }
 func (e testChatError) IRC() string   { return string(e) }
 
 func plain(lines []string) string {
-	return stripANSI(strings.Join(lines, "\n"))
+	return StripANSI(strings.Join(lines, "\n"))
 }
 
 func Test_messageRenderer_EventKinds(t *testing.T) {
@@ -218,12 +218,12 @@ func Test_messageRenderer_DuplicateBypassIsStripped(t *testing.T) {
 		Message: &twitchirc.PrivateMessage{
 			DisplayName: "Alice",
 			LoginName:   "alice",
-			Message:     "hello " + string(duplicateBypass) + "world",
+			Message:     "hello " + string(DuplicateBypass) + "world",
 		},
 	})
 
 	require.Contains(t, plain(lines), "hello world")
-	require.NotContains(t, plain(lines), string(duplicateBypass))
+	require.NotContains(t, plain(lines), string(DuplicateBypass))
 }
 
 func Test_messageRenderer_WrapsToWidth(t *testing.T) {

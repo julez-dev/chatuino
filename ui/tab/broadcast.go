@@ -1711,7 +1711,7 @@ func (t *Broadcast) handleCopyMessage() {
 	}
 
 	t.clearReplyTarget() // copying replaces the armed reply with different content
-	t.input.SetValue(strings.ReplaceAll(msg.Message, string(duplicateBypass), ""))
+	t.input.SetValue(strings.ReplaceAll(msg.Message, string(chat.DuplicateBypass), ""))
 	t.HandleResize() // Recalculate layout after copying message
 }
 
@@ -1746,9 +1746,9 @@ func (t *Broadcast) handleOpenUserInspectFromMessage() tea.Cmd {
 	var e *chat.Entry
 
 	if t.state == inChatWindow {
-		_, e = t.chatWindow.entryForCurrentCursor()
+		_, e = t.chatWindow.Current()
 	} else {
-		_, e = t.userInspect.chatWindow.entryForCurrentCursor()
+		_, e = t.userInspect.chatWindow.Current()
 	}
 
 	if e == nil {
@@ -1853,7 +1853,7 @@ func (t *Broadcast) cursorEntry() (*chat.Entry, bool) {
 		window.handleStopSearchMode()
 	}
 
-	_, entry := window.entryForCurrentCursor()
+	_, entry := window.Current()
 	if entry == nil {
 		return nil, false
 	}
@@ -1919,8 +1919,14 @@ const doubleClickWindow = 400 * time.Millisecond
 // double-click with the previous click. Clicks outside the entry's line range
 // (for example on the blank padding below the last message) reset the tracker.
 func (t *Broadcast) registerClick(entry *chat.Entry, line int) bool {
-	start, end, ok := t.chatWindow.LineRange(entry)
-	if entry == nil || !ok || line < start || line > end {
+	if entry == nil {
+		t.lastClickEntry = nil
+		t.lastClickAt = time.Time{}
+		return false
+	}
+
+	start, end, ok := t.chatWindow.LineRange(entry.ID)
+	if !ok || line < start || line > end {
 		t.lastClickEntry = nil
 		t.lastClickAt = time.Time{}
 		return false
@@ -1958,14 +1964,14 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 		row := y - t.layout.chat.top
 
 		// Controls on top of the rows: the new-message badge and a reply's reference.
-		if t.chatWindow.handleChatClick(row, x) {
+		if t.chatWindow.HandleChatClick(row, x) {
 			return nil
 		}
 
 		// Resolve the absolute line before any layout change, then leave
 		// insert/inspect mode so subsequent shortcuts act on the main chat.
-		line := t.chatWindow.viewportRenderStart() + row
-		_, entry := t.chatWindow.entryAtLine(line)
+		line := t.chatWindow.ViewportRenderStart() + row
+		_, entry := t.chatWindow.EntryAtLine(line)
 		double := t.registerClick(entry, line)
 
 		switch t.state {
@@ -1975,7 +1981,7 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 			t.leaveUserInspect()
 		}
 
-		t.chatWindow.selectLine(line)
+		t.chatWindow.SelectLine(line)
 
 		if double {
 			return t.handleOpenUserInspectFromMessage()
@@ -1994,15 +2000,15 @@ func (t *Broadcast) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 			row := y - chat.top
 
-			if t.userInspect.chatWindow.handleChatClick(row, x) {
+			if t.userInspect.chatWindow.HandleChatClick(row, x) {
 				return nil
 			}
 
-			line := t.userInspect.chatWindow.viewportRenderStart() + row
-			_, entry := t.userInspect.chatWindow.entryAtLine(line)
+			line := t.userInspect.chatWindow.ViewportRenderStart() + row
+			_, entry := t.userInspect.chatWindow.EntryAtLine(line)
 			double := t.registerClick(entry, line)
 
-			t.userInspect.chatWindow.selectAtViewportRow(row)
+			t.userInspect.chatWindow.SelectAtViewportRow(row)
 
 			if double {
 				return t.handleOpenUserInspectFromMessage()
@@ -2043,12 +2049,12 @@ func (t *Broadcast) hoveredEmote() (string, bool) {
 	}
 
 	if t.layout.chat.contains(t.hoverY) {
-		return t.chatWindow.emoteNameAt(t.hoverY-t.layout.chat.top, t.hoverX)
+		return t.chatWindow.EmoteNameAt(t.hoverY-t.layout.chat.top, t.hoverX)
 	}
 
 	if t.state.isInspecting() && t.layout.userInspect.visible() && t.userInspect != nil {
 		if chat := t.inspectChatSpan(); chat.contains(t.hoverY) {
-			return t.userInspect.chatWindow.emoteNameAt(t.hoverY-chat.top, t.hoverX)
+			return t.userInspect.chatWindow.EmoteNameAt(t.hoverY-chat.top, t.hoverX)
 		}
 	}
 
@@ -2112,13 +2118,13 @@ func (t *Broadcast) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 	}
 
 	if t.layout.chat.contains(y) {
-		t.chatWindow.scrollByLines(delta)
+		t.chatWindow.ScrollByLines(delta)
 		t.chatWindow.SnapScroll()
 		return nil
 	}
 
 	if t.state.isInspecting() && t.layout.userInspect.visible() && t.inspectChatSpan().contains(y) {
-		t.userInspect.chatWindow.scrollByLines(delta)
+		t.userInspect.chatWindow.ScrollByLines(delta)
 		t.userInspect.chatWindow.SnapScroll()
 	}
 
@@ -2224,7 +2230,7 @@ func (t *Broadcast) handleMessageSent(quickSend bool) tea.Cmd {
 		t.resetAfterSend()
 	}
 
-	t.chatWindow.moveToBottom()
+	t.chatWindow.MoveToBottom()
 
 	if name, args, ok := parseSlashCommand(submission.Text); ok {
 		return t.dispatchSlashCommand(name, args)
@@ -2326,7 +2332,7 @@ func (t *Broadcast) dispatchSlashCommand(name string, args []string) tea.Cmd {
 // previously sent message, bypassing Twitch's duplicate message filter.
 func applyDuplicateBypass(input, lastSent string) string {
 	if strings.EqualFold(input, lastSent) {
-		return input + " " + string(duplicateBypass)
+		return input + " " + string(chat.DuplicateBypass)
 	}
 
 	return input
@@ -2420,7 +2426,7 @@ func (t *Broadcast) replaceInputTemplate() tea.Cmd {
 	}
 
 	// if a row is currently selected
-	if _, e := t.chatWindow.entryForCurrentCursor(); e != nil {
+	if _, e := t.chatWindow.Current(); e != nil {
 		switch msg := e.Event.Message.(type) {
 		case *twitchirc.PrivateMessage:
 			data["SelectedDisplayName"] = msg.DisplayName
@@ -2659,7 +2665,7 @@ func (t *Broadcast) handlePyramidMessagesCommand(args []string) tea.Cmd {
 			}
 
 			if i%2 == 0 {
-				msg += string(duplicateBypass)
+				msg += string(chat.DuplicateBypass)
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -2951,7 +2957,7 @@ func (t *Broadcast) applyLiveEvent(event live.Event) tea.Cmd {
 
 		if existing, ok := t.redemptions[event.Redemption.ID]; ok {
 			existing.Message = notice.Message
-			t.chatWindow.updateNotice(event.Redemption.ID, notice.Message)
+			t.chatWindow.ReplaceNotice(event.Redemption.ID, notice.Message)
 
 			if redemptionStatusTerminal(event.Redemption.Status) {
 				delete(t.redemptions, event.Redemption.ID)
@@ -3009,7 +3015,7 @@ func (t *Broadcast) applyLiveEvent(event live.Event) tea.Cmd {
 
 		if existing, ok := t.automodHeld[event.AutoMod.MessageID]; ok {
 			existing.Message = notice.Message
-			t.chatWindow.updateNotice(event.AutoMod.MessageID, notice.Message)
+			t.chatWindow.ReplaceNotice(event.AutoMod.MessageID, notice.Message)
 
 			if automodStatusTerminal(event.AutoMod.Status) {
 				delete(t.automodHeld, event.AutoMod.MessageID)

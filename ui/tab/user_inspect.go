@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
+	"github.com/julez-dev/chatuino/save/messagelog"
 	"github.com/julez-dev/chatuino/twitch/ivr"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
@@ -155,30 +156,9 @@ func (u *userInspect) init(initialEvents []chat.ChatEventMessage) tea.Cmd {
 				continue
 			}
 
-			prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ctx, ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
+			event, prepare := u.prepareLoggedMessage(ctx, ttvResp.Data[0].ID, loggedEntry)
 			prepareCmd.WriteString(prepare)
-
-			prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ctx, ttvResp.Data[0].ID, loggedEntry.PrivateMessage.Badges)
-			prepareCmd.WriteString(prepare)
-
-			if badgeOverwrite == nil {
-				badgeOverwrite = make(chat.WordReplacement)
-			}
-
-			contributorPrepare, err := u.badgeReplacer.InjectContributorBadge(ctx, loggedEntry.PrivateMessage.LoginName, badgeOverwrite)
-			if err != nil {
-				log.Logger.Info().Err(err).Str("login", loggedEntry.PrivateMessage.LoginName).Msg("failed to inject contributor badge")
-			}
-			prepareCmd.WriteString(contributorPrepare)
-
-			fakeInitialEvent = append(fakeInitialEvent, chat.ChatEventMessage{
-				IsFakeEvent: true,
-				Message:     loggedEntry.PrivateMessage,
-				DisplayModifier: chat.MessageContentModifier{
-					WordReplacements: contentOverwrite,
-					BadgeReplacement: badgeOverwrite,
-				},
-			})
+			fakeInitialEvent = append(fakeInitialEvent, event)
 		}
 
 		// prepend all messages
@@ -220,6 +200,38 @@ func (u *userInspect) init(initialEvents []chat.ChatEventMessage) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// prepareLoggedMessage enriches one stored history message. It lives in one
+// function so history and live chat share the same emote/badge/contributor
+// contract.
+func (u *userInspect) prepareLoggedMessage(ctx context.Context, userID string, loggedEntry messagelog.LogEntry) (chat.ChatEventMessage, string) {
+	var prepareCmd strings.Builder
+
+	prepare, contentOverwrite, _ := u.emoteReplacer.Replace(ctx, userID, loggedEntry.PrivateMessage.Message, loggedEntry.PrivateMessage.Emotes)
+	prepareCmd.WriteString(prepare)
+
+	prepare, badgeOverwrite, _ := u.badgeReplacer.Replace(ctx, userID, loggedEntry.PrivateMessage.Badges)
+	prepareCmd.WriteString(prepare)
+
+	if badgeOverwrite == nil {
+		badgeOverwrite = make(chat.WordReplacement)
+	}
+
+	contributorPrepare, err := u.badgeReplacer.InjectContributorBadge(ctx, loggedEntry.PrivateMessage.LoginName, badgeOverwrite)
+	if err != nil {
+		log.Logger.Info().Err(err).Str("login", loggedEntry.PrivateMessage.LoginName).Msg("failed to inject contributor badge")
+	}
+	prepareCmd.WriteString(contributorPrepare)
+
+	return chat.ChatEventMessage{
+		IsFakeEvent: true,
+		Message:     loggedEntry.PrivateMessage,
+		DisplayModifier: chat.MessageContentModifier{
+			WordReplacements: contentOverwrite,
+			BadgeReplacement: badgeOverwrite,
+		},
+	}, prepareCmd.String()
+}
+
 func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
@@ -247,7 +259,7 @@ func (u *userInspect) Update(msg tea.Msg) (*userInspect, tea.Cmd) {
 		}
 
 		u.handleResize()
-		u.chatWindow.moveToBottom()
+		u.chatWindow.MoveToBottom()
 		return u, tea.Batch(cmds...)
 	}
 

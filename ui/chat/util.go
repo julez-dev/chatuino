@@ -10,18 +10,14 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// duplicateBypass is the invisible rune the tab inserts to keep Twitch from
+// DuplicateBypass is the invisible rune the tab inserts to keep Twitch from
 // collapsing an intentionally repeated message. It must never be rendered.
-const duplicateBypass = rune(917504)
+const DuplicateBypass = rune(917504)
 
 var ansiRegex = regexp.MustCompile(`(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]`)
 
-func stripANSI(s string) string {
+func StripANSI(s string) string {
 	return ansiRegex.ReplaceAllString(s, "")
-}
-
-func clamp(v, low, high int) int {
-	return min(max(v, low), high)
 }
 
 func randomHexColor() string {
@@ -43,7 +39,7 @@ func stripDisplayNameEdges(str string) string {
 
 // Snippet normalizes a message into one line for a reply indicator or quote.
 func Snippet(message string) string {
-	message = strings.ReplaceAll(message, string(duplicateBypass), "")
+	message = strings.ReplaceAll(message, string(DuplicateBypass), "")
 
 	return strings.Join(strings.Fields(message), " ")
 }

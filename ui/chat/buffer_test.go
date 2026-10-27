@@ -13,39 +13,50 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestChatWindow(t *testing.T, height, entryCount int) *Buffer {
+func newTestBuffer(t *testing.T, height, entryCount int) *Buffer {
 	t.Helper()
 
 	c := New(40, height, save.BuildDefaultSettings(), save.BuildDefaultTheme())
 
 	for i := 0; i < entryCount; i++ {
-		c.lines = append(c.lines, fmt.Sprintf("line %d", i))
-		c.entries = append(c.entries, &Entry{
-			position: position{cursorStart: i, cursorEnd: i},
-		})
+		addPrivateMessage(t, c, fmt.Sprintf("msg-%d", i), fmt.Sprintf("line %d", i))
 	}
 
-	c.cursor = entryCount - 1
-	c.updatePort()
-
+	c.MoveToBottom()
 	return c
+}
+
+func lineCount(c *Buffer) int {
+	entries := c.Entries()
+	if len(entries) == 0 {
+		return 0
+	}
+
+	_, end, ok := c.LineRange(entries[len(entries)-1].ID)
+	if !ok {
+		return 0
+	}
+
+	return end + 1
 }
 
 func selectedLine(t *testing.T, c *Buffer) int {
 	t.Helper()
 
-	_, entry := c.entryForCurrentCursor()
-	require.NotNil(t, entry)
+	entry, ok := c.Selected()
+	require.True(t, ok)
+	start, _, ok := c.LineRange(entry.ID)
+	require.True(t, ok)
 
-	return entry.position.cursorStart
+	return start
 }
 
-func TestChatWindow_SelectAtViewportRow(t *testing.T) {
+func TestBuffer_SelectAtViewportRow(t *testing.T) {
 	t.Parallel()
 
-	c := newTestChatWindow(t, 4, 10)
+	c := newTestBuffer(t, 4, 10)
 
-	require.Equal(t, 6, c.lineStart, "cursor at bottom should scroll viewport to the last page")
+	require.Equal(t, 6, c.ViewportRenderStart(), "cursor at bottom should scroll viewport to the last page")
 
 	c.SelectAtViewportRow(0)
 	require.Equal(t, 6, selectedLine(t, c))
@@ -61,10 +72,10 @@ func TestChatWindow_SelectAtViewportRow(t *testing.T) {
 	require.Equal(t, 9, selectedLine(t, c))
 }
 
-func TestChatWindow_PageUpDown(t *testing.T) {
+func TestBuffer_PageUpDown(t *testing.T) {
 	t.Parallel()
 
-	c := newTestChatWindow(t, 4, 10)
+	c := newTestBuffer(t, 4, 10)
 	require.Equal(t, 9, selectedLine(t, c))
 
 	c.PageUp()
@@ -72,7 +83,7 @@ func TestChatWindow_PageUpDown(t *testing.T) {
 
 	c.PageUp()
 	require.Equal(t, 3, selectedLine(t, c))
-	require.Equal(t, 3, c.lineStart, "viewport should follow the selection upwards")
+	require.Equal(t, 3, c.ViewportRenderStart(), "viewport should follow the selection upwards")
 
 	c.PageDown()
 	require.Equal(t, 6, selectedLine(t, c))
@@ -85,10 +96,10 @@ func TestChatWindow_PageUpDown(t *testing.T) {
 	require.Equal(t, 9, selectedLine(t, c))
 }
 
-func TestChatWindow_ScrollByLines(t *testing.T) {
+func TestBuffer_ScrollByLines(t *testing.T) {
 	t.Parallel()
 
-	c := newTestChatWindow(t, 4, 10)
+	c := newTestBuffer(t, 4, 10)
 
 	c.ScrollByLines(-2)
 	require.Equal(t, 7, selectedLine(t, c))
@@ -104,87 +115,77 @@ func TestChatWindow_ScrollByLines(t *testing.T) {
 	require.Equal(t, 0, selectedLine(t, c))
 }
 
-func TestChatWindow_ScrollByLinesAdvancesThroughTallEntry(t *testing.T) {
+func TestBuffer_ScrollByLinesAdvancesThroughTallEntry(t *testing.T) {
 	t.Parallel()
 
 	c := New(40, 4, save.BuildDefaultSettings(), save.BuildDefaultTheme())
-	c.lines = []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"}
-	c.entries = []*Entry{
-		{position: position{cursorStart: 0, cursorEnd: 5}, selected: true},
-		{position: position{cursorStart: 6, cursorEnd: 6}},
-		{position: position{cursorStart: 7, cursorEnd: 7}},
-		{position: position{cursorStart: 8, cursorEnd: 8}},
-		{position: position{cursorStart: 9, cursorEnd: 9}},
-		{position: position{cursorStart: 10, cursorEnd: 10}},
-		{position: position{cursorStart: 11, cursorEnd: 11}},
+	first := addPrivateMessage(t, c, "tall", strings.Repeat("word ", 20))
+	for i := 0; i < 6; i++ {
+		addPrivateMessage(t, c, fmt.Sprintf("short-%d", i), "short")
 	}
-	c.cursor = 0
-	c.updatePort()
-	startLine := c.lineStart
+
+	c.MoveToTop()
+	startLine := c.ViewportRenderStart()
 
 	for range 3 {
 		c.ScrollByLines(3)
 	}
 
-	_, selected := c.entryForCurrentCursor()
-	require.NotSame(t, c.entries[0], selected, "wheel-down must not stay stuck in a tall selected message")
-	require.Greater(t, c.lineStart, startLine, "wheel-down must eventually move the viewport")
+	selected, ok := c.Selected()
+	require.True(t, ok)
+	require.NotEqual(t, first.ID, selected.ID, "wheel-down must not stay stuck in a tall selected message")
+	require.Greater(t, c.ViewportRenderStart(), startLine, "wheel-down must eventually move the viewport")
 }
 
-func TestChatWindow_EntryAtLineClamps(t *testing.T) {
+func TestBuffer_EntryAtLineClamps(t *testing.T) {
 	t.Parallel()
 
-	c := newTestChatWindow(t, 4, 3)
+	c := newTestBuffer(t, 4, 3)
 
-	_, first := c.entryAtLine(-10)
-	require.Equal(t, 0, first.position.cursorStart)
+	_, first := c.EntryAtLine(-10)
+	start, _, _ := c.LineRange(first.ID)
+	require.Equal(t, 0, start)
 
-	_, last := c.entryAtLine(100)
-	require.Equal(t, 2, last.position.cursorStart)
+	_, last := c.EntryAtLine(100)
+	start, _, _ = c.LineRange(last.ID)
+	require.Equal(t, 2, start)
 }
 
-func TestChatWindow_ClipboardText(t *testing.T) {
+func TestBuffer_ClipboardText(t *testing.T) {
 	t.Parallel()
-
-	c := New(40, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme())
 
 	user := "bob"
 	banDuration := 600
 
 	tests := []struct {
-		name  string
-		entry *Entry
-		want  string
+		name    string
+		message ChatEventMessage
+		want    string
 	}{
 		{
-			name:  "private message strips the duplicate bypass rune",
-			entry: &Entry{Event: ChatEventMessage{Message: &twitchirc.PrivateMessage{Message: "hello " + string(duplicateBypass) + "world"}}},
-			want:  "hello world",
+			name:    "private message strips the duplicate bypass rune",
+			message: ChatEventMessage{Message: &twitchirc.PrivateMessage{Message: "hello " + string(DuplicateBypass) + "world"}},
+			want:    "hello world",
 		},
 		{
-			name:  "notice",
-			entry: &Entry{Event: ChatEventMessage{Message: &twitchirc.Notice{Message: "notice text"}}},
-			want:  "notice text",
+			name:    "notice",
+			message: ChatEventMessage{Message: &twitchirc.Notice{Message: "notice text"}},
+			want:    "notice text",
 		},
 		{
-			name:  "cleared message",
-			entry: &Entry{Event: ChatEventMessage{Message: &twitchirc.ClearMessage{Login: "bob"}}},
-			want:  "A message from bob was removed.",
+			name:    "cleared message",
+			message: ChatEventMessage{Message: &twitchirc.ClearMessage{Login: "bob"}},
+			want:    "A message from bob was removed.",
 		},
 		{
-			name:  "timeout",
-			entry: &Entry{Event: ChatEventMessage{Message: &twitchirc.ClearChat{UserName: &user, BanDuration: &banDuration}}},
-			want:  "bob was timed out for 10 minutes",
+			name:    "timeout",
+			message: ChatEventMessage{Message: &twitchirc.ClearChat{UserName: &user, BanDuration: &banDuration}},
+			want:    "bob was timed out for 10 minutes",
 		},
 		{
-			name:  "announcement includes the author",
-			entry: &Entry{Event: ChatEventMessage{Message: &twitchirc.AnnouncementMessage{UserNotice: twitchirc.UserNotice{DisplayName: "alice"}, Message: "hello chat"}}},
-			want:  "alice: hello chat",
-		},
-		{
-			name:  "nil entry",
-			entry: nil,
-			want:  "",
+			name:    "announcement includes the author",
+			message: ChatEventMessage{Message: &twitchirc.AnnouncementMessage{UserNotice: twitchirc.UserNotice{DisplayName: "alice"}, Message: "hello chat"}},
+			want:    "alice: hello chat",
 		},
 	}
 
@@ -192,12 +193,20 @@ func TestChatWindow_ClipboardText(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, tt.want, c.clipboardText(tt.entry))
+			c := New(40, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme())
+			c.Append(tt.message)
+
+			entry, ok := c.Newest()
+			require.True(t, ok)
+			require.Equal(t, tt.want, c.ClipboardText(entry.ID))
 		})
 	}
+
+	c := New(40, 10, save.BuildDefaultSettings(), save.BuildDefaultTheme())
+	require.Empty(t, c.ClipboardText(EntryID(999)), "an unknown entry has no text")
 }
 
-func newRenderedChatWindow(t *testing.T, width, height int) *Buffer {
+func newRenderedBuffer(t *testing.T, width, height int) *Buffer {
 	t.Helper()
 
 	return New(width, height, save.BuildDefaultSettings(), save.BuildDefaultTheme())
@@ -220,65 +229,54 @@ func addPrivateMessage(t *testing.T, c *Buffer, id, content string) *Entry {
 	return entries[len(entries)-1]
 }
 
-// TestChatWindow_SelectionSurvivesReflow ensures the rendered-line index is
+// TestBuffer_SelectionSurvivesReflow ensures the rendered-line index is
 // rebuilt without losing the selected message when the width changes.
-func TestChatWindow_SelectionSurvivesReflow(t *testing.T) {
+func TestBuffer_SelectionSurvivesReflow(t *testing.T) {
 	t.Parallel()
 
-	c := newRenderedChatWindow(t, 80, 6)
+	c := newRenderedBuffer(t, 80, 6)
 
 	for i := 0; i < 5; i++ {
 		addPrivateMessage(t, c, fmt.Sprintf("msg-%d", i), strings.Repeat("word ", 10))
 	}
 
-	entries := c.activeEntries()
-	target := entries[1]
-	beforeLines := len(c.lines)
+	target := c.Entries()[1]
+	targetStart, _, ok := c.LineRange(target.ID)
+	require.True(t, ok)
+	beforeLines := lineCount(c)
 
-	c.SelectLine(target.position.cursorStart)
-	require.True(t, target.selected)
-	require.Equal(t, target.position.cursorStart, c.cursor)
+	c.Select(target.ID)
+	require.Equal(t, targetStart, selectedLine(t, c))
 
 	c.Resize(30, 6)
 
-	require.Same(t, target, c.selectedEntry(), "the same message stays selected after reflow")
-	require.Greater(t, len(c.lines), beforeLines, "narrower width must produce more rendered rows")
-	require.GreaterOrEqual(t, c.cursor, target.position.cursorStart)
-	require.LessOrEqual(t, c.cursor, target.position.cursorEnd)
+	selected, ok := c.Selected()
+	require.True(t, ok)
+	require.Equal(t, target.ID, selected.ID, "the same message stays selected after reflow")
+	require.Greater(t, lineCount(c), beforeLines, "narrower width must produce more rendered rows")
 
-	for i, e := range c.activeEntries() {
-		wantStart := 0
-		if i > 0 {
-			wantStart = c.activeEntries()[i-1].position.cursorEnd + 1
+	entries := c.Entries()
+	for i, entry := range entries {
+		startLine, endLine, ok := c.LineRange(entry.ID)
+		require.True(t, ok)
+		require.LessOrEqual(t, startLine, endLine)
+
+		if i == 0 {
+			require.Equal(t, 0, startLine)
+			continue
 		}
 
-		require.Equal(t, wantStart, e.position.cursorStart, "positions stay contiguous after reflow")
+		_, previousEnd, _ := c.LineRange(entries[i-1].ID)
+		require.Equal(t, previousEnd+1, startLine, "positions stay contiguous after reflow")
 	}
 }
 
-// selectedEntry returns the currently selected entry, failing the test when there
-// is none.
-func (c *Buffer) selectedEntry() *Entry {
-	_, entry := c.entryForCurrentCursor()
-	if entry != nil && entry.selected {
-		return entry
-	}
-
-	for _, e := range c.entries {
-		if e.selected {
-			return e
-		}
-	}
-
-	return nil
-}
-
-// TestChatWindow_DeletionRebuildsLinePositions checks that marking a message
+// TestBuffer_DeletionRebuildsLinePositions checks that marking a message
 // deleted restyles it and recalculates every position.
-func TestChatWindow_DeletionRebuildsLinePositions(t *testing.T) {
+func TestBuffer_DeletionRebuildsLinePositions(t *testing.T) {
 	t.Parallel()
 
-	c := newRenderedChatWindow(t, 80, 10)
+	c := newRenderedBuffer(t, 80, 10)
 
 	first := addPrivateMessage(t, c, "msg-1", "first message")
 	second := addPrivateMessage(t, c, "msg-2", "second message")
@@ -288,29 +286,40 @@ func TestChatWindow_DeletionRebuildsLinePositions(t *testing.T) {
 		TargetMsgID: second.Event.Message.(*twitchirc.PrivateMessage).ID,
 	}})
 
-	require.True(t, second.Deleted)
-	require.True(t, second.Event.DisplayModifier.Strikethrough)
+	entries := c.Entries()
+	var deleted Entry
+	for _, entry := range entries {
+		if entry.ID == second.ID {
+			deleted = entry
+		}
+	}
+
+	require.True(t, deleted.Deleted)
+	require.True(t, deleted.Event.DisplayModifier.Strikethrough)
 	require.False(t, first.Deleted)
 
-	// Re-rendered lines carry the strike-through sequence.
-	require.Contains(t, strings.Join(c.lines, "\n"), "\x1b[9m")
+	rows, _ := c.Rows(c.height)
+	require.Contains(t, strings.Join(rows, "\n"), "\x1b[9m")
 
-	for i, e := range c.activeEntries() {
-		wantStart := 0
-		if i > 0 {
-			wantStart = c.activeEntries()[i-1].position.cursorEnd + 1
+	for i, entry := range entries {
+		start, _, ok := c.LineRange(entry.ID)
+		require.True(t, ok)
+		if i == 0 {
+			require.Equal(t, 0, start)
+			continue
 		}
 
-		require.Equal(t, wantStart, e.position.cursorStart)
+		_, previousEnd, _ := c.LineRange(entries[i-1].ID)
+		require.Equal(t, previousEnd+1, start)
 	}
 }
 
-// TestChatWindow_SearchFiltersRebuildLinePositions covers the search seam: only
+// TestBuffer_SearchFiltersRebuildLinePositions covers the search seam: only
 // matching messages keep rendered rows, and their positions are recalculated.
-func TestChatWindow_SearchFiltersRebuildLinePositions(t *testing.T) {
+func TestBuffer_SearchFiltersRebuildLinePositions(t *testing.T) {
 	t.Parallel()
 
-	c := newRenderedChatWindow(t, 80, 10)
+	c := newRenderedBuffer(t, 80, 10)
 
 	addPrivateMessage(t, c, "msg-1", "alpha")
 	addPrivateMessage(t, c, "msg-2", "beta target")
@@ -318,34 +327,33 @@ func TestChatWindow_SearchFiltersRebuildLinePositions(t *testing.T) {
 
 	c.SetFilter("beta")
 
-	active := c.activeEntries()
-	require.Len(t, active, 1)
-	require.Equal(t, 0, active[0].position.cursorStart)
 	require.Equal(t, 1, c.FilterStatus().Matches)
-
-	// The visible lines only contain the matching message.
-	require.Len(t, c.lines, 1)
-	require.Contains(t, plain(c.lines), "beta target")
+	rows, _ := c.Rows(c.height)
+	require.Contains(t, strings.Join(rows, "\n"), "beta target")
+	require.NotContains(t, strings.Join(rows, "\n"), "gamma")
 
 	c.ClearFilter()
 
-	active = c.activeEntries()
-	require.Len(t, active, 3)
+	entries := c.Entries()
+	require.Len(t, entries, 3)
 
-	for i, e := range active {
-		wantStart := 0
-		if i > 0 {
-			wantStart = active[i-1].position.cursorEnd + 1
+	for i, entry := range entries {
+		start, _, ok := c.LineRange(entry.ID)
+		require.True(t, ok)
+		if i == 0 {
+			require.Equal(t, 0, start)
+			continue
 		}
 
-		require.Equal(t, wantStart, e.position.cursorStart)
+		_, previousEnd, _ := c.LineRange(entries[i-1].ID)
+		require.Equal(t, previousEnd+1, start)
 	}
 }
 
-func TestChatWindow_EmoteNameAt(t *testing.T) {
+func TestBuffer_EmoteNameAt(t *testing.T) {
 	t.Parallel()
 
-	c := newTestChatWindow(t, 4, 3)
+	c := newTestBuffer(t, 4, 3)
 
 	emoteLine := "  hi \x1b[38;2;0;0;7m\U0010EEEE\U0010EEEE\x1b[39m there"
 	c.lines[2] = emoteLine
@@ -379,12 +387,12 @@ func TestChatWindow_EmoteNameAt(t *testing.T) {
 	require.False(t, ok)
 }
 
-// TestChatWindow_SmoothScrollFollowIsBounded pins the frame budget of the follow
+// TestBuffer_SmoothScrollFollowIsBounded pins the frame budget of the follow
 // animation. Every frame re-renders the whole layout and chat keeps arriving while
 // the window scrolls, so an animation that needs dozens of frames to converge never
 // settles at real message rates: it is re-armed by the next message and the 60Hz
 // tick runs for as long as the channel is active.
-func TestChatWindow_SmoothScrollFollowIsBounded(t *testing.T) {
+func TestBuffer_SmoothScrollFollowIsBounded(t *testing.T) {
 	t.Parallel()
 
 	// frameBudget is asserted as a literal so the test keeps catching a raise of the
@@ -395,7 +403,7 @@ func TestChatWindow_SmoothScrollFollowIsBounded(t *testing.T) {
 	newAnimating := func(t *testing.T) *Buffer {
 		t.Helper()
 
-		c := newTestChatWindow(t, 10, 40)
+		c := newTestBuffer(t, 10, 40)
 		c.settings.Chat.SmoothScroll = true
 		require.NotNil(t, c.startAnimating())
 
@@ -468,34 +476,36 @@ func viewRows(t *testing.T, c *Buffer) []string {
 	return rows
 }
 
-// TestChatWindow_ReplyContextKeepsItsRow pins that the reference row belongs to the reply
+// TestBuffer_ReplyContextKeepsItsRow pins that the reference row belongs to the reply
 // entry, so selection, wrapping and cleanup treat it as part of the message.
-func TestChatWindow_ReplyContextKeepsItsRow(t *testing.T) {
+func TestBuffer_ReplyContextKeepsItsRow(t *testing.T) {
 	t.Parallel()
 
 	c, reply := replyTestWindow(t, save.BuildDefaultSettings())
-
-	require.Equal(t, reply.position.cursorStart+1, reply.position.cursorEnd)
+	start, end, ok := c.LineRange(reply.ID)
+	require.True(t, ok)
+	require.Equal(t, start+1, end)
 
 	rows := viewRows(t, c)
-	reference := rows[reply.position.cursorStart-c.ViewportRenderStart()]
+	reference := rows[start-c.ViewportRenderStart()]
 
 	require.Contains(t, ansi.Strip(reference), "↩ Alice: that was a great play")
-	require.Contains(t, ansi.Strip(rows[reply.position.cursorEnd-c.ViewportRenderStart()]), fmt.Sprintf("%s: no it wasn't", "carol"))
+	require.Contains(t, ansi.Strip(rows[end-c.ViewportRenderStart()]), fmt.Sprintf("%s: no it wasn't", "carol"))
 }
 
 func TestBuffer_UpdateNotice(t *testing.T) {
 	t.Parallel()
 
-	c := newRenderedChatWindow(t, 80, 10)
+	c := newRenderedBuffer(t, 80, 10)
 	c.Append(ChatEventMessage{Message: &twitchirc.Notice{
 		MsgID:   "redemption-1",
 		Message: "waiting for fulfilment",
 	}})
 
 	require.True(t, c.ReplaceNotice("redemption-1", "fulfilled"))
-	require.Len(t, c.entries, 1, "updating a notice must not append an entry")
-	require.Contains(t, plain(c.lines), "fulfilled")
+	require.Len(t, c.Entries(), 1, "updating a notice must not append an entry")
+	rows, _ := c.Rows(c.height)
+	require.Contains(t, plain(rows), "fulfilled")
 	require.False(t, c.ReplaceNotice("missing", "ignored"))
 }
 
@@ -514,7 +524,8 @@ func TestBuffer_ShortQueryAfterActiveFilterKeepsAppending(t *testing.T) {
 	require.False(t, b.IsFiltering(), "a short query must stop the active filter")
 
 	addPrivateMessage(t, b, "msg-2", "beta target")
-	require.Contains(t, strings.Join(b.RawRows(), "\n"), "beta target", "messages keep rendering after the filter is cleared")
+	rows, _ := b.Rows(b.height)
+	require.Contains(t, strings.Join(rows, "\n"), "beta target", "messages keep rendering after the filter is cleared")
 }
 
 func TestBuffer_ShortQueryCountsRunesNotBytes(t *testing.T) {

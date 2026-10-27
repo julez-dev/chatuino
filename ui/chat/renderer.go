@@ -341,9 +341,9 @@ func (r *messageRenderer) setUserColorModifier(content string, modifier *Message
 func (r *messageRenderer) wordwrapMessage(prefix, content string, style *lipgloss.Style) []string {
 	// Strip duplicate-bypass rune (U+E0000) used to bypass Twitch spam detection.
 	// Guard with ContainsRune to avoid allocating when the rune isn't present (vast majority of messages).
-	if strings.ContainsRune(content, duplicateBypass) {
+	if strings.ContainsRune(content, DuplicateBypass) {
 		content = strings.Map(func(r rune) rune {
-			if r == duplicateBypass {
+			if r == DuplicateBypass {
 				return -1
 			}
 			return r

@@ -91,7 +91,7 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			msg = fmt.Sprintf("%s is now offline!", info.Username)
 		}
 
-		l.chatWindow.handleMessage(chat.ChatEventMessage{
+		l.chatWindow.Append(chat.ChatEventMessage{
 			Message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -181,11 +181,11 @@ func (l *liveNotificationTab) ChannelID() string {
 
 func (l *liveNotificationTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	if msg.Button == tea.MouseLeft {
-		if l.chatWindow.handleChatClick(y, x) {
+		if l.chatWindow.HandleChatClick(y, x) {
 			return nil
 		}
 
-		l.chatWindow.selectAtViewportRow(y)
+		l.chatWindow.SelectAtViewportRow(y)
 	}
 
 	return nil
@@ -193,7 +193,7 @@ func (l *liveNotificationTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) 
 
 func (l *liveNotificationTab) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 	if delta := WheelDelta(msg); delta != 0 {
-		l.chatWindow.scrollByLines(delta)
+		l.chatWindow.ScrollByLines(delta)
 		l.chatWindow.SnapScroll()
 	}
 

@@ -27,7 +27,7 @@ func indicatorLine(view string) string {
 	return strings.SplitN(view, "\n", 2)[0]
 }
 
-func Test_composer_View_frame(t *testing.T) {
+func Test_composer_ViewRendersFrameAndCounter(t *testing.T) {
 	t.Parallel()
 
 	input := newTestComposer(t, 40)
@@ -44,7 +44,7 @@ func Test_composer_View_frame(t *testing.T) {
 	}
 }
 
-func Test_composer_replyIndicator(t *testing.T) {
+func Test_composer_ViewRendersReplyIndicator(t *testing.T) {
 	t.Parallel()
 
 	t.Run("no armed reply adds no row", func(t *testing.T) {
@@ -94,7 +94,7 @@ func Test_composer_replyIndicator(t *testing.T) {
 	})
 }
 
-func Test_composer_Height_tracksReply(t *testing.T) {
+func Test_composer_HeightTracksReply(t *testing.T) {
 	t.Parallel()
 
 	input := newTestComposer(t, 80)
@@ -110,7 +110,7 @@ func Test_composer_Height_tracksReply(t *testing.T) {
 	require.False(t, input.ClearReply(), "nothing left to clear")
 }
 
-func Test_composer_Update_reportsHeightChange(t *testing.T) {
+func Test_composer_UpdateReportsHeightChange(t *testing.T) {
 	t.Parallel()
 
 	input := newTestComposer(t, 20)
@@ -150,4 +150,17 @@ func TestUserPalette_ComposerSeesUpdatesThroughReadOnlyInterface(t *testing.T) {
 	palette.Prune(nil)
 	input.SetValue("@al")
 	require.NotContains(t, input.View(), "@alice")
+}
+
+func Test_composer_SubmitConsumesReply(t *testing.T) {
+	t.Parallel()
+
+	c := newTestComposer(t, 80)
+
+	require.Empty(t, c.Submit().ReplyTo, "no armed reply yields no message ID")
+
+	c.ArmReply("msg-1", "other", "hi")
+	require.Equal(t, "msg-1", c.Submit().ReplyTo)
+	require.False(t, c.ReplyArmed(), "taking disarms the reply")
+	require.Empty(t, c.Submit().ReplyTo, "a reply target is only used once")
 }

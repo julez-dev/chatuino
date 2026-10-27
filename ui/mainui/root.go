@@ -392,7 +392,7 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = f.Close()
 			}()
 
-			_, _ = io.Copy(f, strings.NewReader(tab.StripANSI(r.renderView())))
+			_, _ = io.Copy(f, strings.NewReader(chat.StripANSI(r.renderView())))
 
 			return r, nil
 		}

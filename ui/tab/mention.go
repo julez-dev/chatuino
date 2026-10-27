@@ -98,7 +98,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 
 		if msg.err != nil {
 			msg := fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error())
-			m.chatWindow.handleMessage(chat.ChatEventMessage{
+			m.chatWindow.Append(chat.ChatEventMessage{
 				Message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -111,7 +111,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 		}
 
 		notice := fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", "))
-		m.chatWindow.handleMessage(chat.ChatEventMessage{
+		m.chatWindow.Append(chat.ChatEventMessage{
 			Message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -229,11 +229,11 @@ func (m *mentionTab) ChannelID() string {
 
 func (m *mentionTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 	if msg.Button == tea.MouseLeft {
-		if m.chatWindow.handleChatClick(y, x) {
+		if m.chatWindow.HandleChatClick(y, x) {
 			return nil
 		}
 
-		m.chatWindow.selectAtViewportRow(y)
+		m.chatWindow.SelectAtViewportRow(y)
 	}
 
 	return nil
@@ -241,7 +241,7 @@ func (m *mentionTab) HandleMouseClick(msg tea.MouseClickMsg, x, y int) tea.Cmd {
 
 func (m *mentionTab) HandleMouseWheel(msg tea.MouseWheelMsg, x, y int) tea.Cmd {
 	if delta := WheelDelta(msg); delta != 0 {
-		m.chatWindow.scrollByLines(delta)
+		m.chatWindow.ScrollByLines(delta)
 		m.chatWindow.SnapScroll()
 	}
 

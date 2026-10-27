@@ -19,7 +19,7 @@ func Test_Snippet(t *testing.T) {
 		{name: "empty message", message: "", want: ""},
 		{name: "newlines and tabs collapse", message: "line one\n\tline two", want: "line one line two"},
 		{name: "repeated whitespace collapses", message: "too    many     spaces", want: "too many spaces"},
-		{name: "duplicate bypass rune stripped", message: "spam" + string(duplicateBypass), want: "spam"},
+		{name: "duplicate bypass rune stripped", message: "spam" + string(DuplicateBypass), want: "spam"},
 	}
 
 	for _, tt := range tests {

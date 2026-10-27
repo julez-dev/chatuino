@@ -273,13 +273,12 @@ func (b *Buffer) ReplaceNotice(id, message string) bool {
 
 // Entry returns one entry by ID.
 func (b *Buffer) Entry(id EntryID) (Entry, bool) {
-	for _, entry := range b.entries {
-		if entry.ID == id {
-			return *entry, true
-		}
+	entry := b.entryByID(id)
+	if entry == nil {
+		return Entry{}, false
 	}
 
-	return Entry{}, false
+	return *entry, true
 }
 
 // Entries returns a copy of the transcript entries in order.
@@ -305,7 +304,7 @@ func (b *Buffer) EntryAtLine(line int) (int, *Entry) {
 
 // LineRange returns the absolute rendered rows occupied by an entry.
 func (b *Buffer) LineRange(id EntryID) (int, int, bool) {
-	entry := b.entryPtr(id)
+	entry := b.entryByID(id)
 	if entry == nil {
 		return 0, 0, false
 	}
@@ -425,14 +424,13 @@ func (b *Buffer) Hit(row int) (EntryID, bool) {
 
 // Select selects an entry by ID.
 func (b *Buffer) Select(id EntryID) bool {
-	entry, ok := b.Entry(id)
-	if !ok {
+	entry := b.entryByID(id)
+	if entry == nil {
 		return false
 	}
 
-	b.selectEntry(b.entryPtr(id))
-
-	return entry.ID == id
+	b.selectEntry(entry)
+	return true
 }
 
 // SelectLine selects the entry containing the absolute rendered line.
@@ -487,7 +485,7 @@ func (b *Buffer) MessageUp(n int) {
 
 // ClipboardText returns the plain-text form of one entry.
 func (b *Buffer) ClipboardText(id EntryID) string {
-	entry := b.entryPtr(id)
+	entry := b.entryByID(id)
 	return b.clipboardText(entry)
 }
 
@@ -625,7 +623,7 @@ func (b *Buffer) snapScroll() {
 	b.animatingFrames = 0
 }
 
-func (b *Buffer) entryPtr(id EntryID) *Entry {
+func (b *Buffer) entryByID(id EntryID) *Entry {
 	for _, entry := range b.entries {
 		if entry.ID == id {
 			return entry
@@ -764,24 +762,16 @@ func (b *Buffer) goToEntry(entry *Entry) {
 }
 
 func (b *Buffer) messageDown(n int) {
-	active := b.activeEntries()
-	if len(active) < 1 {
-		return
-	}
-
-	i, entry := b.entryForCurrentCursor()
-	if i == -1 {
-		return
-	}
-
-	entry.selected = false
-	i = clamp(i+n, 0, len(active)-1)
-	active[i].selected = true
-	b.cursor = active[i].position.cursorEnd
-	b.updatePort()
+	b.moveMessage(n, true)
 }
 
 func (b *Buffer) messageUp(n int) {
+	b.moveMessage(-n, false)
+}
+
+// moveMessage selects the active entry n positions away. atEnd chooses the
+// entry's last row for down/tail movement and its first row for up movement.
+func (b *Buffer) moveMessage(delta int, atEnd bool) {
 	active := b.activeEntries()
 	if len(active) < 1 {
 		return
@@ -793,9 +783,13 @@ func (b *Buffer) messageUp(n int) {
 	}
 
 	entry.selected = false
-	i = clamp(i-n, 0, len(active)-1)
+	i = min(max(i+delta, 0), len(active)-1)
 	active[i].selected = true
-	b.cursor = active[i].position.cursorStart
+	if atEnd {
+		b.cursor = active[i].position.cursorEnd
+	} else {
+		b.cursor = active[i].position.cursorStart
+	}
 	b.updatePort()
 }
 
@@ -857,23 +851,9 @@ func (b *Buffer) applyTimeout(msg ChatEventMessage) {
 		return
 	}
 
-	var hasDeleted bool
-	for _, entry := range b.entries {
-		privMsg, ok := entry.Event.Message.(*twitchirc.PrivateMessage)
-		if !ok {
-			continue
-		}
-
-		if strings.EqualFold(privMsg.LoginName, *timeoutMsg.UserName) && !entry.Deleted {
-			hasDeleted = true
-			entry.Deleted = true
-			entry.Event.DisplayModifier.Strikethrough = true
-		}
-	}
-
-	if hasDeleted {
-		b.recalculateLines()
-	}
+	b.markDeleted(func(private *twitchirc.PrivateMessage) bool {
+		return strings.EqualFold(private.LoginName, *timeoutMsg.UserName)
+	})
 }
 
 func (b *Buffer) applyDeletion(msg ChatEventMessage) {
@@ -882,18 +862,22 @@ func (b *Buffer) applyDeletion(msg ChatEventMessage) {
 		return
 	}
 
+	b.markDeleted(func(private *twitchirc.PrivateMessage) bool {
+		return strings.EqualFold(private.ID, clearMsg.TargetMsgID)
+	})
+}
+
+func (b *Buffer) markDeleted(match func(*twitchirc.PrivateMessage) bool) {
 	var hasDeleted bool
 	for _, entry := range b.entries {
-		privMsg, ok := entry.Event.Message.(*twitchirc.PrivateMessage)
-		if !ok {
+		private, ok := entry.Event.Message.(*twitchirc.PrivateMessage)
+		if !ok || entry.Deleted || !match(private) {
 			continue
 		}
 
-		if strings.EqualFold(privMsg.ID, clearMsg.TargetMsgID) && !entry.Deleted {
-			hasDeleted = true
-			entry.Deleted = true
-			entry.Event.DisplayModifier.Strikethrough = true
-		}
+		hasDeleted = true
+		entry.Deleted = true
+		entry.Event.DisplayModifier.Strikethrough = true
 	}
 
 	if hasDeleted {
@@ -908,7 +892,7 @@ func (b *Buffer) clipboardText(entry *Entry) string {
 
 	switch msg := entry.Event.Message.(type) {
 	case *twitchirc.PrivateMessage:
-		return strings.ReplaceAll(msg.Message, string(duplicateBypass), "")
+		return strings.ReplaceAll(msg.Message, string(DuplicateBypass), "")
 	case *twitchirc.AnnouncementMessage:
 		return fmt.Sprintf("%s: %s", msg.DisplayName, msg.Message)
 	case *twitchirc.SubMessage:
@@ -987,7 +971,7 @@ func (b *Buffer) calculateViewport() {
 	}
 
 	if len(b.lines) > 0 {
-		b.cursor = clamp(b.cursor, 0, len(b.lines)-1)
+		b.cursor = min(max(b.cursor, 0), len(b.lines)-1)
 	} else {
 		b.cursor = 0
 		b.lineStart = 0
@@ -1240,20 +1224,17 @@ func (b *Buffer) DebugDump() {
 		panic(err)
 	}
 
-	_, _ = f.Write([]byte(stripANSI(string(bytes))))
+	_, _ = f.Write([]byte(StripANSI(string(bytes))))
 }
 
-// Badge returns the new-message badge text and its rendered width.
 func (b *Buffer) Badge() (string, int) {
 	return b.newMessageBadge()
 }
 
-// BadgeSpan locates the badge in the rendered rows.
 func (b *Buffer) BadgeSpan(renderStart, height, width int) (row, col int, ok bool) {
 	return b.newMessageBadgeSpan(renderStart, height, width)
 }
 
-// BadgeHit reports whether a cell hits the badge.
 func (b *Buffer) BadgeHit(row, col int) bool {
 	return b.newMessageBadgeHit(row, col)
 }
@@ -1263,7 +1244,6 @@ func (b *Buffer) TimePaddingWidth() int {
 	return b.renderer.timePaddingWidth
 }
 
-// CursorLine returns the absolute rendered line of the selected entry.
 func (b *Buffer) CursorLine() int {
 	_, entry := b.entryForCurrentCursor()
 	if entry == nil {
@@ -1273,14 +1253,10 @@ func (b *Buffer) CursorLine() int {
 	return entry.position.cursorStart
 }
 
-// NewestPtr returns the newest entry without copying it. Callers that need a
-// live view of selection (the badge click) use this; the public Newest returns
-// a value snapshot.
 func (b *Buffer) NewestPtr() *Entry {
 	return b.newestEntry()
 }
 
-// RawRows returns the rendered rows without the selection indicator or badge.
 func (b *Buffer) RawRows() []string {
 	return b.lines
 }
