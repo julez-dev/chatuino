@@ -3,6 +3,7 @@ package mainui
 import (
 	"context"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -816,4 +817,25 @@ func TestRoot_ResizeRefreshesCellSize(t *testing.T) {
 
 	root.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	require.Equal(t, 1, refreshes)
+}
+
+func TestRoot_NoticeIsTransient(t *testing.T) {
+	t.Parallel()
+
+	root := newTestRoot(t, nil, map[string]tab.ClientCapabilities{}, nil)
+	root.hasLoadedSession = true
+
+	root.setNotice("something happened")
+	require.Equal(t, "something happened", root.notice)
+
+	sendThemeMsg(t, root, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	require.Empty(t, root.notice, "the next key press dismisses the notice")
+
+	// The notice replaces the bottom row instead of pushing the layout taller.
+	root.setNotice("themes/broken.yaml: field chat_streamer_colour not found")
+	view := root.withNotice("row-1\nrow-2")
+	lines := strings.Split(view, "\n")
+
+	require.Len(t, lines, 2, "the notice must not add a row")
+	require.Contains(t, lines[1], "chat_streamer_colour")
 }

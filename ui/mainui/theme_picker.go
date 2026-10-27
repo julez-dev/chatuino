@@ -147,19 +147,19 @@ func (p *themePicker) previewCmd() tea.Cmd {
 
 func (p *themePicker) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 	if pressed, ok := msg.(tea.KeyPressMsg); ok {
-		if key.Matches(pressed, p.keymap.Confirm) {
-			if entry, ok := p.selected(); ok && entry.Selectable() {
-				return p, func() tea.Msg { return themeChoiceMessage{id: entry.ID} }
-			}
-
-			return p, func() tea.Msg {
-				return themeRejectedMessage{message: "this theme file is broken and can't be selected"}
-			}
-		}
-
-		// The filter input captures printable keys; only apply preview keys while
-		// the list is not filtering.
+		// While the filter is being edited, enter applies the filter instead of
+		// committing a theme; escape clears the filter (see BlocksEscape).
 		if !p.list.SettingFilter() {
+			if key.Matches(pressed, p.keymap.Confirm) {
+				if entry, ok := p.selected(); ok && entry.Selectable() {
+					return p, func() tea.Msg { return themeChoiceMessage{id: entry.ID} }
+				}
+
+				return p, func() tea.Msg {
+					return themeRejectedMessage{message: "this theme file is broken and can't be selected"}
+				}
+			}
+
 			switch {
 			case key.Matches(pressed, p.keymap.Up):
 				p.list.CursorUp()
@@ -170,13 +170,37 @@ func (p *themePicker) Update(msg tea.Msg) (nav.Screen, tea.Cmd) {
 
 				return p, p.previewCmd()
 			}
+
+			// Type-to-filter: the first printable key starts the filter and is
+			// consumed by it, so no key has to be learned to search the list.
+			if _, ok := printableText(pressed); ok {
+				p.list.SetFilterState(list.Filtering)
+			}
 		}
 	}
 
 	var cmd tea.Cmd
 	p.list, cmd = p.list.Update(msg)
 
-	return p, cmd
+	// The filter can move the selection (accepting or clearing it), so preview
+	// whatever the list now points at.
+	return p, tea.Batch(cmd, p.previewCmd())
+}
+
+// BlocksEscape keeps the shell from closing the picker while the filter input
+// is capturing keys: the first escape clears the filter, the second one cancels.
+func (p *themePicker) BlocksEscape() bool {
+	return p.list.SettingFilter()
+}
+
+// printableText returns the text of a key press that should be typed into the
+// filter, i.e. a printable rune without modifiers.
+func printableText(msg tea.KeyPressMsg) (string, bool) {
+	if msg.Text == "" || msg.Mod.Contains(tea.ModCtrl) || msg.Mod.Contains(tea.ModAlt) {
+		return "", false
+	}
+
+	return msg.Text, true
 }
 
 func (p *themePicker) View() string {
@@ -186,7 +210,7 @@ func (p *themePicker) View() string {
 		p.keymap.Up.Help().Key + "/" + p.keymap.Down.Help().Key + ": preview",
 		p.keymap.Confirm.Help().Key + ": save",
 		p.keymap.Escape.Help().Key + ": cancel",
-		"/: filter",
+		"type: filter",
 	}, " • ")
 
 	content := title + "\n\n" + p.list.View() + "\n" + hints

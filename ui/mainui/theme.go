@@ -2,10 +2,8 @@ package mainui
 
 import (
 	"fmt"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/tab"
 )
@@ -98,40 +96,4 @@ func (r *Root) openThemePicker() tea.Cmd {
 	picker.Resize(r.width, r.height)
 
 	return r.stack.Push(picker)
-}
-
-func (r *Root) setNotice(message string) {
-	r.notice = message
-}
-
-// noticeLine renders the one-line notice, clipped to the terminal width.
-func (r *Root) noticeLine() string {
-	if r.notice == "" || r.width <= 0 {
-		return ""
-	}
-
-	text := r.notice
-	if runes := []rune(text); len(runes) > r.width {
-		text = string(runes[:r.width])
-	}
-
-	return lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(r.theme.ListBackgroundColor)).
-		Background(lipgloss.Color(r.theme.ChatNoticeAlertColor)).
-		Render(text)
-}
-
-// withNotice replaces the bottom screen row with the notice, so nothing shifts
-// and the message cannot push the layout past the terminal height.
-func (r *Root) withNotice(view string) string {
-	line := r.noticeLine()
-	if line == "" || view == "" {
-		return view
-	}
-
-	lines := strings.Split(view, "\n")
-	lines[len(lines)-1] = line
-
-	return strings.Join(lines, "\n")
 }

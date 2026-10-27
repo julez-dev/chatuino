@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -298,16 +297,6 @@ func (c *ThemeCatalog) defaultResolution() ThemeResolution {
 	return ThemeResolution{ID: DefaultThemeID, Theme: BuildDefaultTheme()}
 }
 
-// ConfigDir returns the chatuino configuration directory.
-func ConfigDir() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return chatuinoConfigDir
-	}
-
-	return filepath.Join(dir, chatuinoConfigDir)
-}
-
 func loadThemeCatalog(fsys afero.Fs, configDir string) (*ThemeCatalog, error) {
 	entries := map[string]ThemeEntry{}
 
@@ -590,7 +579,7 @@ func (m *ThemeManager) Warnings() []string { return m.warnings }
 
 // SettingsPath returns the settings file a selection is persisted to.
 func (m *ThemeManager) SettingsPath() string {
-	return filepath.Join(m.configDir, settingsFileName)
+	return settingsFilePath(m.configDir)
 }
 
 // Reload re-reads the theme catalog, so a theme file copied into the themes

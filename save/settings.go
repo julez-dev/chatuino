@@ -18,13 +18,20 @@ import (
 
 const (
 	settingsFileName = "settings.yaml"
-	maxGraphicScale  = 4 // must not exceed kittyimg.MaxRows
+	// themeSettingKey is the settings.yaml key holding the active theme id.
+	themeSettingKey = "theme"
+	maxGraphicScale = 4 // must not exceed kittyimg.MaxRows
 )
 
 // SettingsPath is where SettingsFromDisk reads the settings from. It is used in
 // user-facing messages so an error can point at the file to edit.
 func SettingsPath() string {
-	return filepath.Join(ConfigDir(), settingsFileName)
+	return settingsFilePath(ConfigDir())
+}
+
+// settingsFilePath is the settings file inside a chatuino config directory.
+func settingsFilePath(configDir string) string {
+	return filepath.Join(configDir, settingsFileName)
 }
 
 type Settings struct {
@@ -192,7 +199,7 @@ func SetThemeSetting(fsys afero.Fs, path, id string) error {
 		return fmt.Errorf("failed to update %s: %w", path, err)
 	}
 
-	setMappingValue(root, "theme", id)
+	setMappingValue(root, themeSettingKey, id)
 
 	var buf bytes.Buffer
 

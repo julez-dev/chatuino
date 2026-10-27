@@ -34,6 +34,12 @@ type updateNotifier interface {
 	SetUpdateAvailable(latest string)
 }
 
+// escapeBlocker is implemented by modals that own Escape themselves, e.g. to
+// clear a filter before the modal is closed.
+type escapeBlocker interface {
+	BlocksEscape() bool
+}
+
 // localFilters is implemented by tabs that keep per-tab display filters, which
 // the shell persists and restores with the rest of the app state.
 type localFilters interface {
@@ -401,6 +407,14 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if key.Matches(msg, r.keymap.Escape) {
 			if r.stack.Len() > 0 {
+				// A modal that is capturing keys (the theme picker's filter, for
+				// example) gets the first escape; the next one closes it.
+				if top, ok := r.stack.Top(); ok {
+					if blocker, ok := top.(escapeBlocker); ok && blocker.BlocksEscape() {
+						return r, r.stack.Update(msg)
+					}
+				}
+
 				return r, r.dismissModal()
 			}
 		}
@@ -861,6 +875,43 @@ func (r *Root) handleResize() {
 }
 
 func (r *Root) nextTab() { r.stepTab(1) }
+
+// setNotice shows a one-line message on the bottom row until the next key press.
+func (r *Root) setNotice(message string) {
+	r.notice = message
+}
+
+// noticeLine renders the notice, clipped to the terminal width.
+func (r *Root) noticeLine() string {
+	if r.notice == "" || r.width <= 0 {
+		return ""
+	}
+
+	text := r.notice
+	if runes := []rune(text); len(runes) > r.width {
+		text = string(runes[:r.width])
+	}
+
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(r.theme.ListBackgroundColor)).
+		Background(lipgloss.Color(r.theme.ChatNoticeAlertColor)).
+		Render(text)
+}
+
+// withNotice replaces the bottom screen row with the notice, so nothing shifts
+// and the message cannot push the layout past the terminal height.
+func (r *Root) withNotice(view string) string {
+	line := r.noticeLine()
+	if line == "" || view == "" {
+		return view
+	}
+
+	lines := strings.Split(view, "\n")
+	lines[len(lines)-1] = line
+
+	return strings.Join(lines, "\n")
+}
 
 func (r *Root) prevTab() { r.stepTab(-1) }
 

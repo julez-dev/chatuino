@@ -70,11 +70,14 @@ Only files directly inside the `themes` directory ending in `.yaml` or `.yml`
 are read. Subdirectories, hidden files, editor swap files and other extensions
 are ignored. Ids are lowercase, so `My-Theme.yaml` and `my-theme.yaml` are the
 same theme. If two files claim the same id the theme is flagged as unusable in
-the picker with both file names, instead of one of them silently winning.
+the picker with both file names, instead of one of them silently winning — that
+id stays unavailable until one of the files is renamed, so a conflicting copy
+cannot silently pin an old palette.
 
 ### Overriding a built-in theme
 
-A file in the `themes` directory wins over a built-in theme with the same id.
+A file in the `themes` directory wins over a built-in theme with the same id
+(and an unusable file also hides the built-in for that id until it is fixed).
 To tweak the default instead of starting from scratch, drop a partial file at
 `themes/nord.yaml`:
 
