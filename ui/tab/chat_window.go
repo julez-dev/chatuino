@@ -252,16 +252,8 @@ func (c *chatWindow) selectEntry(entry *chat.Entry) {
 }
 
 // moveSelectionByLines moves the selection by n rendered lines.
-func (c *chatWindow) moveSelectionByLines(n int) {
-	c.buffer.Move(n)
-}
-
 func (c *chatWindow) pageUp() {
 	c.buffer.PageUp()
-}
-
-func (c *chatWindow) pageDown() {
-	c.buffer.PageDown()
 }
 
 func (c *chatWindow) scrollByLines(n int) {
@@ -284,29 +276,8 @@ func (c *chatWindow) selectAtViewportRow(row int) {
 	c.buffer.SelectAtViewportRow(row)
 }
 
-func (c *chatWindow) goToEntry(entry *chat.Entry) {
-	if entry == nil {
-		return
-	}
-
-	c.buffer.Select(entry.ID)
-	c.buffer.SnapScroll()
-}
-
-func (c *chatWindow) messageDown(n int) {
-	c.buffer.MessageDown(n)
-}
-
-func (c *chatWindow) messageUp(n int) {
-	c.buffer.MessageUp(n)
-}
-
 func (c *chatWindow) moveToBottom() {
 	c.buffer.MoveToBottom()
-}
-
-func (c *chatWindow) moveToTop() {
-	c.buffer.MoveToTop()
 }
 
 func (c *chatWindow) getNewestEntry() *chat.Entry {
@@ -319,18 +290,6 @@ func (c *chatWindow) handleMessage(msg chat.ChatEventMessage) tea.Cmd {
 
 func (c *chatWindow) updateNotice(id, message string) bool {
 	return c.buffer.ReplaceNotice(id, message)
-}
-
-func (c *chatWindow) clipboardText(entry *chat.Entry) string {
-	if entry == nil {
-		return ""
-	}
-
-	return c.buffer.ClipboardText(entry.ID)
-}
-
-func (c *chatWindow) atTail() bool {
-	return c.buffer.CaughtUp()
 }
 
 func (c *chatWindow) caughtUp() bool {
@@ -347,10 +306,6 @@ func (c *chatWindow) LineRange(entry *chat.Entry) (int, int, bool) {
 	}
 
 	return c.buffer.LineRange(entry.ID)
-}
-
-func (c *chatWindow) debugDumpChat() {
-	c.buffer.DebugDump()
 }
 
 func (c *chatWindow) applySearch() {
@@ -414,8 +369,4 @@ func (c *chatWindow) newMessageBadge() (string, int) {
 
 func (c *chatWindow) newMessageBadgeSpan(renderStart, height, width int) (int, int, bool) {
 	return c.buffer.BadgeSpan(renderStart, height, width)
-}
-
-func (c *chatWindow) newMessageBadgeHit(row, col int) bool {
-	return c.buffer.BadgeHit(row, col)
 }
