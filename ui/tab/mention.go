@@ -98,7 +98,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 
 		if msg.err != nil {
 			msg := fmt.Sprintf("Failed to load user accounts: %s", msg.err.Error())
-			m.chatWindow.Append(chat.ChatEventMessage{
+			scrollCmd := m.chatWindow.Append(chat.ChatEventMessage{
 				Message: &twitchirc.Notice{
 					FakeTimestamp: time.Now(),
 					MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -107,11 +107,11 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 				IsFakeEvent: true,
 			})
 
-			return m, nil
+			return m, scrollCmd
 		}
 
 		notice := fmt.Sprintf("Displaying mentions of: %s", strings.Join(m.usernames, ", "))
-		m.chatWindow.Append(chat.ChatEventMessage{
+		scrollCmd := m.chatWindow.Append(chat.ChatEventMessage{
 			Message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -120,7 +120,7 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			IsFakeEvent: true,
 		})
 
-		return m, nil
+		return m, scrollCmd
 	}
 
 	if event, ok := msg.(chat.ChatEventMessage); ok {

@@ -91,7 +91,7 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			msg = fmt.Sprintf("%s is now offline!", info.Username)
 		}
 
-		l.chatWindow.Append(chat.ChatEventMessage{
+		scrollCmd := l.chatWindow.Append(chat.ChatEventMessage{
 			Message: &twitchirc.Notice{
 				FakeTimestamp: time.Now(),
 				MsgID:         twitchirc.MsgID(uuid.NewString()),
@@ -100,7 +100,7 @@ func (l *liveNotificationTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 			IsFakeEvent: true,
 		})
 
-		return l, cmd
+		return l, tea.Batch(cmd, scrollCmd)
 	}
 
 	if _, ok := msg.(chat.ChatEventMessage); ok {
