@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/chat"
 	"github.com/julez-dev/chatuino/ui/nav"
@@ -90,4 +91,14 @@ func TestVerticalTabHeader_WorkspaceBadgesAndSummary(t *testing.T) {
 	require.Contains(t, view, "▸ W1.1 alpha (me)")
 	require.Contains(t, view, "W1.2 beta (me)")
 	require.Contains(t, view, "W2.1 gamma (me)")
+}
+
+func TestVerticalTabHeader_ViewFillsRequestedHeight(t *testing.T) {
+	t.Parallel()
+
+	rows := []nav.Row{{ID: "alpha", Title: "alpha", Identity: "me", Active: true}}
+	for _, height := range []int{3, 8, 10, 40} {
+		v := newVerticalTabHeader(30, height, save.BuildDefaultTheme())
+		require.Equal(t, height, lipgloss.Height(v.View(rows)), "height %d", height)
+	}
 }
