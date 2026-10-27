@@ -36,7 +36,7 @@ The project draws inspiration from [Chatterino](https://github.com/Chatterino/ch
 - Join any number of chats simultaneously
 - [Tiled workspace](doc/FEATURES.md#tiled-workspace) with keyboard splits, automatic workspaces, saved layouts, and compact pane status hints
 - Anonymous lurking without an account
-- Emotes rendered in-terminal (Kitty, Ghostty)
+- Emotes rendered in-terminal (kitty, Ghostty, iTerm2)
 - 7TV and BTTV emote support
 - Tab completion for emotes and usernames
 - User inspect mode for viewing chat history per user

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -134,24 +135,62 @@ type KittyDisplayUnit struct {
 }
 
 type DisplayManager struct {
-	fs                    afero.Fs
+	fs          afero.Fs
+	rows        int
+	passthrough bool
+	cellSizeFn  func() (float32, float32, error)
+
+	cellMu                sync.RWMutex
 	cellWidth, cellHeight float32
-	rows                  int
 }
 
 // DisplayOptions configures how images are displayed.
 type DisplayOptions struct {
 	Rows int // terminal rows an image spans, clamped to [1, MaxRows]
+
+	// Passthrough wraps every kitty command for tmux's allow-passthrough mode.
+	Passthrough bool
+
+	// CellSize, when set, re-reads the terminal cell size on RefreshCellSize so
+	// images converted after a resize or font change keep their aspect ratio.
+	CellSize func() (float32, float32, error)
 }
 
 // NewDisplayManager creates a display manager for a terminal with the given cell size in pixels.
 func NewDisplayManager(fs afero.Fs, cellWidth, cellHeight float32, opts DisplayOptions) *DisplayManager {
 	return &DisplayManager{
-		fs:         fs,
-		cellWidth:  cellWidth,
-		cellHeight: cellHeight,
-		rows:       min(max(opts.Rows, 1), MaxRows),
+		fs:          fs,
+		cellWidth:   cellWidth,
+		cellHeight:  cellHeight,
+		rows:        min(max(opts.Rows, 1), MaxRows),
+		passthrough: opts.Passthrough,
+		cellSizeFn:  opts.CellSize,
 	}
+}
+
+// RefreshCellSize re-reads the terminal cell size. Images already on screen keep
+// the geometry they were rendered with; images converted afterwards use the new
+// cell size.
+func (d *DisplayManager) RefreshCellSize() {
+	if d.cellSizeFn == nil {
+		return
+	}
+
+	width, height, err := d.cellSizeFn()
+	if err != nil || width <= 0 || height <= 0 {
+		return
+	}
+
+	d.cellMu.Lock()
+	d.cellWidth, d.cellHeight = width, height
+	d.cellMu.Unlock()
+}
+
+func (d *DisplayManager) cellSize() (float32, float32) {
+	d.cellMu.RLock()
+	defer d.cellMu.RUnlock()
+
+	return d.cellWidth, d.cellHeight
 }
 
 // applyLayout sets rows and recomputes the column count from the first frame's pixel size,
@@ -167,9 +206,14 @@ func (d *DisplayManager) applyLayout(decoded *DecodedImage) {
 }
 
 func (d *DisplayManager) colsFor(width, height int) int {
-	ratio := d.cellHeight * float32(d.rows) / float32(height)
+	cellWidth, cellHeight := d.cellSize()
+	if cellWidth <= 0 || cellHeight <= 0 || width <= 0 || height <= 0 {
+		return 1
+	}
+
+	ratio := cellHeight * float32(d.rows) / float32(height)
 	scaledWidth := int(math.Round(float64(float32(width) * ratio)))
-	return int(math.Ceil(float64(float32(scaledWidth) / d.cellWidth)))
+	return max(1, int(math.Ceil(float64(float32(scaledWidth)/cellWidth))))
 }
 
 func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
@@ -207,7 +251,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 
 		globalPlacedImages.Store(unit.ID, cachedDecoded)
 		return KittyDisplayUnit{
-			PrepareCommand:  cachedDecoded.PrepareCommand(),
+			PrepareCommand:  d.wrap(cachedDecoded.PrepareCommand()),
 			ReplacementText: cachedDecoded.DisplayUnicodePlaceholder(),
 		}, nil
 	}
@@ -237,7 +281,7 @@ func (d *DisplayManager) Convert(unit DisplayUnit) (KittyDisplayUnit, error) {
 	}
 
 	return KittyDisplayUnit{
-		PrepareCommand:  decoded.PrepareCommand(),
+		PrepareCommand:  d.wrap(decoded.PrepareCommand()),
 		ReplacementText: decoded.DisplayUnicodePlaceholder(),
 	}, nil
 }
@@ -258,11 +302,50 @@ func (d *DisplayManager) CleanupOldImagesCommand(maxAge time.Duration) string {
 		return true
 	})
 
-	return cmd.String()
+	return d.wrap(cmd.String())
 }
 
 func (d *DisplayManager) CleanupAllImagesCommand() string {
-	return "\x1b_Ga=D\x1b\\"
+	return d.wrap("\x1b_Ga=D\x1b\\")
+}
+
+// wrap tunnels a kitty command through tmux's DCS passthrough when Chatuino runs
+// inside tmux with allow-passthrough enabled. Placeholder cells are plain text
+// and must never be wrapped, only the graphics commands.
+func (d *DisplayManager) wrap(command string) string {
+	if command == "" || !d.passthrough {
+		return command
+	}
+
+	return wrapPassthrough(command)
+}
+
+const (
+	passthroughPrefix = "\x1bPtmux;"
+	passthroughSuffix = "\x1b\\"
+)
+
+// wrapPassthrough wraps a command for tmux. Every ESC in the payload is doubled
+// so tmux cannot mistake the kitty command's terminator for the end of the
+// passthrough sequence.
+func wrapPassthrough(command string) string {
+	if command == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	b.Grow(len(passthroughPrefix) + len(command) + strings.Count(command, "\x1b") + len(passthroughSuffix))
+
+	b.WriteString(passthroughPrefix)
+	for i := 0; i < len(command); i++ {
+		if command[i] == '\x1b' {
+			b.WriteByte('\x1b')
+		}
+		b.WriteByte(command[i])
+	}
+	b.WriteString(passthroughSuffix)
+
+	return b.String()
 }
 
 func (d *DisplayManager) convertImageBytes(r io.Reader, unit DisplayUnit, contentType string) (DecodedImage, error) {

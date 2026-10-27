@@ -3,6 +3,8 @@ package save
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -15,6 +17,17 @@ const (
 	settingsFileName = "settings.yaml"
 	maxGraphicScale  = 4 // must not exceed kittyimg.MaxRows
 )
+
+// SettingsPath is where SettingsFromDisk reads the settings from. It is used in
+// user-facing messages so an error can point at the file to edit.
+func SettingsPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return settingsFileName
+	}
+
+	return filepath.Join(dir, chatuinoConfigDir, settingsFileName)
+}
 
 type Settings struct {
 	VerticalTabList bool               `yaml:"vertical_tab_list"`

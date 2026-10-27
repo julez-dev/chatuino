@@ -1,6 +1,7 @@
 package save
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,4 +36,13 @@ func TestSettings_ValidateGraphicScale(t *testing.T) {
 		s.Chat.GraphicScale = scale
 		require.ErrorContains(t, s.validate(), "chat.graphic_scale")
 	}
+}
+
+func TestSettingsPath(t *testing.T) {
+	t.Parallel()
+
+	path := SettingsPath()
+	require.Equal(t, settingsFileName, filepath.Base(path))
+	require.Equal(t, chatuinoConfigDir, filepath.Base(filepath.Dir(path)))
+	require.True(t, filepath.IsAbs(path), "the path must be usable in a user-facing message")
 }

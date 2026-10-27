@@ -2,9 +2,12 @@ package kittyimg
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -316,4 +319,100 @@ func TestIntToRGB(t *testing.T) {
 			require.Equal(t, tt.b, b)
 		})
 	}
+}
+
+func TestWrapPassthrough(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, wrapPassthrough(""))
+
+	command := "\x1b_Ga=D\x1b\\"
+	wrapped := wrapPassthrough(command)
+	require.Equal(t, "\x1bPtmux;\x1b\x1b_Ga=D\x1b\x1b\\\x1b\\", wrapped)
+	require.Equal(t, command, strings.ReplaceAll(wrapped[len(passthroughPrefix):len(wrapped)-len(passthroughSuffix)], "\x1b\x1b", "\x1b"))
+
+	// Every ESC inside the payload is doubled so tmux cannot terminate the
+	// passthrough at the kitty command's own string terminator.
+	payload := wrapped[len(passthroughPrefix) : len(wrapped)-len(passthroughSuffix)]
+	for i := 0; i < len(payload); i++ {
+		if payload[i] != 0x1b {
+			continue
+		}
+		require.Equal(t, byte(0x1b), payload[i+1], "unpaired ESC at %d", i)
+		i++
+	}
+}
+
+func TestDisplayManager_PassthroughWrapsEveryGraphicsCommand(t *testing.T) {
+	globalPlacedImages = &syncmap.Map{}
+	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
+
+	dm := NewDisplayManager(afero.NewMemMapFs(), 10, 10, DisplayOptions{Rows: 1, Passthrough: true})
+	require.Equal(t, wrapPassthrough("\x1b_Ga=D\x1b\\"), dm.CleanupAllImagesCommand())
+
+	globalPlacedImages.Store("stale", DecodedImage{ID: 7, lastUsed: time.Now().Add(-time.Hour)})
+	require.Equal(t, wrapPassthrough("\x1b_Ga=D,i=7,q=2\x1b\\"), dm.CleanupOldImagesCommand(time.Minute))
+
+	plain := NewDisplayManager(afero.NewMemMapFs(), 10, 10, DisplayOptions{Rows: 1})
+	require.Equal(t, "\x1b_Ga=D\x1b\\", plain.CleanupAllImagesCommand())
+	require.NotContains(t, plain.CleanupAllImagesCommand(), "Ptmux")
+}
+
+func TestDisplayManager_ConvertWrapsPrepareCommand(t *testing.T) {
+	globalImagePlacementIDCounter.Store(0)
+	globalPlacedImages = &syncmap.Map{}
+	t.Cleanup(func() { globalPlacedImages = &syncmap.Map{} })
+
+	fs := afero.NewMemMapFs()
+	dm := NewDisplayManager(fs, 10, 10, DisplayOptions{Rows: 1, Passthrough: true})
+	cachedImage := DecodedImage{
+		Cols:   2,
+		Images: []DecodedImageFrame{{Width: 10, Height: 10, EncodedPath: "L3BhdGgvdG8vY2FjaGVkLnBuZw=="}},
+	}
+	unit := DisplayUnit{
+		ID:        "test-emote",
+		Directory: "emote",
+		Load: func() (io.ReadCloser, string, error) {
+			t.Fatal("Load should not be called for a cached image")
+			return nil, "", nil
+		},
+	}
+	require.NoError(t, dm.cacheDecodedImage(cachedImage, unit))
+
+	result, err := dm.Convert(unit)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(result.PrepareCommand, passthroughPrefix), "graphics command must be wrapped")
+	require.NotContains(t, result.ReplacementText, "Ptmux", "placeholder cells are text and must never be wrapped")
+	require.Contains(t, result.ReplacementText, "\U0010eeee")
+}
+
+func TestDisplayManager_RefreshCellSize(t *testing.T) {
+	t.Parallel()
+
+	size := [2]float32{10, 20}
+	dm := NewDisplayManager(afero.NewMemMapFs(), size[0], size[1], DisplayOptions{
+		Rows: 1,
+		CellSize: func() (float32, float32, error) {
+			return size[0], size[1], nil
+		},
+	})
+	require.Equal(t, 2, dm.colsFor(100, 100), "100px wide at 10px cells")
+
+	size = [2]float32{25, 20}
+	dm.RefreshCellSize()
+	require.Equal(t, 1, dm.colsFor(100, 100), "same image at 25px cells")
+
+	size = [2]float32{0, 0}
+	dm.RefreshCellSize()
+	require.Equal(t, 1, dm.colsFor(100, 100), "an invalid size keeps the last usable one")
+
+	failing := NewDisplayManager(afero.NewMemMapFs(), 10, 10, DisplayOptions{
+		Rows: 1,
+		CellSize: func() (float32, float32, error) {
+			return 0, 0, errors.New("no tty")
+		},
+	})
+	require.Equal(t, 1, failing.colsFor(100, 100))
+	failing.RefreshCellSize()
+	require.Equal(t, 1, failing.colsFor(100, 100), "a failed refresh keeps the previous size")
 }
