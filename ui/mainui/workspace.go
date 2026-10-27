@@ -673,6 +673,8 @@ func (r *Root) handlePaneKey(msg tea.KeyPressMsg) tea.Cmd {
 	case swaps:
 		if r.workspace.Move(active, swap, bounds.Width, bounds.Height) {
 			r.paneZoom = false
+		} else {
+			r.paneHint = "Move refused: no room in that direction"
 		}
 	default:
 		for _, resize := range []struct {

@@ -648,6 +648,7 @@ func TestWorkspace_MoveAtOuterEdgeLiftsNestedPaneOneLevel(t *testing.T) {
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'J', Text: "J"})
 	workspaceKey(t, root, tea.KeyPressMsg{Code: 'H', Text: "H"})
 	require.Equal(t, before, root.workspace.Arrange(101, 33), "a pane at the root edge has nowhere to lift into")
+	require.Contains(t, root.View().Content, "Move refused", "a refused move explains itself instead of silently doing nothing")
 
 	// The bottom row is a nested container: moving beta up leaves it and joins the
 	// root row as an equal sibling instead of re-docking at the screen edge.

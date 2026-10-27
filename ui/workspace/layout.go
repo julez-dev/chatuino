@@ -82,8 +82,6 @@ type Node struct {
 	Second *Node `json:"second,omitempty"`
 }
 
-func (n *Node) leaf() bool { return n != nil && n.Tab != "" }
-
 // Layout's zero value is an empty workspace. It deliberately has no active-tab
 // field: the tab registry remains the single source of truth for activation.
 type Layout struct {
@@ -523,6 +521,10 @@ func (l *Layout) Move(tab string, direction Direction, width, height int) bool {
 		// its place and keeps its own subtree.
 		only := container.Children[0]
 		*container = *only
+	} else {
+		// The survivors keep their relative shares, but a container's weights
+		// must still sum to weightTotal: Resize and Restore rely on that scale.
+		container.Weights = normalizeWeights(container.Weights)
 	}
 
 	grandparent, grandIndex := parentOfNode(root, container)

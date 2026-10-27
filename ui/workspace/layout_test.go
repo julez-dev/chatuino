@@ -184,6 +184,41 @@ func TestLayout_MovePreservesTheSurvivingSubtreeShares(t *testing.T) {
 	require.Equal(t, 101, after.Panes[0].Width+after.Panes[1].Width+after.Panes[2].Width+2)
 }
 
+// Lifting a pane out of a container with three or more children must leave the
+// survivors' weights normalized: Resize and Restore both assume the weightTotal
+// scale, and a stale scale silently turns one 5% resize step into a big jump and
+// makes a freshly snapshotted layout restore as "repaired".
+func TestLayout_MoveRenormalizesSurvivingContainerShares(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Rows, 161, 65))
+	require.NoError(t, layout.Split("alpha", "gamma", workspace.Columns, 161, 65))
+	require.NoError(t, layout.Split("alpha", "delta", workspace.Columns, 161, 65))
+
+	// rows[columns[alpha, delta, gamma], beta]: alpha is at the left edge of
+	// the nested columns container, so it lifts into the root rows container.
+	require.True(t, layout.Move("alpha", workspace.Left, 161, 65))
+
+	snapshot := layout.Snapshot("alpha", nil)
+	_, _, repaired := workspace.Restore(snapshot, nil)
+	require.False(t, repaired, "a move must not leave weights outside the snapshot scale")
+
+	before := layout.Arrange(161, 65)
+	// The surviving columns container sits beside beta at full width, so one
+	// step moves its divider by 5% of 160 available cells, not by a share of a
+	// stale 6666-scale weight.
+	var gammaIndex int
+	for i, pane := range before.Panes {
+		if pane.Tab == "gamma" {
+			gammaIndex = i
+		}
+	}
+	require.True(t, layout.Resize("gamma", workspace.Columns, 1, 161, 65))
+	after := layout.Arrange(161, 65)
+	require.Equal(t, 8, after.Panes[gammaIndex].Width-before.Panes[gammaIndex].Width, "one 5% step of the container")
+}
+
 func TestLayout_MoveRejectsAProspectiveLayoutThatCannotFit(t *testing.T) {
 	t.Parallel()
 	var layout workspace.Layout
@@ -403,7 +438,12 @@ func FuzzLayout_OperationsPreserveAssignmentsAndRoundTrip(f *testing.F) {
 			case 3:
 				layout.Select(current, target)
 			case 4:
-				layout.Swap(current, workspace.Direction(op%4), 161, 65)
+				// Vary the moved tab so the edge-lift and removal paths are
+				// reachable; Move(layout.First(), Right, …) never leaves a
+				// container.
+				if panes := layout.PaneOrder(); len(panes) > 0 {
+					layout.Swap(panes[int(op/8)%len(panes)], workspace.Direction(int(op/8)%4), 161, 65)
+				}
 			case 5:
 				axis := workspace.Columns
 				if op&1 != 0 {
@@ -413,7 +453,9 @@ func FuzzLayout_OperationsPreserveAssignmentsAndRoundTrip(f *testing.F) {
 			case 6:
 				layout.Arrange(int(op%32), int(op%16))
 			case 7:
-				layout.Move(current, workspace.Direction(op%4), 49+int(op%113), 17+int(op%49))
+				if panes := layout.PaneOrder(); len(panes) > 0 {
+					layout.Move(panes[int(op/8)%len(panes)], workspace.Direction(int(op/8)%4), 49+int(op%113), 17+int(op%49))
+				}
 			}
 			arrangement := layout.Arrange(161, 65)
 			require.True(t, arrangement.Fits)
