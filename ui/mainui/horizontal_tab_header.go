@@ -27,14 +27,19 @@ type horizontalTabHeader struct {
 }
 
 func newHorizontalTabHeader(width int, theme save.Theme) *horizontalTabHeader {
-	return &horizontalTabHeader{
-		width:             width,
-		borderStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
-		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
-		separatorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
-		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor)),
-		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)),
-	}
+	h := &horizontalTabHeader{width: width}
+	h.SetTheme(theme)
+
+	return h
+}
+
+// SetTheme repaints the header without touching the tabs it renders.
+func (h *horizontalTabHeader) SetTheme(theme save.Theme) {
+	h.borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
+	h.bulletStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
+	h.separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor))
+	h.activeStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor))
+	h.notificationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor))
 }
 
 func (h *horizontalTabHeader) View(rows []nav.Row) string {

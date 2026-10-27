@@ -92,6 +92,9 @@ func (m *mentionTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case ThemeChangedMessage:
+		m.SetTheme(msg.Theme)
+		return m, nil
 	case setMentionTabData:
 		m.hasDataLoaded = true
 		m.usernames = msg.usernames

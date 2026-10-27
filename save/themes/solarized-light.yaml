@@ -1,0 +1,42 @@
+# Solarized Light (light)
+#
+# Light themes assume a light terminal background.
+name: Solarized Light
+
+seven_tv_emote_color: "#2aa198"
+twitch_tv_emote_color: "#6c71c4"
+better_ttv_emote_color: "#dc322f"
+ffz_emote_color: "#859900"
+
+input_prompt_color: "#268bd2"
+
+chat_streamer_color: "#cb4b16"
+chat_vip_color: "#d33682"
+chat_sub_color: "#859900"
+chat_turbo_color: "#268bd2"
+chat_moderator_color: "#859900"
+chat_indicator_color: "#268bd2"
+
+chat_sub_alert_color: "#d33682"
+chat_notice_alert_color: "#b58900"
+chat_clear_chat_color: "#cb4b16"
+chat_error_color: "#dc322f"
+
+list_selected_color: "#268bd2"
+list_label_color: "#2aa198"
+active_label_color: "#b58900"
+
+status_color: "#2aa198"
+
+chatuino_splash_color: "#d33682"
+splash_highlight_color: "#586e75"
+
+tab_header_background_color: "#eee8d5"
+tab_header_active_background_color: "#fdf6e3"
+
+inspect_border_color: "#268bd2"
+
+list_background_color: "#eee8d5"
+list_font_color: "#586e75"
+
+dimmed_text_color: "#93a1a1"

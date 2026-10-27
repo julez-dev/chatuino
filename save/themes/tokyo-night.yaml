@@ -1,0 +1,40 @@
+# Tokyo Night
+name: Tokyo Night
+
+seven_tv_emote_color: "#7dcfff"
+twitch_tv_emote_color: "#bb9af7"
+better_ttv_emote_color: "#f7768e"
+ffz_emote_color: "#9ece6a"
+
+input_prompt_color: "#7aa2f7"
+
+chat_streamer_color: "#ff9e64"
+chat_vip_color: "#bb9af7"
+chat_sub_color: "#9ece6a"
+chat_turbo_color: "#7aa2f7"
+chat_moderator_color: "#9ece6a"
+chat_indicator_color: "#7aa2f7"
+
+chat_sub_alert_color: "#bb9af7"
+chat_notice_alert_color: "#e0af68"
+chat_clear_chat_color: "#ff9e64"
+chat_error_color: "#f7768e"
+
+list_selected_color: "#7aa2f7"
+list_label_color: "#7dcfff"
+active_label_color: "#e0af68"
+
+status_color: "#7dcfff"
+
+chatuino_splash_color: "#ff007c"
+splash_highlight_color: "#7aa2f7"
+
+tab_header_background_color: "#24283b"
+tab_header_active_background_color: "#16161e"
+
+inspect_border_color: "#7aa2f7"
+
+list_background_color: "#16161e"
+list_font_color: "#c0caf5"
+
+dimmed_text_color: "#565f89"

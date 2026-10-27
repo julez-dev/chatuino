@@ -1,0 +1,40 @@
+# One Dark
+name: One Dark
+
+seven_tv_emote_color: "#56b6c2"
+twitch_tv_emote_color: "#c678dd"
+better_ttv_emote_color: "#e06c75"
+ffz_emote_color: "#98c379"
+
+input_prompt_color: "#61afef"
+
+chat_streamer_color: "#d19a66"
+chat_vip_color: "#c678dd"
+chat_sub_color: "#98c379"
+chat_turbo_color: "#61afef"
+chat_moderator_color: "#98c379"
+chat_indicator_color: "#61afef"
+
+chat_sub_alert_color: "#c678dd"
+chat_notice_alert_color: "#e5c07b"
+chat_clear_chat_color: "#d19a66"
+chat_error_color: "#e06c75"
+
+list_selected_color: "#61afef"
+list_label_color: "#56b6c2"
+active_label_color: "#e5c07b"
+
+status_color: "#56b6c2"
+
+chatuino_splash_color: "#c678dd"
+splash_highlight_color: "#61afef"
+
+tab_header_background_color: "#21252b"
+tab_header_active_background_color: "#1b1f23"
+
+inspect_border_color: "#61afef"
+
+list_background_color: "#21252b"
+list_font_color: "#abb2bf"
+
+dimmed_text_color: "#5c6370"

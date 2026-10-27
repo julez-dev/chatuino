@@ -1,0 +1,43 @@
+# Catppuccin Latte (light)
+#
+# Light themes assume a light terminal background: chatuino never paints the
+# whole viewport, so these colors only look right on a light terminal.
+name: Catppuccin Latte
+
+seven_tv_emote_color: "#179299"
+twitch_tv_emote_color: "#8839ef"
+better_ttv_emote_color: "#d20f39"
+ffz_emote_color: "#40a02b"
+
+input_prompt_color: "#1e66f5"
+
+chat_streamer_color: "#fe640b"
+chat_vip_color: "#ea76cb"
+chat_sub_color: "#40a02b"
+chat_turbo_color: "#1e66f5"
+chat_moderator_color: "#40a02b"
+chat_indicator_color: "#1e66f5"
+
+chat_sub_alert_color: "#ea76cb"
+chat_notice_alert_color: "#df8e1d"
+chat_clear_chat_color: "#fe640b"
+chat_error_color: "#d20f39"
+
+list_selected_color: "#1e66f5"
+list_label_color: "#04a5e5"
+active_label_color: "#df8e1d"
+
+status_color: "#179299"
+
+chatuino_splash_color: "#ea76cb"
+splash_highlight_color: "#7287fd"
+
+tab_header_background_color: "#ccd0da"
+tab_header_active_background_color: "#e6e9ef"
+
+inspect_border_color: "#7287fd"
+
+list_background_color: "#e6e9ef"
+list_font_color: "#4c4f69"
+
+dimmed_text_color: "#8c8fa1"

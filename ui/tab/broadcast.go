@@ -554,6 +554,9 @@ func (t *Broadcast) Close() {
 
 func (t *Broadcast) Update(msg tea.Msg) (Tab, tea.Cmd) {
 	switch msg := msg.(type) {
+	case ThemeChangedMessage:
+		t.SetTheme(msg.Theme)
+		return t, nil
 	case error:
 		if !t.channelDataLoaded {
 			return t, nil

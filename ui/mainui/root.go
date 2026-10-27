@@ -112,6 +112,13 @@ type Root struct {
 	// the signature of NewUI is the complete list of what the shell needs.
 	settings save.Settings
 	theme    save.Theme
+	// themeID is the id of the active theme; themes owns the catalog and the
+	// persistence of a selection.
+	themeID string
+	themes  *save.ThemeManager
+	// notice is a one-line message drawn over the bottom screen row, e.g. why a
+	// theme could not be applied. It is cleared by the next key press.
+	notice   string
 	keymap   save.KeyMap
 	accounts []save.Account
 	version  string
@@ -172,7 +179,7 @@ func NewUI(
 	ctx context.Context,
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
 	settings save.Settings,
-	theme save.Theme,
+	themes *save.ThemeManager,
 	keymap save.KeyMap,
 	accounts []save.Account,
 	version string,
@@ -191,6 +198,8 @@ func NewUI(
 	channelHistory ChannelHistory,
 	initialState *save.AppState,
 ) *Root {
+	theme := themes.Active()
+
 	var header header
 	if settings.VerticalTabList {
 		header = newVerticalTabHeader(10, 10, theme)
@@ -203,6 +212,9 @@ func NewUI(
 		isDetached:          initialState != nil,
 		settings:            settings,
 		theme:               theme,
+		themeID:             themes.ActiveID(),
+		themes:              themes,
+		notice:              strings.Join(themes.Warnings(), "; "),
 		keymap:              keymap,
 		accounts:            accounts,
 		version:             version,
@@ -295,6 +307,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Batch(cmds...)
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
+	case themePreviewMessage:
+		return r, r.previewTheme(msg.id)
+	case themeChoiceMessage:
+		return r, r.commitTheme(msg.id)
+	case themeRejectedMessage:
+		r.setNotice(msg.message)
+		return r, nil
 	case tab.JoinChannelMessage:
 		return r, r.finishJoin(msg, 0)
 	case paneChoiceMessage:
@@ -358,6 +377,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		return r, r.handleMouseWheel(msg)
 	case tea.KeyPressMsg:
+		// The notice is transient: the next key press dismisses it. Bindings that
+		// produce a new notice set it after this reset.
+		r.notice = ""
+
 		// q-to-quit must not steal printable keys while an input is focused.
 		// Modifier-driven quit keys (ctrl+c) still work everywhere.
 		if key.Matches(msg, r.keymap.Quit) && !((r.isTyping() || r.paneMode) && msg.Text != "") {
@@ -379,6 +402,18 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, r.keymap.Escape) {
 			if r.stack.Len() > 0 {
 				return r, r.dismissModal()
+			}
+		}
+
+		// The theme picker toggles like the other modals and is only reachable
+		// while no other screen owns the keyboard.
+		if key.Matches(msg, r.keymap.ThemePicker) {
+			if r.stack.Route() == themePickerRoute {
+				return r, r.dismissModal()
+			}
+
+			if r.stack.Len() == 0 {
+				return r, r.openThemePicker()
 			}
 		}
 
@@ -534,7 +569,7 @@ func (r *Root) renderView() string {
 		return r.clampScreen(r.splash.ViewLoading())
 	}
 
-	return r.clampScreen(r.stack.View())
+	return r.clampScreen(r.withNotice(r.stack.View()))
 }
 
 // screenContent renders the current screen behind any modal: the header plus the

@@ -110,27 +110,49 @@ type Buffer struct {
 
 // New creates an empty transcript.
 func New(width, height int, settings save.Settings, theme save.Theme) *Buffer {
-	indicator := lipgloss.NewStyle().
+	indicator := indicatorFor(theme)
+
+	palette := NewPalette()
+
+	b := &Buffer{
+		settings: settings,
+		width:    width,
+		height:   height,
+		renderer: newMessageRenderer(width, lipgloss.Width(indicator), settings, theme, palette),
+		palette:  palette,
+	}
+
+	// Reuse the theme swap so construction and switching can never drift apart.
+	b.SetTheme(theme)
+
+	return b
+}
+
+// indicatorFor renders the selection marker. Its width is the gutter the
+// renderer reserves for it.
+func indicatorFor(theme save.Theme) string {
+	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color(theme.ChatIndicatorColor)).
 		Background(lipgloss.Color(theme.ChatIndicatorColor)).
 		Render(">")
+}
 
-	newMessageStyle := lipgloss.NewStyle().
+// SetTheme repaints the transcript with a new theme.
+//
+// Rendered rows carry their colors inline, so the whole transcript is
+// re-rendered from its entries. Selection, scroll position, search filter and
+// the new-message counter are carried over: a theme switch must not move the
+// user's viewport.
+func (b *Buffer) SetTheme(theme save.Theme) {
+	b.indicator = indicatorFor(theme)
+
+	b.newMessageStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color(theme.ListBackgroundColor)).
 		Background(lipgloss.Color(theme.ChatIndicatorColor))
 
-	palette := NewPalette()
-
-	return &Buffer{
-		settings:        settings,
-		width:           width,
-		height:          height,
-		renderer:        newMessageRenderer(width, lipgloss.Width(indicator), settings, theme, palette),
-		palette:         palette,
-		indicator:       indicator,
-		newMessageStyle: newMessageStyle,
-	}
+	b.renderer.SetTheme(theme)
+	b.recalculateLines()
 }
 
 // Palette returns the shared user-color palette.

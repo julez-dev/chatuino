@@ -1,0 +1,42 @@
+# One Light (light)
+#
+# Light themes assume a light terminal background.
+name: One Light
+
+seven_tv_emote_color: "#0184bc"
+twitch_tv_emote_color: "#a626a4"
+better_ttv_emote_color: "#e45649"
+ffz_emote_color: "#50a14f"
+
+input_prompt_color: "#4078f2"
+
+chat_streamer_color: "#986801"
+chat_vip_color: "#a626a4"
+chat_sub_color: "#50a14f"
+chat_turbo_color: "#4078f2"
+chat_moderator_color: "#50a14f"
+chat_indicator_color: "#4078f2"
+
+chat_sub_alert_color: "#a626a4"
+chat_notice_alert_color: "#c18401"
+chat_clear_chat_color: "#986801"
+chat_error_color: "#e45649"
+
+list_selected_color: "#4078f2"
+list_label_color: "#0184bc"
+active_label_color: "#c18401"
+
+status_color: "#0184bc"
+
+chatuino_splash_color: "#a626a4"
+splash_highlight_color: "#4078f2"
+
+tab_header_background_color: "#eaeaeb"
+tab_header_active_background_color: "#f0f0f1"
+
+inspect_border_color: "#4078f2"
+
+list_background_color: "#eaeaeb"
+list_font_color: "#383a42"
+
+dimmed_text_color: "#a0a1a7"

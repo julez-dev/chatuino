@@ -1,0 +1,40 @@
+# Catppuccin Mocha
+name: Catppuccin Mocha
+
+seven_tv_emote_color: "#89dceb"
+twitch_tv_emote_color: "#cba6f7"
+better_ttv_emote_color: "#f38ba8"
+ffz_emote_color: "#a6e3a1"
+
+input_prompt_color: "#89b4fa"
+
+chat_streamer_color: "#fab387"
+chat_vip_color: "#f5c2e7"
+chat_sub_color: "#a6e3a1"
+chat_turbo_color: "#74c7ec"
+chat_moderator_color: "#a6e3a1"
+chat_indicator_color: "#89b4fa"
+
+chat_sub_alert_color: "#f5c2e7"
+chat_notice_alert_color: "#f9e2af"
+chat_clear_chat_color: "#fab387"
+chat_error_color: "#f38ba8"
+
+list_selected_color: "#89b4fa"
+list_label_color: "#b4befe"
+active_label_color: "#f9e2af"
+
+status_color: "#89dceb"
+
+chatuino_splash_color: "#f5c2e7"
+splash_highlight_color: "#cba6f7"
+
+tab_header_background_color: "#313244"
+tab_header_active_background_color: "#181825"
+
+inspect_border_color: "#b4befe"
+
+list_background_color: "#181825"
+list_font_color: "#cdd6f4"
+
+dimmed_text_color: "#6c7086"

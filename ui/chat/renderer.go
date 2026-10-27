@@ -61,21 +61,27 @@ func newMessageRenderer(
 		settings:       settings,
 		palette:        palette,
 
-		subAlertStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatSubAlertColor)).Bold(true),
-		noticeAlertStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)).Bold(true),
-		clearChatAlertStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatClearChatColor)).Bold(true),
-		errorAlertStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatErrorColor)).Bold(true),
-		dimmedStyle:         lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor)),
-		replyStyle:          lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatIndicatorColor)),
-
 		strikethroughStyle:       lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false),
 		italicStyle:              lipgloss.NewStyle().Italic(true),
 		strikethroughItalicStyle: lipgloss.NewStyle().Strikethrough(true).StrikethroughSpaces(false).Italic(true),
 	}
 
+	r.SetTheme(theme)
 	r.SetTimeFormat(settings.Chat.TimeFormat)
 
 	return r
+}
+
+// SetTheme replaces the colors used by every alert prefix and dimmed row.
+// Rows that were already rendered keep their old colors until the owning buffer
+// re-renders its transcript.
+func (r *messageRenderer) SetTheme(theme save.Theme) {
+	r.subAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatSubAlertColor)).Bold(true)
+	r.noticeAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)).Bold(true)
+	r.clearChatAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatClearChatColor)).Bold(true)
+	r.errorAlertStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatErrorColor)).Bold(true)
+	r.dimmedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.DimmedTextColor))
+	r.replyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatIndicatorColor))
 }
 
 // SetWidth sets the width messages are wrapped at.

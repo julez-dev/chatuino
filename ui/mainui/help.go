@@ -43,6 +43,7 @@ func newHelp(height, width int, keymap save.KeyMap) *help {
 				keymap.Remove,
 				keymap.CloseTab,
 				keymap.DumpScreen,
+				keymap.ThemePicker,
 			},
 		},
 		{

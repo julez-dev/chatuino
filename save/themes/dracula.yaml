@@ -1,0 +1,40 @@
+# Dracula
+name: Dracula
+
+seven_tv_emote_color: "#8be9fd"
+twitch_tv_emote_color: "#bd93f9"
+better_ttv_emote_color: "#ff79c6"
+ffz_emote_color: "#50fa7b"
+
+input_prompt_color: "#bd93f9"
+
+chat_streamer_color: "#ffb86c"
+chat_vip_color: "#ff79c6"
+chat_sub_color: "#50fa7b"
+chat_turbo_color: "#8be9fd"
+chat_moderator_color: "#50fa7b"
+chat_indicator_color: "#bd93f9"
+
+chat_sub_alert_color: "#ff79c6"
+chat_notice_alert_color: "#f1fa8c"
+chat_clear_chat_color: "#ffb86c"
+chat_error_color: "#ff5555"
+
+list_selected_color: "#bd93f9"
+list_label_color: "#8be9fd"
+active_label_color: "#f1fa8c"
+
+status_color: "#8be9fd"
+
+chatuino_splash_color: "#ff79c6"
+splash_highlight_color: "#bd93f9"
+
+tab_header_background_color: "#21222c"
+tab_header_active_background_color: "#191a21"
+
+inspect_border_color: "#6272a4"
+
+list_background_color: "#21222c"
+list_font_color: "#f8f8f2"
+
+dimmed_text_color: "#6272a4"

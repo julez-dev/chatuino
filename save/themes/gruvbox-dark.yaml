@@ -1,0 +1,40 @@
+# Gruvbox Dark
+name: Gruvbox Dark
+
+seven_tv_emote_color: "#83a598"
+twitch_tv_emote_color: "#d3869b"
+better_ttv_emote_color: "#fb4934"
+ffz_emote_color: "#b8bb26"
+
+input_prompt_color: "#83a598"
+
+chat_streamer_color: "#fe8019"
+chat_vip_color: "#d3869b"
+chat_sub_color: "#b8bb26"
+chat_turbo_color: "#83a598"
+chat_moderator_color: "#b8bb26"
+chat_indicator_color: "#83a598"
+
+chat_sub_alert_color: "#d3869b"
+chat_notice_alert_color: "#fabd2f"
+chat_clear_chat_color: "#fe8019"
+chat_error_color: "#fb4934"
+
+list_selected_color: "#83a598"
+list_label_color: "#8ec07c"
+active_label_color: "#fabd2f"
+
+status_color: "#83a598"
+
+chatuino_splash_color: "#fe8019"
+splash_highlight_color: "#fabd2f"
+
+tab_header_background_color: "#3c3836"
+tab_header_active_background_color: "#1d2021"
+
+inspect_border_color: "#d3869b"
+
+list_background_color: "#32302f"
+list_font_color: "#ebdbb2"
+
+dimmed_text_color: "#928374"
