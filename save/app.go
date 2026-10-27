@@ -96,6 +96,16 @@ func (a *AppStateManager) LoadAppState() (AppState, error) {
 	return state, nil
 }
 
+// ConfigDir returns the chatuino configuration directory.
+func ConfigDir() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return chatuinoConfigDir
+	}
+
+	return filepath.Join(dir, chatuinoConfigDir)
+}
+
 func openCreateFile(fs afero.Fs, base string, file string) (afero.File, error) {
 	// ensure dir config dir exists
 	configDirChatuino := filepath.Join(base, chatuinoConfigDir)

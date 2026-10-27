@@ -781,12 +781,19 @@ func (r *Root) failPaneSplit(message string) tea.Cmd {
 
 func (r *Root) dismissModal() tea.Cmd {
 	r.pendingSplit = nil
+
+	// Closing the theme picker must undo whatever it was previewing.
+	var revert tea.Cmd
+	if r.stack.Route() == themePickerRoute {
+		revert = r.revertThemePreview()
+	}
+
 	cmd := r.stack.Pop()
 	if r.stack.Len() == 0 {
 		r.tabs.FocusActive()
 	}
 	r.handleResize()
-	return cmd
+	return tea.Batch(revert, cmd)
 }
 
 func (r *Root) closeTab(id string) tea.Cmd {

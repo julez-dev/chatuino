@@ -81,6 +81,7 @@ var accountCMD = &cli.Command{
 			Usage: "OAuth Client-ID",
 			Value: defaultClientID,
 		},
+		themeFlag,
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		keys, err := save.CreateReadKeyMap()
@@ -88,10 +89,17 @@ var accountCMD = &cli.Command{
 			return fmt.Errorf("failed to read keymap file: %w", err)
 		}
 
-		theme, err := save.ThemeFromDisk()
+		settings, err := save.SettingsFromDisk()
 		if err != nil {
-			return fmt.Errorf("failed to read theme file: %w", err)
+			return fmt.Errorf("failed to read settings file: %w", err)
 		}
+
+		themeManager, err := save.NewThemeManager(afero.NewOsFs(), save.ConfigDir(), themeIDFromFlags(settings.Theme, command.String("theme")))
+		if err != nil {
+			return fmt.Errorf("failed to load themes: %w", err)
+		}
+
+		theme := themeManager.Active()
 
 		var keyringBackend keyring.Keyring
 

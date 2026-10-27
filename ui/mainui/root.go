@@ -34,6 +34,12 @@ type updateNotifier interface {
 	SetUpdateAvailable(latest string)
 }
 
+// escapeBlocker is implemented by modals that own Escape themselves, e.g. to
+// clear a filter before the modal is closed.
+type escapeBlocker interface {
+	BlocksEscape() bool
+}
+
 // localFilters is implemented by tabs that keep per-tab display filters, which
 // the shell persists and restores with the rest of the app state.
 type localFilters interface {
@@ -112,6 +118,13 @@ type Root struct {
 	// the signature of NewUI is the complete list of what the shell needs.
 	settings save.Settings
 	theme    save.Theme
+	// themeID is the id of the active theme; themes owns the catalog and the
+	// persistence of a selection.
+	themeID string
+	themes  *save.ThemeManager
+	// notice is a one-line message drawn over the bottom screen row, e.g. why a
+	// theme could not be applied. It is cleared by the next key press.
+	notice   string
 	keymap   save.KeyMap
 	accounts []save.Account
 	version  string
@@ -172,7 +185,7 @@ func NewUI(
 	ctx context.Context,
 	messageLoggerChan chan<- *twitchirc.PrivateMessage,
 	settings save.Settings,
-	theme save.Theme,
+	themes *save.ThemeManager,
 	keymap save.KeyMap,
 	accounts []save.Account,
 	version string,
@@ -191,6 +204,8 @@ func NewUI(
 	channelHistory ChannelHistory,
 	initialState *save.AppState,
 ) *Root {
+	theme := themes.Active()
+
 	var header header
 	if settings.VerticalTabList {
 		header = newVerticalTabHeader(10, 10, theme)
@@ -203,6 +218,9 @@ func NewUI(
 		isDetached:          initialState != nil,
 		settings:            settings,
 		theme:               theme,
+		themeID:             themes.ActiveID(),
+		themes:              themes,
+		notice:              strings.Join(themes.Warnings(), "; "),
 		keymap:              keymap,
 		accounts:            accounts,
 		version:             version,
@@ -295,6 +313,13 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, tea.Batch(cmds...)
 	case versionCheckMessage:
 		return r, r.handleVersionCheck(msg)
+	case themePreviewMessage:
+		return r, r.previewTheme(msg.id)
+	case themeChoiceMessage:
+		return r, r.commitTheme(msg.id)
+	case themeRejectedMessage:
+		r.setNotice(msg.message)
+		return r, nil
 	case tab.JoinChannelMessage:
 		return r, r.finishJoin(msg, 0)
 	case paneChoiceMessage:
@@ -358,6 +383,10 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		return r, r.handleMouseWheel(msg)
 	case tea.KeyPressMsg:
+		// The notice is transient: the next key press dismisses it. Bindings that
+		// produce a new notice set it after this reset.
+		r.notice = ""
+
 		// q-to-quit must not steal printable keys while an input is focused.
 		// Modifier-driven quit keys (ctrl+c) still work everywhere.
 		if key.Matches(msg, r.keymap.Quit) && !((r.isTyping() || r.paneMode) && msg.Text != "") {
@@ -378,7 +407,27 @@ func (r *Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if key.Matches(msg, r.keymap.Escape) {
 			if r.stack.Len() > 0 {
+				// A modal that is capturing keys (the theme picker's filter, for
+				// example) gets the first escape; the next one closes it.
+				if top, ok := r.stack.Top(); ok {
+					if blocker, ok := top.(escapeBlocker); ok && blocker.BlocksEscape() {
+						return r, r.stack.Update(msg)
+					}
+				}
+
 				return r, r.dismissModal()
+			}
+		}
+
+		// The theme picker toggles like the other modals and is only reachable
+		// while no other screen owns the keyboard.
+		if key.Matches(msg, r.keymap.ThemePicker) {
+			if r.stack.Route() == themePickerRoute {
+				return r, r.dismissModal()
+			}
+
+			if r.stack.Len() == 0 {
+				return r, r.openThemePicker()
 			}
 		}
 
@@ -534,7 +583,7 @@ func (r *Root) renderView() string {
 		return r.clampScreen(r.splash.ViewLoading())
 	}
 
-	return r.clampScreen(r.stack.View())
+	return r.clampScreen(r.withNotice(r.stack.View()))
 }
 
 // screenContent renders the current screen behind any modal: the header plus the
@@ -826,6 +875,43 @@ func (r *Root) handleResize() {
 }
 
 func (r *Root) nextTab() { r.stepTab(1) }
+
+// setNotice shows a one-line message on the bottom row until the next key press.
+func (r *Root) setNotice(message string) {
+	r.notice = message
+}
+
+// noticeLine renders the notice, clipped to the terminal width.
+func (r *Root) noticeLine() string {
+	if r.notice == "" || r.width <= 0 {
+		return ""
+	}
+
+	text := r.notice
+	if runes := []rune(text); len(runes) > r.width {
+		text = string(runes[:r.width])
+	}
+
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(r.theme.ListBackgroundColor)).
+		Background(lipgloss.Color(r.theme.ChatNoticeAlertColor)).
+		Render(text)
+}
+
+// withNotice replaces the bottom screen row with the notice, so nothing shifts
+// and the message cannot push the layout past the terminal height.
+func (r *Root) withNotice(view string) string {
+	line := r.noticeLine()
+	if line == "" || view == "" {
+		return view
+	}
+
+	lines := strings.Split(view, "\n")
+	lines[len(lines)-1] = line
+
+	return strings.Join(lines, "\n")
+}
 
 func (r *Root) prevTab() { r.stepTab(-1) }
 

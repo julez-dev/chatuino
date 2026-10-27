@@ -1,0 +1,44 @@
+# 16-color, high contrast.
+#
+# Unlike the other themes this one uses ANSI color numbers instead of hex
+# values, so it follows the palette of the terminal. It stays readable in any
+# terminal, including ones that only support 16 colors.
+name: ANSI 16 High Contrast
+
+seven_tv_emote_color: "14"
+twitch_tv_emote_color: "13"
+better_ttv_emote_color: "9"
+ffz_emote_color: "10"
+
+input_prompt_color: "12"
+
+chat_streamer_color: "11"
+chat_vip_color: "13"
+chat_sub_color: "10"
+chat_turbo_color: "12"
+chat_moderator_color: "10"
+chat_indicator_color: "12"
+
+chat_sub_alert_color: "13"
+chat_notice_alert_color: "11"
+chat_clear_chat_color: "11"
+chat_error_color: "9"
+
+list_selected_color: "12"
+list_label_color: "14"
+active_label_color: "11"
+
+status_color: "14"
+
+chatuino_splash_color: "13"
+splash_highlight_color: "15"
+
+tab_header_background_color: "8"
+tab_header_active_background_color: "0"
+
+inspect_border_color: "12"
+
+list_background_color: "8"
+list_font_color: "15"
+
+dimmed_text_color: "8"

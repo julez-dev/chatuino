@@ -61,6 +61,25 @@ var (
 
 var maybeLogFile *os.File
 
+// themeFlag is shared by the root command and the account command, so both TUIs
+// honor the same override.
+var themeFlag = &cli.StringFlag{
+	Name:    "theme",
+	Usage:   "Theme id to start with, overriding the one saved in settings.yaml. Does not change the saved selection.",
+	Sources: cli.EnvVars("CHATUINO_THEME"),
+}
+
+// themeIDFromFlags picks the theme id to start with. The --theme flag wins for
+// this session; the saved selection is only used when the flag is empty, and is
+// never overwritten by it.
+func themeIDFromFlags(saved, flag string) string {
+	if flag != "" {
+		return flag
+	}
+
+	return saved
+}
+
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./kittyimg
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/twitchirc
 //go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
@@ -115,6 +134,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				Name:  "tab",
 				Usage: "Tab to open on startup. Can be a channel name, user@channel, \"notification\", or \"mention\". Repeatable. When set, state is not loaded from or saved to disk.",
 			},
+			themeFlag,
 			&cli.BoolFlag{
 				Name:  "enable-profiling",
 				Usage: "If profiling should be enabled",
@@ -155,10 +175,16 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				return fmt.Errorf("failed to read settings file: %w", err)
 			}
 
-			theme, err := save.ThemeFromDisk()
+			themeManager, err := save.NewThemeManager(afero.NewOsFs(), save.ConfigDir(), themeIDFromFlags(settings.Theme, command.String("theme")))
 			if err != nil {
-				return fmt.Errorf("failed to read theme file: %w", err)
+				return fmt.Errorf("failed to load themes: %w", err)
 			}
+
+			for _, warning := range themeManager.Warnings() {
+				log.Logger.Warn().Msg(warning)
+			}
+
+			theme := themeManager.Active()
 
 			keymap, err := save.CreateReadKeyMap()
 			if err != nil {
@@ -315,7 +341,7 @@ chatuino --tab notification --tab mention --tab user1@streamer1`,
 				ctx,
 				messageLoggerChan,
 				settings,
-				theme,
+				themeManager,
 				keymap,
 				accounts,
 				Version,

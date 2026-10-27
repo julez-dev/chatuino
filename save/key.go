@@ -28,11 +28,12 @@ type KeyMap struct {
 	Help    key.Binding `yaml:"help"`
 
 	// App Binds
-	Quit       key.Binding `yaml:"quit"`
-	Create     key.Binding `yaml:"create"`
-	Remove     key.Binding `yaml:"remove"`
-	CloseTab   key.Binding `yaml:"close_tab"`
-	DumpScreen key.Binding `yaml:"dump_screen"` // used by lists, and join input type switch
+	Quit        key.Binding `yaml:"quit"`
+	Create      key.Binding `yaml:"create"`
+	Remove      key.Binding `yaml:"remove"`
+	CloseTab    key.Binding `yaml:"close_tab"`
+	DumpScreen  key.Binding `yaml:"dump_screen"`  // used by lists, and join input type switch
+	ThemePicker key.Binding `yaml:"theme_picker"` // opens the theme picker and live-preview
 
 	// Tab Binds
 	Next     key.Binding `yaml:"next"`
@@ -185,6 +186,10 @@ func BuildDefaultKeyMap() KeyMap {
 		DumpScreen: key.NewBinding(
 			key.WithKeys("ctrl+alt+d"),
 			key.WithHelp("ctrl+alt+d", "dump screen"),
+		),
+		ThemePicker: key.NewBinding(
+			key.WithKeys("ctrl+alt+h"),
+			key.WithHelp("ctrl+alt+h", "switch theme"),
 		),
 		PaneMode:         paneBinding("pane controls", "f2"),
 		PaneFocusLeft:    paneBinding("focus pane left", "left", "h"),

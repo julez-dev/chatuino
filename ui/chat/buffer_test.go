@@ -577,3 +577,40 @@ func TestBuffer_ReplyJumpShowsParentContextRow(t *testing.T) {
 	rows, _ := c.Rows(c.height)
 	require.Contains(t, plain(rows), "↩ Alice: grand parent", "the parent's own reply context is in view")
 }
+
+func TestBuffer_SetThemeRepaintsWithoutLosingState(t *testing.T) {
+	t.Parallel()
+
+	c := newTestBuffer(t, 10, 30)
+
+	// Scroll up so the viewport is not at the tail, and select an entry.
+	c.MoveToTop()
+	top, ok := c.Selected()
+	require.True(t, ok)
+
+	// Rows returns a view of an internal buffer, so snapshot it before the
+	// repaint overwrites it.
+	visible, _ := c.Rows(10)
+	rowsBefore := append([]string(nil), visible...)
+	require.NotEmpty(t, rowsBefore)
+
+	dracula := save.BuildDefaultTheme()
+	dracula.ChatSubAlertColor = "#123456"
+	dracula.ChatIndicatorColor = "#654321"
+	dracula.DimmedTextColor = "#abcdef"
+
+	countBefore := lineCount(c)
+
+	c.SetTheme(dracula)
+
+	// The same transcript is rendered again: same number of rows, same selection.
+	require.Equal(t, countBefore, lineCount(c))
+	selected, ok := c.Selected()
+	require.True(t, ok)
+	require.Equal(t, top.ID, selected.ID, "the selection survives the repaint")
+
+	rowsAfter, _ := c.Rows(10)
+	require.Equal(t, len(rowsBefore), len(rowsAfter))
+	require.NotEqual(t, rowsBefore, rowsAfter, "rows are re-rendered with the new theme colors")
+	require.Contains(t, strings.Join(rowsAfter, "\n"), "171;205;239", "timestamps use the new dimmed color (#abcdef as RGB)")
+}

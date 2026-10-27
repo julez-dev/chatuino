@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/spf13/afero"
 
 	"github.com/julez-dev/chatuino/chatstate"
 	"github.com/julez-dev/chatuino/save"
@@ -21,7 +22,7 @@ func newTestRoot(t *testing.T, accounts []save.Account, clients map[string]tab.C
 		t.Context(),
 		nil,                         // message logger channel
 		save.BuildDefaultSettings(), // settings
-		save.BuildDefaultTheme(),    // theme
+		newTestThemeManager(t),      // themes
 		save.BuildDefaultKeyMap(),   // keymap
 		accounts,                    // accounts
 		"",                          // version
@@ -44,6 +45,13 @@ func newTestRoot(t *testing.T, accounts []save.Account, clients map[string]tab.C
 	root.width, root.height = 80, 24
 
 	return root
+}
+
+// newTestThemeManager wires a theme manager backed by an in-memory config.
+func newTestThemeManager(t *testing.T) *save.ThemeManager {
+	t.Helper()
+
+	return newTestManagerOn(t, afero.NewMemMapFs(), t.TempDir())
 }
 
 // newTestTab builds a chat tab wired with the default test configuration.

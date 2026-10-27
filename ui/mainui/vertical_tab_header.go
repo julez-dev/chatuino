@@ -87,11 +87,8 @@ func (d verticalTabDelegate) Render(w io.Writer, m list.Model, index int, item l
 }
 
 func newVerticalTabHeader(width, height int, theme save.Theme) *verticalTabHeader {
-	delegate := verticalTabDelegate{
-		bulletStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
-		activeStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor)),
-		notificationStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor)),
-	}
+	delegate := verticalTabDelegate{}
+	delegate.SetTheme(theme)
 
 	// Adjust dimensions for border: -2 width for left/right │, -2 height for top/bottom borders
 	listWidth := max(1, width-2)
@@ -110,13 +107,30 @@ func newVerticalTabHeader(width, height int, theme save.Theme) *verticalTabHeade
 
 	l.KeyMap = list.KeyMap{}
 
-	return &verticalTabHeader{
-		width:       width,
-		height:      height,
-		borderStyle: lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor)),
-		list:        l,
-		delegate:    delegate,
+	v := &verticalTabHeader{
+		width:    width,
+		height:   height,
+		list:     l,
+		delegate: delegate,
 	}
+	v.SetTheme(theme)
+
+	return v
+}
+
+// SetTheme repaints the header and its delegate without rebuilding the list, so
+// the scroll position of a long tab list is kept.
+func (v *verticalTabHeader) SetTheme(theme save.Theme) {
+	v.borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
+	v.delegate.SetTheme(theme)
+	v.list.SetDelegate(v.delegate)
+}
+
+// SetTheme repaints one row projection.
+func (d *verticalTabDelegate) SetTheme(theme save.Theme) {
+	d.bulletStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPromptColor))
+	d.activeStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(theme.InputPromptColor))
+	d.notificationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.ChatNoticeAlertColor))
 }
 
 // syncList pushes the registry projection into the bubbles list and selects the

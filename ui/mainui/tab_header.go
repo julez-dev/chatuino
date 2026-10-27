@@ -3,6 +3,7 @@ package mainui
 import (
 	"fmt"
 
+	"github.com/julez-dev/chatuino/save"
 	"github.com/julez-dev/chatuino/ui/nav"
 )
 
@@ -114,6 +115,8 @@ type wheelScroller interface {
 type header interface {
 	View(rows []nav.Row) string
 	Resize(width, height int)
+	// SetTheme repaints the header after the user switched themes.
+	SetTheme(theme save.Theme)
 	MinWidth(rows []nav.Row) int
 	// TabAt returns the id of the tab rendered at the given cell, if any.
 	TabAt(rows []nav.Row, x, y int) (string, bool)

@@ -1,8 +1,11 @@
 package save
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,28 +18,33 @@ import (
 
 const (
 	settingsFileName = "settings.yaml"
-	maxGraphicScale  = 4 // must not exceed kittyimg.MaxRows
+	// themeSettingKey is the settings.yaml key holding the active theme id.
+	themeSettingKey = "theme"
+	maxGraphicScale = 4 // must not exceed kittyimg.MaxRows
 )
 
 // SettingsPath is where SettingsFromDisk reads the settings from. It is used in
 // user-facing messages so an error can point at the file to edit.
 func SettingsPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return settingsFileName
-	}
+	return settingsFilePath(ConfigDir())
+}
 
-	return filepath.Join(dir, chatuinoConfigDir, settingsFileName)
+// settingsFilePath is the settings file inside a chatuino config directory.
+func settingsFilePath(configDir string) string {
+	return filepath.Join(configDir, settingsFileName)
 }
 
 type Settings struct {
-	VerticalTabList bool               `yaml:"vertical_tab_list"`
-	Mouse           bool               `yaml:"mouse"` // capture mouse clicks/wheel; default: true
-	Moderation      ModerationSettings `yaml:"moderation"`
-	Chat            ChatSettings       `yaml:"chat"`
-	CustomCommands  []CustomCommand    `yaml:"custom_commands"`
-	BlockSettings   BlockSettings      `yaml:"block_settings"`
-	Security        SecuritySettings   `yaml:"security"`
+	VerticalTabList bool `yaml:"vertical_tab_list"`
+	// Theme is the id of the active theme. Empty means "nothing configured",
+	// which keeps a legacy theme.yaml active or falls back to the default.
+	Theme          string             `yaml:"theme"`
+	Mouse          bool               `yaml:"mouse"` // capture mouse clicks/wheel; default: true
+	Moderation     ModerationSettings `yaml:"moderation"`
+	Chat           ChatSettings       `yaml:"chat"`
+	CustomCommands []CustomCommand    `yaml:"custom_commands"`
+	BlockSettings  BlockSettings      `yaml:"block_settings"`
+	Security       SecuritySettings   `yaml:"security"`
 }
 
 type ModerationSettings struct {
@@ -165,4 +173,102 @@ func SettingsFromDisk() (Settings, error) {
 	}
 
 	return settings, nil
+}
+
+// SetThemeSetting stores the theme id in the settings file at path.
+//
+// The document is edited as a yaml.Node instead of being re-marshalled from
+// Settings: settings.yaml is hand-edited by users, and a round-trip through the
+// struct would drop every comment and every key this version does not model yet.
+func SetThemeSetting(fsys afero.Fs, path, id string) error {
+	data, err := afero.ReadFile(fsys, path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("failed to read %s: %w", path, err)
+	}
+
+	doc := &yaml.Node{}
+
+	if len(bytes.TrimSpace(data)) > 0 {
+		if err := yaml.Unmarshal(data, doc); err != nil {
+			return fmt.Errorf("failed to parse %s: %w", path, err)
+		}
+	}
+
+	root, err := rootMappingNode(doc)
+	if err != nil {
+		return fmt.Errorf("failed to update %s: %w", path, err)
+	}
+
+	setMappingValue(root, themeSettingKey, id)
+
+	var buf bytes.Buffer
+
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2) // match the two-space nesting used in the docs
+
+	if err := encoder.Encode(doc); err != nil {
+		return fmt.Errorf("failed to encode %s: %w", path, err)
+	}
+
+	if err := encoder.Close(); err != nil {
+		return fmt.Errorf("failed to encode %s: %w", path, err)
+	}
+
+	out := buf.Bytes()
+
+	mode := os.FileMode(0o600)
+	if stat, statErr := fsys.Stat(path); statErr == nil {
+		mode = stat.Mode().Perm()
+	}
+
+	if err := afero.WriteFile(fsys, path, out, mode); err != nil {
+		return fmt.Errorf("failed to write %s: %w", path, err)
+	}
+
+	return nil
+}
+
+// rootMappingNode returns the top-level mapping of doc, creating it for an empty
+// document.
+func rootMappingNode(doc *yaml.Node) (*yaml.Node, error) {
+	if doc.Kind == 0 {
+		root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		doc.Kind = yaml.DocumentNode
+		doc.Content = []*yaml.Node{root}
+
+		return root, nil
+	}
+
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+		return nil, fmt.Errorf("unexpected document structure")
+	}
+
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("settings file is not a mapping")
+	}
+
+	return root, nil
+}
+
+// setMappingValue sets key to value in mapping, reusing the existing value node
+// so its comments survive.
+func setMappingValue(mapping *yaml.Node, key, value string) {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value != key {
+			continue
+		}
+
+		node := mapping.Content[i+1]
+		node.Kind = yaml.ScalarNode
+		node.Tag = "!!str"
+		node.Value = value
+
+		return
+	}
+
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value},
+	)
 }

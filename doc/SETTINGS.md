@@ -5,6 +5,7 @@ Chatuino can run without a settings file, but you may want to configure its defa
 Your settings file is read from `~/.config/chatuino/settings.yaml` (the config directory may differ depending on your OS). Create the file if it doesn't exist.
 
 ```yaml
+theme: nord # Active theme id; see doc/THEME.md. Unset keeps a legacy theme.yaml active
 vertical_tab_list: false # Display tabs vertically instead of horizontally
 mouse: true # Capture mouse clicks and wheel events; set false to restore native text selection; Default: true
 moderation:
@@ -96,6 +97,7 @@ Bindings are additive: every action accepts all keys listed for it.
 | Next tab | `tab`, `]`, `ctrl+n`, `alt+l` |
 | Previous tab | `shift+tab`, `[`, `alt+h` |
 | Quick join | `ctrl+j` |
+| Theme picker | `ctrl+alt+h` |
 | Insert mode | `i`, `I`, `enter` |
 | User inspect | `ctrl+l`, `u` |
 | Chat popup | `ctrl+p`, `alt+p` |

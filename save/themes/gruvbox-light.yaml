@@ -1,0 +1,42 @@
+# Gruvbox Light (light)
+#
+# Light themes assume a light terminal background.
+name: Gruvbox Light
+
+seven_tv_emote_color: "#076678"
+twitch_tv_emote_color: "#8f3f71"
+better_ttv_emote_color: "#9d0006"
+ffz_emote_color: "#79740e"
+
+input_prompt_color: "#076678"
+
+chat_streamer_color: "#af3a03"
+chat_vip_color: "#8f3f71"
+chat_sub_color: "#79740e"
+chat_turbo_color: "#076678"
+chat_moderator_color: "#79740e"
+chat_indicator_color: "#076678"
+
+chat_sub_alert_color: "#8f3f71"
+chat_notice_alert_color: "#b57614"
+chat_clear_chat_color: "#af3a03"
+chat_error_color: "#9d0006"
+
+list_selected_color: "#076678"
+list_label_color: "#427b58"
+active_label_color: "#b57614"
+
+status_color: "#076678"
+
+chatuino_splash_color: "#af3a03"
+splash_highlight_color: "#3c3836"
+
+tab_header_background_color: "#ebdbb2"
+tab_header_active_background_color: "#f2e5bc"
+
+inspect_border_color: "#8f3f71"
+
+list_background_color: "#ebdbb2"
+list_font_color: "#3c3836"
+
+dimmed_text_color: "#928374"

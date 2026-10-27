@@ -59,6 +59,11 @@ func (l *liveNotificationTab) InitWithUserData(twitchapi.UserData) tea.Cmd {
 func (l *liveNotificationTab) Update(msg tea.Msg) (Tab, tea.Cmd) {
 	var cmd tea.Cmd
 
+	if themeMsg, ok := msg.(ThemeChangedMessage); ok {
+		l.SetTheme(themeMsg.Theme)
+		return l, nil
+	}
+
 	if info, ok := msg.(SetStreamInfoMessage); ok {
 		// If broadcaster already exists in open streamer map, see if prevoiusly was live/offline, then notify user and save new state
 		// Else add broadcaster
