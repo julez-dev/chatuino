@@ -233,7 +233,7 @@ func TestDecodedImage_PrepareCommand_Animated(t *testing.T) {
 	// Should contain animation start for first frame
 	require.Contains(t, cmd, "\033_Ga=a,i=5,r=1,z=100,q=2;\033\\")
 	// Should contain subsequent frame
-	require.Contains(t, cmd, "\033_Ga=f,i=5,t=t,f=32,s=30,v=30,z=100,q=2,o=z;ZnJhbWUy\033\\")
+	require.Contains(t, cmd, "\033_Ga=f,i=5,t=f,f=32,s=30,v=30,z=100,q=2,o=z;ZnJhbWUy\033\\")
 	// Should start animation
 	require.Contains(t, cmd, "\033_Ga=a,i=5,s=3,v=1,q=2;\033\\")
 	// Should create placement

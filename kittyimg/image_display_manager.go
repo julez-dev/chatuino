@@ -85,7 +85,7 @@ func (i DecodedImage) PrepareCommand() string {
 
 	// send each frame after first image
 	for img := range slices.Values(i.Images[1:]) {
-		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=t,f=32,s=%d,v=%d,z=%d,q=2,o=z;%s\033\\", i.ID, img.Width, img.Height, img.DelayInMS, img.EncodedPath)
+		fmt.Fprintf(&b, "\033_Ga=f,i=%d,t=f,f=32,s=%d,v=%d,z=%d,q=2,o=z;%s\033\\", i.ID, img.Width, img.Height, img.DelayInMS, img.EncodedPath)
 	}
 
 	// start animation
