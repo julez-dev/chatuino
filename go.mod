@@ -1,10 +1,10 @@
 module github.com/julez-dev/chatuino
 
-go 1.27.2
+go 1.27.3
 
 require (
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/bubbletea/v2 v2.1.0
+	charm.land/bubbletea/v2 v2.1.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/Vivino/go-autocomplete-trie v0.0.0-20230301121706-da951497d081
@@ -20,7 +20,6 @@ require (
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/julez-dev/reflow v0.0.0-20260207204657-9861c8899d24
 	github.com/lithammer/fuzzysearch v1.1.8
-	github.com/mailru/easyjson v0.9.2
 	github.com/mattn/go-runewidth v0.0.31
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/rivo/uniseg v0.4.7
@@ -53,7 +52,6 @@ require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/ebitengine/purego v0.11.2 // indirect
 	github.com/godbus/dbus/v5 v5.2.4 // indirect
-	github.com/josharian/intern v1.0.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

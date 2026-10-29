@@ -2,7 +2,8 @@ package save
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"slices"
@@ -55,7 +56,7 @@ func (m *ChannelHistoryManager) LoadHistory() ([]ChannelHistoryEntry, error) {
 
 	var entries []ChannelHistoryEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
-		syntaxErr := &json.SyntaxError{}
+		syntaxErr := &jsontext.SyntacticError{}
 		if errors.As(err, &syntaxErr) {
 			return nil, nil
 		}
@@ -86,7 +87,7 @@ func (m *ChannelHistoryManager) RecordChannel(login string) error {
 	var entries []ChannelHistoryEntry
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &entries); err != nil {
-			syntaxErr := &json.SyntaxError{}
+			syntaxErr := &jsontext.SyntacticError{}
 			if !errors.As(err, &syntaxErr) {
 				return err
 			}

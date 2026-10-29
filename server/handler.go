@@ -3,7 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -276,7 +276,8 @@ type VersionResponse struct {
 func (a *API) handleGetVersion() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(VersionResponse{Version: a.conf.Version})
+		_ = json.MarshalWrite(w, VersionResponse{Version: a.conf.Version})
+		_, _ = w.Write([]byte("\n"))
 	})
 }
 

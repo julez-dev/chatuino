@@ -2,14 +2,13 @@ package recentmessage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog/log"
 )
 
@@ -93,7 +92,7 @@ func (a API) doRequest(ctx context.Context, api API, method, url string, body io
 		return data, errResp
 	}
 
-	if err := easyjson.Unmarshal(respBody, &data); err != nil {
+	if err := json.Unmarshal(respBody, &data); err != nil {
 		return data, err
 	}
 

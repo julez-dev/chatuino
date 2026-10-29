@@ -2,7 +2,7 @@ package contributor
 
 import (
 	_ "embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"strings"
 	"sync"
 )

@@ -1,7 +1,8 @@
 package mainui
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 
@@ -253,7 +254,7 @@ type savedWorkspaceSet struct {
 
 // snapshotWorkspaces persists every automatically managed layout. The legacy
 // single Layout field remains the active workspace for older readers.
-func (r *Root) snapshotWorkspaces(refs map[string]string) json.RawMessage {
+func (r *Root) snapshotWorkspaces(refs map[string]string) jsontext.Value {
 	r.syncActiveWorkspace()
 	set := savedWorkspaceSet{Version: 1}
 	for _, ws := range r.workspaces {
@@ -277,7 +278,7 @@ func (r *Root) snapshotWorkspaces(refs map[string]string) json.RawMessage {
 // and restores layouts/focus. Invalid metadata never blocks valid tabs from
 // loading. The active workspace is derived from the focused tab, not chosen by
 // the user.
-func (r *Root) restoreWorkspaces(legacy, multi json.RawMessage, refs map[string]string) {
+func (r *Root) restoreWorkspaces(legacy, multi jsontext.Value, refs map[string]string) {
 	r.workspaces = nil
 	r.workspace = workspace.Layout{}
 	r.activeWorkspaceID, r.workspaceSeq = "", 0

@@ -1,7 +1,8 @@
 package mainui
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strings"
 	"testing"
 
@@ -251,7 +252,7 @@ func TestWorkspace_LayoutRecoveryKeepsValidTabsAndDetachedSessionsIgnoreSavedLay
 			r := newRestoreTestRoot(t)
 			r.Update(persistedDataLoadedMessage{state: save.AppState{
 				Tabs:   []save.TabState{{Channel: "alpha", IdentityID: "acc"}, {Channel: "beta", IdentityID: "acc"}},
-				Layout: json.RawMessage(data),
+				Layout: jsontext.Value(data),
 			}})
 			t.Cleanup(func() {
 				for _, model := range r.tabs.All() {
@@ -271,7 +272,7 @@ func TestWorkspace_LayoutRecoveryKeepsValidTabsAndDetachedSessionsIgnoreSavedLay
 		initial := save.AppState{Tabs: []save.TabState{
 			{Kind: int(tab.LiveNotificationKind)},
 			{Kind: int(tab.BroadcastKind), Channel: "alpha", IdentityID: "acc"},
-		}, Layout: json.RawMessage(`{"version":1,"root":{"axis":"columns","ratio":5000,"first":{"tab":"0"},"second":{"tab":"1"}},"focus":"1"}`)}
+		}, Layout: jsontext.Value(`{"version":1,"root":{"axis":"columns","ratio":5000,"first":{"tab":"0"},"second":{"tab":"1"}},"focus":"1"}`)}
 		r := newTestRoot(t, []save.Account{{ID: "acc"}}, nil, &initial)
 		r.Update(persistedDataLoadedMessage{state: initial})
 		t.Cleanup(func() {
@@ -571,7 +572,7 @@ func TestWorkspace_RestoreMapsOriginalRecordPositionsAfterSkippedAccounts(t *tes
 			{Channel: "beta", IdentityID: "acc"},
 			{Kind: int(tab.LiveNotificationKind)},
 		},
-		Layout: json.RawMessage(`{"version":1,"root":{"axis":"columns","ratio":5000,"first":{"tab":"0"},"second":{"axis":"rows","ratio":6000,"first":{"tab":"1"},"second":{"tab":"2"}}},"focus":"0"}`),
+		Layout: jsontext.Value(`{"version":1,"root":{"axis":"columns","ratio":5000,"first":{"tab":"0"},"second":{"axis":"rows","ratio":6000,"first":{"tab":"1"},"second":{"tab":"2"}}},"focus":"0"}`),
 	}})
 	t.Cleanup(func() {
 		for _, model := range root.tabs.All() {

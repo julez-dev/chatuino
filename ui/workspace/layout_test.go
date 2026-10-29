@@ -1,7 +1,7 @@
 package workspace_test
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"strconv"
 	"testing"
 

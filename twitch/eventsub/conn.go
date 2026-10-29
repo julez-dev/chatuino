@@ -2,7 +2,8 @@ package eventsub
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -324,7 +325,7 @@ func (c *Conn) readLoop(ws *websocket.Conn) error {
 				MessageID   string `json:"message_id"`
 				MessageType string `json:"message_type"`
 			} `json:"metadata"`
-			Payload json.RawMessage `json:"payload"`
+			Payload jsontext.Value `json:"payload"`
 		}
 
 		if err := json.Unmarshal(data, &msg); err != nil {

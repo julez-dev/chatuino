@@ -1,7 +1,7 @@
 package server
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,7 +27,7 @@ func TestHandleGetVersion(t *testing.T) {
 		require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
 		var resp VersionResponse
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+		require.NoError(t, json.UnmarshalRead(rec.Body, &resp))
 		require.Equal(t, "0.7.0", resp.Version)
 	})
 
@@ -44,7 +44,7 @@ func TestHandleGetVersion(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 
 		var resp VersionResponse
-		require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+		require.NoError(t, json.UnmarshalRead(rec.Body, &resp))
 		require.Empty(t, resp.Version)
 	})
 }

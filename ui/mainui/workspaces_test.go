@@ -1,7 +1,8 @@
 package mainui
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -275,7 +276,7 @@ func TestWorkspaces_RestoreRepairsDuplicateOwnershipAndBadMetadata(t *testing.T)
 	broken := newRestoreTestRoot(t)
 	broken.Update(persistedDataLoadedMessage{state: save.AppState{
 		Tabs:       []save.TabState{{Channel: "alpha", IdentityID: "acc"}},
-		Workspaces: json.RawMessage(`{"version":`),
+		Workspaces: jsontext.Value(`{"version":`),
 	}})
 	t.Cleanup(func() {
 		for _, model := range broken.tabs.All() {
