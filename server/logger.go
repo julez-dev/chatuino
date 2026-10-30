@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -17,6 +18,11 @@ const loggerKey ctxKeyLogger = 0
 func requestLogger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
+			if isInternalProbe(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			t := time.Now()
 
@@ -52,4 +58,16 @@ func requestLogger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 
 		return http.HandlerFunc(fn)
 	}
+}
+
+// isInternalProbe reports whether the path is an internal health/readiness
+// endpoint. These are polled frequently by container healthchecks, so logging
+// them would only add noise.
+func isInternalProbe(path string) bool {
+	p, ok := strings.CutPrefix(path, "/internal/")
+	if !ok {
+		return false
+	}
+
+	return p == "health" || p == "ready"
 }
