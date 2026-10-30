@@ -14,8 +14,8 @@ type IRCer interface {
 }
 
 type Badge struct {
-	Name    string
-	Version string
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 func (b Badge) String() string {
@@ -33,13 +33,13 @@ func (b Badge) String() string {
 }
 
 type Emote struct {
-	ID        string
-	Positions []EmotePosition
+	ID        string          `json:"id"`
+	Positions []EmotePosition `json:"positions"`
 }
 
 type EmotePosition struct {
-	Start int
-	End   int
+	Start int `json:"start"`
+	End   int `json:"end"`
 }
 
 type UserType string
@@ -51,50 +51,51 @@ const (
 	Staff     UserType = "staff"
 )
 
-//easyjson:json
+// PrivateMessage is persisted as JSON in the message log, so the snake_case
+// member names below are a storage format: keep them stable.
 type PrivateMessage struct {
-	BadgeInfo   []Badge
-	Badges      []Badge
-	Bits        int
-	Color       string
-	DisplayName string
-	Emotes      []Emote
-	ID          string
-	Mod         bool
-	FirstMsg    bool
+	BadgeInfo   []Badge `json:"badge_info"`
+	Badges      []Badge `json:"badges"`
+	Bits        int     `json:"bits"`
+	Color       string  `json:"color"`
+	DisplayName string  `json:"display_name"`
+	Emotes      []Emote `json:"emotes"`
+	ID          string  `json:"id"`
+	Mod         bool    `json:"mod"`
+	FirstMsg    bool    `json:"first_msg"`
 
 	// Hype chat
-	PaidAmount          int
-	PaidCurrency        string
-	PaidExponent        int
-	PaidLevel           string
-	PaidIsSystemMessage bool
+	PaidAmount          int    `json:"paid_amount"`
+	PaidCurrency        string `json:"paid_currency"`
+	PaidExponent        int    `json:"paid_exponent"`
+	PaidLevel           string `json:"paid_level"`
+	PaidIsSystemMessage bool   `json:"paid_is_system_message"`
 
 	// Reply
-	ParentMsgID           string
-	ParentUserID          string
-	ParentUserLogin       string
-	ParentDisplayName     string
-	ParentMsgBody         string
-	ThreadParentMsgID     string
-	ThreadParentUserLogin string
+	ParentMsgID           string `json:"parent_msg_id"`
+	ParentUserID          string `json:"parent_user_id"`
+	ParentUserLogin       string `json:"parent_user_login"`
+	ParentDisplayName     string `json:"parent_display_name"`
+	ParentMsgBody         string `json:"parent_msg_body"`
+	ThreadParentMsgID     string `json:"thread_parent_msg_id"`
+	ThreadParentUserLogin string `json:"thread_parent_user_login"`
 
-	RoomID          string
-	ChannelUserName string
-	LoginName       string
-	Subscriber      bool
-	TMISentTS       time.Time
-	Turbo           bool
-	UserID          string
-	UserType        UserType
-	VIP             bool
+	RoomID          string    `json:"room_id"`
+	ChannelUserName string    `json:"channel_user_name"`
+	LoginName       string    `json:"login_name"`
+	Subscriber      bool      `json:"subscriber"`
+	TMISentTS       time.Time `json:"tmi_sent_ts"`
+	Turbo           bool      `json:"turbo"`
+	UserID          string    `json:"user_id"`
+	UserType        UserType  `json:"user_type"`
+	VIP             bool      `json:"vip"`
 
 	// Joined chat rooms
-	SourceID     string
-	SourceRoomID string
-	SourceBadges []Badge
+	SourceID     string  `json:"source_id"`
+	SourceRoomID string  `json:"source_room_id"`
+	SourceBadges []Badge `json:"source_badges"`
 
-	Message string
+	Message string `json:"message"`
 }
 
 func (p *PrivateMessage) IRC() string {

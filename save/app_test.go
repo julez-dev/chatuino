@@ -1,7 +1,8 @@
 package save_test
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/adrg/xdg"
@@ -20,11 +21,11 @@ func TestAppState_LayoutRoundTripsAndLegacyTabsRemainCompatible(t *testing.T) {
 	var legacy save.AppState
 	require.NoError(t, json.Unmarshal([]byte(`{"tabs":[{"channel":"alpha","identity_id":"main","kind":0,"is_focused":true}]}`), &legacy))
 	require.Empty(t, legacy.Layout)
-	for _, layout := range []json.RawMessage{
+	for _, layout := range []jsontext.Value{
 		nil,
-		json.RawMessage(`{"version":1,"root":{"tab":"0"},"focus":"0"}`),
-		json.RawMessage(`"unusable layout metadata"`),
-		json.RawMessage(`{"version":99,"root":null}`),
+		jsontext.Value(`{"version":1,"root":{"tab":"0"},"focus":"0"}`),
+		jsontext.Value(`"unusable layout metadata"`),
+		jsontext.Value(`{"version":99,"root":null}`),
 	} {
 		state := legacy
 		state.Layout = layout

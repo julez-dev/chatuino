@@ -38,7 +38,6 @@ import (
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/ui/mainui"
 	"github.com/julez-dev/chatuino/ui/tab"
-	_ "github.com/mailru/easyjson"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli/v3"
 	_ "modernc.org/sqlite"
@@ -80,12 +79,6 @@ func themeIDFromFlags(saved, flag string) string {
 	return saved
 }
 
-//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./kittyimg
-//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./twitch/twitchirc
-//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -no_std_marshalers -pkg ./emote
-//go:generate go run github.com/mailru/easyjson/easyjson@latest -snake_case -pkg ./twitch/recentmessage
-
-//go:generate go run github.com/vektra/mockery/v3@v3.8.1
 func main() {
 	defer func() {
 		if maybeLogFile != nil {

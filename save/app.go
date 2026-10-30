@@ -2,7 +2,8 @@ package save
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -21,10 +22,10 @@ type AppState struct {
 	Tabs []TabState `json:"tabs"`
 	// Decode layout separately, after restoring tabs. Structurally invalid or
 	// newer layout metadata must not make otherwise valid tab records unloadable.
-	Layout json.RawMessage `json:"layout,omitempty"`
+	Layout jsontext.Value `json:"layout,omitempty"`
 	// Multi-workspace sessions keep the legacy Layout field as the active
 	// workspace snapshot for older readers; new readers prefer Workspaces.
-	Workspaces json.RawMessage `json:"workspaces,omitempty"`
+	Workspaces jsontext.Value `json:"workspaces,omitempty"`
 }
 
 type TabState struct {
@@ -86,7 +87,7 @@ func (a *AppStateManager) LoadAppState() (AppState, error) {
 	state := AppState{}
 	err = json.Unmarshal(data, &state)
 	if err != nil {
-		syntaxErr := &json.SyntaxError{}
+		syntaxErr := &jsontext.SyntacticError{}
 		if errors.As(err, &syntaxErr) {
 			return AppState{}, nil
 		}

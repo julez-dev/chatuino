@@ -1,7 +1,8 @@
 package mainui
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -54,7 +55,7 @@ func (r *Root) activeID() string {
 	return ""
 }
 
-func (r *Root) snapshotWorkspace(refs map[string]string) json.RawMessage {
+func (r *Root) snapshotWorkspace(refs map[string]string) jsontext.Value {
 	if r.tabs.Len() == 0 {
 		return nil
 	}

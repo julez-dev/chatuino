@@ -3,19 +3,70 @@ package emote_test
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/julez-dev/chatuino/emote"
-	"github.com/julez-dev/chatuino/mocks"
 	"github.com/julez-dev/chatuino/twitch/bttv"
 	"github.com/julez-dev/chatuino/twitch/ffz"
 	"github.com/julez-dev/chatuino/twitch/seventv"
 	"github.com/julez-dev/chatuino/twitch/twitchapi"
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+// stubFetcher stands in for one emote provider. The cache only needs providers
+// to answer with a fixed value, so a struct with function fields replaces the
+// generated mocks; call counters keep the "one fetch per refresh" contract.
+type stubFetcher[G, C any] struct {
+	globalEmotes  func(context.Context) (G, error)
+	channelEmotes func(context.Context, string) (C, error)
+
+	globalCalls  atomic.Int32
+	channelCalls atomic.Int32
+}
+
+func (s *stubFetcher[G, C]) GetGlobalEmotes(ctx context.Context) (G, error) {
+	s.globalCalls.Add(1)
+	if s.globalEmotes == nil {
+		var zero G
+		return zero, nil
+	}
+
+	return s.globalEmotes(ctx)
+}
+
+func (s *stubFetcher[G, C]) GetChannelEmotes(ctx context.Context, broadcaster string) (C, error) {
+	s.channelCalls.Add(1)
+	if s.channelEmotes == nil {
+		var zero C
+		return zero, nil
+	}
+
+	return s.channelEmotes(ctx, broadcaster)
+}
+
+func newStubs() (
+	*stubFetcher[twitchapi.EmoteResponse, twitchapi.EmoteResponse],
+	*stubFetcher[seventv.EmoteResponse, seventv.ChannelEmoteResponse],
+	*stubFetcher[bttv.GlobalEmoteResponse, bttv.UserResponse],
+	*stubFetcher[[]ffz.Emote, []ffz.Emote],
+) {
+	return &stubFetcher[twitchapi.EmoteResponse, twitchapi.EmoteResponse]{},
+		&stubFetcher[seventv.EmoteResponse, seventv.ChannelEmoteResponse]{},
+		&stubFetcher[bttv.GlobalEmoteResponse, bttv.UserResponse]{},
+		&stubFetcher[[]ffz.Emote, []ffz.Emote]{}
+}
+
+// answerGlobal and answerChannel ignore the context and always answer the same.
+func answerGlobal[T any](v T, err error) func(context.Context) (T, error) {
+	return func(context.Context) (T, error) { return v, err }
+}
+
+func answerChannel[T any](v T, err error) func(context.Context, string) (T, error) {
+	return func(context.Context, string) (T, error) { return v, err }
+}
 
 func TestCache_RefreshCancelledWaiterDoesNotCancelSharedFetch(t *testing.T) {
 	t.Parallel()
@@ -24,7 +75,7 @@ func TestCache_RefreshCancelledWaiterDoesNotCancelSharedFetch(t *testing.T) {
 		t.Run(scope, func(t *testing.T) {
 			t.Parallel()
 
-			store, started, release := newBlockedEmoteRefresh(t, scope)
+			store, started, release, providerCalls := newBlockedEmoteRefresh(t, scope)
 			refresh := func(ctx context.Context) error {
 				if scope == "global" {
 					return store.RefreshGlobal(ctx)
@@ -74,23 +125,24 @@ func TestCache_RefreshCancelledWaiterDoesNotCancelSharedFetch(t *testing.T) {
 			}
 			_, ok := store.GetAllForChannel("shared-channel").GetByText("SharedEmote")
 			require.True(t, ok, "the successful refresh must populate the cache")
+			require.EqualValues(t, 1, providerCalls.Load(), "coalesced refreshes must reach the provider once")
 		})
 	}
 }
 
 // The fetchers are external API boundaries; the cache and its coalescing remain real.
-func newBlockedEmoteRefresh(t *testing.T, scope string) (*emote.Cache, <-chan context.Context, func()) {
+func newBlockedEmoteRefresh(t *testing.T, scope string) (*emote.Cache, <-chan context.Context, func(), *atomic.Int32) {
 	t.Helper()
 
-	ttv := mocks.NewMockTwitchEmoteFetcher(t)
-	seven := mocks.NewMockSevenTVEmoteFetcher(t)
-	bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-	ffzService := mocks.NewMockFFZEmoteFetcher(t)
+	ttv, seven, bttvService, ffzService := newStubs()
 	started := make(chan context.Context, 1)
 	release := make(chan struct{})
 	releaseRefresh := sync.OnceFunc(func() { close(release) })
 	t.Cleanup(releaseRefresh)
+
+	var providerCalls atomic.Int32
 	fetch := func(ctx context.Context) (twitchapi.EmoteResponse, error) {
+		providerCalls.Add(1)
 		started <- ctx
 		select {
 		case <-release:
@@ -99,29 +151,22 @@ func newBlockedEmoteRefresh(t *testing.T, scope string) (*emote.Cache, <-chan co
 			return twitchapi.EmoteResponse{}, ctx.Err()
 		}
 	}
+
 	if scope == "global" {
-		ttv.EXPECT().GetGlobalEmotes(mock.Anything).RunAndReturn(fetch).Once()
-		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(seventv.EmoteResponse{}, nil)
-		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(bttv.GlobalEmoteResponse{}, nil)
-		ffzService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(nil, nil)
+		ttv.globalEmotes = fetch
 	} else {
-		ttv.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").RunAndReturn(func(ctx context.Context, _ string) (twitchapi.EmoteResponse, error) {
+		ttv.channelEmotes = func(ctx context.Context, _ string) (twitchapi.EmoteResponse, error) {
 			return fetch(ctx)
-		}).Once()
-		seven.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
-		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").Once().Return(bttv.UserResponse{}, nil)
-		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "shared-channel").Once().Return(nil, nil)
+		}
 	}
-	return emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService), started, releaseRefresh
+
+	return emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService), started, releaseRefresh, &providerCalls
 }
 
 func TestRefreshLocal(t *testing.T) {
-	ttv := mocks.NewMockTwitchEmoteFetcher(t)
-	seven := mocks.NewMockSevenTVEmoteFetcher(t)
-	bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-	ffzService := mocks.NewMockFFZEmoteFetcher(t)
+	ttv, seven, bttvService, ffzService := newStubs()
 
-	ttv.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(twitchapi.EmoteResponse{
+	ttv.channelEmotes = answerChannel(twitchapi.EmoteResponse{
 		Data: []twitchapi.EmoteData{
 			{
 				ID:   "test",
@@ -130,7 +175,7 @@ func TestRefreshLocal(t *testing.T) {
 		},
 	}, nil)
 
-	seven.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(seventv.ChannelEmoteResponse{
+	seven.channelEmotes = answerChannel(seventv.ChannelEmoteResponse{
 		EmoteSet: struct {
 			Emotes []seventv.Emote `json:"emotes"`
 		}{
@@ -152,7 +197,7 @@ func TestRefreshLocal(t *testing.T) {
 		},
 	}, nil)
 
-	bttvService.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return(bttv.UserResponse{
+	bttvService.channelEmotes = answerChannel(bttv.UserResponse{
 		ChannelEmotes: []bttv.Emote{
 			{
 				ID:   "test-bttv",
@@ -161,7 +206,7 @@ func TestRefreshLocal(t *testing.T) {
 		},
 	}, nil)
 
-	ffzService.EXPECT().GetChannelEmotes(mock.Anything, "test-channel").Once().Return([]ffz.Emote{
+	ffzService.channelEmotes = answerChannel([]ffz.Emote{
 		{
 			ID:   123,
 			Name: "FFZ-emote",
@@ -190,6 +235,9 @@ func TestRefreshLocal(t *testing.T) {
 	// second call
 	err = store.RefreshLocal(context.Background(), "test-channel")
 	require.Nil(t, err)
+
+	require.EqualValues(t, 1, ttv.channelCalls.Load(), "a cached channel is not fetched twice")
+	require.EqualValues(t, 1, ffzService.channelCalls.Load())
 }
 
 func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
@@ -198,25 +246,21 @@ func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
 	t.Run("7TV failure does not block", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
-		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+		ttv.globalEmotes = answerGlobal(twitchapi.EmoteResponse{
 			Data: []twitchapi.EmoteData{
 				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
 			},
 		}, nil)
 
-		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
-			seventv.EmoteResponse{}, seventv.APIError{StatusCode: 500})
+		seven.globalEmotes = answerGlobal(seventv.EmoteResponse{}, seventv.APIError{StatusCode: 500})
 
-		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(bttv.GlobalEmoteResponse{
+		bttvService.globalEmotes = answerGlobal(bttv.GlobalEmoteResponse{
 			{ID: "bttv-global", Code: "GlobalBTTVEmote"},
 		}, nil)
 
-		ffzService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return([]ffz.Emote{
+		ffzService.globalEmotes = answerGlobal([]ffz.Emote{
 			{ID: 1, Name: "GlobalFFZEmote"},
 		}, nil)
 
@@ -235,27 +279,23 @@ func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
 	t.Run("BTTV failure does not block", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
-		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+		ttv.globalEmotes = answerGlobal(twitchapi.EmoteResponse{
 			Data: []twitchapi.EmoteData{
 				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
 			},
 		}, nil)
 
-		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(seventv.EmoteResponse{
+		seven.globalEmotes = answerGlobal(seventv.EmoteResponse{
 			Emotes: []seventv.Emote{
 				{ID: "7tv-global", Name: "Global7TVEmote"},
 			},
 		}, nil)
 
-		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
-			bttv.GlobalEmoteResponse{}, bttv.APIError{StatusCode: 503})
+		bttvService.globalEmotes = answerGlobal(bttv.GlobalEmoteResponse{}, bttv.APIError{StatusCode: 503})
 
-		ffzService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return([]ffz.Emote{
+		ffzService.globalEmotes = answerGlobal([]ffz.Emote{
 			{ID: 1, Name: "GlobalFFZEmote"},
 		}, nil)
 
@@ -274,29 +314,25 @@ func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
 	t.Run("FFZ failure does not block", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
-		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+		ttv.globalEmotes = answerGlobal(twitchapi.EmoteResponse{
 			Data: []twitchapi.EmoteData{
 				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
 			},
 		}, nil)
 
-		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(seventv.EmoteResponse{
+		seven.globalEmotes = answerGlobal(seventv.EmoteResponse{
 			Emotes: []seventv.Emote{
 				{ID: "7tv-global", Name: "Global7TVEmote"},
 			},
 		}, nil)
 
-		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(bttv.GlobalEmoteResponse{
+		bttvService.globalEmotes = answerGlobal(bttv.GlobalEmoteResponse{
 			{ID: "bttv-global", Code: "GlobalBTTVEmote"},
 		}, nil)
 
-		ffzService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
-			[]ffz.Emote(nil), ffz.APIError{StatusCode: 500})
+		ffzService.globalEmotes = answerGlobal([]ffz.Emote(nil), ffz.APIError{StatusCode: 500})
 
 		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
 
@@ -315,25 +351,19 @@ func TestRefreshGlobal_3rdPartyFailureNonBlocking(t *testing.T) {
 	t.Run("all 3rd parties fail, Twitch succeeds", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
-		ttv.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(twitchapi.EmoteResponse{
+		ttv.globalEmotes = answerGlobal(twitchapi.EmoteResponse{
 			Data: []twitchapi.EmoteData{
 				{ID: "ttv-global", Name: "GlobalTwitchEmote"},
 			},
 		}, nil)
 
-		seven.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
-			seventv.EmoteResponse{}, seventv.APIError{StatusCode: 500})
+		seven.globalEmotes = answerGlobal(seventv.EmoteResponse{}, seventv.APIError{StatusCode: 500})
 
-		bttvService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
-			bttv.GlobalEmoteResponse{}, bttv.APIError{StatusCode: 500})
+		bttvService.globalEmotes = answerGlobal(bttv.GlobalEmoteResponse{}, bttv.APIError{StatusCode: 500})
 
-		ffzService.EXPECT().GetGlobalEmotes(mock.Anything).Once().Return(
-			[]ffz.Emote(nil), ffz.APIError{StatusCode: 500})
+		ffzService.globalEmotes = answerGlobal([]ffz.Emote(nil), ffz.APIError{StatusCode: 500})
 
 		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
 
@@ -355,18 +385,14 @@ func TestRefreshLocal_FailuresArePartial(t *testing.T) {
 	t.Run("missing channel emotes are not a failure", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
-		ttv.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(twitchapi.EmoteResponse{
+		ttv.channelEmotes = answerChannel(twitchapi.EmoteResponse{
 			Data: []twitchapi.EmoteData{{ID: "ttv", Name: "TwitchEmote"}},
 		}, nil)
-		seven.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
 		// A channel without BTTV/FFZ emotes answers with 404, which is normal.
-		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(bttv.UserResponse{}, bttv.APIError{StatusCode: 404})
-		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "no-emotes-channel").Once().Return(nil, ffz.APIError{StatusCode: 404})
+		bttvService.channelEmotes = answerChannel(bttv.UserResponse{}, bttv.APIError{StatusCode: 404})
+		ffzService.channelEmotes = answerChannel([]ffz.Emote(nil), ffz.APIError{StatusCode: 404})
 
 		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
 
@@ -380,17 +406,12 @@ func TestRefreshLocal_FailuresArePartial(t *testing.T) {
 	t.Run("provider error keeps the other providers", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
-		ttv.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(twitchapi.EmoteResponse{
+		ttv.channelEmotes = answerChannel(twitchapi.EmoteResponse{
 			Data: []twitchapi.EmoteData{{ID: "ttv", Name: "TwitchEmote"}},
 		}, nil)
-		seven.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
-		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(bttv.UserResponse{}, bttv.APIError{StatusCode: 500})
-		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "partial-channel").Once().Return(nil, nil)
+		bttvService.channelEmotes = answerChannel(bttv.UserResponse{}, bttv.APIError{StatusCode: 500})
 
 		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
 
@@ -404,25 +425,19 @@ func TestRefreshLocal_FailuresArePartial(t *testing.T) {
 	t.Run("a refresh that ran out of time is partial and caches nothing", func(t *testing.T) {
 		t.Parallel()
 
-		ttv := mocks.NewMockTwitchEmoteFetcher(t)
-		seven := mocks.NewMockSevenTVEmoteFetcher(t)
-		bttvService := mocks.NewMockBTTVEmoteFetcher(t)
-		ffzService := mocks.NewMockFFZEmoteFetcher(t)
+		ttv, seven, bttvService, ffzService := newStubs()
 
 		// The authoritative provider never answers, so the refresh as a whole fails.
 		// Whatever the others returned in the meantime was never confirmed, so it must
 		// not be cached under this channel: the next open retries the whole thing.
-		ttvHangs := func(ctx context.Context, _ string) (twitchapi.EmoteResponse, error) {
+		ttv.channelEmotes = func(ctx context.Context, _ string) (twitchapi.EmoteResponse, error) {
 			<-ctx.Done()
 
 			return twitchapi.EmoteResponse{}, ctx.Err()
 		}
-		ttv.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(ttvHangs, nil)
-		seven.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(seventv.ChannelEmoteResponse{}, nil)
-		bttvService.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(bttv.UserResponse{
+		bttvService.channelEmotes = answerChannel(bttv.UserResponse{
 			ChannelEmotes: []bttv.Emote{{ID: "bttv", Code: "BttvEmote"}},
 		}, nil)
-		ffzService.EXPECT().GetChannelEmotes(mock.Anything, "slow-channel").Once().Return(nil, nil)
 
 		store := emote.NewCache(zerolog.Nop(), ttv, seven, bttvService, ffzService)
 

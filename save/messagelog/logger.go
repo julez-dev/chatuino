@@ -2,6 +2,7 @@ package messagelog
 
 import (
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/julez-dev/chatuino/twitch/twitchirc"
-	"github.com/mailru/easyjson"
 	"github.com/rs/zerolog"
 )
 
@@ -199,7 +199,7 @@ func (b *BatchedMessageLogger) scanRows(rows *sql.Rows) ([]LogEntry, error) {
 		}
 
 		entry.PrivateMessage = &twitchirc.PrivateMessage{}
-		if err := easyjson.Unmarshal(rawPayload, entry.PrivateMessage); err != nil {
+		if err := json.Unmarshal(rawPayload, entry.PrivateMessage); err != nil {
 			return logEntries, err
 		}
 
@@ -223,7 +223,7 @@ func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*twitchirc.PrivateM
 	valueStrings := make([]string, 0, len(twitchMsgs))
 	valueArgs := make([]any, 0, len(twitchMsgs)*7) // 7 args per row
 	for _, msg := range twitchMsgs {
-		payloadJSON, err := easyjson.Marshal(msg)
+		payloadJSON, err := json.Marshal(msg)
 		if err != nil {
 			return fmt.Errorf("failed to marshal JSON payload for message %s: %w", msg.ID, err)
 		}

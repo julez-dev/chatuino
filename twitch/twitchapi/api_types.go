@@ -44,13 +44,11 @@ type (
 
 // https://api.twitch.tv/helix/chat/emotes/global
 type (
-	//easyjson:json
 	EmoteResponse struct {
 		Data     []EmoteData `json:"data"`
 		Template string      `json:"template"`
 	}
 
-	//easyjson:json
 	EmoteData struct {
 		ID        string     `json:"id"`
 		EmoteType string     `json:"emote_type"`
@@ -61,7 +59,6 @@ type (
 		ThemeMode []string   `json:"theme_mode"`
 	}
 
-	//easyjson:json
 	EmoteImage struct {
 		URL1X string `json:"url_1x"`
 		URL2X string `json:"url_2x"`
@@ -71,12 +68,10 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-users
 type (
-	//easyjson:json
 	UserResponse struct {
 		Data []UserData `json:"data"`
 	}
 
-	//easyjson:json
 	UserData struct {
 		ID              string    `json:"id"`
 		Login           string    `json:"login"`
@@ -94,13 +89,11 @@ type (
 
 // https://api.twitch.tv/helix/streams
 type (
-	//easyjson:json
 	GetStreamsResponse struct {
 		Data       []StreamData `json:"data"`
 		Pagination Pagination   `json:"pagination"`
 	}
 
-	//easyjson:json
 	StreamData struct {
 		ID           string    `json:"id"`
 		UserID       string    `json:"user_id"`
@@ -119,7 +112,6 @@ type (
 		IsMature     bool      `json:"is_mature"`
 	}
 
-	//easyjson:json
 	Pagination struct {
 		Cursor string `json:"cursor"`
 	}
@@ -127,12 +119,10 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-chat-settings
 type (
-	//easyjson:json
 	GetChatSettingsResponse struct {
 		Data []ChatSettingData `json:"data"`
 	}
 
-	//easyjson:json
 	ChatSettingData struct {
 		BroadcasterID                 string `json:"broadcaster_id"`
 		SlowMode                      bool   `json:"slow_mode"`
@@ -165,13 +155,11 @@ type (
 // https://dev.twitch.tv/docs/api/reference/#get-moderators
 // https://dev.twitch.tv/docs/api/reference/#get-vips
 type (
-	//easyjson:json
 	ChatRoleUsersResponse struct {
 		Data       []ChatRoleUser `json:"data"`
 		Pagination Pagination     `json:"pagination"`
 	}
 
-	//easyjson:json
 	ChatRoleUser struct {
 		UserID    string `json:"user_id"`
 		UserLogin string `json:"user_login"`
@@ -181,12 +169,10 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#warn-chat-user
 type (
-	//easyjson:json
 	WarnChatUserRequest struct {
 		Data WarnChatUserData `json:"data"`
 	}
 
-	//easyjson:json
 	WarnChatUserData struct {
 		UserID string `json:"user_id"`
 		Reason string `json:"reason"`
@@ -195,12 +181,10 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#start-a-raid
 type (
-	//easyjson:json
 	StartRaidResponse struct {
 		Data []RaidData `json:"data"`
 	}
 
-	//easyjson:json
 	RaidData struct {
 		CreatedAt time.Time `json:"created_at"`
 		IsMature  bool      `json:"is_mature"`
@@ -209,7 +193,6 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#manage-held-automod-messages
 type (
-	//easyjson:json
 	ManageAutoModMessageRequest struct {
 		UserID string `json:"user_id"`
 		MsgID  string `json:"msg_id"`
@@ -219,12 +202,10 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#snooze-next-ad
 type (
-	//easyjson:json
 	SnoozeNextAdResponse struct {
 		Data []AdSnoozeData `json:"data"`
 	}
 
-	//easyjson:json
 	AdSnoozeData struct {
 		NextAdAt        string `json:"next_ad_at"`
 		SnoozeRefreshAt string `json:"snooze_refresh_at"`
@@ -233,12 +214,10 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#ban-user
 type (
-	//easyjson:json
 	BanUserRequest struct {
 		Data BanUserData `json:"data"`
 	}
 
-	//easyjson:json
 	BanUserData struct {
 		UserID            string `json:"user_id"`
 		DurationInSeconds int    `json:"duration,omitempty"`
@@ -248,13 +227,11 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-unban-requests
 type (
-	//easyjson:json
 	GetUnbanRequestsResponse struct {
 		Data       []UnbanRequest `json:"data"`
 		Pagination Pagination     `json:"pagination"`
 	}
 
-	//easyjson:json
 	UnbanRequest struct {
 		ID               string    `json:"id"`
 		BroadcasterName  string    `json:"broadcaster_name"`
@@ -276,14 +253,12 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-followed-channels
 type (
-	//easyjson:json
 	GetFollowedChannelsResponse struct {
 		Total      int               `json:"total"`
 		Data       []FollowedChannel `json:"data"`
 		Pagination Pagination        `json:"pagination"`
 	}
 
-	//easyjson:json
 	FollowedChannel struct {
 		BroadcasterID    string    `json:"broadcaster_id"`
 		BroadcasterLogin string    `json:"broadcaster_login"`
@@ -294,7 +269,6 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-eventsub-subscriptions
 type (
-	//easyjson:json
 	GetEventSubSubscriptionsResponse struct {
 		Total        int            `json:"total"`
 		TotalCost    int            `json:"total_cost"`
@@ -306,7 +280,6 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#create-eventsub-subscription
 type (
-	//easyjson:json
 	CreateEventSubSubscriptionRequest struct {
 		Type      string                   `json:"type"`
 		Version   string                   `json:"version"`
@@ -314,7 +287,6 @@ type (
 		Transport EventSubTransportRequest `json:"transport"`
 	}
 
-	//easyjson:json
 	EventSubTransportRequest struct {
 		Method    string `json:"method"`
 		Callback  string `json:"callback"`
@@ -323,7 +295,6 @@ type (
 		SessionID string `json:"session_id"`
 	}
 
-	//easyjson:json
 	CreateEventSubSubscriptionResponse struct {
 		Data         []EventSubData `json:"data"`
 		Total        int            `json:"total"`
@@ -331,13 +302,11 @@ type (
 		MaxTotalCost int            `json:"max_total_cost"`
 	}
 
-	//easyjson:json
 	EventSubTransport struct {
 		Method    string `json:"method"`
 		ConduitID string `json:"conduit_id"`
 	}
 
-	//easyjson:json
 	EventSubData struct {
 		ID        string            `json:"id"`
 		Status    string            `json:"status"`
@@ -352,11 +321,9 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#create-clip
 type (
-	//easyjson:json
 	CreateClipResponse struct {
 		Data []CreatedClip `json:"data"`
 	}
-	//easyjson:json
 	CreatedClip struct {
 		ID      string `json:"id"`
 		EditURL string `json:"edit_url"`
@@ -383,17 +350,14 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#create-stream-marker
 type (
-	//easyjson:json
 	CreateStreamMarkerRequest struct {
 		UserID string `json:"user_id"`
 		// optional
 		Description string `json:"description,omitempty"`
 	}
-	//easyjson:json
 	CreateStreamMarkerResponse struct {
 		Data []StreamMarker `json:"data"`
 	}
-	//easyjson:json
 	StreamMarker struct {
 		ID              string    `json:"id"`
 		CreatedAt       time.Time `json:"created_at"`
@@ -404,13 +368,11 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-user-emotes
 type (
-	//easyjson:json
 	GetUserEmotesResponse struct {
 		Data       []UserEmoteImage `json:"data"`
 		Template   string           `json:"template"`
 		Pagination Pagination       `json:"pagination"`
 	}
-	//easyjson:json
 	UserEmoteImage struct {
 		ID         string   `json:"id"`
 		EmoteSetID string   `json:"emote_set_id"`
@@ -425,11 +387,9 @@ type (
 
 // https://dev.twitch.tv/docs/api/reference/#get-user-chat-color
 type (
-	//easyjson:json
 	GetUserChatColorResponse struct {
 		Data []UserChatColor `json:"data"`
 	}
-	//easyjson:json
 	UserChatColor struct {
 		Color     string `json:"color"`
 		UserName  string `json:"user_name"`
@@ -441,20 +401,16 @@ type (
 // https://dev.twitch.tv/docs/api/reference/#get-channel-chat-badges
 // https://dev.twitch.tv/docs/api/reference#get-global-emotes
 type (
-	//easyjson:json
 	GetChannelChatBadgesResp struct {
 		Data []BadgeSet `json:"data"`
 	}
-	//easyjson:json
 	GetGlobalBadgesResp struct {
 		Data []BadgeSet `json:"data"`
 	}
-	//easyjson:json
 	BadgeSet struct {
 		ID       string         `json:"set_id"`
 		Versions []BadgeVersion `json:"versions"`
 	}
-	//easyjson:json
 	BadgeVersion struct {
 		ID           string `json:"id"`
 		Image_URL_1x string `json:"image_url_1x"`

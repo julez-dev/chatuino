@@ -1,7 +1,8 @@
 package save
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -229,7 +230,7 @@ func (a AccountProvider) loadAccounts() ([]Account, error) {
 	err = json.Unmarshal([]byte(data), &fileData)
 
 	if err != nil {
-		syntaxErr := &json.SyntaxError{}
+		syntaxErr := &jsontext.SyntacticError{}
 		if errors.As(err, &syntaxErr) {
 			fileData.Accounts = append(fileData.Accounts, anonymousAccount)
 			return fileData.Accounts, nil

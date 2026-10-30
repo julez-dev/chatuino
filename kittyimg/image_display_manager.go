@@ -3,6 +3,7 @@ package kittyimg
 import (
 	"compress/zlib"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"image"
@@ -28,7 +29,6 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/adrg/xdg"
-	easyjson "github.com/mailru/easyjson"
 	"github.com/spf13/afero"
 	"golang.org/x/sync/syncmap"
 )
@@ -44,7 +44,6 @@ var (
 	globalPlacedImages                         = &syncmap.Map{}
 )
 
-//easyjson:json
 type DecodedImage struct {
 	ID     int32               `json:"-"`
 	Cols   int                 `json:"cols"`
@@ -57,7 +56,6 @@ type DecodedImage struct {
 	lastUsed time.Time `json:"-"`
 }
 
-//easyjson:json
 type DecodedImageFrame struct {
 	Width       int    `json:"width"`
 	Height      int    `json:"height"`
@@ -574,7 +572,7 @@ func (d *DisplayManager) cacheDecodedImage(decoded DecodedImage, unit DisplayUni
 
 	defer f.Close()
 
-	encoded, err := easyjson.Marshal(decoded)
+	encoded, err := json.Marshal(decoded)
 	if err != nil {
 		return err
 	}
@@ -634,7 +632,7 @@ func (d *DisplayManager) openCached(unit DisplayUnit) (DecodedImage, bool, error
 	}
 
 	var decoded DecodedImage
-	if err := easyjson.Unmarshal(data, &decoded); err != nil {
+	if err := json.Unmarshal(data, &decoded); err != nil {
 		return decoded, false, err
 	}
 
