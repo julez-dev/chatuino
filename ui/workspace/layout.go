@@ -76,8 +76,9 @@ type Node struct {
 	Children []*Node `json:"children,omitempty"`
 	Weights  []int   `json:"weights,omitempty"`
 
-	// Deprecated: version 1 layout fields, decode-only.
-	Ratio  int   `json:"ratio,omitempty"`
+	// Deprecated: version 1 layout fields, decode-only. omitzero keeps Ratio 0
+	// out of new snapshots: encoding/json/v2's omitempty does not omit 0.
+	Ratio  int   `json:"ratio,omitzero"`
 	First  *Node `json:"first,omitempty"`
 	Second *Node `json:"second,omitempty"`
 }

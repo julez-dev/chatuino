@@ -348,6 +348,23 @@ func TestLayout_SnapshotRestoresNewIdentitiesAndRepairsMissingTabs(t *testing.T)
 	require.True(t, layout.Contains("alpha"), "snapshot must not expose the live tree")
 }
 
+// Snapshot is the write path for saved sessions, so the version 1 binary-split
+// fields must stay out of new JSON. encoding/json/v2's omitempty does not omit
+// 0, so Node.Ratio needs omitzero to keep the decode-only field unwritten.
+func TestLayout_SnapshotWritesNoDeprecatedFields(t *testing.T) {
+	t.Parallel()
+	var layout workspace.Layout
+	layout.Select("", "alpha")
+	require.NoError(t, layout.Split("alpha", "beta", workspace.Columns, 81, 24))
+
+	encoded, err := json.Marshal(layout.Snapshot("alpha", nil))
+	require.NoError(t, err)
+
+	for _, field := range []string{`"ratio"`, `"first"`, `"second"`} {
+		require.NotContains(t, string(encoded), field)
+	}
+}
+
 // Version 1 layouts stored binary splits. Restoring one keeps the same ratios as
 // a two-child container so old sessions reopen with their geometry intact.
 func TestLayout_RestoreMigratesVersionOneBinarySplits(t *testing.T) {
