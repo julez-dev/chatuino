@@ -158,6 +158,40 @@ func TestBatchedMessageLogger_createLogEntries(t *testing.T) {
 			require.Contains(t, members, "channel_user_name")
 		}
 	})
+
+	t.Run("skips messages that cannot be marshaled", func(t *testing.T) {
+		db := &capturingDB{}
+
+		good := &twitchirc.PrivateMessage{
+			ID:              "good",
+			RoomID:          "room-id",
+			ChannelUserName: "room-name",
+			TMISentTS:       time.Now(),
+			DisplayName:     "sender",
+			UserID:          "sender-id",
+			Message:         "hello",
+		}
+		bad := &twitchirc.PrivateMessage{ID: "bad", Message: "invalid \xff"}
+
+		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db, db, nil, nil)
+		require.NoError(t, messageLogger.createLogEntries([]*twitchirc.PrivateMessage{bad, good}))
+
+		require.Equal(t, "INSERT INTO messages (id, broadcast_id, broadcast_channel, sent_at, sender_display, payload, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)", db.query)
+		require.Len(t, db.args, 7)
+		require.Equal(t, "good", db.args[0], "the marshalable message must still be stored")
+	})
+
+	t.Run("skips the insert when every message fails to marshal", func(t *testing.T) {
+		db := &capturingDB{}
+
+		messageLogger := NewBatchedMessageLogger(zerolog.Nop(), db, db, nil, nil)
+		require.NoError(t, messageLogger.createLogEntries([]*twitchirc.PrivateMessage{
+			{ID: "bad", Message: "invalid \xff"},
+		}))
+
+		require.Empty(t, db.query, "a batch with no storable message must not hit the database")
+		require.Empty(t, db.args)
+	})
 }
 
 func TestBatchedMessageLogger_scanRowsReadsStoredPayload(t *testing.T) {
