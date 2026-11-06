@@ -201,6 +201,99 @@ func TestAPI_ModeratorCommandContracts(t *testing.T) {
 	}
 }
 
+// TestAPI_SendMessageAndBanBodies pins the wire bodies of Send Chat Message and
+// Ban User. encoding/json/v2's omitempty does not omit false or 0, so a plain
+// send leaked "for_source_only":false (Twitch rejects the field's presence with
+// a user access token) and a permanent ban leaked "duration":0 (Twitch only
+// bans permanently when duration is absent). Both must use omitzero.
+func TestAPI_SendMessageAndBanBodies(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		path     string
+		query    string
+		wantBody string
+		call     func(context.Context, *API) error
+	}{
+		{
+			name:     "send chat message omits false for_source_only",
+			path:     "/helix/chat/messages",
+			wantBody: `{"broadcaster_id":"channel-id","sender_id":"account-id","message":"hello","reply_parent_message_id":""}`,
+			call: func(ctx context.Context, api *API) error {
+				_, err := api.SendChatMessage(ctx, SendChatMessageRequest{
+					BroadcasterID: "channel-id",
+					SenderID:      "account-id",
+					Message:       "hello",
+				})
+				return err
+			},
+		},
+		{
+			name:     "send chat message keeps explicit for_source_only",
+			path:     "/helix/chat/messages",
+			wantBody: `{"broadcaster_id":"channel-id","sender_id":"account-id","message":"hello","reply_parent_message_id":"","for_source_only":true}`,
+			call: func(ctx context.Context, api *API) error {
+				_, err := api.SendChatMessage(ctx, SendChatMessageRequest{
+					BroadcasterID: "channel-id",
+					SenderID:      "account-id",
+					Message:       "hello",
+					ForSourceOnly: true,
+				})
+				return err
+			},
+		},
+		{
+			name:     "permanent ban omits zero duration",
+			path:     "/helix/moderation/bans",
+			query:    "broadcaster_id=channel-id&moderator_id=account-id",
+			wantBody: `{"data":{"user_id":"alice-id","reason":"spam"}}`,
+			call: func(ctx context.Context, api *API) error {
+				return api.BanUser(ctx, "channel-id", "account-id", BanUserData{
+					UserID: "alice-id",
+					Reason: "spam",
+				})
+			},
+		},
+		{
+			name:     "timeout keeps its duration",
+			path:     "/helix/moderation/bans",
+			query:    "broadcaster_id=channel-id&moderator_id=account-id",
+			wantBody: `{"data":{"user_id":"alice-id","duration":600,"reason":"spam"}}`,
+			call: func(ctx context.Context, api *API) error {
+				return api.BanUser(ctx, "channel-id", "account-id", BanUserData{
+					UserID:            "alice-id",
+					DurationInSeconds: 600,
+					Reason:            "spam",
+				})
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotBody []byte
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				require.Equal(t, tt.path, req.URL.Path)
+				require.Equal(t, tt.query, req.URL.RawQuery)
+				gotBody, _ = io.ReadAll(req.Body)
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"data":[{"message_id":"msg-1","is_sent":true}]}`)),
+				}, nil
+			})}
+
+			api, err := NewAPI("client-id", WithHTTPClient(client), WithUserAuthentication(fakeAccountProvider{}, nil, "account-id"))
+			require.NoError(t, err)
+
+			require.NoError(t, tt.call(t.Context(), api))
+			require.JSONEq(t, tt.wantBody, string(gotBody))
+		})
+	}
+}
+
 func boolPointer(value bool) *bool { return &value }
 func intPointer(value int) *int    { return &value }
 

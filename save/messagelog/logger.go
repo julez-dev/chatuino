@@ -225,7 +225,12 @@ func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*twitchirc.PrivateM
 	for _, msg := range twitchMsgs {
 		payloadJSON, err := json.Marshal(msg)
 		if err != nil {
-			return fmt.Errorf("failed to marshal JSON payload for message %s: %w", msg.ID, err)
+			// encoding/json/v2 rejects invalid UTF-8 instead of substituting
+			// U+FFFD. Skip the message rather than failing the whole batch and
+			// stopping the logger.
+			b.logger.Warn().Err(err).Str("message-id", msg.ID).Msg("skipping message that cannot be stored as JSON")
+
+			continue
 		}
 
 		valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?, ?)")
@@ -236,6 +241,10 @@ func (b *BatchedMessageLogger) createLogEntries(twitchMsgs []*twitchirc.PrivateM
 		valueArgs = append(valueArgs, msg.DisplayName)
 		valueArgs = append(valueArgs, payloadJSON)
 		valueArgs = append(valueArgs, msg.UserID)
+	}
+
+	if len(valueStrings) == 0 {
+		return nil
 	}
 
 	query = fmt.Sprintf(query, strings.Join(valueStrings, ","))

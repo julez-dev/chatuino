@@ -26,7 +26,10 @@ type (
 		Message       string `json:"message"`
 
 		ReplyMessageID string `json:"reply_parent_message_id"`
-		ForSourceOnly  bool   `json:"for_source_only,omitempty"`
+		// omitzero, not omitempty: with encoding/json/v2 omitempty does not omit
+		// false, and Twitch rejects the field's presence when a user access token
+		// is used ("Cannot set for_source_only if User Access Token is used").
+		ForSourceOnly bool `json:"for_source_only,omitzero"`
 	}
 	SendChatMessageResponse struct {
 		Data []SendChatMessageData `json:"data"`
@@ -219,8 +222,10 @@ type (
 	}
 
 	BanUserData struct {
-		UserID            string `json:"user_id"`
-		DurationInSeconds int    `json:"duration,omitempty"`
+		UserID string `json:"user_id"`
+		// omitzero, not omitempty: with encoding/json/v2 omitempty does not omit
+		// 0, and Twitch only makes a ban permanent when duration is absent.
+		DurationInSeconds int    `json:"duration,omitzero"`
 		Reason            string `json:"reason"`
 	}
 )

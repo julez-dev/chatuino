@@ -22,8 +22,8 @@ var contributorsCMD = &cli.Command{
 
 		for _, c := range contributors {
 			fmt.Printf("GitHub: %s, Email: %s", c.GitHubUser, c.Email)
-			if c.TwitchLogin != "" {
-				fmt.Printf(", Twitch: %s", c.TwitchLogin)
+			if c.Twitch != "" {
+				fmt.Printf(", Twitch: %s", c.Twitch)
 			}
 			fmt.Println()
 		}
