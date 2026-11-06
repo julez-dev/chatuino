@@ -15,9 +15,9 @@ var logoPNG []byte
 
 // Contributor represents a person who has contributed to Chatuino.
 type Contributor struct {
-	GitHubUser  string `json:"github_user"`
-	Email       string `json:"email"`
-	TwitchLogin string `json:"twitch_login,omitempty"`
+	GitHubUser string `json:"github_user"`
+	Email      string `json:"email"`
+	Twitch     string `json:"twitch,omitempty"`
 }
 
 var (
@@ -39,8 +39,8 @@ func parse() {
 	loginSet = make(map[string]struct{}, len(contributors))
 
 	for _, c := range contributors {
-		if c.TwitchLogin != "" {
-			loginSet[strings.ToLower(c.TwitchLogin)] = struct{}{}
+		if c.Twitch != "" {
+			loginSet[strings.ToLower(c.Twitch)] = struct{}{}
 		}
 	}
 }
